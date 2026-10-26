@@ -4,11 +4,11 @@ Target-contract spec (`docs/features/collections-platform.md` §4.9 silent evolu
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                                               |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role       | Silent evolution of `origin='system'` collections ONLY (silent evolution never touches `user                                                                                                                                                                                              | seed | search` origins): triggers/debounce, the six passes (create / split / archive / purge / merge-candidates / auto-pin-reconcile), and merge-SUGGESTION writing. No nightly tag pass exists (§2.10).                                                                                                                                                                                                                                                                                                       |
-| Act stance | System acts silently; every act is journaled via `commitChange` with `actor='system'` — the undo journal replaces any proposal inbox; every act carries an inverse. The ONLY proposal output is merge candidates — never an inbox; the UI safety valve is undo + the merge-proposal card. |
-| Boundaries | Never touches `origin='user                                                                                                                                                                                                                                                               | seed | search'`rows for create/split/archive/purge (they get ordering gravity only). Never writes`collection_grants`/visibility. Executes OFF request paths and OFF upload commits (batch-end/nightly only). Embedding/analysis MATH is call-free by construction (centroids are means of stored vectors; seeds are references to existing vectors — no provider call ever computes evolution math); the only provider use is the `merge-arbiter` advisory (chat, nightly, ≤1 call/user/day aggregate budget). |
+| Item       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role       | Silent evolution for definition-driven collections: create/split/archive/purge are `origin='system'`-only; reconcile materializes membership for `system\|seed\|search` definitions. Owns triggers/debounce, the passes (create, reconcile, split, archive, purge, merge-candidates, auto-pin-reconcile), and merge-SUGGESTION writing. No nightly tag pass exists (§2.10).                                                                                                                                                                                                                                                                                       |
+| Act stance | System acts silently; every act is journaled via `commitChange` with `actor='system'` — the undo journal replaces any proposal inbox; every act carries an inverse. The ONLY proposal output is merge candidates — never an inbox; the UI safety valve is undo + the merge-proposal card.                                                                                                                                                                                                                                                                                                                                                                         |
+| Boundaries | Create/split/archive/purge never touch `origin='user'`, `seed`, or `search` rows; reconcile materializes membership only for definition-driven collections (`system`, `seed`, `search`) and never touches manual `origin='user'` rows. Never writes `collection_grants`/visibility. Executes OFF request paths and OFF upload commits (batch-end/nightly only). Embedding/analysis MATH is call-free by construction (centroids are means of stored vectors; seeds are references to existing vectors — no provider call ever computes evolution math); the only provider use is the `merge-arbiter` advisory (chat, nightly, ≤1 call/user/day aggregate budget). |
 
 ---
 
@@ -36,7 +36,8 @@ Target-contract spec (`docs/features/collections-platform.md` §4.9 silent evolu
 - Client hint `uploadComplete: true` (sent by `useFileOperations` when its queue
   drains) fires the pass immediately — latency sugar, crash-safe by design; the
   debounce alone is sufficient.
-- `upload` mode runs the CHEAP passes only: create / split / merge-candidates. `nightly`
+- `upload` mode runs the CHEAP passes only: create / reconcile / split /
+  merge-candidates. `nightly`
   runs ALL passes including archive/purge (time-based by nature — nightly is the
   backbone; `upload`-only mode must still run nightly ≥ once/day via the scheduler slot
   in [maintenanceScheduler](../infrastructure/maintenanceScheduler.md), lockManager TX
@@ -49,14 +50,19 @@ Target-contract spec (`docs/features/collections-platform.md` §4.9 silent evolu
 ### 2.3 `runEvolutionPass(scope)` — the single entry
 
 `runEvolutionPass({ users = [all-with-content], passes = 'cheap' | 'full' })` →
-`{ perUser: [{ userId, created[], split[], archived[], purged[], mergeCandidates[],
+`{ perUser: [{ userId, created[], reconciled[], split[], archived[], purged[], mergeCandidates[],
 pinned[], arbiterCalls }], report }`; report row persisted as
 `admin_reports(kind='night_eval')`. Idempotent full re-scan — safe to
 re-run any time; concurrent invocations serialize on the per-user lock group (second
 caller no-ops). Inputs: `node_activity`, `file_likes` (via likes store),
-`embeddings`/`embeddings_chunk` through the vectorStore
-seam, `collection_centroids`. Every mutation goes through journaled `collectionsStore`
-mutators with `ctx.actor='system'` (digest/feed carry system acts — NO toasts for silent system acts).
+pooled `embeddings` (active model space), and `collection_centroids`.
+Membership is materialized: the pass writes the add/remove diff through the journaled
+`collectionsStore` item mutators (`source='system'`, matched `reason`, publish state per
+mode) with `ctx.actor='system'`; the read path never evaluates definitions. Digest/feed
+carry system acts — NO toasts for silent system acts.
+
+The **cheap** leg runs create, reconcile, split and merge-candidates; the **full** leg
+adds archive and purge plus the auto-pin reconcile.
 
 ### 2.4 Pass 1 — create (multi-tier mutual-kNN, LLM-free)
 
@@ -86,10 +92,35 @@ mutators with `ctx.actor='system'` (digest/feed carry system acts — NO toasts 
 
 5. Create as `origin='system'`, definition = centroid/cluster rule, name via
    templateNamer (llmNamer swap only if chat configured), centroid upserted
-   (model-keyed), initial members published per the publish-mode rules (system origin lives in the owner's
-   own views; parking applies only once shared — same rule, same store flag).
+   (model-keyed). Initial cluster members are materialized in `collection_items` with
+   `source='system'`, the matched `reason`, and `published=true` (the initial batch is
+   the discovery snapshot). Later rule additions follow the collection's
+   `publish_mode` (`auto` ⇒ true, `ask|off` ⇒ false).
 
 - **No tier-specific lifecycle exemptions (uniform rules only)** — every created system collection faces identical split/archive/purge.
+
+### 2.4-bis Reconcile pass — materialized membership diff
+
+Runs for every ACTIVE definition-driven collection (system, seed, search). Manual
+`origin='user'` rows without a definition are never reconciled.
+
+1. Load the stored member set and the definition's candidate set (§2.3). Membership
+   scoring uses **pooled** embeddings of the active model space (seed reference,
+   centroid reference) plus predicate atoms; `vectorStore.neighbors` is not used.
+2. Apply exclusions, then the hysteresis diff:
+   - stored member: keep while `score ≥ θ_out`; remove below it;
+   - non-member: add while `score ≥ θ_in`;
+   - predicate atoms are boolean (match ⇒ keep/add, no match ⇒ remove/skip);
+   - a member whose pooled vector is missing or belongs to another model is KEPT
+     (no churn on enrichment gaps); a non-member without a vector is not added.
+3. Write the diff through the journaled item mutators with `actor='system'`:
+   additions carry `source='system'`, the matched `reason`, and `published` from
+   `publish_mode`; removals also insert exclusions (the removal must stick).
+   `touchMemberChange` runs inside the same command; no-op when the diff is empty.
+4. Reads never run this pass. Membership stays fixed between runs.
+
+**Membership caps:** create gates bound new system collections; reconcile does not
+evict long-standing members merely to hit a cap.
 
 ### 2.5 Pass 2 — split
 
@@ -129,8 +160,8 @@ tuned, via admin counters: `tombstone-suppressed` vs `regenerated-anyway`.
   `sizeRatio = min/max ≥ 0.7` AND `jaccard ≥ 0.7`. Centroid cosine is a PREFILTER ONLY —
   never grounds for a suggestion. Overlap-coefficient / containment (|A∩B|/min) metrics
   are BANNED — they fire on subset pairs (Spain ⊂ Europe) which must NOT merge.
-- Pair sources: derived pairs by centroid-cosine prefilter→set check; stored pairs by set
-  Jaccard directly (LLM-free variant, same pipeline). Scope: `system`↔anything
+- Pair sources: centroid-cosine prefilter → materialized-set check, and set-Jaccard
+  directly (LLM-free variant, same pipeline). Scope: `system`↔anything
   the SAME user owns; both must be `active`.
 - `upsertMergeSuggestion(aId,bId,score)` (pair normalized, UNIQUE(a,b) conflict keeps the
   existing row + its state); `score` = jaccard×1000 (scaled int).
@@ -182,17 +213,23 @@ driven by backfill completion). `deleteCentroids` on purge/merge loser.
 | `AI_EVOLUTION_TRIGGER`                                                                          | `both`  | trigger mode                                                                                                             |
 | `AI_EVOLUTION_DEBOUNCE_S`                                                                       | `90`    | batch-end debounce                                                                                                       |
 | `AI_EVOLUTION_NIGHTLY_ENABLED` / `AI_EVOLUTION_CREATE_ENABLED` / `AI_MERGE_SUGGESTIONS_ENABLED` | `true`  | per-surface pauses                                                                                                       |
+| `AI_EVOLUTION_INACTIVE_DAYS`                                                                    | `30`    | archive gate: no positive member activity for this window (ε = 0)                                                        |
+| `AI_EVOLUTION_MIN_AGE_DAYS`                                                                     | `14`    | archive grace for system-origin collections                                                                              |
+| `AI_EVOLUTION_CREATE_RATE_DAYS`                                                                 | `7`     | max one system create per user per window                                                                                |
+| membership hysteresis offsets                                                                   | profile | `membershipHysteresis.inDelta/outDelta` around `definition.theta`; absent finite values fall back to no band             |
 | tier edge-cos 0.82/0.80/0.72, k≈6, δ/θ shapes                                                   | profile | **release-measured profile values** (release artifacts — no runtime calibration; re-open trigger: measured corpus drift) |
 | min 8 / ≤1-wk / ≤12 active / caps 120·500 / band 0.55–0.7 / ratio·jaccard 0.7                   | fixed   | product rules                                                                                                            |
 
 ## 4. Dependencies
 
-- `collectionsStore` (journaled mutators + centroids/tombstones/suggestions),
-  `actionJournalStore` (via commitChange), `fileNodesStore`, likes/activity stores,
-  `aiTagStore`, `embeddingsStore`
-- `vectorStore` seam (neighbors for kNN/cosines), `domains/ai/llmAdapter` — ONLY the
-  merge-arbiter + llmNamer chat paths; capability absence degrades to LLM-free variants
-  (set-Jaccard merge, template names) with identical output shapes — capability absence degrades features, never disables them
+- `collectionsStore` (journaled mutators + materialized items/centroids/tombstones/
+  suggestions), `actionJournalStore` (via commitChange), `fileNodesStore`,
+  likes/activity stores, `aiTagStore`, `embeddingsStore` (pooled rows — membership math)
+- `collection_centroids` (model-keyed centroid prefilter); `vectorStore` is NOT a
+  membership/grouping scorer (it serves retrieval consumers)
+- `domains/ai/llmAdapter` — ONLY the merge-arbiter + llmNamer chat paths; capability
+  absence degrades to LLM-free variants (set-Jaccard merge, template names) with
+  identical output shapes — capability absence degrades features, never disables them
 - `maintenanceScheduler` nightly slot; `templateNamer`;
   `collectionsService.fingerprintDefinition`
 - Forbidden: any request-path invocation, any grant write, any file-node mutation.
@@ -210,6 +247,16 @@ driven by backfill completion). `deleteCentroids` on purge/merge loser.
       block creation; likes-density waives persistence only
 - [ ] Tombstoned definition ⇒ create suppressed + counters observable; drifted member
       set (same normalized definition) still suppresses (fingerprint ignores raw centroid)
+- [ ] Reconcile: two reads between passes return the same materialized set; an addition
+      inside the pass writes `source='system'` + matched `reason`; a removal below
+      `theta_out` deletes the row and inserts the exclusion
+- [ ] Reconcile hysteresis: a stored member with `theta_out ≤ score < theta_in` survives;
+      a non-member in the same band is not admitted; predicate collections add/remove on
+      boolean match
+- [ ] Reconcile covers system/seed/search definitions and never adds/removes manual
+      `origin='user'` rows; a missing pooled vector keeps an existing member
+- [ ] Create: initial cluster rows are materialized `source='system'`, `published=true`;
+      later additions park per `publish_mode`
 - [ ] Split creates a SIBLING; parent definition/membership byte-identical before/after
 - [ ] Archive: inactive system row archived; PINNED (user or auto) row never archived;
       uniform across tiers (fixture proves broad tier archives too); no exclusion-rate

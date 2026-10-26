@@ -4,10 +4,10 @@ Target-contract spec.
 
 ## 1. Overview
 
-| Item       | Description                                                                                           |
-| ---------- | ----------------------------------------------------------------------------------------------------- |
-| Mount path | `/api/collections`                                                                                    |
-| Role       | Collection CRUD, membership view (stored ∪ derived − exclusions), preview, merge suggestions, grants. |
+| Item       | Description                                                                        |
+| ---------- | ---------------------------------------------------------------------------------- |
+| Mount path | `/api/collections`                                                                 |
+| Role       | Collection CRUD, materialized membership view, preview, merge suggestions, grants. |
 
 **Ownership boundary:** collections never mutate file nodes — grants give list/preview/download only.
 `collection_grants` is a separate table domain — never read or written by `aclService`,
@@ -33,30 +33,30 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 
 ### 2.2 Route List (sync with api.md)
 
-| Method | Path                 | Auth  | Description                                                                               |
-| ------ | -------------------- | ----- | ----------------------------------------------------------------------------------------- |
-| GET    | `/`                  | Token | List collections (sort, include filters).                                                 |
-| GET    | `/:id`               | Token | Single collection (owner definition; grantee `granted_role`; ungranted → 404 masquerade). |
-| POST   | `/`                  | Token | Create — body-shape dispatch: `{ name }` manual (`origin='user'`), `{ name, seedNodeId }` seed (`origin='seed'`), `{ name, semantic }` search (`origin='search'`). |                                               |
-| PUT    | `/:id`               | Token | Update name / pin / publish_mode.                                                         |
-| POST   | `/:id/archive`       | Token | Archive (manual; confirm dialog is client-side).                                          |
-| POST   | `/:id/restore`       | Token | Restore an archived collection.                                                           |
-| DELETE | `/:id`               | Token | Permanent delete — archived only, else 409.                                               |
-| GET    | `/:id/items`         | Token | Member view — **full fetch, ONE response**, digest counts via `since`.                    |
-| POST   | `/:id/items`         | Token | Add members. Body `{ nodeIds }`.                                                          |
-| DELETE | `/:id/items`         | Token | Remove stored rows / insert exclusions (derived).                                         |
-| PUT    | `/:id/items/publish` | Token | Publish/unpublish members. Body `{ nodeIds, published }`.                                 |
-| POST   | `/preview`           | Token | Dry preview: `{ seedNodeId }` or `{ definition }`.                                        |
-| POST   | `/:id/preview`       | Token | Dry-run the stored definition of an existing one.                                         |
-| GET    | `/merge-suggestions` | Token | Pending merge-suggestion cards.                                                           |
-| POST   | `/:id/merge/:other`  | Token | Execute merge; `:id` survives.                                                            |
-| POST   | `/:id/merge-dismiss` | Token | `Later` — defer the pair (2-week re-raise).                                               |
-| POST   | `/:id/merge-reject`  | Token | `Keep separate` — permanent pair suppression.                                             |
-| GET    | `/:id/grants`        | Token | List sharing grants (owner only).                                                         |
-| POST   | `/:id/grants`        | Token | Grant `viewer\|editor`.                                                                   |
-| DELETE | `/:id/grants`        | Token | Revoke grant. Query `userId`.                                                             |
-| DELETE | `/:id/grants/me`     | Token | Grantee revokes their OWN grant (`viewer\|editor`).                                       |
-| POST   | `/for-nodes`         | Token | Batch membership lookup for file-listing chips.                                           |
+| Method | Path                 | Auth  | Description                                                                                                                                                        |
+| ------ | -------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --- |
+| GET    | `/`                  | Token | List collections (sort, include filters).                                                                                                                          |
+| GET    | `/:id`               | Token | Single collection (owner definition; grantee `granted_role`; ungranted → 404 masquerade).                                                                          |
+| POST   | `/`                  | Token | Create — body-shape dispatch: `{ name }` manual (`origin='user'`), `{ name, seedNodeId }` seed (`origin='seed'`), `{ name, semantic }` search (`origin='search'`). |     |
+| PUT    | `/:id`               | Token | Update name / pin / publish_mode.                                                                                                                                  |
+| POST   | `/:id/archive`       | Token | Archive (manual; confirm dialog is client-side).                                                                                                                   |
+| POST   | `/:id/restore`       | Token | Restore an archived collection.                                                                                                                                    |
+| DELETE | `/:id`               | Token | Permanent delete — archived only, else 409.                                                                                                                        |
+| GET    | `/:id/items`         | Token | Member view — **full fetch, ONE response**, digest counts via `since`.                                                                                             |
+| POST   | `/:id/items`         | Token | Add members. Body `{ nodeIds }`.                                                                                                                                   |
+| DELETE | `/:id/items`         | Token | Remove materialized rows / insert exclusions.                                                                                                                      |
+| PUT    | `/:id/items/publish` | Token | Publish/unpublish members. Body `{ nodeIds, published }`.                                                                                                          |
+| POST   | `/preview`           | Token | Dry preview: `{ seedNodeId }` or `{ definition }`.                                                                                                                 |
+| POST   | `/:id/preview`       | Token | Dry-run the stored definition of an existing one.                                                                                                                  |
+| GET    | `/merge-suggestions` | Token | Pending merge-suggestion cards.                                                                                                                                    |
+| POST   | `/:id/merge/:other`  | Token | Execute merge; `:id` survives.                                                                                                                                     |
+| POST   | `/:id/merge-dismiss` | Token | `Later` — defer the pair (2-week re-raise).                                                                                                                        |
+| POST   | `/:id/merge-reject`  | Token | `Keep separate` — permanent pair suppression.                                                                                                                      |
+| GET    | `/:id/grants`        | Token | List sharing grants (owner only).                                                                                                                                  |
+| POST   | `/:id/grants`        | Token | Grant `viewer\|editor`.                                                                                                                                            |
+| DELETE | `/:id/grants`        | Token | Revoke grant. Query `userId`.                                                                                                                                      |
+| DELETE | `/:id/grants/me`     | Token | Grantee revokes their OWN grant (`viewer\|editor`).                                                                                                                |
+| POST   | `/for-nodes`         | Token | Batch membership lookup for file-listing chips.                                                                                                                    |
 
 `GET /merge-suggestions` and `POST /preview` / `POST /for-nodes` are literal paths and
 MUST be registered before the `/:id` parameterized routes. `DELETE /:id/grants/me` carries the
@@ -132,7 +132,7 @@ Field rules:
   `CollectionsSection.md` §2.6) — seeded at create for
   the creator, stamped on `GET /:id/items` opens. Omitted on `GET /:id`/POST/PUT payloads
   (list-only field).
-- `item_count`: members in the requester-resolved view (stored ∪ derived − exclusions,
+- `item_count`: members in the requester-resolved materialized set (`collection_items`,
   live ACL + trash filter applied), exact.
 - `preview_items`: up to 4 member entries for the list card's
   2×2 preview — `{ "node_id", "name", "type", "mime" }`. Built **in memory from the same
@@ -140,8 +140,7 @@ Field rules:
   queries). Filter: only rows with `state='revoked'` are NEVER surfaced
   (a revoked member's name/thumbnail is a leak); `shared_excluded` members DO preview
   (the grantee view omits those rows upstream).
-  Order: `created_at` desc (added time:
-  stored row's `created_at`, derived row's node `created_at`), deterministic tie-break
+  Order: `created_at` desc (membership-added time; every row is materialized), deterministic tie-break
   `node_id` desc, then sliced to 4. `mime` = filecache mime (nullable; the row carries it
   from the `fileNodeShared` mapping). Always present (empty array when nothing previewable)
   on both `GET /` and `GET /:id` rows.
@@ -165,7 +164,9 @@ Field rules:
     mutation TX), so a self-created collection never renders the
     sidebar `new` dot. 201: `{ "collection": <collection>, "undo": { "action_id": 990 } }`.
   - `{ name, seedNodeId }` — seed (`origin='seed'`, embed-gate; `ai.notConfigured` 409
-    without the `embed` role). Same cursor seeding and collision rule.
+    without the `embed` role). Same cursor seeding and collision rule; readable candidate
+    ids materialize as the initial batch with `source='seed'`, `reason='similar'`,
+    `published=true`.
   - `{ name, semantic }` — search save leg (`origin='search'`):
     `semantic = { resultRef, predicates, nodeIds }` — the flattened semantic-execution
     snapshot of the saved search run (`searchService.md` §2.4/§2.6): `resultRef` is the
@@ -177,11 +178,12 @@ Field rules:
     `{ "kind": "search", "result_ref": …, "predicates": […] }`. Malformed `semantic`
     (missing/non-string `resultRef`, non-array or non-empty-at-P1 `predicates`,
     missing `nodeIds` array) → 400 `collections.invalidDefinition`. Readable ids
-    materialize as the initial batch `published=true` (the confirm dialog IS the batch
-    approval — `collectionsService.md` §2.7); ids the requester cannot read are NOT added
+    materialize as the initial batch with `source='search'` and `published=true` (the
+    confirm dialog IS the batch approval — `collectionsService.md` §2.7); ids the
+    requester cannot read are NOT added
     and are reported in the response's `rejected_not_readable` (never silently dropped).
     201: `{ "collection": <collection>, "undo": { "action_id": 990 },
-    "rejected_not_readable": [90299] }` — the search arm carries the additive
+"rejected_not_readable": [90299] }` — the search arm carries the additive
     `rejected_not_readable` key (empty array when every id was readable); the manual and
     seed arms omit it.
 - **PUT /:id:** Body any of `{ name?, pinned?, publishMode? }` (publishMode ∈
@@ -202,14 +204,14 @@ Field rules:
 - **GET /:id/items:** Query optional `since` (ISO timestamp — digest delta counts).
   `cursor`/`limit` query params are IGNORED (never an error); the response is the complete
   row set with no `next_cursor`.
-  View = stored ∪ derived − exclusions, resolved at read time with join-time ACL
+  View = materialized `collection_items`, rendered with join-time ACL
   (enrichment precedent `recentFiles/service.js`): trashed-by-owner members are hidden
   (row kept); unreadable members render as `state:"revoked"` placeholder rows with
   `name`/`type` null (metadata after revocation is a leak). In a **shared view**
   (requester is grantee, not owner), foreign-owned members are omitted entirely (cross-leak
   rule); in the **owner's view** they render with `"shared_excluded": true`.
-  New members of `ask`/`off` collections render `published:false` to the owner; grantees
-  only ever see `published:true` rows.
+  New rule-managed members of `ask`/`off` collections render `published:false` to the
+  owner; grantees only ever see `published:true` rows. Reads never evaluate definitions.
   200 — the COMPLETE row set in one response (the client's `useInfiniteScroll` slices 50+50
   for display, server order preserved):
 
@@ -236,9 +238,11 @@ Field rules:
 }
 ```
 
-`membership`: `stored | derived`; `state`: `normal | revoked`; `reason` = matched
-predicate name for derived members (computed at query time — not a history table),
-`null` for stored. `mime` is the filecache mime type from the node row (nullable);
+`membership`: `stored | derived` — `stored` = user-added (`source='manual'`),
+`derived` = rule-managed (`source ∈ system|seed|search`), materialized either way;
+`state`: `normal | revoked`; `reason` = the matched rule captured when a rule-managed
+row was materialized (`"tag:poster"`, `"path:/travel/2026"`, `"similar"`), `null` for
+manual rows. `mime` is the filecache mime type from the node row (nullable);
 it is `null` on `state:"revoked"` placeholder rows like `name`/`type` (no metadata leak). `publish_pending_count` is owner-visible only (keyed on collection
 `publish_mode != auto` rows with `published=false`); grantees get the key omitted.
 `digest` appears only when `since` was supplied.
@@ -288,15 +292,11 @@ full-set order the client slice reads head-first.
   Body `{ nodeIds: [ … ], published: true|false }` — 1–200 ids else 400
   `collections.emptyNodeIds` (same `parseNodeIds` boundary as the sibling item routes);
   non-boolean `published` → 400 `collections.invalidPublishMode`. Reuses the journaled
-  `collectionsStore.setItemPublished`: stored rows flip
-  (`published[]`); publishing a **derived** member MATERIALIZES a stored `published=true`
-  row (membership truth stays derived — the view dedups stored ∪ derived by node), while an
-  unpublish request for a derived-only row is already-unpublished (virtual `false`) and
-  lands in `ignored[]`. ids that are NOT in the collection's membership (stored ∪ derived
-  − exclusions — the raw `composeMemberRows` set, so editors may also flip stored rows
-  their member view hides) land in `ignored[]` — the route never ADDS membership for a
-  node the collection does not admit (anti-injection rule). Auto-pin touch on a `system`
-  collection whose publish materialized rows. 200:
+  `collectionsStore.setItemPublished`: materialized rows flip
+  (`published[]`), unpublish flips back to `false` and never deletes a row; ids that are
+  NOT in the materialized membership land in `ignored[]` — the route never ADDS
+  membership for a node the collection does not admit (anti-injection rule). Publishing
+  a row on a `system` collection is a user touch → auto-pin. 200:
 
 ```json
 {
@@ -306,15 +306,14 @@ full-set order the client slice reads head-first.
 }
 ```
 
-`undo.action_id` points at the flip command when one committed, else at the
-materialize-insert command, and `null` when nothing mutated (all-`ignored` batch).
-A mixed batch (flip + materialize in one request) exposes the FLIP pointer on the
-toast; the insert row stays undoable through the journal feed.
+`undo.action_id` points at the flip command, and `null` when nothing mutated (all-`ignored`
+batch).
 
-- **POST /preview:** Body exactly one of `{ seedNodeId }` (seed-vector rule: seed vector vs
-  requester-visible candidates, cosine — requires the `embed` LLM role) or
-  `{ definition }` (rule dry-count: path/tag/like/date/size predicates — works with
-  zero LLM). 400 `collections.previewTargetRequired` when neither/both given. 200:
+- **POST /preview:** Body exactly one of `{ seedNodeId }` (seed-vector rule: seed pooled
+  vector vs requester-visible pooled candidates, cosine — requires the `embed` LLM role)
+  or `{ definition }` (predicate dry-count works with zero LLM; `seed_vector`/`centroid`
+  definitions require the embed role and use pooled cosine). 400
+  `collections.previewTargetRequired` when neither/both given. 200:
 
 ```json
 {
@@ -332,8 +331,9 @@ toast; the insert row stays undoable through the journal feed.
 `serverErrors.ai.notConfigured`; definition previews never touch AI.
 
 - **POST /:id/preview:** Empty body; dry-runs the collection's stored `definition` for the
-  requester. Owner-only (granted viewers/editors → 403 `forbidden`; ungranted → 404
-  masquerade per §2.4.2). Response identical to POST /preview.
+  requester (predicate or pooled-vector; never mutates membership). Owner-only (granted
+  viewers/editors → 403 `forbidden`; ungranted → 404 masquerade per §2.4.2). Response
+  identical to POST /preview.
 - **GET /merge-suggestions:** Rows `state='pending'` where the requester owns both sides
   (one card at a time is a client concern — the full pending set is returned).
   200:
@@ -408,33 +408,33 @@ suggestion row (a suggestion state transition is opportunistic).
   OWNER calling it on their own collection); unknown collection / zero-access caller →
   404 `collections.notFound` (masquerade — existence never leaks, §2.4.2).
 - **POST /for-nodes:** Body `{ nodeIds }` (1–200). Batch membership chips for the file
-  listing. Resolves membership in every collection
-  visible to the requester (own + granted, active only). 200: `{ "memberships": [
+  listing. Resolves materialized membership in every collection visible to the
+  requester (own + granted, active only); no definition evaluation. 200: `{ "memberships": [
 { "node_id": 90210, "collection_ids": [17, 23] } ] }` — one entry per requested node,
   `collection_ids` possibly empty.
 
 ### 2.4.1 Error Codes (SERVER_ERROR_CODES style)
 
-| HTTP | errorCode                                        | Trigger                                                                                                                                                                                                                       |
-| ---- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 400  | `serverErrors.collections.nameRequired`          | Empty/missing name on create.                                                                                                                                                                                                 |
-| 400  | `serverErrors.collections.invalidName`           | `validateFileName` failure (incl. `.wea-` prefix).                                                                                                                                                                            |
-| 400  | `serverErrors.collections.invalidSort`           | Unknown `sort` value.                                                                                                                                                                                                         |
-| 400  | `serverErrors.collections.invalidInclude`        | Unknown token in `include`.                                                                                                                                                                                                   |
-| 400  | `serverErrors.collections.invalidPublishMode`    | Bad `publishMode`.                                                                                                                                                                                                            |
-| 400  | `serverErrors.collections.invalidRole`           | Grant role outside `viewer\|editor`.                                                                                                                                                                                          |
-| 400  | `serverErrors.collections.emptyNodeIds`          | Missing/empty/over-cap `nodeIds` (item routes and the `{ name, semantic }` create arm).                                                                                                                                 |
-| 400  | `serverErrors.collections.previewTargetRequired` | 0 or 2 of `seedNodeId`/`definition`.                                                                                                                                                                                          |
-| 400  | `serverErrors.collections.mergeSameCollection`   | `:id == :other`.                                                                                                                                                                                                              |
+| HTTP | errorCode                                        | Trigger                                                                                                                                                                                                                                              |
+| ---- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400  | `serverErrors.collections.nameRequired`          | Empty/missing name on create.                                                                                                                                                                                                                        |
+| 400  | `serverErrors.collections.invalidName`           | `validateFileName` failure (incl. `.wea-` prefix).                                                                                                                                                                                                   |
+| 400  | `serverErrors.collections.invalidSort`           | Unknown `sort` value.                                                                                                                                                                                                                                |
+| 400  | `serverErrors.collections.invalidInclude`        | Unknown token in `include`.                                                                                                                                                                                                                          |
+| 400  | `serverErrors.collections.invalidPublishMode`    | Bad `publishMode`.                                                                                                                                                                                                                                   |
+| 400  | `serverErrors.collections.invalidRole`           | Grant role outside `viewer\|editor`.                                                                                                                                                                                                                 |
+| 400  | `serverErrors.collections.emptyNodeIds`          | Missing/empty/over-cap `nodeIds` (item routes and the `{ name, semantic }` create arm).                                                                                                                                                              |
+| 400  | `serverErrors.collections.previewTargetRequired` | 0 or 2 of `seedNodeId`/`definition`.                                                                                                                                                                                                                 |
+| 400  | `serverErrors.collections.mergeSameCollection`   | `:id == :other`.                                                                                                                                                                                                                                     |
 | 400  | `serverErrors.collections.invalidDefinition`     | Malformed `definition` payload (unknown kind / predicate type / bad atom); malformed `semantic` create payload on the `{ name, semantic }` arm (missing/non-string `resultRef`, non-array or non-empty-at-P1 `predicates`, missing `nodeIds` array). |
-| 403  | `serverErrors.collections.forbidden`             | Non-owner mutation; viewer writes; editor removing what they did not add. ALSO the admin-operator gate: EVERY endpoint for an ADMIN requester (`requireNonAdmin`) and `POST /:id/grants` with an ADMIN grantee (service ban). |
-| 404  | `serverErrors.collections.notFound`              | Unknown id, or no access at all (read = 404 masquerade — ungranted reads do not disclose existence).                                                                                                                          |
-| 404  | `serverErrors.collections.granteeNotFound`       | Unknown user on grant.                                                                                                                                                                                                        |
-| 404  | `serverErrors.collections.grantNotFound`         | Revoke of a non-existing row; `/grants/me` caller holding no grant row (incl. owner).                                                                                                                                         |
-| 404  | `serverErrors.collections.suggestionNotFound`    | Dismiss/reject without a pending row.                                                                                                                                                                                         |
-| 409  | `serverErrors.collections.alreadyArchived`       | Archive of an archived collection.                                                                                                                                                                                            |
-| 409  | `serverErrors.collections.notArchived`           | Restore/delete of an active collection.                                                                                                                                                                                       |
-| 409  | `serverErrors.ai.notConfigured`                  | Seed preview without the `embed` role.                                                                                                                                                                                        |
+| 403  | `serverErrors.collections.forbidden`             | Non-owner mutation; viewer writes; editor removing what they did not add. ALSO the admin-operator gate: EVERY endpoint for an ADMIN requester (`requireNonAdmin`) and `POST /:id/grants` with an ADMIN grantee (service ban).                        |
+| 404  | `serverErrors.collections.notFound`              | Unknown id, or no access at all (read = 404 masquerade — ungranted reads do not disclose existence).                                                                                                                                                 |
+| 404  | `serverErrors.collections.granteeNotFound`       | Unknown user on grant.                                                                                                                                                                                                                               |
+| 404  | `serverErrors.collections.grantNotFound`         | Revoke of a non-existing row; `/grants/me` caller holding no grant row (incl. owner).                                                                                                                                                                |
+| 404  | `serverErrors.collections.suggestionNotFound`    | Dismiss/reject without a pending row.                                                                                                                                                                                                                |
+| 409  | `serverErrors.collections.alreadyArchived`       | Archive of an archived collection.                                                                                                                                                                                                                   |
+| 409  | `serverErrors.collections.notArchived`           | Restore/delete of an active collection.                                                                                                                                                                                                              |
+| 409  | `serverErrors.ai.notConfigured`                  | Seed preview without the `embed` role.                                                                                                                                                                                                               |
 
 All errors follow the shared error envelope (`errorCode` + optional `params`,
 [shared-contracts.md](../../../shared-contracts.md)); client locale mirror is mandatory.
@@ -452,8 +452,12 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
 - Read access without any grant is a 404 masquerade,
   never 403.
 - Item ordering = activity score desc then `node_id` asc (stable full-set order).
-- `since` is an ISO timestamp compared against stored
-  `collection_items.created_at` and the row's `last_member_change_at` (derived).
+- `since` is an ISO timestamp compared against materialized
+  `collection_items.created_at` and the row's `last_member_change_at`; membership never
+  changes on read.
+- Reads (`GET /`, `GET /:id`, `GET /:id/items`, `POST /for-nodes`) return
+  `collection_items` only. Definition evaluation runs at write boundaries (upload hook /
+  evolution reconcile) and may add/remove rows; previews are explicit dry-runs.
 - DELETE `/items` carries a JSON body (`{ nodeIds }`).
 - Merge survivor = `:id` path param (the card's target collection), loser
   hard-deleted; undo restores the loser row and moves members back (journal payload).
@@ -483,9 +487,11 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
       archive → restore → delete only after archive; active delete → 409 `notArchived`
 - [ ] Ungranted GET /:id or /:id/items → 404 masquerade; viewer POST /items → 403
 - [ ] Name collision on create/restore auto-suffixes, never errors
-- [ ] Items: stored member + derived member + excluded node → view shows
-      stored ∪ derived − exclusions; trashed member hidden; revoked member renders
+- [ ] Items: manual row + rule-managed row + excluded node → view shows the materialized
+      rows; excluded node has no row; trashed member hidden; revoked member renders
       placeholder with null name
+- [ ] Two consecutive reads with different view counts/new candidate files return the
+      same member set (definition evaluation never runs on a read path)
 - [ ] `GET /` card rows carry `preview_items` (≤4, newest-added first, revoked rows never
       present, `shared_excluded` rows present to the owner; each entry `{node_id,name,type,mime}`)
 - [ ] `since` returns digest `added_since/removed_since` and reading items advances the
@@ -514,7 +520,7 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
       terminal (`rejected` row never re-suggested)
 - [ ] Grants lifecycle: grant viewer → grantee lists the collection with `granted_role`
       and no `definition` field → revoke instant
-- [ ] for-nodes returns membership chips including derived membership
+- [ ] for-nodes returns materialized membership chips only (no definition evaluation)
 - [ ] Every mutation response carries snake_case fields and an `undo.action_id`;
       DELETE /:id carries none
 - [ ] Setup-mode: mount returns the guard response while setup incomplete

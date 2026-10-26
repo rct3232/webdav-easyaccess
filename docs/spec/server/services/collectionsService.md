@@ -6,7 +6,7 @@ Target-contract spec.
 
 | Item       | Description                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role       | Business logic behind `/api/collections` ([routes spec](../routes/collections.md)): CRUD + lifecycle, the member view (`stored ∪ derived − exclusions`), definition evaluation, preview/seed-confirm, merge execution, sorts, digests, for-nodes chips.                                                                                                                                                                       |
+| Role       | Business logic behind `/api/collections` ([routes spec](../routes/collections.md)): CRUD + lifecycle, the materialized member view, definition evaluation at commit/pass boundaries, preview/seed-confirm, merge execution, sorts, digests, for-nodes chips.                                                                                                                                                                  |
 | Boundaries | Never mutates file nodes — view by collection, mutate by file: collection grants never touch file ACL, and the service exposes no rename/move/delete-of-file function. Grants/roles/publish/self-revocation are owned by [collectionShareService](collectionShareService.md) and consumed here via `getRole`/publish-gate helpers. Undo flows live in the journal; mutation results carry `undo: { actionId }` pointers only. |
 | Journal    | Every user-visible mutation reaches the DB through `collectionsStore` journaled mutators (`createCollection`, `renameCollection`, `setPinned`, `archiveCollection`, `restoreCollection`, `addItem`, `removeItem`, `addExclusion`, `removeExclusion`, `setItemPublished`) — i.e. `actionJournalStore.commitChange(mutation, inverse)` is the only write path. Permanent delete has NO inverse (see §2.5).                      |
 | State      | DB-backed only — zero CacheAdapter/operationProgress imports (no AI/collection state in CacheAdapter; CODING_STYLE.md Express Patterns grep-gate).                                                                                                                                                                                                                                                                            |
@@ -32,23 +32,23 @@ passed to every journaled store mutator.
 | ------------------------------------------------------------------------ | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `listCollections(userId, { sort, include })`                             | `{ collections[] }`                                             | `sort ∈ activity\|name\|created\|updated\|similar` (default `activity`); `include ⊆ mine,shared,archived`. Shared rows: `definition` omitted, `granted_role` set. Hidden collections (requester's `collection_visibility` flag set) are filtered by the list SQL; `setVisible` has no API caller at P0. Each row carries `preview_items`: up to 4 newest-added members built IN MEMORY from the same `resolveMemberRows` view already computed for `item_count` — `state!=='revoked'` only (shared-excluded rows preview to the owner; grantees never receive those rows), `createdAt` desc (tie-break `nodeId` desc), sliced to 4, mapped to `{node_id,name,type,mime}`; zero extra queries; `getCollection` serializes previews from its resolved view the same way. Rows also carry `last_visited_at`: the REQUESTER's digest cursor ISO string or `null` (never opened — sidebar new-dot source), read ONCE per list via `collectionsStore.listDigestCursorMap(userId)` (single SELECT, no per-row query) and attached through the `serializeCollection` opts; `getCollection` omits the field. |
 | `createCollection(userId, { name })`                                     | `{ collection, undo }`                                          | `origin='user'`, `status='active'`, `publish_mode='ask'`. Name validation + suffix-collision retry (§2.4). SEEDS the creator's digest cursor (`last_visited_at = created_at`) inside the same journaled create TX — self-created collections never render the sidebar `new` dot.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `createSeedCollection(userId, { name, seedNodeId })`                     | `{ collection, undo }`                                          | `origin='seed'`, `definition={kind:'seed_vector', seed_ref, theta}`; INITIAL BATCH `published=true` (§2.7). Requires embed role: else throw `aiNotConfigured`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `createSearchCollection(userId, { name, semantic })`                     | `{ collection, undo, rejected_not_readable }`                   | `origin='search'`; definition = flattened semantic SNAPSHOT (§2.7): `{ kind: 'search', result_ref, predicates }` — the `result_ref` is the stored centroid REFERENCE (searchService.md §2.4 replay rule; replay chains are never persisted); name-match results NEVER included; initial batch = the readable semantic ids via the `addItems` mechanics with `published=true` explicit (§2.7 — the dialog IS the batch approval); unreadable ids land in `rejected_not_readable` (§2.4 "only add what you can read" — never a silent drop); `undo` = the CREATE command (tip undo deletes the collection together with the initial batch). Validation: name rules as `createCollection`; malformed snapshot (`resultRef` missing/non-string, `predicates` non-array or non-empty at P1) → `invalidDefinition`; `nodeIds` 1–200 else `emptyNodeIds` (an empty semantic member set rejects honestly — the §2.6 client gate prevents offering Save, the server never accepts one). No embed role required (the snapshot is flattened — no live definition evaluated at create).                         |
+| `createSeedCollection(userId, { name, seedNodeId })`                     | `{ collection, undo }`                                          | `origin='seed'`, `definition={kind:'seed_vector', seed_ref, theta}`; INITIAL BATCH `source='seed'`, `published=true` (§2.7). Requires embed role: else throw `aiNotConfigured`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `createSearchCollection(userId, { name, semantic })`                     | `{ collection, undo, rejected_not_readable }`                   | `origin='search'`; definition = flattened semantic SNAPSHOT (§2.7): `{ kind: 'search', result_ref, predicates }` — the `result_ref` is the stored centroid REFERENCE (searchService.md §2.4 replay rule; replay chains are never persisted); name-match results NEVER included; initial batch = the readable semantic ids via the `addItems` mechanics with `source='search'` and `published=true` explicit (§2.7 — the dialog IS the batch approval); unreadable ids land in `rejected_not_readable` (§2.4 "only add what you can read" — never a silent drop); `undo` = the CREATE command (tip undo deletes the collection together with the initial batch). Validation: name rules as `createCollection`; malformed snapshot (`resultRef` missing/non-string, `predicates` non-array or non-empty at P1) → `invalidDefinition`; `nodeIds` 1–200 else `emptyNodeIds` (an empty semantic member set rejects honestly — the §2.6 client gate prevents offering Save, the server never accepts one). No embed role required (the snapshot is flattened — no live definition evaluated at create).   |
 | `updateCollection(userId, id, { name?, pinned?, publishMode? })`         | `{ collection, undo }`                                          | Owner-only. `name` write → `lockName=true`. `pinned:true` → `pinned_by='user'` (overwrites `'auto'`); `pinned:false` → NULL + unpin. `publishMode` write is the explicit sharing-mode act (enabling/changing sharing is the only consent act; no automation publishes silently).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `archiveCollection(userId, id)` / `restoreCollection(userId, id)`        | `{ collection, undo }`                                          | Manual lifecycle, 1 confirm client-side (user-triggered destructive/change actions get exactly one confirmation; system actions none, but are journaled). Active↔archived guards: `alreadyArchived` / `notArchived`. Restore re-suffixes on name collision. Both are user touches → auto-pin eligible system rows via store.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `deleteCollectionPermanent(userId, id)`                                  | `undefined` (route 204)                                         | Archived only (§2.5). NO undo pointer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `getItems(userId, id, { since? })`                                       | `{ items[], publish_pending_count?, digest? }`                  | Member view engine (§2.3–§2.4); **full fetch — the complete row set in ONE response**; the `cursor`/`limit`/`next_cursor` params are IGNORED (never an error); order = activity score desc, then `node_id` asc; reading stamps the digest cursor (§2.8).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `getItems(userId, id, { since? })`                                       | `{ items[], publish_pending_count?, digest? }`                  | Materialized member view (§2.3–§2.4); **full fetch — the complete row set in ONE response**; the `cursor`/`limit`/`next_cursor` params are IGNORED (never an error); order = activity score desc, then `node_id` asc; reading stamps the digest cursor (§2.8).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `addItems(userId, id, nodeIds)`                                          | `{ added[], already_members[], rejected_not_readable[], undo }` | Owner or editor. 1–200 ids else `emptyNodeIds`. "Only add what you can read" (§2.4). `published` default per publish-mode rules (§2.7). One command journal row with item-level inverses.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `removeItems(userId, id, nodeIds)`                                       | `{ removed[], excluded[], ignored[], undo }`                    | Owner, or editor for what they added (else `forbidden`). Stored row → delete; derived member on non-`user` origin → `collection_exclusions` insert; on `user` origin → `ignored` (exclusion meaningless). Membership only — removing a member never trashes the node.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `removeItems(userId, id, nodeIds)`                                       | `{ removed[], excluded[], ignored[], undo }`                    | Owner, or editor for what they added (else `forbidden`). Removes stored rows; on a definition-driven collection the same command inserts `collection_exclusions` for the ids so the next evaluation pass cannot re-admit them. Manual (definition-less) collections delete only. Membership only — removing a member never trashes the node.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `preview(userId, { seedNodeId? , definition? })`                         | `{ count, sample[], sample_truncated }`                         | Exactly one target else `previewTargetRequired` (§2.7).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `previewCollection(userId, id)`                                          | same as `preview`                                               | Owner-only dry-run of the stored definition.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `publishItems(userId, id, nodeIds, published)`                           | `{ published[], ignored[], undo }`                              | Owner or editor (parity with `addItems`); viewer → `forbidden`. Reuses the journaled `collectionsStore.setItemPublished` (inverse + undo case live) — stored rows flip; PUBLISHING A DERIVED MEMBER MATERIALIZES a stored row `published=true` (journaled `addItems`, idempotent — the view dedups `stored ∪ derived` by node), unpublish flips it back to `false` (never deletes a row) and is a NO-OP for derived-only ids. Ids outside the raw membership (stored ∪ derived − exclusions) → `ignored[]` — never added (anti-injection). `undo.action_id` = flip command else materialize command else `null`. Materialize on a `system` collection is a user touch → auto-pin (`pinned_by='auto'`, no journal row for the pin). Route surface `PUT /:id/items/publish`.                                                                                                                                                                                                                                                                                                                          |
+| `publishItems(userId, id, nodeIds, published)`                           | `{ published[], ignored[], undo }`                              | Owner or editor (parity with `addItems`); viewer → `forbidden`. Reuses the journaled `collectionsStore.setItemPublished` (inverse + undo case live) — materialized rows flip; unpublish flips back to `false` and never deletes a row. Ids outside the materialized membership → `ignored[]` — never added (anti-injection). `undo.action_id` = the flip command, else `null`. Publishing a row on a `system` collection is a user touch → auto-pin (`pinned_by='auto'`, no journal row for the pin). Route surface `PUT /:id/items/publish`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `listMergeSuggestions(userId)`                                           | `{ suggestions[] }`                                             | Pending rows owned by requester, `score` desc; rows carry additive `recommendation: { verdict, reason } \| null` from the merge-arbiter prefill (§2.9).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `mergeCollections(userId, id, otherId)`                                  | `{ survivor, absorbed_id, undo }`                               | §2.9. `id === otherId` → `mergeSameCollection`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `dismissMerge(userId, id, otherId)` / `rejectMerge(userId, id, otherId)` | `{ suggestion_id, state, *_at }`                                | `setSuggestionState('dismissed'\|'rejected')`; no pending row → `suggestionNotFound`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `getForNodes(userId, nodeIds)`                                           | `{ memberships: [{ nodeId, collectionIds[] }] }`                | §2.6. 1–200 ids.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `fingerprintDefinition(definition)`                                      | hex string                                                      | Pure. Normalized schema + core params (θ, tag-set, path — NOT raw centroid values). Shared with [evolutionService](evolutionService.md) (pass 4 tombstones); permanent delete of a `system` collection passes it to `deleteCollectionPermanent` (permanent delete-from-archive is unrecoverable — trash-parity; the tombstone blocks silent regeneration).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `checkUploadAdmissions(userId, nodeId)`                                  | `{ nodeId, admittedCollectionIds[] }`                           | Upload-hook rule-check SEAM (§2.3-bis). Point evaluation of the requester's ACTIVE predicate collections against ONE freshly committed node; each admitting collection gets `touchMemberChange` (the only coupling per aiJobService §2.2). Not yet wired into any upload path (P1).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `checkUploadAdmissions(userId, nodeId)`                                  | `{ nodeId, admittedCollectionIds[] }`                           | Upload-hook rule-check (§2.3-bis). Point evaluation of the requester's ACTIVE definition-driven collections against ONE freshly committed node; each admitting collection materializes a rule-managed membership row (`source='system'`, matched `reason`, publish state per mode) and bumps `last_member_change_at`. Invoked fire-and-forget from the four content-commit seams.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `listGrants(userId, id)`                                                 | `{ grants[] }`                                                  | Owner only (`forbidden`); rows enriched with grantee username at the route.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `grantCollectionAccess(userId, id, granteeId, role)`                     | `{ grant, username, undo }`                                     | Owner only. `role ∉ viewer\|editor` → `invalidRole`; unknown/approved-absent grantee → `granteeNotFound`; **admin grantee → `forbidden`** (403 — admin-as-grantee banned at grant creation, operator rule). Re-grant overwrites the role (PK pair). Journaled one command.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `revokeCollectionAccess(userId, id, granteeId)`                          | `{ grantee_id, revoked, undo }`                                 | Owner only. No such row → `grantNotFound`. Instant (revocation takes effect on the next read — no cache, no grace). Store path `revokeAccess` journals action `revoke` with inverse `grant-access`. The same journaled TX also DELETES the grantee's digest cursor row (`deleteDigestCursor` — re-grant after revoke re-dots; see §2.8 for the undo boundary).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -80,8 +80,8 @@ The create and the initial batch are two journaled commands; the returned
 with the just-added batch). No embed role is required: the snapshot is flattened —
 the stored definition is never evaluated at create time.
 `createSeedCollection` implements the embed presence gate (throws `aiNotConfigured`)
-and evaluates the seed's candidate set through the §2.3 vector-membership
-contract (`vectorStore.neighbors`). Seed preview and creation share one internal
+and evaluates the seed's candidate set through the §2.3 pooled-vector membership
+contract. Seed preview and creation share one internal
 computation, so the created initial batch is exactly the preview set. Seed
 preview with the embed role present but no pooled embedding for the seed node
 resolves through the §2.7 missing-embedding branch (`count: 0`, `degraded: true`)
@@ -90,55 +90,63 @@ presence check reads `infrastructure/adapters/llm` `roleConfigured('embed')`
 once the adapter is installed; before boot it falls back to the `LLM_EMBED_*`
 config keys.
 
-### 2.3 Definition engine (derived membership)
+### 2.3 Definition engine (rule-managed, materialized membership)
 
 - Definition kinds: `{kind:'predicate', any_of/all_of: [path_prefix|tag|like|date|size …]}`
-  and `{kind:'seed_vector'|'centroid', seed_ref|centroid_ref, theta}` (vector rules may
-  AND/OR with predicates). Evaluation is READ-TIME + upload-hook time; no derived
-  rows are ever stored (membership is derived, not stored — except manual `user`-origin rows).
-- Predicate-bool membership: path prefix / date / size → SQL over the requester-visible
-  node set (`fileNodesStore` ACL joins, listing parity with `fileService`).
-- Tag predicates match by folded string equality in every state — there is no vector tag
-  matching, no `θ_tag`, no `tag_embeddings` read path (§4.18). The tag atom resolves through
-  `aiTagStore.listNodeIdsByRawTag(foldTag(value))`
-  (orthographic fold `domains/ai/tagVocabulary.js` — NFKC + whitespace/case fold; `ai_tag_raw`
-  rows are written folded by the derived-tags pipeline). No embed/chat dependency;
-  model-invariant.
-- Vector membership: candidate scoring via `vectorStore.neighbors(vec, k, visibleIds)`
-  (per-node max-over-chunks). Inclusion is `score ≥ θ` with **hysteresis**
-  (θ_in > θ_out, per-model profile values — release-measured) so view-boost drift does not
-  flip membership nightly.
-- View-weighted soft boost for similarity definitions:
+  and `{kind:'seed_vector'|'centroid', seed_ref|centroid_ref, theta, theta_in?, theta_out?}`
+  (vector rules may AND/OR with predicates).
+- **Compute-on-write.** Definition evaluation runs only at write boundaries — the upload
+  hook and [evolutionService](evolutionService.md) reconcile passes. The read path NEVER
+  evaluates a definition: `GET /`, `GET /:id`, `GET /:id/items` and `POST /for-nodes`
+  read `collection_items` only. Membership is materialized there with `source`
+  (`manual|system|seed|search`) and `reason` columns; `collection_items` is the single
+  membership state.
+- **Hysteresis.** A reconcile pass compares the materialized set with the fresh scores:
+  an existing member is kept while `score ≥ θ_out`; a non-member is admitted while
+  `score ≥ θ_in`; otherwise the row is removed. Predicate atoms are boolean and have no
+  band. `θ_in > θ_out`; both derive from the definition's `theta` plus the active model
+  profile's membership offsets (`membershipHysteresis.inDelta/outDelta`). A profile
+  without finite offsets uses `theta_in = theta_out = theta`.
+- **Vector membership uses pooled vectors.** Seed cosine is computed against
+  `embeddingsStore.get(seed_ref)`; centroid cosine against the active model's
+  `collection_centroids` row. Cross-`model_id` comparison is forbidden.
+  `vectorStore.neighbors` (max-over-chunks) is the RETRIEVAL scorer and is never used
+  for membership or grouping.
+- **View-weighted soft boost** applies to ordering only:
   `score = cosine × (1 + α·log10(1 + views))`, `α = 0.1` (T2), views from the per-user
-  `node_activity` rollup. The boost moves only θ±δ borderline members and ordering; it can
-  never drop a clear match nor admit a weak one (clamp: admitted/kept sets computed on the
-  un-boosted score, ordering on the boosted one).
-- `exclusions = listExclusions(id)` is subtracted from the derived set; exclusions never
-  affect stored rows. After each evaluation wave the engine calls `touchMemberChange(id)`
-  when the admitted set changed (drives digest + activity sort).
-- **Candidate-set mechanism:** predicate-bool membership
-  evaluates in JS over a candidate set assembled from existing store reads — the
-  requester's own-root subtree (`getUserRootNode` + `getDescendants`, readable by
-  ownership) plus explicitly granted nodes/subtrees (`permissionStore.getUserFilePermissions`
-  / `getUserPermissions` + subtree expansion), mirroring the fileService listing parity.
-  Per-node point checks: path (ancestor walk over the loaded candidate rows), date
-  (`file_nodes.created_at`), size (`filecache` point read when a size atom is present),
-  like (`fileLikesStore.listLikedNodeIds`), tag (folded string equality through the
-  provider seam — the §2.3 tag bullet). The ACL-joined SQL variant of this
-  scan is a tracked optimization, not shipped; no new repository
-  surface was added.
-- **Current state:** the JS candidate-set mechanism ships (personal scale); the
-  ACL-joined SQL scan stays a tracked optimization, not shipped. The tag atom is live
-  through the provider seam (`providers.listNodesByTag` → `aiTagStore.listNodeIdsByRawTag`,
-  folded string equality — §2.3 tag bullet). Stored-side
-  digest (§2.8) rides the read-stamped cursor (`listStoredItems({ since })`); the
-  derived-side `/items?since=` refinement is not shipped.
+  `node_activity` rollup. Admission/removal use the un-boosted score.
+- **Exclusions** (`collection_exclusions`) are checked by each evaluation pass and are
+  never applied to an existing stored row at read time. `Exclude` deletes the
+  materialized row and inserts the exclusion in one command; the row therefore cannot be
+  re-admitted. Manual (definition-less) collections never create exclusions.
+- **Always materialized:** seed/search/system collections store their members. Seed and
+  search initial batches are inserted `published=true` with `source='seed'|'search'`;
+  later rule admissions carry `source='system'` and the publish state derived from
+  `collections.publish_mode` (`auto` ⇒ true, `ask|off` ⇒ false).
+- **Candidate-set mechanism:** each evaluation pass assembles the requester's visible
+  candidate set from existing store reads — the requester's own-root subtree
+  (`getUserRootNode` + `getDescendants`, readable by ownership) plus explicitly granted
+  nodes/subtrees (`permissionStore.getUserFilePermissions` / `getUserPermissions` +
+  subtree expansion), mirroring `fileService` listing parity. Per-node point checks:
+  path (ancestor walk over the loaded candidate rows), date (`file_nodes.created_at`),
+  size (`filecache` point read when a size atom is present), like
+  (`fileLikesStore.listLikedNodeIds`), tag (folded string equality through the provider
+  seam — the §2.3 tag bullet). The ACL-joined SQL variant of this scan is a tracked
+  optimization, not shipped; no new repository surface is required for it.
+- **Tag predicates** match by folded string equality in every state — there is no vector
+  tag matching, no `θ_tag`, no `tag_embeddings` read path (§4.18). The tag atom resolves
+  through `aiTagStore.listNodeIdsByRawTag(foldTag(value))` (orthographic fold
+  `domains/ai/tagVocabulary.js` — NFKC + whitespace/case fold; `ai_tag_raw` rows are
+  written folded by the derived-tags pipeline). No embed/chat dependency;
+  model-invariant.
+- `preview`/`previewCollection` are explicit dry-runs and MAY evaluate the definition
+  live; they never mutate membership.
 
-### 2.3-bis Upload-hook rule-check seam (invocation wiring P1)
+### 2.3-bis Upload-hook rule-check seam
 
 `checkUploadAdmissions(userId, nodeId)` is the collections-domain half of the upload/copy/restore commit
-points (aiJobService §2.2: "The upload-hook path checks derived COLLECTION admission
-separately — that is collections domain... the only coupling is `touchMemberChange` on
+points (aiJobService §2.2: "The upload-hook path checks rule-driven COLLECTION admission
+separately — that is collections domain... the only coupling is membership materialization on
 rule-admission"). Contract:
 
 - Inputs: `userId` = the node OWNER whose collection definitions are checked; `nodeId` =
@@ -146,20 +154,20 @@ rule-admission"). Contract:
   service call, safe fire-and-forget (throws are the caller's to log; the hook never
   blocks a request — no LLM call or rule sweep may block a request path).
 - Behavior: point evaluation (§2.6 mechanism — the node + its ancestor chain, NOT a corpus
-  scan) against every ACTIVE predicate collection owned by `userId`; exclusions and
-  existing stored rows short-circuit (no admission change ⇒ no touch). Each collection
-  whose definition newly admits the node gets `collectionsStore.touchMemberChange(id)`
-  (drives digest `+N` + activity sort; non-journaled). Returns
-  `{ nodeId, admittedCollectionIds }`.
-- Vector definitions: the vector part is P1 — predicate parts of mixed definitions
-  evaluate here exactly as at read time; pure vector definitions contribute nothing yet.
-- **Deferred:** the INVOCATION at the four commit seams (upload S3/WebDAV, copy,
-  restore) rides the same P1 wiring as `content_hash` population and `ai_jobs` enqueue;
-  only the callable seam ships — the files domain is untouched.
+  scan) against every ACTIVE definition-driven collection owned by `userId`; exclusions
+  and existing rows short-circuit. Each collection whose definition admits the node
+  materializes ONE membership row (`source='system'`, matched `reason`, publish state per
+  `publish_mode`), all inside its journaled item command with `actor='system'`, and bumps
+  `last_member_change_at`. Returns `{ nodeId, admittedCollectionIds }`.
+- Vector definitions use the pooled-vector evaluator (§2.3); predicate atoms of mixed
+  definitions evaluate point-wise. `checkUploadAdmissions` adds but never removes —
+  removals belong to the reconcile pass.
+- **Invocation:** the four content-commit seams (S3 upload, WebDAV upload, copy, version
+  restore) call this fire-and-forget after commit, alongside the `ai_jobs` enqueue.
 
 ### 2.4 Member-view enrichment (per read; precedent `recentFiles/service.js` enrichRecentEntry)
 
-Composition: `view = stored ∪ derived − exclusions`, then per-row enrichment under a
+Composition: `view = collection_items` (materialized membership), then per-row enrichment under a
 JOIN-TIME ACL check of the REQUESTER against `fileNodesStore`:
 
 | Condition                              | Render                                                                                             |
@@ -178,15 +186,12 @@ JOIN-TIME ACL check of the REQUESTER against `fileNodesStore`:
   (requester is grantee) they are omitted entirely — the cross-leak rule (foreign-owned members are never rendered into shared views).
 - Publish gate (via `shareService.isVisibleToGrantee`): grantees only ever see
   `published:true` rows; the owner sees everything plus `publish_pending_count`
-  (owner-only key). Derived members carry a VIRTUAL `published:false` until published
-  (publish materializes a stored marker row — see §2.2 `publishItems`);
-  `publish_pending_count` = stored rows `published=false` + derived members lacking a
-  published marker row.
+  (owner-only key) = materialized rows `published=false`.
 - `liked` = `fileLikesStore.filterLiked(requester, nodeIds)` — current viewer only,
   identical in every collection (likes are per-file, viewer-scoped — the heart reflects the current viewer's own like only); no counts, no other users' states.
-- `reason` (derived rows only) = matched predicate name computed at query time
-  (`"tag:poster"`, `"path:/travel/2026"`, `"similar:θ_in"`); `null` for stored. NOT a
-  history table.
+- `reason` = the `collection_items.reason` captured when a rule-managed row was
+  materialized (`"tag:poster"`, `"path:/travel/2026"`, `"similar"`); `null` for manual
+  rows. Read paths never recompute it.
 - `mime`: the row carries the node's `mimeType` (filecache value; `null` on revoked
   rows like `name`/`type`). Same field feeds `preview_items` on collection rows.
 - Adding: unreadable nodes go to `rejected_not_readable`, the rest still add (200). A
@@ -212,15 +217,17 @@ JOIN-TIME ACL check of the REQUESTER against `fileNodesStore`:
 ### 2.6 for-nodes (listing contracts frozen)
 
 `getForNodes` resolves membership in every ACTIVE collection visible to the requester
-(owned + granted, minus hidden): stored rows via `collectionsStore.listForNodes`, plus
-derived admission evaluated per (collection, node) pair against ONLY the requested ids
-(predicate SQL point-checks; vector defs one cosine per node vs its seed/centroid —
-O(collections × nodes), no corpus scan). Exclusions subtract. Result order mirrors the
-input `nodeIds`; every requested node gets an entry (possibly `collection_ids: []`).
+(owned + granted, minus hidden) from `collection_items` only
+(`collectionsStore.listForNodes`). No definition evaluation runs on this path. Result
+order mirrors the input `nodeIds`; every requested node gets an entry (possibly
+`collection_ids: []`).
 
 ### 2.7 Preview, seed/search creation, publish-batch copy rule
 
-- `preview({ definition })`: rule dry-count — LLM-free (works with zero config).
+- `preview({ definition })`: rule dry-count — predicate-only definitions are LLM-free
+  (works with zero config); `seed_vector`/`centroid` definitions require the active
+  embed model and use the pooled-vector cosine of §2.3. Dry-runs never mutate
+  membership.
 - `preview({ seedNodeId })`: requires the embed role (`llmAdapter
 .roleConfigured('embed')`; pre-boot fallback `LLM_EMBED_*`, else
   `aiNotConfigured` → route 409). Seed vector = that node's pooled embedding
@@ -229,26 +236,27 @@ input `nodeIds`; every requested node gets an entry (possibly `collection_ids: [
   preview returns empty `count: 0` + `degraded: true` (preview never blocks on
   enrichment — an unembedded seed has no basis). Candidates are the requester's
   `fileNodesStore.listVisibleFileNodeIds` set with the seed itself removed
-  BEFORE the top-K cut; cosine via
-  `vectorStore.neighbors(seedVec, k=200, visibleIds)`, partial top-K;
-  `sample` capped at 12, `count` exact within the cap, `sample_truncated =
-count>12`. `degraded` appears only in the missing-embedding case.
+  BEFORE the top-K cut; cosine is computed over the candidate set from their
+  **pooled** embeddings (`k=200`, partial top-K); `sample` capped at 12,
+  `count` exact within the cap, `sample_truncated = count>12`. `degraded` appears
+  only in the missing-embedding case.
 - Seed creation reuses the SAME candidate computation as the preview: the
   definition is `{kind:'seed_vector', seed_ref: seedNodeId, theta:
 SEED_VECTOR_THETA}` (`SEED_VECTOR_THETA = 0.62`, a documented create-time
-  constant owned by the service; read-time θ_in/θ_out admission policy stays
+  constant owned by the service; pass-time θ_in/θ_out admission policy stays
   with the active model profile, §2.3), and the preview ids materialize as the
-  initial batch `published=true`. A missing embedding still creates the
-  collection with the definition and zero members. A blank request name is
-  filled by `templateNamer`/`llmNamer` (§2.10); a supplied name is used
-  verbatim.
+  initial batch with `source='seed'`, `reason='similar'` and `published=true`.
+  A missing embedding still creates the collection with the definition and zero
+  members. A blank request name is filled by `templateNamer`/`llmNamer` (§2.10);
+  a supplied name is used verbatim.
 - Confirm-dialog copy obligation: the dialog states that the ENTIRE initial set
   (preview + `plus N more`) is publish-approved as a batch if/when the collection is shared.
 - Initial-batch publish rule: the members materialized by the CONFIRMED initial
-  execution of a `seed`/`search` collection are created `published=true` (the dialog IS
-  the batch approval); all later arrivals park at `published=false` under `ask`/`off`
-  and publish-on-add under `auto`. The service passes `published` explicitly to
-  `addItem` on every call — store defaults are never relied on.
+  execution of a `seed`/`search` collection are created `published=true` with
+  `source='seed'|'search'` (the dialog IS the batch approval); all later rule
+  arrivals carry `source='system'` and park at `published=false` under `ask`/`off`
+  and publish-on-add under `auto`. The service passes `published` and `source`
+  explicitly to the store on every call — store defaults are never relied on.
 - `createSearchCollection` flattening: the stored definition is the SNAPSHOT of
   the semantic execution (centroid + predicate set from that run's signature) — replay
   chains are never persisted; name-match ids are structurally absent from the input.
@@ -268,14 +276,13 @@ collectionId)` removes the grantee's row for that collection. A re-grant after a
   cursor (`last_visited_at = created_at`) inside the same journaled create TX. The sidebar
   `new` dot ⇔ the requesting user's cursor row is ABSENT (`GET /` row `last_visited_at` =
   `null`; client rule in `useFolderTreeController.md` §3).
-- With `since`: `added_since` = stored rows `created_at > since` + derived admissions whose
-  node `file_nodes.created_at > since` (computed at query time from the live definition
-  evaluation — no history table); `removed_since` = journaled removal/exclusion commands on
-  the subject after `since` + derived members trashed/purged after `since` (ACL-joined
-  `deleted_at`). Zero-change fast path: `last_member_change_at ≤ since` AND no stored
-  additions → `{ added_since: 0, removed_since: 0 }` without evaluation.
-  Counts are display-truth approximations from live state, matching the
-  "derived at read" contract; the exact event-sourced variant is rejected.
+- With `since`: `added_since` = materialized rows `created_at > since` (all
+  `source` values; membership-added time is the row timestamp); `removed_since` =
+  journaled removal/exclusion commands on the subject after `since` + member nodes
+  trashed/purged after `since` (ACL-joined `deleted_at`). Zero-change fast path:
+  `last_member_change_at ≤ since` → `{ added_since: 0, removed_since: 0 }` without
+  additional reads. Counts are display-truth approximations from current state;
+  the exact event-sourced variant is rejected.
 
 ### 2.9 Merge flow (arbiter prefill advisory)
 
@@ -353,11 +360,13 @@ collections / no-access reads throw `notFound` (404 masquerade — existence nev
 
 | Key                      | Default | Use                                                                |
 | ------------------------ | ------- | ------------------------------------------------------------------ |
-| `AI_VIEW_WEIGHT_ALPHA`   | `0.1`   | §2.3 soft-boost α                                                  |
+| `AI_VIEW_WEIGHT_ALPHA`   | `0.1`   | §2.3 soft-boost α (ordering only)                                  |
 | `ARCHIVE_RETENTION_DAYS` | `30`    | lifecycle parity with trash; purge horizon (evolution pass 4 / GC) |
 
-Cosine thresholds (θ, θ_in/θ_out) ship in the active model profile —
-release-measured values (release artifacts, displayed with provenance in the admin governance panel), never runtime-computed.
+Cosine thresholds (`theta`, `theta_in`/`theta_out`) ship in the active model profile —
+release-measured values (release artifacts, displayed with provenance in the admin governance panel), never runtime-computed. The membership band is carried by
+`profile.membershipHysteresis.inDelta/outDelta`; absent finite offsets leave
+`theta_in = theta_out = definition.theta`.
 
 ## 4. Dependencies
 
@@ -366,7 +375,9 @@ release-measured values (release artifacts, displayed with provenance in the adm
   `aiTagStore` (tag atoms: `listNodeIdsByRawTag` — folded string equality) and `domains/ai/tagVocabulary` (pure orthographic fold of
   atom values before the store read)
 - `collectionShareService` (role checks, publish gate, pending counts)
-- `domains/ai/vectorStore` seam (`neighbors`) — via `server/domains/ai` public API
+- `embeddingsStore` (pooled seed vectors), `collection_centroids` via `collectionsStore`
+  (centroid membership), and `domains/ai/vectorStore` (`neighbors`) only for retrieval
+  consumers — never for membership/grouping
 - `infrastructure/adapters/llm` presence check (`roleConfigured('embed')`) for seed
   preview/creation only; NO LLM call in any request path here (only explicitly user-initiated interactive roles may ever run on a request path, and none are used here)
 - `templateNamer` (local); `llmNamer` strategy swap (ai domain, creation-time only)
@@ -378,23 +389,27 @@ release-measured values (release artifacts, displayed with provenance in the adm
       purges the subject's journal rows in the same TX (permanent delete-from-archive is unrecoverable)
 - [ ] Permanent delete of a `system` collection writes exactly one tombstone with
       `fingerprintDefinition(definition)`; `isTombstoned(owner, fp)` true afterwards
-- [ ] View composition: stored ∪ derived − exclusions; excluded derived match absent,
-      excluded stored row absent from `excluded` semantics (stored delete path only)
+- [ ] View composition: `GET /`, `GET /:id`, `GET /:id/items` and `for-nodes` return
+      `collection_items` only; an excluded node has no row and does not reappear until
+      the exclusion is removed; a stored row never gets filtered by definitions at read
+      time
+- [ ] Read stability: two consecutive reads of the same collection (different view
+      counts / new candidate files) return the same member set until a reconcile pass or
+      user mutation runs
 - [ ] `removeItems` never touches `file_nodes` (membership-only; assert node intact)
 - [ ] Enrichment: unreadable member → `state:'revoked'` with null name/type; trashed
       member hidden; foreign-owned member → owner sees `shared_excluded:true`, grantee
       never sees the row (cross-leak)
-- [ ] Hysteresis: node at score between θ_out and θ_in does not flip between two reads
-      when view counts change (α-boost moves ordering, not admission of clear cases)
+- [ ] Hysteresis (pass-level): a materialized member with `theta_out ≤ score < theta_in`
+      survives a reconcile pass; a non-member in the same band is not admitted; a member
+      below `theta_out` is removed
 - [ ] `addItems` partial success: readable nodes added, unreadable listed in
       `rejected_not_readable`, single command journal row with item-level inverses
 - [ ] Editor removing a node they added succeeds; removing the owner-added row throws
       `forbidden` (check delegated to shareService)
 - [ ] `publishItems` by a viewer grantee throws `forbidden`; owner and editor flip
-      stored rows; derived publish materializes `published=true` stored markers and the
-      `system` auto-pin rides the materialize; non-member ids land `ignored` (never added);
-      publish toggle on a system
-      collection sets `pinned_by='auto'` (touch, no journal row for the pin itself)
+      materialized rows; non-member ids land `ignored` (never added); publish toggle on
+      a `system` collection sets `pinned_by='auto'` (touch, no journal row for the pin)
 - [ ] `preview({definition})` works with zero LLM; `preview({seedNodeId})` with embed
       unconfigured throws `aiNotConfigured`; sample capped at 12 with `count` exact
 - [ ] `createSeedCollection` initial batch: every created row `published=true`; a node
@@ -408,7 +423,8 @@ release-measured values (release artifacts, displayed with provenance in the adm
 - [ ] `listMergeSuggestions` includes `recommendation` when the arbiter wrote one,
       `null` without chat
 - [ ] Digest: reading items advances cursor (second call with fresh `since` → zeros);
-      zero-change fast path avoids definition re-evaluation
+      zero-change fast path avoids extra reads; `added_since` counts materialized rows of
+      every `source`
 - [ ] `createCollection` seeds the creator's cursor row
       (`last_visited_at = created_at`, one row in `collection_digest_cursors` right after
       create); `listCollections` rows carry `last_visited_at` (ISO when seeded/stamped,
@@ -418,14 +434,16 @@ release-measured values (release artifacts, displayed with provenance in the adm
       journaled revoke TX (re-grant → `last_visited_at` `null` again, dot back; other users'
       cursors survive); `undoAction` of a revoke restores the grant but NOT the cursor
       (undo-revoke re-dots)
-- [ ] `getForNodes` includes derived membership + exclusions, one entry per requested
-      node, empty arrays for non-members
+- [ ] `getForNodes` returns materialized membership only (no definition evaluation), one
+      entry per requested node, empty arrays for non-members
 - [ ] Tag atom: definition `{kind:'predicate',any_of:[{type:'tag',value:'ext:jpg'}]}`
       admits exactly the nodes whose folded `ai_tag_raw` set contains the folded value;
       folded string equality in every state (no vector variant — §4.18)
-- [ ] `checkUploadAdmissions` (callable seam): freshly created node admitted by an owner
-      predicate collection → `last_member_change_at` advances and the id is returned;
-      excluded / already-stored / non-owner / archived collections untouched
+- [ ] `checkUploadAdmissions`: a freshly created node admitted by an owner collection
+      materializes exactly one row (`source='system'`, matched `reason`, publish state per
+      mode), advances `last_member_change_at`, and returns the id; excluded / already
+      materialized / non-owner / archived collections untouched; vector definitions use
+      pooled cosine
 - [ ] `similar` sort: rows grouped with `cluster_index`, greedy nearest-neighbor over
       `getCentroids` (≤~20 rows), order stable across identical inputs
 - [ ] Rename sets `name_locked`; auto names never lock

@@ -207,6 +207,9 @@ CREATE TABLE IF NOT EXISTS collection_items (
   node_id BIGINT NOT NULL REFERENCES file_nodes(id) ON DELETE CASCADE,
   added_by BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   published BOOLEAN NOT NULL DEFAULT TRUE,
+  source TEXT NOT NULL DEFAULT 'manual'
+    CHECK (source IN ('manual', 'system', 'seed', 'search')),
+  reason TEXT DEFAULT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (collection_id, node_id)
 );

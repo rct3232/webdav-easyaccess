@@ -117,3 +117,29 @@ Add a release command that runs with no retries and fail-on-flaky.
   masking.
 - Full server/client/PG/vector and E2E groups pass.
 - Changed files are Prettier-clean.
+
+## 6. Execution status (2026-10-26)
+
+- AUD-D1..D4 complete: generic strategy/runner docs, canonical coverage matrix,
+  folded status, product health/WebDAV/PG contracts, and plan/count corrections.
+- AUD-S1 complete: MKCOL 9 tests, WebDAV health 7 tests, metadata target timeout
+  assertions; canonical timeout default is 10,000 ms with non-positive fallback.
+- AUD-E1..E6 complete: multi-key settings copy with value comparison; default-S3
+  S3->WebDAV tarpit gate/role case; single-start 409 proof; request-counted
+  one-Enter retrieval; same-session resume; no undo tree re-open.
+- Runner: `test:e2e`/core pinned; mixed mode and ambient destructive env rejected;
+  CI-required resource skips become failures; release command uses zero retries
+  and fail-on-flaky.
+- Verification:
+  - default S3 workers=2: 240 passed + 6 skipped (246 total)
+  - core workers=2: 140 passed + 3 skipped (143 total)
+  - WebDAV workers=2: 41 passed
+  - server: 175 suites / 3,002 passed (28 skipped)
+  - client: 183 suites / 2,103 passed
+  - PG adapters: 30 suites / 440 passed (1 skipped)
+  - pgvector: 22 / 22
+  - Prettier: clean on all changed files
+  - generic docs grep: no suite/case/project/port IDs in
+    `TESTING_STRATEGY.md` or `TEST_GIT_GUIDE.md`
+- Capacity note: workers=4 on the shared 6-core host remains capacity validation,
+  not a gate; no fixed worker cap or per-project worker pool was added.

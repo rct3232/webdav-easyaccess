@@ -24,7 +24,7 @@
 ✓ server/service/__tests__/**/*.test.js
 ✓ server/store/__tests__/**/*.test.js
 ✓ server/utils/__tests__/**/*.test.js
-✓ e2e/**/*.spec.ts
+✓ Playwright E2E specs under e2e/
 ```
 
 **Reason**: Tests are part of the codebase; other developers need to run and modify them.
@@ -131,71 +131,137 @@ Before running E2E, install browsers when needed:
 npm run test:e2e:install
 ```
 
-The suite has three execution groups. All use the shared E2E stack (one API
-server, one client, PostgreSQL, MinIO); only the WebDAV group adds a WebDAV
-container.
+The runner has three execution groups. All use the shared E2E stack (one API
+server, one client, PostgreSQL, MinIO); only the WebDAV group adds one shared
+WebDAV container.
 
 ```bash
-# Default S3 gate: the full non-WebDAV matrix (includes the core cases).
-# Starts PG + MinIO + shared API/client; starts NO WebDAV container.
+# Default S3 gate: the full generic non-WebDAV matrix (includes core cases).
 npm run test:e2e
 
-# Fast S3 subset: auth, core-flow, share, trash, versions, mypage-user,
-# registration-settings. Same shared stack; starts NO WebDAV container.
+# Fast core subset pinned to core + S3.
 npm run test:e2e:core
 
-# WebDAV-only backend job: webdav-smoke-desktop + the WebDAV splits.
-# Uses exactly one shared bytemark; includes the intentional platform
-# smoke grep plus backend-specific cases.
+# WebDAV-only backend job; exactly one shared bytemark.
 npm run test:e2e:webdav
 ```
+
+Runner contract:
+
+- `test:e2e` is pinned to the default group and S3. An ambient
+  `E2E_BACKEND_MODE` must not change what this command runs.
+- `test:e2e:core` is pinned to the core group and S3.
+- A mixed default-group/WebDAV-backend request is rejected, not silently
+  reinterpreted.
+- The WebDAV command is the only entry point allowed to request the WebDAV
+  backend.
+- Destructive seeding and bucket operations use only the dedicated E2E
+  namespace. They must never fall back to ambient `WEA_DB_*` or `S3_*`
+  credentials.
+- Running the default and WebDAV groups in parallel from the same checkout is
+  unsupported because they share the checkout's stack, database, and port band.
+  Use separate worktrees with separate bands.
+- The release gate runs with retries disabled and fails on flaky tests. Missing
+  CI-required WebDAV/PostgreSQL/AI resources fail rather than skip. Expected
+  skip counts are canonical in
+  [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
+- Concrete project, spec, slot, and case-ID mapping is canonical in
+  [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
 
 Required assumptions:
 
 - Docker must be installed and running on the host machine.
-- `playwright.config.ts` is configured with `webServer` to manage the client and server lifecycle automatically.
-- **Backend ownership:** the default/core gate starts no WebDAV container. The WebDAV job starts exactly one shared bytemark for the whole job; there is no per-project WebDAV container.
-- The E2E Docker stack (`docker-compose.e2e.yml`: PostgreSQL, MinIO, and — WebDAV job only — WebDAV) is provisioned by the `e2e:server` webServer command before the app server boots: `scripts/e2e-wait-healthy.mjs` runs an idempotent `docker compose up -d` and polls `docker compose ps` until the group's required compose SERVICES report `healthy` (`postgresql-e2e` + `minio-e2e` for default/core; `webdav-test` added for the WebDAV job). The stack defines no `container_name:` entries and every compose invocation pins an explicit per-band project (`-p webdav-easyaccess-<offset>`); the WebDAV DAV root is a per-band named volume (`webdav_data`), never a host bind mount, so `down -v` fully resets it. Every helper (`e2e-wait-healthy.mjs`, `e2e/global-setup.ts`, `e2e/helpers/setupScratch.ts`, `e2e/webdav-reconcile.spec.ts`) addresses containers via `docker compose … <service>` instead of a global container name, so parallel E2E runs from multiple git worktrees never collide on shared container names. If two checkouts share a directory basename, set `COMPOSE_PROJECT_NAME` to disambiguate them. `e2e/global-setup.ts` re-runs the same helper idempotently as belt-and-braces (it never tears the stack down). In the WebDAV job it resets the per-band WebDAV volume (crashed-run stale locks/trees never leak into the next run) and starts/restarts the one bytemark before the split suites run against a fresh DAV root. It then resets the data state: it TRUNCATEs all app tables (preserving `_schema_migrations`) and re-seeds the default admin and base users with home `file_nodes` roots via `e2e/global-setup.seed-db.cjs`, ensures the MinIO platform and migration buckets, and empties the platform bucket once. `e2e/global-teardown.ts` empties the S3 bucket and stops the services (`down -v` — project-scoped, it only ever affects the current checkout's stack).
-- The active group selects the Playwright projects. Default: `s3-desktop`/`s3-mobile`, `s3-admin-*`, `s3-regset-*`, and every S3 scratch project. Core: the platform core regex plus `s3-regset-*`. WebDAV: `webdav-smoke-desktop` plus `webdav-setup-wizard-*`, `webdav-migration-*`, and `webdav-admin-config-*`. No project has `dependencies`; all are independent siblings. Check the active set with `npx playwright test --list`.
-- The `e2e:server` script chains `scripts/e2e-wait-healthy.mjs` (port-band provisioning + compose up + health wait), then boots the server with `DOTENV_CONFIG_PATH=../data/e2e-runtime.env` — a generated file with this checkout's band ports in `PORT`, `CORS_ORIGINS`, `WEBDAV_URL`, `WEBDAV_UPSTREAM_URL`, `S3_ENDPOINT`, and `WEA_DB_PORT` (git-ignored; never edit it by hand). Base host ports are client 3000, API 5002, MinIO 9010/9011, PostgreSQL 5433, and WebDAV 8090.
-- Specs branch on the project name platform suffix (`testInfo.project.name.endsWith('-desktop')` / `endsWith('-mobile')`), which stays intact under the group-scoped project names.
-- **Workers:** CI supplies the worker count and it is the only concurrency throttle. There is no E2E slot/resource-lock pool, no fixed worker assumption, and no per-project WebDAV container. At most `workers` scratch servers exist at any moment.
-- **Scratch isolation model:** scratch servers are process isolation for boot config, global settings, the metadata DB, and restart. The project-scoped cwd, S3 bucket, PG database, and WebDAV subtree isolate blobs only. No suite may reuse another project's bucket, database, scratch directory, or WebDAV root.
-- **Scratch suites and slots (offset-0 base ports):** the S3 scratch projects are `s3-setup-wizard-*` (`:5003`/`:5004`), `s3-admin-config-*` (`:5010`/`:5017`), `s3-migration-*` (`:5011`/`:5018`), `s3-trash-admin-*` (`:5012`/`:5019`), `s3-collections-*` (`:5013`/`:5014`), `s3-retrieval-*` (`:5015`/`:5020`), and `s3-ai-desktop` (`:5016`). The WebDAV splits are `webdav-setup-wizard-*` (`:5003`/`:5004`), `webdav-admin-config-*` (`:5010`/`:5017`), and `webdav-migration-*` (`:5011`/`:5018`). Desktop and mobile use separate slots; no suite shares a port through a dependency chain. All slots shift with the checkout's port band.
-- **Storage per backend:** S3 scratch servers set `WEA_FILE_STORAGE=s3`, `S3_BUCKET=e2e-scratch-<project>`, `S3_ENDPOINT`, and MinIO credentials; they seed no WebDAV settings. WebDAV scratch servers use `prepareScratchWebdav` with `/setup-e2e/<project>/<case>` and the one shared bytemark. Migration uses the project-scoped destination bucket `e2e-migration-<project>`. Only the AI suite enables the AI worker/model; every other scratch server sets `WEA_SKIP_AI_WORKER=1` and `AI_SEMANTIC_SEARCH_ENABLED=false`.
-- `s3-regset-desktop`/`s3-regset-mobile` each boot their own S3 scratch server (`:5005`/`:5006`) and own their registration setting; they never mutate the shared stack, so the desktop/mobile projects are independent. `collections.spec.ts` and `retrieval.spec.ts` boot one scratch server per project/file and run dual-platform from the same file; the mobile-only collection cases skip on desktop with reason-carrying skips.
+- `playwright.config.ts` is configured with `webServer` to manage the client and
+  server lifecycle automatically.
+- **Backend ownership:** the default/core gate starts no WebDAV container. The
+  WebDAV job starts exactly one shared bytemark for the whole job; there is no
+  per-project WebDAV container.
+- The E2E Docker stack (`docker-compose.e2e.yml`: PostgreSQL, MinIO, and — WebDAV
+  job only — WebDAV) is provisioned by the `e2e:server` webServer command before
+  the app server boots: the health helper runs an idempotent
+  `docker compose up -d` and waits until the group's required compose services
+  report healthy (PostgreSQL + MinIO for default/core; WebDAV added for the
+  WebDAV job). The stack defines no `container_name:` entries and every compose
+  invocation pins an explicit per-band project; the WebDAV DAV root is a per-band named volume,
+  never a host bind mount, so `down -v` fully resets it. All helpers address
+  containers through `docker compose … <service>` instead of a global container
+  name, so parallel runs from multiple worktrees never collide. If two
+  checkouts share a directory basename, set `COMPOSE_PROJECT_NAME` to
+  disambiguate them. Global setup re-runs the health helper idempotently, never
+  tears the stack down, resets the WebDAV volume and restarts the one bytemark
+  for the WebDAV job, truncates app tables while preserving schema migrations,
+  re-seeds the base users and home roots, ensures the MinIO buckets, and empties
+  the platform bucket once. Global teardown empties the bucket and stops the
+  services with a project-scoped `down -v`.
+- The active group selects the Playwright projects. No project has
+  `dependencies`; all are independent siblings. Check the active set with
+  `npx playwright test --list`.
+- The `e2e:server` script chains the port-band provisioning + compose up +
+  health wait, then boots the server with `DOTENV_CONFIG_PATH` pointing at the
+  generated `data/e2e-runtime.env`. That file holds this checkout's band ports
+  in `PORT`, `CORS_ORIGINS`, `WEBDAV_URL`, `WEBDAV_UPSTREAM_URL`, `S3_ENDPOINT`,
+  and `WEA_DB_PORT` (git-ignored; never edit it by hand). Base host ports are
+  client 3000, API 5002, MinIO 9010/9011, PostgreSQL 5433, and WebDAV 8090.
+- Specs branch on the project-name platform suffix (`-desktop`/`-mobile`),
+  which stays intact under the group-scoped project names.
+- **Workers:** CI supplies the worker count and it is the only concurrency
+  throttle. There is no E2E slot/resource-lock pool, no fixed worker assumption,
+  and no per-project WebDAV container. At most `workers` scratch servers exist
+  at any moment.
+- **Scratch isolation model:** scratch servers are process isolation for boot
+  config, global settings, the metadata DB, and restart. The project-scoped
+  cwd, S3 bucket, PG database, and WebDAV subtree isolate blobs only. No suite
+  may reuse another project's bucket, database, scratch directory, or WebDAV
+  root.
+- Desktop and mobile use separate scratch slots where a suite needs independent
+  process state; no suite shares a port through a dependency chain. All slots
+  shift with the checkout's port band. Concrete slot assignments live in
+  [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
+- **Storage per backend:** S3 scratch servers set `WEA_FILE_STORAGE=s3`,
+  `S3_BUCKET`, `S3_ENDPOINT`, and MinIO credentials; they seed no WebDAV
+  settings. WebDAV scratch servers use the one shared bytemark with a
+  project/case-scoped root. Migration uses a project-scoped destination bucket.
+  `WEA_SKIP_AI_WORKER=1` skips the worker loop only; boot provisioning still
+  runs. `AI_SEMANTIC_SEARCH_ENABLED` is a `dbOnly` setting and is ignored from
+  the environment; tests that need the kill switch write it through the
+  database/config surface. Only the AI case supplies the model directory and
+  enables the worker.
 
 ### Parallel E2E runs (multiple git worktrees / checkouts)
 
-The E2E environment avoids ALL globally-shared resources so two checkouts can run
-their suites concurrently:
+The E2E environment avoids all globally shared resources so two checkouts can
+run their suites concurrently:
 
-- **Container names** — `docker-compose.e2e.yml` pins no `container_name:`; names are
-  project-scoped (`<project>-<service>-<n>`, project = checkout directory name). All
-  helpers address containers through `docker compose -f docker-compose.e2e.yml
-<cmd> <service>`. If two checkouts share a directory basename, export a distinct
-  `COMPOSE_PROJECT_NAME` per checkout.
-- **Host ports** — `scripts/lib/e2e-band.cjs` allocates one PORT BAND per checkout:
-  a single offset (steps of 20) applied to the whole base port set
-  (`client 3000`, `api 5002`, scratch slots `5003-5006` and `5010-5020`,
-  `webdav 8090`, `pg 5433`, `s3 9010/9011`). Offset 0 is tried first and reproduces the fixed
-  contract exactly, so a solo checkout sees no change. Allocation happens once per
-  checkout and is PERSISTED in `data/e2e-runtime.json` (git-ignored) — reusing the
-  same band on every later run keeps `reuseExistingServer` dev loops stable. A band
-  is taken only when every port passes a real listener probe AND a global claim lock
-  (`<tmpdir>/webdav-e2e-ports/band-<offset>.lock`, stale dead owners are reclaimed)
-  — this closes the race between concurrent cold starts of different checkouts.
-  If another live checkout later claims our persisted band (e.g. after a /tmp
-  sweep), the next run reallocates transparently.
-- **Consumers** — compose interpolates `${E2E_WEBDAV_PORT…}` from the env that
-  `scripts/e2e-wait-healthy.mjs` exports; the API server boots on
-  `data/e2e-runtime.env`; `playwright.config.ts`, the scratch suites and the
-  setup/teardown helpers all resolve ports through `e2e/helpers/ports.ts`
+- **Container names** — `docker-compose.e2e.yml` pins no `container_name:`;
+  names are project-scoped. All helpers address containers through
+  `docker compose -f docker-compose.e2e.yml <cmd> <service>`. If two checkouts
+  share a directory basename, export a distinct `COMPOSE_PROJECT_NAME` per
+  checkout.
+- **Host ports** — `scripts/lib/e2e-band.cjs` allocates one PORT BAND per
+  checkout: a single offset (steps of 20) applied to the whole base port set
+  (client 3000, API 5002, WebDAV 8090, PG 5433, S3 9010/9011, plus the
+  scratch-slot range). Offset 0 is tried first and reproduces the fixed
+  contract exactly, so a solo checkout sees no change. Allocation happens once
+  per checkout and is persisted in `data/e2e-runtime.json` (git-ignored);
+  reusing the same band keeps `reuseExistingServer` dev loops stable. A band is
+  taken only when every port passes a real listener probe AND a global claim
+  lock (`<tmpdir>/webdav-e2e-ports/band-<offset>.lock`, stale dead owners are
+  reclaimed) — this closes the race between concurrent cold starts of different
+  checkouts. If another live checkout later claims our persisted band (e.g.
+  after a `/tmp` sweep), the next run reallocates transparently.
+- **Consumers** — compose interpolates the exported WebDAV port; the API server
+  boots on `data/e2e-runtime.env`; the Playwright config, scratch suites, and
+  setup/teardown helpers all resolve ports through the shared port helper
   (per-port `E2E_*_PORT` env overrides win over the persisted band). Loading the
   Playwright config triggers band allocation, so even a bare `playwright test`
   from a second checkout moves off a busy default band automatically.
+- **Same-checkout concurrency** — the default and WebDAV groups share one
+  checkout's stack, database, and port band, so running them in parallel from
+  the same checkout is unsupported. Use separate worktrees and let each claim
+  its own band.
 
-Run commands (the default S3 gate in these examples; `:core` and `:webdav` use the same band):
+Run commands (the default S3 gate in these examples; core and WebDAV use the
+same band):
 
 ```bash
 # Checkout A (first / solo): uses offset 0 = today's fixed ports.
@@ -214,9 +280,9 @@ cat data/e2e-runtime.json
 rm data/e2e-runtime.json data/e2e-runtime.env   # lock is reclaimed automatically
 ```
 
-Intentionally NOT isolated (per-run, not per-machine): Docker image pulls (daemon-side
-dedup is safe), `e2e-data/`/`test-results/`/`client/build` (already per-checkout), and
-Playwright browsers (shared read-only cache under `~/.cache`).
+Intentionally NOT isolated (per-run, not per-machine): Docker image pulls
+(daemon-side dedup is safe), `e2e-data/`/`test-results/`/`client/build` (already
+per-checkout), and Playwright browsers (shared read-only cache under `~/.cache`).
 
 ## Real-PostgreSQL Legs
 
@@ -491,11 +557,16 @@ cat .gitignore | grep coverage
 
 **Fix**: The stack now uses a per-band named volume (`webdav_data`) under an explicit per-band compose project (`webdav-easyaccess-<offset>`). The WebDAV job starts one bytemark and resets its volume/root in `global-setup`; default/core never start a WebDAV container. If this issue recurs, run `docker compose -p webdav-easyaccess-<offset> -f docker-compose.e2e.yml down -v --remove-orphans` and re-run the WebDAV job.
 
-### Q: Mobile Action Sheet tests are flaky (E2E-EXP-006, E2E-MOBILE-002)
+### Q: Mobile Action Sheet tests are flaky
 
-**Root cause**: `openActionSheet` helper waits for `[role="dialog"]` to be visible. MUI's `SwipeableDrawer` has a CSS transition (~200ms) during which the element is in DOM but not fully visible, causing Playwright's `toBeVisible()` to fail with a race condition.
+**Root cause**: the `openActionSheet` helper waits for `[role="dialog"]` to be
+visible. MUI's `SwipeableDrawer` has a CSS transition (~200ms) during which the
+element is in the DOM but not fully visible, causing Playwright's
+`toBeVisible()` to fail with a race condition.
 
-**Fix**: The `openActionSheet` helper now uses `Promise.all` to click and wait simultaneously, and targets specific action items (`[data-testid="file-action-rename"]`) instead of the generic `[role="dialog"]` locator. E2E-MOBILE-002 no longer redundantly checks `[role="dialog"]` after `openActionSheet`.
+**Fix**: the helper now uses `Promise.all` to click and wait simultaneously and
+targets specific action items instead of the generic `[role="dialog"]` locator.
+Cases must not redundantly check `[role="dialog"]` after the helper returns.
 
 ### Q: Tests are too slow
 

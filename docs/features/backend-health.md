@@ -64,7 +64,23 @@ backends (only a per-user 500 toast). This feature adds:
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | `postgresql` | `mapDatabaseError` connection-class mapping (shutdown `57P01`, exhaustion `53300`, reachability `ECONNREFUSED`/`ENOTFOUND`/`EAI_AGAIN`/`ETIMEDOUT`/`ECONNRESET`, client `query_timeout` expiry, auth `28P01`/`28000`), pg pool idle-client `error` handler, `withTransaction` connect failure | `withTransaction` connect/commit, pool connect |
 | `s3`         | `S3BlobStore` operation catch                                                                                                                                                                                                                                                                 | `S3BlobStore` operation resolve                |
-| `webdav`     | `webdavTest.testConnection` throw, `WebdavBlobStore` catch, `utils/webdav.js` `listDirectory` catch                                                                                                                                                                                           | corresponding success                          |
+| `webdav`     | `webdavTest.testConnection` throw after the transient retry budget, `WebdavBlobStore` catch, `utils/webdav.js` `listDirectory` catch                                                                                                                                                          | corresponding success                          |
+
+### WebDAV probe retry policy
+
+- The boot/connection probe retries transient transport failures only — socket
+  hang-up, `ECONNRESET`, `ECONNREFUSED`, `EPIPE`, `ETIMEDOUT`, or a generic
+  `network error` message — for up to three attempts per candidate path (two
+  retries, 50 ms then 150 ms).
+- The probe has at most two candidate paths, so a single probe performs at most
+  six attempts (2 paths × 3 attempts).
+- HTTP status responses (for example 401/403/404/405/409) are classified, not
+  retried.
+- Health-contract effect: only the final probe outcome is reported. The first
+  successful path reports `ok`; an exhausted probe reports one `fail` with the
+  classified code. Intermediate retry attempts do not flip the tracker or emit
+  false transition logs. The boot probe runs only when WebDAV is the active file
+  backend.
 
 Classification is reused from the wizard probe machinery (`classifyPgError` /
 `classifyS3Error` / webdav `webdav.*` codes), normalized to a stable `code`
@@ -96,6 +112,9 @@ to the stored value. Non-connection keys save without a test.
 
 - Backend failure from any user attempt records to the tracker; admin sees the card/banner;
   terminal logs only transitions; user sees the friendly message for connection-class failures.
+- A transient WebDAV transport failure retries up to three attempts per candidate
+  path (max six total) and reports only the final outcome; intermediate attempts
+  do not create health transitions.
 - k3s boot with a partial remote DB set (some but not all of `WEA_DB_HOST`/`WEA_DB_DATABASE`/
   `WEA_DB_USER`/`WEA_DB_PASSWORD`) → clear terminal error + `exit(1)`.
 - Editing a connection key cannot Save until a pending-values test passes; non-connection keys

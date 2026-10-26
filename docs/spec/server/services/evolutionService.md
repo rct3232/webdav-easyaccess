@@ -117,8 +117,10 @@ Runs for every ACTIVE definition-driven collection (system, seed, search). Manua
      (no churn on enrichment gaps); a non-member without a vector is not added.
 3. Write the diff through the journaled item mutators with `actor='system'`:
    additions carry `source='system'`, the matched `reason`, and `published` from
-   `publish_mode`; removals also insert exclusions (the removal must stick).
-   `touchMemberChange` runs inside the same command; no-op when the diff is empty.
+   `publish_mode`; automatic removals delete the row only — they MUST NOT insert an
+   exclusion, so a later score above `θ_in` can re-admit the node. User `Exclude` is the
+   exclusion path. `touchMemberChange` runs inside the same command; no-op when the diff
+   is empty.
 4. Reads never run this pass. Membership stays fixed between runs.
 
 **Membership caps:** create gates bound new system collections; reconcile does not
@@ -254,7 +256,8 @@ driven by backfill completion). `deleteCentroids` on purge/merge loser.
       set (same normalized definition) still suppresses (fingerprint ignores raw centroid)
 - [ ] Reconcile: two reads between passes return the same materialized set; an addition
       inside the pass writes `source='system'` + matched `reason`; a removal below
-      `theta_out` deletes the row and inserts the exclusion
+      `theta_out` deletes the row and inserts NO exclusion (re-entry above `theta_in`
+      remains possible)
 - [ ] Reconcile hysteresis: a stored member with `theta_out ≤ score < theta_in` survives;
       a non-member in the same band is not admitted; predicate collections add/remove on
       boolean match

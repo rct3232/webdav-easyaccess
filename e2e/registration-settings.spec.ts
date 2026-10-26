@@ -163,6 +163,9 @@ test.describe('registration setting admin UI (E2E-ADMIN-007)', () => {
 
     await expect(registrationSwitch).toBeChecked({ checked: !currentChecked, timeout: 60_000 });
 
-    await setRegistrationEnabled(request, currentChecked);
+    // The scratch server is thrown away after this case; a connection reset
+    // during the restoration cleanup must not turn a completed UI assertion
+    // into a false failure.
+    await setRegistrationEnabled(request, currentChecked).catch(() => {});
   });
 });

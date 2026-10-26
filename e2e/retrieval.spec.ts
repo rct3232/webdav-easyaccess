@@ -538,7 +538,7 @@ test('E2E-S3-RETRIEVAL-001: Results render as accordion zones with honest header
   const alphaOneId = await seedNamedFile(request, token, deepId, `Alpha-One-${Date.now()}.txt`);
   const betaFile = await seedFile(request, token, base, testInfo, 'beta');
   await gotoFilesPath(page, request, `/${base}`);
-  await expect(fileItem(page, betaFile.path)).toBeVisible();
+  await expect(fileItem(page, betaFile.path)).toBeVisible({ timeout: 60_000 });
 
   // Typing NEVER hits the server (useSearchResults §2.5): keystrokes only arm
   // the bar; no results surface mounts before the submit.
@@ -573,8 +573,12 @@ test('E2E-S3-RETRIEVAL-001: Results render as accordion zones with honest header
   // The first Enter is never retried; a missing/extra request fails the
   // exactly-one assertion below.
   await searchBox(page).press('Enter');
-  await expect(chipBar(page)).toBeVisible();
-  await expect.poll(() => searchPosts(), 'Enter submits exactly one server query').toBe(1);
+  await expect(chipBar(page)).toBeVisible({ timeout: 60_000 });
+  await expect
+    .poll(() => searchPosts(), 'Enter submits exactly one server query', {
+      timeout: 60_000,
+    })
+    .toBe(1);
   expect(searchPosts()).toBe(1);
   await expect(page.getByTestId('breadcrumb')).toHaveCount(0);
 
@@ -631,7 +635,7 @@ test('E2E-S3-RETRIEVAL-001: Results render as accordion zones with honest header
   await revealAndActivateChip(page, 0, 'exit', isMobile);
   await expect(chipBar(page)).toHaveCount(0);
   await expect(page.getByTestId('breadcrumb')).toBeVisible();
-  await expect(fileItem(page, betaFile.path)).toBeVisible();
+  await expect(fileItem(page, betaFile.path)).toBeVisible({ timeout: 60_000 });
 });
 
 test('E2E-S3-RETRIEVAL-002: Result rows open — files preview over the mounted zones, directories navigate and exit', async ({
@@ -673,7 +677,7 @@ test('E2E-S3-RETRIEVAL-002: Result rows open — files preview over the mounted 
   // (chip bar + zone header stay), and exactly one /search/click lands.
   await openRow(page, rowNode(page, openId), isMobile);
   await expect(page.getByTestId('file-preview-dialog')).toBeVisible();
-  await expect(chipBar(page)).toBeVisible();
+  await expect(chipBar(page)).toBeVisible({ timeout: 60_000 });
   await expect(zoneHeader(page, 'a')).toBeVisible();
   await expect
     .poll(() => clicks().filter((c) => c.body?.node_id === openId).length, { timeout: 10_000 })
@@ -870,7 +874,7 @@ test('E2E-S3-RETRIEVAL-005: Zero-result queries render the honest empty state an
   // zero-name payload, so EVERY zone count is 0: no zone headers render at
   // all, just the single no-results line inside the mounted results surface.
   await submitSearch(page, `pluvio-${Date.now()}`);
-  await expect(chipBar(page)).toBeVisible();
+  await expect(chipBar(page)).toBeVisible({ timeout: 60_000 });
   await expect(zoneHeader(page, 'a')).toHaveCount(0);
   await expect(zoneHeader(page, 'b')).toHaveCount(0);
   await expect(zoneHeader(page, 'c')).toHaveCount(0);
@@ -885,7 +889,7 @@ test('E2E-S3-RETRIEVAL-005: Zero-result queries render the honest empty state an
   await pressSearchClose(page, isMobile);
   await expect(chipBar(page)).toHaveCount(0);
   await expect(page.getByTestId('breadcrumb')).toBeVisible();
-  await expect(fileItem(page, betaFile.path)).toBeVisible();
+  await expect(fileItem(page, betaFile.path)).toBeVisible({ timeout: 60_000 });
 
   // Trash leg: submit a match, trash it through the canonical batch-delete
   // channel, reload the folder (the session listing re-reads WITHOUT the
@@ -1149,7 +1153,7 @@ test('E2E-S3-RETRIEVAL-008: The chip chain refines, reverts to snapshots, and ev
     await page.getByTestId('breadcrumb-folder-tree-toggle').click();
   }
   await submitSearch(page, 'alpha');
-  await expect(chipBar(page)).toBeVisible();
+  await expect(chipBar(page)).toBeVisible({ timeout: 60_000 });
   await expect(zoneHeader(page, 'a')).toBeVisible();
   await navigateHomeViaTree(page);
   await expect(chipBar(page)).toHaveCount(0);

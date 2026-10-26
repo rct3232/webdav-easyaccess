@@ -18,7 +18,10 @@ const { createWebdavMock } = require('@testing/mocks/webdavMock');
 const WebdavBlobStore = require('@server/infrastructure/adapters/blobstore/WebdavBlobStore');
 const composition = require('@server/service/composition');
 const collectionsStore = require('@server/store/collectionsStore');
+const collectionsService = require('../service');
 const evolutionService = require('../evolutionService');
+const llmModelsStore = require('@server/store/llmModelsStore');
+const embeddingsStore = require('@server/store/embeddingsStore');
 
 let app;
 let dbCleanup;
@@ -969,10 +972,10 @@ describe('preview endpoints', () => {
   async function setupPreviewUser(tag) {
     const ctx = await createUserWithRoot(`preview-${tag}`);
     const travel = await fileNodeService.createDirectory(ctx.root.id, 'travel');
-    await fileNodeService.createFile(travel.id, 'beach.jpg');
-    await fileNodeService.createFile(travel.id, 'map.png');
+    const beach = await fileNodeService.createFile(travel.id, 'beach.jpg');
+    const map = await fileNodeService.createFile(travel.id, 'map.png');
     await fileNodeService.createFile(ctx.root.id, 'note.txt');
-    return { ...ctx, travel };
+    return { ...ctx, travel, beach, map };
   }
 
   it('dry-runs a predicate definition with zero LLM configuration', async () => {
@@ -1061,6 +1064,188 @@ describe('preview endpoints', () => {
       .send({});
     expect(masqueraded.status).toBe(404);
     expect(masqueraded.body.errorCode).toBe(codes().collections.notFound);
+  });
+
+  // -- T2.5: vector-definition preview gates (§2.7) --------------------------
+
+  afterEach(() => {
+    collectionsService.__resetRuntimeSeamsForTests();
+  });
+
+  function embedConfiguredAdapter() {
+    return { roleConfigured: jest.fn(async (role) => role === 'embed') };
+  }
+
+  async function ensureEmbedModel(tag) {
+    const { id } = await llmModelsStore.upsertModel({
+      role: 'embed',
+      provider: 'embedded',
+      engine: 'embedded',
+      baseUrlKey: '',
+      modelName: `route-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      modelRevision: null,
+      precision: 'q4',
+      maxInputChars: 8192,
+      chunkBudget: 4,
+      batchSize: 8,
+      enabled: true,
+    });
+    return Number(id);
+  }
+
+  async function embedNode(nodeId, modelId, vector) {
+    await embeddingsStore.upsert(Number(nodeId), {
+      modelId,
+      dim: vector.length,
+      vector,
+      source: 'fulltext',
+      contentHash: `route-${nodeId}-${Date.now()}`,
+    });
+  }
+
+  it('previews a seed_vector definition with pooled embeddings and returns exact counts', async () => {
+    collectionsService.__setRuntimeSeamsForTests({ llmAdapter: embedConfiguredAdapter() });
+    const ctx = await setupPreviewUser('vecseed');
+    const modelId = await ensureEmbedModel('vecseed');
+    const beach = ctx.beach;
+    const map = ctx.map;
+    await embedNode(beach.id, modelId, [1, 0, 0, 0]);
+    await embedNode(map.id, modelId, [0.95, 0.1, 0, 0]);
+
+    const res = await request(app)
+      .post('/api/collections/preview')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ definition: { kind: 'seed_vector', seed_ref: beach.id, theta: 0.5 } });
+    expect(res.status).toBe(200);
+    // path-prefix candidates include the folder itself; the seed is admitted too
+    expect(res.body.count).toBe(2);
+    expect(res.body.sample).toEqual([
+      { node_id: beach.id, name: 'beach.jpg' },
+      { node_id: map.id, name: 'map.png' },
+    ]);
+    expect(res.body.sample_truncated).toBe(false);
+    expect(res.body.degraded).toBeUndefined();
+  });
+
+  it('vector definition preview without the embed role is 409 ai.notConfigured', async () => {
+    const ctx = await setupPreviewUser('vecnorole');
+
+    const seedVector = await request(app)
+      .post('/api/collections/preview')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ definition: { kind: 'seed_vector', seed_ref: 123, theta: 0.5 } });
+    expect(seedVector.status).toBe(409);
+    expect(seedVector.body.errorCode).toBe(codes().ai.notConfigured);
+
+    const explicitCentroid = await request(app)
+      .post('/api/collections/preview')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ definition: { kind: 'centroid', centroid_ref: 17, theta: 0.5 } });
+    expect(explicitCentroid.status).toBe(409);
+    expect(explicitCentroid.body.errorCode).toBe(codes().ai.notConfigured);
+  });
+
+  it('self-centroid definition preview on POST /preview is 400 invalidDefinition', async () => {
+    const ctx = await setupPreviewUser('vecself');
+    // The shape gate fires regardless of the embed capability.
+    collectionsService.__setRuntimeSeamsForTests({ llmAdapter: embedConfiguredAdapter() });
+
+    const res = await request(app)
+      .post('/api/collections/preview')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ definition: { kind: 'centroid', centroid_ref: null, theta: 0.5 } });
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe(codes().collections.invalidDefinition);
+  });
+
+  it('self-centroid definition via /:id/preview resolves the owning collection; grantee 403, ungranted 404', async () => {
+    const owner = await createUserWithRoot('prev-selfcentroid');
+    const grantee = await createUserWithRoot('prev-self-grantee');
+    const system = await collectionsStore.createCollection(
+      {
+        ownerId: owner.user.id,
+        name: 'Self cluster',
+        origin: 'system',
+        definition: { kind: 'centroid', centroid_ref: null, theta: 0.5, tier: 'tight' },
+      },
+      { actor: owner.user.id }
+    );
+    const modelId = await ensureEmbedModel('selfcentroid');
+    await collectionsStore.upsertCentroid(system.id, modelId, '1,0', 2);
+    const beach = await fileNodeService.createFile(owner.root.id, 'beach.jpg');
+    await embedNode(beach.id, modelId, [1, 0]);
+
+    const grant = await request(app)
+      .post(`/api/collections/${system.id}/grants`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ userId: grantee.user.id, role: 'viewer' });
+    expect(grant.status).toBe(201);
+
+    const ownerRes = await request(app)
+      .post(`/api/collections/${system.id}/preview`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({});
+    expect(ownerRes.status).toBe(200);
+    expect(ownerRes.body.count).toBe(1);
+    expect(ownerRes.body.sample).toEqual([{ node_id: beach.id, name: 'beach.jpg' }]);
+
+    const granteeRes = await request(app)
+      .post(`/api/collections/${system.id}/preview`)
+      .set('Authorization', `Bearer ${grantee.token}`)
+      .send({});
+    expect(granteeRes.status).toBe(403);
+    expect(granteeRes.body.errorCode).toBe(codes().collections.forbidden);
+
+    const stranger = await createUserWithRoot('prev-self-stranger');
+    const strangerRes = await request(app)
+      .post(`/api/collections/${system.id}/preview`)
+      .set('Authorization', `Bearer ${stranger.token}`)
+      .send({});
+    expect(strangerRes.status).toBe(404);
+    expect(strangerRes.body.errorCode).toBe(codes().collections.notFound);
+  });
+
+  it('self-centroid definition via /:id/preview without a resolvable centroid reports degraded:true', async () => {
+    const owner = await createUserWithRoot('prev-self-degraded');
+    const system = await collectionsStore.createCollection(
+      {
+        ownerId: owner.user.id,
+        name: 'Self degraded',
+        origin: 'system',
+        definition: { kind: 'centroid', centroid_ref: null, theta: 0.5, tier: 'mid' },
+      },
+      { actor: owner.user.id }
+    );
+
+    const res = await request(app)
+      .post(`/api/collections/${system.id}/preview`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ count: 0, sample: [], sample_truncated: false, degraded: true });
+  });
+
+  it('caps the preview sample at 12 and flags truncation', async () => {
+    const ctx = await setupPreviewUser('capped');
+    const folder = await fileNodeService.createDirectory(ctx.root.id, 'bulk');
+    for (let i = 0; i < 15; i += 1) {
+      await fileNodeService.createFile(folder.id, `bulk-${i}.txt`);
+    }
+
+    const res = await request(app)
+      .post('/api/collections/preview')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({
+        definition: {
+          kind: 'predicate',
+          any_of: [{ type: 'path', value: `/${ctx.user.username}/bulk` }],
+        },
+      });
+    expect(res.status).toBe(200);
+    // 15 files + the bulk folder itself (path-prefix candidates include it)
+    expect(res.body.count).toBe(16);
+    expect(res.body.sample).toHaveLength(12);
+    expect(res.body.sample_truncated).toBe(true);
   });
 });
 

@@ -1202,6 +1202,20 @@ async function preview(userId, target = {}) {
   }
 
   definitionEngine.parseDefinition(target.definition);
+  if (definitionEngine.isVectorDefinition(target.definition)) {
+    // Self-centroid (§2.3): `centroid_ref: null` is the OWNING collection's
+    // own centroid row — a free-standing definition preview has no owning
+    // collection, so the reference is unresolvable by shape (400).
+    if (
+      target.definition.kind === 'centroid' &&
+      (target.definition.centroid_ref ?? target.definition.centroidRef) == null
+    ) {
+      throw serviceError('invalidDefinition', 400);
+    }
+    // Vector definitions score pooled cosine against the ACTIVE embed model —
+    // same capability gate as the seed arm (§2.7).
+    if (!(await embedRoleConfigured())) throw serviceError('aiNotConfigured');
+  }
   return runDefinitionPreview(userId, target.definition);
 }
 

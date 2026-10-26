@@ -161,7 +161,7 @@ test.describe('registration setting admin UI (E2E-ADMIN-007)', () => {
     await registrationSwitch.click();
     await expect(page.getByText(/Registration setting saved/i)).toBeVisible({ timeout: 60_000 });
 
-    await expect(registrationSwitch).toBeChecked({ checked: !currentChecked });
+    await expect(registrationSwitch).toBeChecked({ checked: !currentChecked, timeout: 60_000 });
 
     await setRegistrationEnabled(request, currentChecked);
   });

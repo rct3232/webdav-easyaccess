@@ -11,10 +11,22 @@ import {
 
 test.describe.configure({ mode: 'serial' });
 
+// The shared client dev server compiles the login bundle on the first browser
+// request. A cold release run starts desktop and mobile projects together, so
+// login-page readiness gets an explicit budget instead of the 15s global
+// expectation (which stays sensitive for product UI states).
+const LOGIN_FORM_TIMEOUT = 30_000;
+
 async function expectLoginFormVisible(page: Page) {
-  await expect(page.locator('input[name="username"]')).toBeVisible();
-  await expect(page.locator('input[name="password"]')).toBeVisible();
-  await expect(page.locator('form button[type="submit"]')).toBeVisible();
+  await expect(page.locator('input[name="username"]')).toBeVisible({
+    timeout: LOGIN_FORM_TIMEOUT,
+  });
+  await expect(page.locator('input[name="password"]')).toBeVisible({
+    timeout: LOGIN_FORM_TIMEOUT,
+  });
+  await expect(page.locator('form button[type="submit"]')).toBeVisible({
+    timeout: LOGIN_FORM_TIMEOUT,
+  });
 }
 
 async function submitLogin(page: Page, username: string, password: string) {

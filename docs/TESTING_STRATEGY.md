@@ -476,7 +476,7 @@ Apply uniformly to every E2E spec:
 - Mobile flow: the same CRUD happy paths.
 - Treat create/upload as shared FAB-driven outcomes when the user path matches across platforms, and split only the interaction helpers that genuinely differ, such as desktop item actions/context menu versus the mobile action sheet for rename/delete.
 
-Detailed browser-flow inventory, rollout order, and planned Playwright ownership are maintained in [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md). Keep this document focused on layer policy and E2E design rules rather than exhaustive scenario tracking.
+Detailed browser-flow inventory, future expansion plan, and planned Playwright ownership are maintained in [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md). Keep this document focused on layer policy and E2E design rules rather than exhaustive scenario tracking.
 
 ### Feature-doc responsibility for E2E guidance
 
@@ -486,7 +486,7 @@ Detailed browser-flow inventory, rollout order, and planned Playwright ownership
 - selector rules unique to that feature
 - platform-specific interaction ownership (desktop vs mobile)
 - feature-only flow-structure constraints
-- Do not copy full scenario matrices, rollout order, or per-spec ownership into feature docs when the canonical E2E plan already tracks them.
+- Do not copy full scenario matrices, future expansion plan, or per-spec ownership into feature docs when the canonical E2E plan already tracks them.
 
 ---
 

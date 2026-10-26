@@ -291,4 +291,50 @@ describe('UsageRepository conformance', () => {
     // The default-timestamp event predates the rollup stamp → filtered out.
     expect(await groupsFor(user.id, node.nodeId)).toEqual([]);
   });
+
+  it('listNodeActivity returns the accumulator rows for the requested pairs only', async () => {
+    const user = await uniqueUser();
+    const otherUser = await uniqueUser();
+    const first = await uniqueNode(`usage-${Date.now()}-6a.txt`);
+    const second = await uniqueNode(`usage-${Date.now()}-6b.txt`);
+    const orphan = await uniqueNode(`usage-${Date.now()}-6c.txt`);
+    const foreign = await uniqueNode(`usage-${Date.now()}-6d.txt`);
+    const now = Date.UTC(2026, 8, 22, 3, 0, 0);
+
+    const seed = (userId, nodeId, score) => ({
+      userId: Number(userId),
+      nodeId: Number(nodeId),
+      counts: { open: 2, download: 1, preview: 0, search_hit: 0, like: 1 },
+      lastSeenAtMs: now - DAY_MS,
+      score,
+      updatedAtMs: now,
+    });
+    await repo.upsertNodeActivity([
+      seed(user.id, second.nodeId, 7),
+      seed(user.id, first.nodeId, 3),
+      seed(otherUser.id, foreign.nodeId, 9),
+    ]);
+
+    const rows = await repo.listNodeActivity(user.id, [
+      Number(second.nodeId),
+      Number(first.nodeId),
+      Number(orphan.nodeId),
+      Number(foreign.nodeId),
+    ]);
+
+    // Ascending node id; absent pairs and other users' pairs are omitted.
+    expect(rows.map((row) => row.nodeId)).toEqual([Number(first.nodeId), Number(second.nodeId)]);
+    expect(rows.map((row) => row.userId)).toEqual([Number(user.id), Number(user.id)]);
+    expect(rows[0]).toMatchObject({
+      counts: { open: 2, download: 1, preview: 0, search_hit: 0, like: 1 },
+      score: 3,
+    });
+    expect(rows[0].lastSeenAtMs).toBeCloseTo(now - DAY_MS, 4);
+    expect(rows[0].updatedAtMs).toBeCloseTo(now, 4);
+    expect(rows[0].counts).toEqual({ open: 2, download: 1, preview: 0, search_hit: 0, like: 1 });
+  });
+
+  it('listNodeActivity with no ids returns [] and never scans the table', async () => {
+    expect(await repo.listNodeActivity(1, [])).toEqual([]);
+  });
 });

@@ -21,9 +21,9 @@
  * against the definition's admitted set (adds ← θ_in, removes ← θ_out,
  * hysteresis via the stored member set from collectionsService).
  *
- * As-built scope: create + reconcile + merge candidates (cheap+full) and the
- * auto-pin reconcile (full). Split/archive/purge are later waves; their config
- * keys are registered but unread here.
+ * As-built scope: create + split + reconcile + merge candidates (cheap+full)
+ * and the auto-pin reconcile (full). Archive/purge are later waves; their
+ * config keys are registered but unread here.
  */
 
 /* eslint-disable no-console -- background pass logging, never throws to callers */
@@ -33,6 +33,7 @@ const userStore = require('../../store/userStore');
 const embeddingsStore = require('../../store/embeddingsStore');
 const llmModelsStore = require('../../store/llmModelsStore');
 const fileLikesStore = require('../../store/fileLikesStore');
+const usageStore = require('../../store/usageStore');
 const aiTagStore = require('../../store/aiTagStore');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const permissionStore = require('../../domains/permissions/stores/permissionStore');
@@ -61,6 +62,16 @@ const CREATE_LIKE_DENSITY_MIN = 0.5;
 const CREATE_TIER_DEFAULTS = { tight: 0.82, mid: 0.8, loose: 0.72 };
 const CREATE_TIERS = ['tight', 'mid', 'loose'];
 const CREATE_TAG_SCAN_LIMIT = 50;
+
+/**
+ * Split pass (evolutionService.md §2.5): the hot subset reuses the create
+ * gates — min members, tier size caps, Jaccard/tombstone suppression, the
+ * create rate window and the active-count limits. Persistence is deliberately
+ * NOT re-applied: activity IS the trigger, so fresh hot content must not be
+ * blocked by the two-week cluster-age rule. The sibling's initial rows carry
+ * this reason prefix plus the parent id (stable across renames).
+ */
+const SPLIT_REASON_PREFIX = 'split:';
 
 /**
  * Merge-candidate pass (§2.8): materialized-set geometry. `sizeRatio` and
@@ -279,10 +290,11 @@ async function runUserPass(userId, mode = 'cheap') {
   try {
     const reconciled = await reconcileUser(userId);
     const created = await runCreatePass(userId);
+    const split = await runSplitPass(userId);
     const mergeCandidates = await runMergeCandidatePass(userId);
     // Auto-pin reconcile is nightly-only (§2.9 / §2.3 pass dispatch).
     const pinned = mode === 'full' ? await reconcileAutoPinUser(userId) : null;
-    return { userId, reconciled, created, mergeCandidates, pinned, arbiterCalls: 0 };
+    return { userId, reconciled, created, split, mergeCandidates, pinned, arbiterCalls: 0 };
   } catch (error) {
     console.error(`[evolution] reconcile failed for user ${userId}:`, error.message);
     return { userId, error: error.message };
@@ -318,6 +330,11 @@ async function writeNightEvalReport(passes, perUser) {
         acc.merge_suggested += entry.mergeCandidates.suggested ?? 0;
         acc.merge_reopened += entry.mergeCandidates.reopened ?? 0;
       }
+      if (entry && entry.split) {
+        acc.split_created += entry.split.created.length;
+        acc.split_promoted += entry.split.promoted;
+        acc.split_suppressed += entry.split.suppressed;
+      }
       if (entry && entry.pinned) {
         acc.auto_pins_cleared += entry.pinned.cleared ?? 0;
       }
@@ -334,6 +351,9 @@ async function writeNightEvalReport(passes, perUser) {
       create_suppressed: 0,
       merge_suggested: 0,
       merge_reopened: 0,
+      split_created: 0,
+      split_promoted: 0,
+      split_suppressed: 0,
       auto_pins_cleared: 0,
     }
   );
@@ -1118,6 +1138,309 @@ function eventClassOf(definition) {
 }
 
 // ---------------------------------------------------------------------------
+// Pass 2 — split (hot subset ⇒ NEW SIBLING system collection, §2.5)
+// ---------------------------------------------------------------------------
+
+function emptySplitResult() {
+  return { candidates: 0, created: [], promoted: 0, suppressed: 0 };
+}
+
+/**
+ * Deterministic hot-subset rule (§2.5). A materialized member is HOT when its
+ * `node_activity.score` for the requesting user is positive OR the user
+ * currently likes it. The subset is every hot member — no ranking, no
+ * truncation — in ascending node-id order; over-cap subsets are blocked by the
+ * tier cap instead of being sampled.
+ *
+ * @param {number[]} memberIds ascending materialized parent member ids
+ * @param {Array<{nodeId:number, score:number}>} activityRows usageStore rows
+ * @param {Set<number>} likedNodeIds live likes for the requester
+ * @returns {number[]} ascending hot member ids
+ */
+function hotSubset(memberIds, activityRows, likedNodeIds) {
+  const active = new Set(
+    (activityRows || []).filter((row) => Number(row.score) > 0).map((row) => Number(row.nodeId))
+  );
+  return memberIds.filter((nodeId) => active.has(nodeId) || likedNodeIds.has(nodeId));
+}
+
+/**
+ * Sibling definition: the same self-centroid shape as a create-pass cluster,
+ * carrying the parent's tier/event class plus `split_of` provenance. `theta`
+ * is the parent's tier edge cosine; a parent without a finite theta (rule
+ * shapes written outside the create pass) inherits the active model profile's
+ * value for its tier.
+ */
+function splitDefinition({ parent, tier, theta }) {
+  return {
+    kind: 'centroid',
+    centroid_ref: null,
+    theta,
+    tier,
+    event_class: eventClassOf(parent.definition),
+    split_of: Number(parent.id),
+  };
+}
+
+/**
+ * Broad-tier slot check for a split. A sibling refines its parent's event
+ * class, so the parent row and siblings already split from that parent never
+ * consume a second slot; any OTHER active loose collection with the same
+ * event class still blocks.
+ */
+function looseEventClassTaken(activeCollections, parent, eventClass) {
+  return activeCollections.some((row) => {
+    if (Number(row.id) === Number(parent.id)) return false;
+    if (row.origin !== 'system' || tierOf(row.definition) !== 'loose') return false;
+    if (eventClassOf(row.definition) !== eventClass) return false;
+    const splitOf =
+      row.definition && typeof row.definition === 'object' ? row.definition.split_of : null;
+    return Number(splitOf) !== Number(parent.id);
+  });
+}
+
+/**
+ * Pooled vectors of the active model space for the candidate members
+ * (cross-model rows are skipped — a centroid never mixes model spaces).
+ */
+async function loadSplitVectors(memberIds, modelId) {
+  const rows = await embeddingsStore.getByNodeIds(memberIds);
+  const vectors = [];
+  for (const row of rows || []) {
+    if (Number(row.modelId) !== Number(modelId)) continue;
+    const vector = parseEmbeddingVector(row.vector);
+    if (vector) vectors.push(vector);
+  }
+  return vectors;
+}
+
+/**
+ * Create the sibling: template/chat namer with the `split` rule, journaled
+ * create command, one journaled initial batch (`source='system'`, matched
+ * reason, `published=true`), the member-mean centroid, and the parent's digest
+ * note. The parent's definition and membership are never written.
+ */
+async function createSplitSibling({
+  userId,
+  parent,
+  definition,
+  memberIds,
+  vectors,
+  modelId,
+  namer,
+  fallbackIndex,
+}) {
+  const tags = await topTagsFor(memberIds);
+  const baseName = await namer({
+    kind: 'split',
+    parentName: parent.name,
+    diffTag: tags[0] ?? null,
+    tags,
+    index: fallbackIndex,
+  });
+  const name = await resolveCreateName(userId, baseName);
+
+  const created = await collectionsStore.createCollection(
+    {
+      ownerId: userId,
+      name,
+      origin: 'system',
+      publishMode: 'ask',
+      definition,
+    },
+    { actor: 'system' }
+  );
+
+  await collectionsStore.addItems(
+    created.id,
+    memberIds,
+    userId,
+    {
+      published: true,
+      source: 'system',
+      reason: `${SPLIT_REASON_PREFIX}${Number(parent.id)}`,
+    },
+    { actor: 'system' }
+  );
+
+  const centroid = meanVector(vectors);
+  if (centroid) {
+    await collectionsStore.upsertCentroid(
+      created.id,
+      modelId,
+      centroid.join(','),
+      memberIds.length
+    );
+  }
+
+  // Parent digest note (§2.5): the membership/definition stay byte-identical;
+  // only the digest stamp moves so the parent's list banner reflects the act.
+  await collectionsStore.touchMemberChange(parent.id);
+
+  return {
+    id: created.id,
+    name,
+    parentId: Number(parent.id),
+    tier: definition.tier,
+    event_class: definition.event_class,
+    memberCount: memberIds.length,
+  };
+}
+
+/**
+ * Split pass (§2.5). Runs in the cheap and full legs, gated by the global
+ * switch and `AI_EVOLUTION_CREATE_ENABLED` (the split inherits the create
+ * pause). For every ACTIVE `origin='system'` collection the user owns, the
+ * deterministic hot subset is tested against the pass-1 gates: min 8 members,
+ * the parent tier's size cap, Jaccard ≥0.8 against every active materialized
+ * set (the parent included, so a subset that is a near-copy never splits),
+ * owner tombstones on the parent-equivalent definition, the create rate window
+ * and the active-count limits. A crossing candidate becomes a NEW SIBLING
+ * `origin='system'` collection; the parent is never nested, renamed or mutated.
+ *
+ * @param {number} userId
+ * @returns {Promise<{ candidates: number, created: Array<Object>, promoted: number, suppressed: number }>}
+ */
+async function runSplitPass(userId) {
+  const result = emptySplitResult();
+  const ownerId = Number(userId);
+  if (!Number.isInteger(ownerId) || ownerId <= 0) return result;
+  if (!createEnabled()) return result;
+
+  const activeModel = await llmModelsStore.getActiveByRole('embed');
+  if (!activeModel) return result;
+  const modelId = Number(activeModel.id);
+  if (!Number.isInteger(modelId) || modelId <= 0) return result;
+
+  const owned = (await collectionsStore.listForUser(ownerId, { status: 'all' })).filter(
+    (row) => row.ownerId === ownerId
+  );
+  const parents = owned.filter((row) => row.origin === 'system' && row.status === 'active');
+  if (parents.length === 0) return result;
+
+  const ownedActive = owned.filter((row) => row.status === 'active');
+  const storedSets = new Map();
+  for (const collection of ownedActive) {
+    const rows = await collectionsStore.listStoredItems(collection.id);
+    storedSets.set(collection.id, new Set(rows.map((row) => Number(row.nodeId))));
+  }
+
+  const thresholds = resolveTierThresholds(activeModel);
+  const likes = new Set((await fileLikesStore.listLikedNodeIds(ownerId)).map(Number));
+
+  const rateDays = createRateDays();
+  const now = Date.now();
+  const rateWindowMs = rateDays * 86400000;
+  const rateBlocked =
+    rateDays > 0 &&
+    owned.some((row) => {
+      if (row.origin !== 'system') return false;
+      const createdAt = new Date(row.createdAt).getTime();
+      return Number.isFinite(createdAt) && now - createdAt < rateWindowMs;
+    });
+  let createdThisPass = false;
+  let activeTightMid = ownedActive.filter(
+    (row) => row.origin === 'system' && tierOf(row.definition) !== 'loose'
+  ).length;
+  const systemCount = owned.filter((row) => row.origin === 'system').length;
+  let namer = null;
+
+  for (const parent of parents) {
+    const memberIds = [...(storedSets.get(parent.id) || new Set())].sort((a, b) => a - b);
+    if (memberIds.length < CREATE_MIN_MEMBERS) continue;
+
+    const activity = await usageStore.listNodeActivity(ownerId, memberIds);
+    const hot = hotSubset(memberIds, activity, likes);
+    if (hot.length < CREATE_MIN_MEMBERS) continue;
+    result.candidates += 1;
+
+    const tier = tierOf(parent.definition);
+    const cap = CREATE_SIZE_CAPS[tier] || CREATE_SIZE_CAPS.mid;
+    if (hot.length > cap) {
+      result.suppressed += 1;
+      continue;
+    }
+
+    const parentTheta = Number(parent.definition && parent.definition.theta);
+    const definition = splitDefinition({
+      parent,
+      tier,
+      theta: Number.isFinite(parentTheta) ? parentTheta : thresholds[tier],
+    });
+    const hotSet = new Set(hot);
+
+    let promoted = false;
+    for (const storedSet of storedSets.values()) {
+      if (jaccardSets(storedSet, hotSet) >= CREATE_JACCARD_MIN) {
+        promoted = true;
+        break;
+      }
+    }
+    if (promoted) {
+      result.promoted += 1;
+      continue;
+    }
+
+    // Tombstones key on the definition identity, not on provenance: the
+    // parent-equivalent definition is what a tombstoned regeneration attempt
+    // carries, so `split_of` never shelters a suppressed rule shape.
+    const coreDefinition = { ...definition };
+    delete coreDefinition.split_of;
+    const fingerprint = definitionEngine.fingerprintDefinition(coreDefinition);
+    if (await collectionsStore.isTombstoned(ownerId, fingerprint)) {
+      result.suppressed += 1;
+      continue;
+    }
+
+    if (rateDays > 0 && (rateBlocked || createdThisPass)) {
+      result.suppressed += 1;
+      continue;
+    }
+
+    if (tier === 'loose') {
+      if (looseEventClassTaken(ownedActive, parent, definition.event_class)) {
+        result.suppressed += 1;
+        continue;
+      }
+    } else if (activeTightMid >= CREATE_ACTIVE_LIMIT) {
+      result.suppressed += 1;
+      continue;
+    }
+
+    // A self-centroid definition needs a reference: a hot subset with no
+    // pooled vector in the active model space would create an inert collection.
+    const vectors = await loadSplitVectors(hot, modelId);
+    if (vectors.length === 0) {
+      result.suppressed += 1;
+      continue;
+    }
+
+    try {
+      if (!namer) namer = await resolveSystemNamer();
+      const created = await createSplitSibling({
+        userId: ownerId,
+        parent,
+        definition,
+        memberIds: hot,
+        vectors,
+        modelId,
+        namer,
+        fallbackIndex: systemCount + result.created.length + 1,
+      });
+      result.created.push(created);
+      createdThisPass = true;
+      storedSets.set(created.id, hotSet);
+      if (tier !== 'loose') activeTightMid += 1;
+    } catch (error) {
+      console.error(`[evolution] split failed for user ${ownerId}:`, error.message);
+      result.suppressed += 1;
+    }
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Pass 5 — merge candidates on MATERIALIZED sets (§2.8)
 // ---------------------------------------------------------------------------
 
@@ -1298,5 +1621,6 @@ module.exports = {
   armUploadTriggerForNode,
   runEvolutionPass,
   runCreatePass,
+  runSplitPass,
   __resetEvolutionStateForTests,
 };

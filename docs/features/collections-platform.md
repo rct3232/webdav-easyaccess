@@ -273,8 +273,11 @@ runs everything (archive/purge are time-based — nightly is the backbone). Pass
    self-centroid (`centroid_ref: null`, resolved against the owning collection's model-keyed
    centroid); a candidate overlapping an active collection at Jaccard ≥ 0.8 is counted as a
    promotion and creates nothing, leaving the existing definition untouched.
-2. **Split**: a hot subset crossing create gates becomes a **sibling** system collection — never
-   nested.
+2. **Split**: a hot subset inside a system collection — materialized members whose
+   `node_activity` score is positive or that the owner likes — crossing the create gates
+   (min 8, tier caps, Jaccard overlap, rate, active limits) becomes a **sibling** system
+   collection with the parent's tier/event class, `split_of` provenance and its own
+   centroid; the parent's definition and membership stay unchanged. Never nested.
 3. **Archive**: activity under floor for N days, or ≈0 members — never for pinned collections; no
    exclusion-rate archive trigger exists — the exclusion rate is an admin quality metric only.
 4. **Purge**: past retention → permanent, plus a tombstone (lifetime = retention) fingerprinted on

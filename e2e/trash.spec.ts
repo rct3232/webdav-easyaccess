@@ -27,7 +27,7 @@ test.use({ storageState: ADMIN_STATE });
 
 // Case-owned trashed names; purged in afterEach so trash residue never
 // accumulates across a run (assertion-context containment). The global
-// empty-trash case (E2E-TRASH-007) lives in trash-admin.spec.ts — it purges
+// empty-trash case (E2E-S3-TRASHADMIN-001) lives in trash-admin.spec.ts — it purges
 // EVERY project's trash, so it must not run in two projects concurrently.
 const pendingTrashPurges: Array<{ token: string; name: string }> = [];
 

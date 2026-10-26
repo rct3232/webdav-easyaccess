@@ -389,6 +389,92 @@ describe('collectionsService preview and for-nodes', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Vector-definition preview gates (T2.5, §2.7): free-standing vector previews
+// gate on the embed capability; self-centroid references are only resolvable
+// in a collection context.
+// ---------------------------------------------------------------------------
+
+describe('collectionsService vector-definition preview gates (§2.7)', () => {
+  afterEach(() => {
+    collectionsService.__resetRuntimeSeamsForTests();
+  });
+
+  it('preview({definition: seed_vector}) without the embed role throws aiNotConfigured', async () => {
+    const ctx = await setupServiceUser('vecnorole');
+    await expect(
+      collectionsService.preview(ctx.user.id, {
+        definition: { kind: 'seed_vector', seed_ref: ctx.beach.id, theta: 0.6 },
+      })
+    ).rejects.toMatchObject({ message: 'aiNotConfigured', status: 409 });
+    await expect(
+      collectionsService.preview(ctx.user.id, {
+        definition: { kind: 'centroid', centroid_ref: 7, theta: 0.6 },
+      })
+    ).rejects.toMatchObject({ message: 'aiNotConfigured', status: 409 });
+  });
+
+  it('preview({definition}) with a self-centroid reference outside a collection context throws invalidDefinition', async () => {
+    const ctx = await setupServiceUser('vecself');
+    collectionsService.__setRuntimeSeamsForTests({ llmAdapter: embedConfiguredAdapter() });
+    await expect(
+      collectionsService.preview(ctx.user.id, {
+        definition: { kind: 'centroid', centroid_ref: null, theta: 0.6 },
+      })
+    ).rejects.toThrow('invalidDefinition');
+  });
+
+  it('preview({definition: seed_vector}) with embeddings scores pooled cosine and counts', async () => {
+    collectionsService.__setRuntimeSeamsForTests({ llmAdapter: embedConfiguredAdapter() });
+    const ctx = await setupServiceUser('vecseed');
+    const modelId = await ensureEmbedModel('vecseed');
+    await embedNode(ctx.beach.id, modelId, [1, 0, 0, 0]);
+    await embedNode(ctx.stay.id, modelId, [0.95, 0.1, 0, 0]);
+
+    const result = await collectionsService.preview(ctx.user.id, {
+      definition: { kind: 'seed_vector', seed_ref: ctx.beach.id, theta: 0.5 },
+    });
+    expect(result.count).toBe(2);
+    // samples order by nodeId asc (runDefinitionPreview); the seed itself is a candidate
+    expect(result.sample.map((n) => n.nodeId)).toEqual([ctx.beach.id, ctx.stay.id]);
+    expect(result.sample_truncated).toBe(false);
+    expect(result.degraded).toBeUndefined();
+  });
+
+  it('preview({definition: centroid}) with an explicit reference resolves the centroid row and counts', async () => {
+    collectionsService.__setRuntimeSeamsForTests({ llmAdapter: embedConfiguredAdapter() });
+    const ctx = await setupServiceUser('veccentroid');
+    const modelId = await ensureEmbedModel('veccentroid');
+    const { collection } = await collectionsService.createCollection(ctx.user.id, {
+      name: 'Centroid host',
+    });
+    await collectionsStore.upsertCentroid(collection.id, modelId, '1,0', 2);
+    await embedNode(ctx.beach.id, modelId, [1, 0]);
+    await embedNode(ctx.stay.id, modelId, [0, 1]);
+
+    const result = await collectionsService.preview(ctx.user.id, {
+      definition: { kind: 'centroid', centroid_ref: collection.id, theta: 0.5 },
+    });
+    expect(result.count).toBe(1);
+    expect(result.sample).toEqual([{ nodeId: ctx.beach.id, name: 'beach.jpg' }]);
+  });
+
+  it('previewCollection of a self-centroid definition without an embed model reports degraded:true', async () => {
+    const ctx = await setupServiceUser('vecdegraded');
+    const system = await collectionsStore.createCollection(
+      {
+        ownerId: ctx.user.id,
+        name: 'Self cluster',
+        origin: 'system',
+        definition: { kind: 'centroid', centroid_ref: null, theta: 0.8, tier: 'mid' },
+      },
+      { actor: ctx.user.id }
+    );
+    const result = await collectionsService.previewCollection(ctx.user.id, system.id);
+    expect(result).toEqual({ count: 0, sample: [], sample_truncated: false, degraded: true });
+  });
+});
+
 describe('collectionsService similar sort', () => {
   it('groups rows by greedy nearest-neighbor over centroids with stable cluster_index', async () => {
     const ctx = await createUserWithRoot('svc-similar');

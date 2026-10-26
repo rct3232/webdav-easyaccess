@@ -100,8 +100,9 @@ config keys.
   that evaluate an existing collection pass its id through
   `evaluateDefinitionMembership`/`previewCollection`; the upload hook and the evolution
   reconcile/create passes do the same. A self-centroid definition evaluated without a
-  collection id (for example a rule preview not tied to a stored collection) has no
-  reference and degrades to no matches. System cluster creation writes exactly this shape
+  collection id has no reference: the free-standing `preview({ definition })` rejects it
+  by shape (`invalidDefinition`, route 400 — §2.7); other callers never evaluate a
+  self-centroid definition without a collection id. System cluster creation writes exactly this shape
   (`theta` = tier edge cosine, `tier`, `event_class`), so later writes score against the
   same model-keyed centroid. A split sibling's definition carries the same shape plus
   `split_of: <parentId>` provenance (evolutionService §2.5); the field is inert for
@@ -240,10 +241,16 @@ order mirrors the input `nodeIds`; every requested node gets an entry (possibly
 
 - `preview({ definition })`: rule dry-count — predicate-only definitions are LLM-free
   (works with zero config); `seed_vector`/`centroid` definitions require the active
-  embed model and use the pooled-vector cosine of §2.3. A self-centroid definition
+  embed model and use the pooled-vector cosine of §2.3, and gate on the embed
+  capability like the seed arm: without the `embed` role they throw `aiNotConfigured`
+  (route 409 `serverErrors.ai.notConfigured`). A self-centroid definition
   (`centroid_ref: null`) resolves the owning collection's centroid only in
   `previewCollection` (which supplies the collection id); a free-standing definition
-  preview has no owning row and reports `degraded`. Dry-runs never mutate membership.
+  preview has no owning row, so the self reference is unresolvable by shape and throws
+  `invalidDefinition` (route 400). `previewCollection` keeps the degrade path: a stored
+  self-centroid definition always resolves through its collection, and a vector
+  reference that cannot resolve (no active embed model / missing centroid row) reports
+  `degraded: true` with an empty count. Dry-runs never mutate membership.
 - `preview({ seedNodeId })`: requires the embed role (`llmAdapter
 .roleConfigured('embed')`; pre-boot fallback `LLM_EMBED_*`, else
   `aiNotConfigured` → route 409). Seed vector = that node's pooled embedding
@@ -426,8 +433,11 @@ release-measured values (release artifacts, displayed with provenance in the adm
 - [ ] `publishItems` by a viewer grantee throws `forbidden`; owner and editor flip
       materialized rows; non-member ids land `ignored` (never added); publish toggle on
       a `system` collection sets `pinned_by='auto'` (touch, no journal row for the pin)
-- [ ] `preview({definition})` works with zero LLM; `preview({seedNodeId})` with embed
-      unconfigured throws `aiNotConfigured`; sample capped at 12 with `count` exact
+- [ ] `preview({definition})` with a predicate definition works with zero LLM; a vector
+      definition with `embed` unconfigured throws `aiNotConfigured`; a self-centroid
+      definition on the free-standing preview throws `invalidDefinition` (collection
+      context only); `preview({seedNodeId})` with embed unconfigured throws
+      `aiNotConfigured`; sample capped at 12 with `count` exact
 - [ ] `createSeedCollection` initial batch: every created row `published=true`; a node
       admitted later lands `published=false` under `ask`, `true` under `auto`
 - [ ] `createSearchCollection` definition contains NO name-match ids (snapshot rule)

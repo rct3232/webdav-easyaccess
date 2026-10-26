@@ -313,8 +313,10 @@ batch).
 - **POST /preview:** Body exactly one of `{ seedNodeId }` (seed-vector rule: seed pooled
   vector vs requester-visible pooled candidates, cosine — requires the `embed` LLM role)
   or `{ definition }` (predicate dry-count works with zero LLM; `seed_vector`/`centroid`
-  definitions require the embed role and use pooled cosine). 400
-  `collections.previewTargetRequired` when neither/both given. 200:
+  definitions require the embed role — else 409 `serverErrors.ai.notConfigured` — and use
+  pooled cosine). A self-centroid definition (`centroid_ref: null`) has no owning
+  collection on this free-standing route → 400 `collections.invalidDefinition`.
+  400 `collections.previewTargetRequired` when neither/both given. 200:
 
 ```json
 {
@@ -329,7 +331,9 @@ batch).
 
 `sample` is capped at 12 (the confirm dialog renders sample + `plus N more` from
 `count - sample.length`). Seed preview without `embed` configured → 409
-`serverErrors.ai.notConfigured`; definition previews never touch AI.
+`serverErrors.ai.notConfigured`; predicate definition previews never touch AI,
+vector definition previews gate on the embed role (409) and reject self-centroid
+references with 400 (see above).
 
 - **POST /evolution/hint:** Body optional `{ uploadComplete: true }` (any body is ignored;
   an empty body is valid). The caller's upload-batch debounce is armed for immediate
@@ -341,7 +345,10 @@ batch).
   loss is safe — the server debounce remains authoritative.
 - **POST /:id/preview:** Empty body; dry-runs the collection's stored `definition` for the
   requester (predicate or pooled-vector; never mutates membership). Owner-only (granted
-  viewers/editors → 403 `forbidden`; ungranted → 404 masquerade per §2.4.2). Response
+  viewers/editors → 403 `forbidden`; ungranted → 404 masquerade per §2.4.2). A
+  self-centroid definition (`centroid_ref: null`) resolves against THIS collection's
+  model-keyed centroid; when the reference cannot resolve (no active embed model / missing
+  centroid row) the preview reports `degraded: true` with an empty count. Response
   identical to POST /preview.
 - **GET /merge-suggestions:** Rows `state='pending'` where the requester owns both sides
   (one card at a time is a client concern — the full pending set is returned).
@@ -436,7 +443,7 @@ suggestion row (a suggestion state transition is opportunistic).
 | 400  | `serverErrors.collections.emptyNodeIds`          | Missing/empty/over-cap `nodeIds` (item routes and the `{ name, semantic }` create arm).                                                                                                                                                              |
 | 400  | `serverErrors.collections.previewTargetRequired` | 0 or 2 of `seedNodeId`/`definition`.                                                                                                                                                                                                                 |
 | 400  | `serverErrors.collections.mergeSameCollection`   | `:id == :other`.                                                                                                                                                                                                                                     |
-| 400  | `serverErrors.collections.invalidDefinition`     | Malformed `definition` payload (unknown kind / predicate type / bad atom); malformed `semantic` create payload on the `{ name, semantic }` arm (missing/non-string `resultRef`, non-array or non-empty-at-P1 `predicates`, missing `nodeIds` array). |
+| 400  | `serverErrors.collections.invalidDefinition`     | Malformed `definition` payload (unknown kind / predicate type / bad atom); a self-centroid (`centroid_ref: null`) definition on the free-standing `POST /preview` (no owning collection); malformed `semantic` create payload on the `{ name, semantic }` arm (missing/non-string `resultRef`, non-array or non-empty-at-P1 `predicates`, missing `nodeIds` array). |
 | 403  | `serverErrors.collections.forbidden`             | Non-owner mutation; viewer writes; editor removing what they did not add. ALSO the admin-operator gate: EVERY endpoint for an ADMIN requester (`requireNonAdmin`) and `POST /:id/grants` with an ADMIN grantee (service ban).                        |
 | 404  | `serverErrors.collections.notFound`              | Unknown id, or no access at all (read = 404 masquerade — ungranted reads do not disclose existence).                                                                                                                                                 |
 | 404  | `serverErrors.collections.granteeNotFound`       | Unknown user on grant.                                                                                                                                                                                                                               |
@@ -444,7 +451,7 @@ suggestion row (a suggestion state transition is opportunistic).
 | 404  | `serverErrors.collections.suggestionNotFound`    | Dismiss/reject without a pending row.                                                                                                                                                                                                                |
 | 409  | `serverErrors.collections.alreadyArchived`       | Archive of an archived collection.                                                                                                                                                                                                                   |
 | 409  | `serverErrors.collections.notArchived`           | Restore/delete of an active collection.                                                                                                                                                                                                              |
-| 409  | `serverErrors.ai.notConfigured`                  | Seed preview without the `embed` role.                                                                                                                                                                                                               |
+| 409  | `serverErrors.ai.notConfigured`                  | Seed preview or a `seed_vector`/`centroid` definition preview without the `embed` role.                                                                                                                                             |
 
 All errors follow the shared error envelope (`errorCode` + optional `params`,
 [shared-contracts.md](../../../shared-contracts.md)); client locale mirror is mandatory.
@@ -522,8 +529,10 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
 - [ ] Editor may exclude a node they added but not one added by the owner → 403
 - [ ] Exclusion on a system collection inserts `collection_exclusions` and sets
       `pinned_by='auto'`; no journal row for the pin itself
-- [ ] POST /preview with definition works with zero LLM; with `seedNodeId` and embed
-      absent → 409 `serverErrors.ai.notConfigured`
+- [ ] POST /preview with a predicate definition works with zero LLM; a vector definition
+      (`seed_vector`/`centroid`) with `embed` absent → 409 `serverErrors.ai.notConfigured`;
+      `centroid_ref: null` on POST /preview → 400 `invalidDefinition`; `seedNodeId` with
+      embed absent → 409 `serverErrors.ai.notConfigured`
 - [ ] POST /evolution/hint: 202 `{scheduled:true}` under `upload`/`both`; `false` under
       `nightly` or disabled; two hints coalesce to one queued pass; the route returns
       before the pass and leaks no pass output

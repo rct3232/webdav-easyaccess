@@ -2229,11 +2229,11 @@ failure remained reproducible. `git diff --check` was clean; changes remain unco
 | 1b   | T2.2a triggers/skeleton | `feature/t22-evolution-triggers`   | `evolutionService` skeleton, `AI_EVOLUTION_*` registry, `startEvolutionScheduler`, `WEA_SKIP_EVOLUTION_SCHEDULER`, per-user lock, `night_eval` report, debounce + hint, reconcile pass | Wave 0  | `[done]` — full server 177/3060 (28 skipped); reconcile + trigger/hint tests green                                   |
 | 2a   | T2.2b-i read model      | `feature/t22b-read-path`           | stored-only read path + digest, auto-pin reconcile, merge candidates with D4 state; no create/split yet                                                                                | 1a + 1b | `[done]` — full server 177/3042 (28 skipped); PG CollectionsRepository conformance 33/33                             |
 | 2b   | T2.2b-ii create         | `feature/t22b-create`              | mutual-kNN create (dedup/facets/gates/tombstones), initial materialization, promotion handling                                                                                         | 2a      | `[done]` — full server 178/3055 (28 skipped); create-pass suite 12                                                   |
-| 2c   | T2.2b-iii split         | `feature/t22b-split`               | hot-subset sibling split; parent untouched                                                                                                                                             | 2b      | `[todo]`                                                                                                             |
+| 2c   | T2.2b-iii split         | `feature/t22b-split`               | hot-subset sibling split; parent untouched                                                                                                                                             | 2b      | `[done]` — full server 179/3073 (28 skipped); split suite 16; PG UsageRepository conformance 10/10                   |
 | 3    | T2.3 archive/purge      | `feature/t23-archive-purge`        | archive gate (D5) + purge/tombstone, member-activity read, item ordering activity decay                                                                                                | 2c      | `[todo]`                                                                                                             |
 | 3    | T2.4 digest             | `feature/t24-digest-derived`       | materialized `added_since`, removed_since trash/purge refinement, cursor regression                                                                                                    | 1a      | `[todo]`                                                                                                             |
 | 3    | T2.5 preview close      | `test/t25-preview-close`           | vector definition preview + owner/400/409 regression                                                                                                                                   | 1a      | `[todo]`                                                                                                             |
-| 4    | Integration             | orchestrator                       | `index.js` scheduler mount + hint route mount; full gates; PLAN ledger closure                                                                                                         | Wave 3  | `[todo]`                                                                                                             |
+| 4    | Integration             | orchestrator                       | scheduler/hint mounts already landed in T2.2a; full P2 gates + E2E + ledger closure                                                                                                    | Wave 3  | `[todo]`                                                                                                             |
 
 ### 29.3 P2 verification gates
 
@@ -2244,11 +2244,17 @@ failure remained reproducible. `git diff --check` was clean; changes remain unco
 - Vector native path touched ⇒ `test:ci:pg:vector`.
 - Membership stability: two reads between passes return the same set; `GET /`,
   `GET /:id/items` and `for-nodes` perform zero definition evaluation.
-- Hysteresis: `theta_out ≤ score < theta_in` keeps a member and rejects a non-member; removal
-  below `theta_out` writes row-delete + exclusion.
+- Hysteresis: `theta_out ≤ score < theta_in` keeps a member and rejects a non-member; automatic
+  removal below `theta_out` deletes the row only (user Exclude is the exclusion path).
 - Journal/report: every pass act `actor='system'`; `admin_reports(kind='night_eval')` written;
   no tag writes; kill switches leave suggestions/rendering intact.
 - E2E: `collections-desktop` lifecycle after T2.3; `ai-desktop` smoke after T2.1/T2.2. The full
   hermetic AI/degradation matrix remains T4.3.
 - CI grep gates unchanged (`CacheAdapter|operationProgress`, tag-purge absence);
   `docsStatePurity` green; prettier/eslint clean.
+
+**T2.2 exit (2026-10-26):** all silent-evolution passes are merged — triggers/scheduler/report,
+reconcile, create, split, merge candidates, auto-pin reconcile. Final gates: full server
+**179 suites / 3,073 tests pass (28 skipped)**; PG CollectionsRepository 33/33 and
+UsageRepository 10/10 conformance; `docsStatePurity` green; eslint/prettier clean. Archive/purge
+and item activity ordering remain T2.3.

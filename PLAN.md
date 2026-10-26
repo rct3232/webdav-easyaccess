@@ -2232,7 +2232,7 @@ failure remained reproducible. `git diff --check` was clean; changes remain unco
 | 2c   | T2.2b-iii split         | `feature/t22b-split`               | hot-subset sibling split; parent untouched                                                                                                                                             | 2b      | `[done]` — full server 179/3073 (28 skipped); split suite 16; PG UsageRepository conformance 10/10                                                   |
 | 3    | T2.3 archive/purge      | `feature/t23-archive-purge`        | archive gate (D5) + purge/tombstone, member-activity read, item ordering activity decay                                                                                                | 2c      | `[done]` — full server 179/3082 (28 skipped); archive/purge + ordering tests green                                                                   |
 | 3    | T2.4 digest             | `feature/t24-digest-derived`       | materialized `added_since`, removed_since trash/purge refinement, cursor regression                                                                                                    | 1a      | `[done]` — closed by T2.2b-i stored digest (materialized adds, journal+trash removals, cursor); purge side is the spec'd display-truth approximation |
-| 3    | T2.5 preview close      | `test/t25-preview-close`           | vector definition preview + owner/400/409 regression                                                                                                                                   | 1a      | `[todo]`                                                                                                                                             |
+| 3    | T2.5 preview close      | `test/t25-preview-close`           | vector definition preview + owner/400/409 regression                                                                                                                                   | 1a      | `[done]` — full server 179/3093 (28 skipped); vector/self-centroid/owner 400-409 regressions green                                                   |
 | 4    | Integration             | orchestrator                       | scheduler/hint mounts already landed in T2.2a; full P2 gates + E2E + ledger closure                                                                                                    | Wave 3  | `[todo]`                                                                                                                                             |
 
 ### 29.3 P2 verification gates
@@ -2252,6 +2252,13 @@ failure remained reproducible. `git diff --check` was clean; changes remain unco
   hermetic AI/degradation matrix remains T4.3.
 - CI grep gates unchanged (`CacheAdapter|operationProgress`, tag-purge absence);
   `docsStatePurity` green; prettier/eslint clean.
+
+**T2.1–T2.5 closed (2026-10-26):** every §7 P2 task is implemented and merged — definition
+engine/pooled vectors, silent-evolution passes (reconcile/create/split/merge-candidates/auto-pin),
+archive/purge + activity ordering, materialized digest, and the vector preview contract. Final
+gates: full server **179 suites / 3,093 tests pass (28 skipped)**; PG CollectionsRepository 33/33
+and UsageRepository 10/10 conformance; `docsStatePurity` green; eslint/prettier clean. The
+remaining Wave-4 row is the orchestrator-level P2 exit (full gates + E2E + ledger closure).
 
 **T2.2 exit (2026-10-26):** all silent-evolution passes are merged — triggers/scheduler/report,
 reconcile, create, split, merge candidates, auto-pin reconcile. Final gates: full server

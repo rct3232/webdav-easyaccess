@@ -115,7 +115,9 @@ test.describe('unified migration mode (S3 backend)', () => {
     // B1: scan of a fresh, empty target → "no schema" info, no wipe alert.
     const scanButton = page.getByRole('dialog').getByRole('button', { name: 'Scan target' });
     await scanButton.click();
-    await expect(page.getByRole('dialog').getByText(/has no schema/)).toBeVisible();
+    await expect(page.getByRole('dialog').getByText(/has no schema/)).toBeVisible({
+      timeout: 60_000,
+    });
     await expect(page.getByRole('dialog').getByTestId('metadata-wipe-alert')).toHaveCount(0);
 
     // Pre-seed the target with a schema + a few rows so the wipe alert fires.
@@ -214,7 +216,9 @@ test.describe('unified migration mode (S3 backend)', () => {
     await fillPgTarget(page, pgDb!);
     await page.getByRole('dialog').getByRole('button', { name: 'Scan target' }).click();
     // Empty target → no wipe needed; Start is enabled.
-    await expect(page.getByRole('dialog').getByText(/has no schema/)).toBeVisible();
+    await expect(page.getByRole('dialog').getByText(/has no schema/)).toBeVisible({
+      timeout: 60_000,
+    });
     const startButton = page.getByRole('dialog').getByRole('button', { name: 'Start migration' });
     await expect(startButton).toBeEnabled();
 

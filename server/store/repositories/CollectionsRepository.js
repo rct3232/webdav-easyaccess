@@ -28,6 +28,9 @@
  * @property {(tx, collectionId, name, lockName?) => Promise<{ changes }>} renameCollection
  * @property {(tx, collectionId, pinned, pinnedBy) => Promise<{ changes }>} updatePin
  * @property {(tx, collectionId) => Promise<{ changes }>} setAutoPin
+ * @property {(tx, collectionId) => Promise<{ changes }>} clearAutoPin
+ *   Pass-6 reconcile: clears an illegal `pinned_by='auto'` (non-system origin
+ *   or a system row whose pin flag is false); user pins untouched.
  * @property {(tx, collectionId, publishMode) => Promise<{ changes }>} updatePublishMode
  * @property {(tx, collectionId) => Promise<{ changes }>} archiveRow
  * @property {(tx, collectionId) => Promise<{ changes }>} restoreRow
@@ -36,6 +39,9 @@
  * // membership (items ∪ derived − exclusions)
  * @property {(collectionId, { since? }) => Promise<Array>} listStoredItems
  * @property {(collectionId, nodeId) => Promise<Object|null>} getStoredItem
+ * @property {(collectionId, since) => Promise<number>} countTrashedMembersSince
+ *   Removed-half digest input: materialized members whose `file_nodes.deleted_at`
+ *   is after `since`.
  * @property {(tx, collectionId, nodeId, addedBy, { published?, source?, reason? }) => Promise<{ changes }>} insertItem
  * @property {(tx, collectionId, nodeId) => Promise<{ changes }>} deleteItem
  * @property {(tx, collectionId, nodeIds, published) => Promise<{ changes }>} setItemPublished
@@ -70,8 +76,11 @@
  * @property {(cutoff) => Promise<{ changes }>} purgeExpiredTombstones
  * @property {(tx, ownerId, defFingerprint) => Promise<{ changes }>} insertTombstone
  * @property {(tx, aId, bId, score) => Promise<Object|null>} upsertMergeSuggestion
- * @property {(collectionIds?) => Promise<Array>} listMergeSuggestions
+ * @property {(collectionIds?, options?) => Promise<Array>} listMergeSuggestions
+ *   `{ state = 'pending' }` filter; evolution reads `dismissed` for cadence.
  * @property {(tx, suggestionId, state) => Promise<{ changes }>} setSuggestionState
+ * @property {(tx, suggestionId, { score }?) => Promise<{ changes }>} reopenMergeSuggestion
+ *   `dismissed → pending`; optionally refreshes the score, preserves dismiss_count.
  *
  * @param {import('../../infrastructure/db/executor').DbExecutor} executor
  * @returns {CollectionsRepository}

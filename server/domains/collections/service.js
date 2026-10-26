@@ -165,14 +165,6 @@ async function loadVisibleCandidates(userId) {
   return nodesById;
 }
 
-function createCandidatesProvider(userId) {
-  let cache = null;
-  return async () => {
-    if (!cache) cache = await loadVisibleCandidates(userId);
-    return cache;
-  };
-}
-
 async function buildProviders(userId) {
   const fileNodesStore = createFileNodesStore();
   const likedNodeIds = new Set(await fileLikesStore.listLikedNodeIds(userId));
@@ -342,42 +334,15 @@ async function canReadNode(userId, nodeId) {
 // ---------------------------------------------------------------------------
 
 /**
- * Compose the raw member pairs for a collection: stored rows (which ignore
- * exclusions) plus derived admissions minus exclusions; a node present in
- * both renders as stored (stored wins the dedup).
+ * Compose the stored member rows for a collection. The read path never
+ * evaluates a definition (D1/D2): `collection_items` is the single membership
+ * state, written by the upload hook and the evolution reconcile pass.
  */
-async function composeMemberRows(userId, collection, getCandidates) {
-  const resolveCandidates = getCandidates || loadVisibleCandidates;
+async function composeMemberRows(userId, collection) {
   const stored = await collectionsStore.listStoredItems(collection.id);
-  const exclusions = new Set(
-    (await collectionsStore.listExclusions(collection.id)).map((nodeId) => Number(nodeId))
-  );
-
   const storedByNodeId = new Map();
   for (const item of stored) storedByNodeId.set(item.nodeId, item);
-
-  const derived = new Map();
-  if (
-    collection.definition &&
-    collection.definition.kind === 'predicate' &&
-    definitionEngine.hasPredicates(collection.definition)
-  ) {
-    const candidates = await resolveCandidates(userId);
-    const providers = await buildProviders(userId);
-    const admitted = await definitionEngine.evaluateDefinition({
-      definition: collection.definition,
-      candidateNodes: [...candidates.values()],
-      nodesById: candidates,
-      providers,
-    });
-    for (const [nodeId, reason] of admitted) {
-      if (exclusions.has(nodeId)) continue;
-      if (storedByNodeId.has(nodeId)) continue;
-      const node = candidates.get(nodeId);
-      derived.set(nodeId, { reason, nodeCreatedAt: node ? node.createdAt : null });
-    }
-  }
-  return { storedByNodeId, derived };
+  return { storedByNodeId };
 }
 
 /**
@@ -385,11 +350,11 @@ async function composeMemberRows(userId, collection, getCandidates) {
  * normal | revoked (null name/type) | trashed hidden | cross-leak omitted.
  * Grantees additionally pass the publish gate.
  */
-async function resolveMemberRows(userId, collection, getCandidates) {
+async function resolveMemberRows(userId, collection) {
   const fileNodesStore = createFileNodesStore();
-  const { storedByNodeId, derived } = await composeMemberRows(userId, collection, getCandidates);
+  const { storedByNodeId } = await composeMemberRows(userId, collection);
 
-  const nodeIds = [...new Set([...storedByNodeId.keys(), ...derived.keys()])];
+  const nodeIds = [...storedByNodeId.keys()];
   const likedSet = new Set(await fileLikesStore.filterLiked(userId, nodeIds));
   const isRequesterOwner = collection.ownerId === userId;
 
@@ -402,22 +367,22 @@ async function resolveMemberRows(userId, collection, getCandidates) {
     const foreign = !(await isOwnerNode(collection.ownerId, nodeId));
     if (!isRequesterOwner && foreign) continue; // cross-leak rule (§3.2/§4.7)
 
-    const published = stored ? Boolean(stored.published) : false;
+    const published = Boolean(stored.published);
     if (!isRequesterOwner && !published) continue; // grantees see published rows only
 
     const readable = await canReadNode(userId, nodeId);
-    const ruleManaged = Boolean(stored && stored.source && stored.source !== 'manual');
+    const ruleManaged = Boolean(stored.source && stored.source !== 'manual');
     rows.push({
       nodeId,
-      membership: stored ? (ruleManaged ? 'derived' : 'stored') : 'derived',
+      membership: ruleManaged ? 'derived' : 'stored',
       published,
-      addedBy: stored ? stored.addedBy : null,
-      createdAt: stored ? stored.createdAt : (derived.get(nodeId)?.nodeCreatedAt ?? null),
+      addedBy: stored.addedBy,
+      createdAt: stored.createdAt,
       state: readable ? 'normal' : 'revoked',
       name: readable ? node.name : null,
       type: readable ? node.type : null,
       mimeType: readable ? (node.mimeType ?? null) : null,
-      reason: stored ? (stored.reason ?? null) : (derived.get(nodeId)?.reason ?? null),
+      reason: stored.reason ?? null,
       sharedExcluded: foreign,
       liked: likedSet.has(nodeId),
     });
@@ -584,7 +549,6 @@ async function listCollections(userId, { sort, include } = {}) {
     rows = await groupBySimilarity(rows);
   }
 
-  const getCandidates = createCandidatesProvider(userId);
   // One batched cursor read for the whole list (ruling 2026-10-01): rows carry
   // the requester-scoped `last_visited_at` — the sidebar new-dot source
   // (dot ⇔ null, never opened; absent map key = null).
@@ -598,7 +562,7 @@ async function listCollections(userId, { sort, include } = {}) {
       if (!grant) continue;
       grantedRole = grant.role;
     }
-    const view = await resolveMemberRows(userId, row, getCandidates);
+    const view = await resolveMemberRows(userId, row);
     collections.push(
       wire.serializeCollection(row, {
         grantedRole,
@@ -888,7 +852,7 @@ async function getItems(userId, collectionId, { since } = {}) {
   }
 
   if (since !== undefined && since !== null && since !== '') {
-    payload.digest = await computeDigest(collection, rows, since);
+    payload.digest = await computeDigest(collection, since);
   }
 
   // the read IS the visit (§4.8) — no separate reset endpoint exists
@@ -896,7 +860,7 @@ async function getItems(userId, collectionId, { since } = {}) {
   return payload;
 }
 
-async function computeDigest(collection, rows, since) {
+async function computeDigest(collection, since) {
   const sinceDate = new Date(since);
   if (Number.isNaN(sinceDate.getTime())) {
     return { added_since: 0, removed_since: 0 };
@@ -914,11 +878,9 @@ async function computeDigest(collection, rows, since) {
     return { added_since: 0, removed_since: 0 };
   }
 
-  let added = storedSince.length;
-  for (const row of rows) {
-    if (row.membership !== 'derived') continue;
-    if (row.createdAt && new Date(row.createdAt).getTime() > sinceTime) added += 1;
-  }
+  // Materialized additions only — `created_at` IS the membership-added time
+  // for every `source` value. The read path never derives rows.
+  const added = storedSince.length;
 
   let removed = 0;
   const journalRows = await actionJournalStore.listBySubject(
@@ -929,6 +891,13 @@ async function computeDigest(collection, rows, since) {
     if (!REMOVAL_JOURNAL_ACTIONS.has(row.action)) continue;
     if (row.createdAt && new Date(row.createdAt).getTime() > sinceTime) removed += 1;
   }
+  // Member nodes trashed after `since` are removals too (row kept by the
+  // render table, absent from the current view). Purged nodes cascade their
+  // membership row away and are covered by the journal removal count above.
+  removed += await collectionsStore.countTrashedMembersSince(
+    collection.id,
+    new Date(sinceTime).toISOString()
+  );
   return { added_since: added, removed_since: removed };
 }
 
@@ -1023,16 +992,13 @@ async function removeItems(userId, collectionId, nodeIds) {
 
 /**
  * P-4 member publish (PUT /:id/items/publish, routes spec). Owner or editor.
- * Classification runs against the RAW membership (stored ∪ derived −
- * exclusions, `composeMemberRows`) — never the grantee-filtered view — so
- * editors can flip stored rows invisible to their own listing. Stored rows
- * flip through the journaled `setItemPublished` (inverse/undo pre-existing);
- * publishing a DERIVED member MATERIALIZES a stored `published=true` marker
- * (journaled `addItems` — membership truth stays derived, the view dedups by
- * node); an unpublish of a derived-only row is already-virtual-false →
- * `ignored`, and non-member ids are `ignored` (this function can never graft
- * a node into membership). `undo.actionId` prefers the flip command, falls
- * back to the materialize command, `null` when nothing mutated.
+ * Classification runs against the RAW materialized membership
+ * (`composeMemberRows`) — never the grantee-filtered view — so editors can
+ * flip stored rows invisible to their own listing. Rows flip through the
+ * journaled `setItemPublished` (inverse/undo pre-existing); ids outside the
+ * materialized membership are `ignored[]` — the read path never derives
+ * membership, so this function can never graft a node in. Publishing a row on
+ * a `system` collection is a user touch → auto-pin.
  */
 async function publishItems(userId, collectionId, nodeIds, published) {
   const parsed = parseNodeIds(nodeIds);
@@ -1040,44 +1006,27 @@ async function publishItems(userId, collectionId, nodeIds, published) {
   const { collection } = await getCollectionForRead(userId, collectionId);
   await requireOwnerOrRole(userId, collection, 'editor');
 
-  const { storedByNodeId, derived } = await composeMemberRows(userId, collection);
+  const { storedByNodeId } = await composeMemberRows(userId, collection);
   const flipIds = [];
-  const materializeIds = [];
   const ignored = [];
   for (const nodeId of parsed) {
     if (storedByNodeId.has(nodeId)) {
       flipIds.push(nodeId);
-    } else if (published && derived.has(nodeId)) {
-      materializeIds.push(nodeId);
     } else {
       ignored.push(nodeId);
     }
   }
 
   let actionId = null;
-  const publishedIds = [];
-  if (materializeIds.length > 0) {
-    const add = await collectionsStore.addItems(
-      collectionId,
-      materializeIds,
-      userId,
-      { published: true, source: collection.origin === 'user' ? 'manual' : collection.origin },
-      { actor: userId }
-    );
-    publishedIds.push(...add.added);
-    ignored.push(...add.alreadyMembers);
-    actionId = add.actionId;
-    await touchSystemAutoPin(collection);
-  }
   if (flipIds.length > 0) {
     const flip = await collectionsStore.setItemPublished(collectionId, flipIds, published, {
       actor: userId,
     });
-    publishedIds.push(...flipIds);
     actionId = flip.actionId;
+    await touchSystemAutoPin(collection);
   }
   return {
-    published: publishedIds,
+    published: flipIds,
     ignored,
     undo: actionId == null ? null : { actionId },
   };
@@ -1471,6 +1420,7 @@ async function dismissMerge(userId, collectionId, otherId) {
     suggestion_id: suggestion.id,
     state: 'dismissed',
     dismissed_at: new Date().toISOString(),
+    dismiss_count: Number(suggestion.dismissCount ?? 0) + 1,
   };
 }
 
@@ -1510,7 +1460,9 @@ async function resolveOwnedPairOrThrow(userId, collectionId, otherId, missingCod
 async function pendingSuggestionForPair(collectionId, otherId) {
   const low = Math.min(collectionId, otherId);
   const high = Math.max(collectionId, otherId);
-  const rows = await collectionsStore.listMergeSuggestions([collectionId, otherId]);
+  const rows = await collectionsStore.listMergeSuggestions([collectionId, otherId], {
+    state: 'pending',
+  });
   return rows.find((row) => row.aId === low && row.bId === high) || null;
 }
 
@@ -1520,48 +1472,10 @@ async function pendingSuggestionForPair(collectionId, otherId) {
 
 async function getForNodes(userId, nodeIds) {
   const parsed = parseNodeIds(nodeIds);
-  const fileNodesStore = createFileNodesStore();
-
-  // point-check candidates: the requested rows plus their live ancestors so
-  // path atoms can resolve display paths without a corpus scan
-  const nodeRows = new Map();
-  for (const nodeId of parsed) {
-    let node = await fileNodesStore.getNode(nodeId);
-    while (node) {
-      nodeRows.set(Number(node.id), node);
-      if (node.parentId == null) break;
-      node = await fileNodesStore.getNode(node.parentId);
-    }
-  }
 
   const byNode = new Map(parsed.map((nodeId) => [nodeId, new Set()]));
   for (const pair of await collectionsStore.listForNodes(userId, parsed)) {
     if (byNode.has(pair.nodeId)) byNode.get(pair.nodeId).add(pair.collectionId);
-  }
-
-  const visibleCollections = await collectionsStore.listForUser(userId, { status: 'active' });
-  for (const collection of visibleCollections) {
-    if (
-      !collection.definition ||
-      collection.definition.kind !== 'predicate' ||
-      !definitionEngine.hasPredicates(collection.definition)
-    ) {
-      continue;
-    }
-    const exclusions = new Set(
-      (await collectionsStore.listExclusions(collection.id)).map((nodeId) => Number(nodeId))
-    );
-    const providers = await buildProviders(userId);
-    const admitted = await definitionEngine.evaluateDefinition({
-      definition: collection.definition,
-      candidateNodes: [...nodeRows.values()],
-      nodesById: nodeRows,
-      providers,
-    });
-    for (const [nodeId] of admitted) {
-      if (exclusions.has(nodeId)) continue;
-      if (byNode.has(nodeId)) byNode.get(nodeId).add(collection.id);
-    }
   }
 
   return {

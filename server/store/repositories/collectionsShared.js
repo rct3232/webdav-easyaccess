@@ -61,6 +61,7 @@ function mapSuggestionRow(row) {
     bId: Number(row.b_id),
     score: Number(row.score),
     state: row.state,
+    dismissCount: Number(row.dismiss_count ?? 0),
     dismissedAt: toIsoString(row.dismissed_at),
     rejectedAt: toIsoString(row.rejected_at),
     arbiterVerdict: row.arbiter_verdict,

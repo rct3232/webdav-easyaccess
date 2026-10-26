@@ -125,6 +125,22 @@ module.exports = function createPostgresCollectionsRepository(executor) {
       }
     },
 
+    async countTrashedMembersSince(collectionId, since) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT COUNT(*) AS n
+           FROM collection_items ci
+           JOIN file_nodes fn ON fn.id = ci.node_id
+           WHERE ci.collection_id = $1 AND fn.deleted_at IS NOT NULL
+             AND fn.deleted_at > $2::timestamptz`,
+          [Number(collectionId), new Date(since).toISOString()]
+        );
+        return Number(rows[0] ? rows[0].n : 0);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async getStoredItem(collectionId, nodeId) {
       try {
         const { rows } = await executor.query(
@@ -352,20 +368,18 @@ module.exports = function createPostgresCollectionsRepository(executor) {
       }
     },
 
-    async listMergeSuggestions(collectionIds) {
+    async listMergeSuggestions(collectionIds, { state = 'pending' } = {}) {
       try {
-        const scoped =
-          Array.isArray(collectionIds) && collectionIds.length > 0
-            ? `AND (a_id IN (${placeholders(collectionIds.length)})
-                    OR b_id IN (${moreParams(collectionIds, collectionIds.length)}))`
-            : '';
-        const params =
-          Array.isArray(collectionIds) && collectionIds.length > 0
-            ? [...collectionIds.map(Number), ...collectionIds.map(Number)]
-            : [];
+        const hasScope = Array.isArray(collectionIds) && collectionIds.length > 0;
+        const scoped = hasScope
+          ? `AND (a_id IN (${moreParams(collectionIds, 1)})
+                  OR b_id IN (${moreParams(collectionIds, 1 + collectionIds.length)}))`
+          : '';
+        const params = [String(state)];
+        if (hasScope) params.push(...collectionIds.map(Number), ...collectionIds.map(Number));
         const { rows } = await executor.query(
           `SELECT * FROM collection_merge_suggestions
-           WHERE state = 'pending' ${scoped}
+           WHERE state = $1 ${scoped}
            ORDER BY created_at DESC, id DESC`,
           params
         );
@@ -427,6 +441,16 @@ module.exports = function createPostgresCollectionsRepository(executor) {
         `UPDATE collections
          SET pinned = TRUE, pinned_by = 'auto', updated_at = NOW()
          WHERE id = $1 AND origin = 'system' AND pinned = FALSE`,
+        [Number(collectionId)]
+      );
+      return { changes: result.changes };
+    },
+
+    async clearAutoPin(tx, collectionId) {
+      const result = await tx.run(
+        `UPDATE collections
+         SET pinned = FALSE, pinned_by = NULL, updated_at = NOW()
+         WHERE id = $1 AND pinned_by = 'auto' AND (origin <> 'system' OR pinned = FALSE)`,
         [Number(collectionId)]
       );
       return { changes: result.changes };
@@ -618,7 +642,7 @@ module.exports = function createPostgresCollectionsRepository(executor) {
 
     async setSuggestionState(tx, suggestionId, state) {
       const stamps = {
-        dismissed: 'dismissed_at = NOW()',
+        dismissed: 'dismissed_at = NOW(), dismiss_count = dismiss_count + 1',
         rejected: 'rejected_at = NOW()',
         merged: null,
       };
@@ -627,6 +651,16 @@ module.exports = function createPostgresCollectionsRepository(executor) {
       const result = await tx.run(
         `UPDATE collection_merge_suggestions SET ${setClause} WHERE id = $1 AND state = 'pending'`,
         [Number(suggestionId), state]
+      );
+      return { changes: result.changes };
+    },
+
+    async reopenMergeSuggestion(tx, suggestionId, { score } = {}) {
+      const result = await tx.run(
+        `UPDATE collection_merge_suggestions
+         SET state = 'pending', score = COALESCE($2, score)
+         WHERE id = $1 AND state = 'dismissed'`,
+        [Number(suggestionId), score ?? null]
       );
       return { changes: result.changes };
     },

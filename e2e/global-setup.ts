@@ -33,11 +33,6 @@ const E2E_S3_ACCESS_KEY = process.env.AWS_ACCESS_KEY_ID || 'minioadmin';
 const E2E_S3_SECRET_KEY = process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin';
 const E2E_S3_BUCKET = process.env.S3_BUCKET || 'e2e-test-bucket';
 
-// Dedicated MinIO bucket for the migration E2E suite. Migration targets blobs at
-// this bucket (its spec passes it to helpers/minio.ts), never the shared
-// platform bucket, so the suite can run concurrently with the s3 platform tests.
-const E2E_MIGRATION_S3_BUCKET = 'e2e-migration-bucket';
-
 const webdavBaseUrl = `${webdavBase}/`;
 const webdavAuth = Buffer.from('e2etest:e2etest123').toString('base64');
 
@@ -348,16 +343,16 @@ export default async function globalSetup() {
   }
 
   // MinIO runs in both modes and both the webdav-mode app (some blob writes)
-  // and the migration E2E target the S3 buckets, so the buckets must exist in
-  // both modes. s3 mode additionally empties the platform bucket for a
-  // deterministic baseline; the dedicated migration bucket is not emptied here
-  // (its spec empties it per case).
+  // and the migration E2E write blobs, so the shared platform bucket must exist
+  // in both modes. s3 mode additionally empties it for a deterministic baseline;
+  // the migration suite's project-scoped destination buckets
+  // (`e2e-migration-<project>`) are created and emptied per case by the suite
+  // itself.
   await waitForMinio(30_000);
   if (backendMode === 's3') {
     await emptyS3Bucket(E2E_S3_BUCKET);
   }
   await ensureS3Bucket(E2E_S3_BUCKET);
-  await ensureS3Bucket(E2E_MIGRATION_S3_BUCKET);
 
   // Fresh data state WITHOUT killing the running server: the seed script
   // TRUNCATEs all app tables (preserving `_schema_migrations` so the schema is

@@ -17,9 +17,10 @@ import { s3Endpoint } from './ports';
  * `e2e/global-setup.ts`.
  *
  * Bucket contract (Option A Phase 1): every helper takes the bucket explicitly
- * so the migration suite can target its DEDICATED `e2e-migration-bucket` and
- * never empty/list the shared `e2e-test-bucket` that the s3-mode platform
- * tests write to — the suites can therefore run concurrently.
+ * so the migration suite can target its project-scoped destination buckets
+ * (`e2e-migration-<project>`) and never empty/list the shared
+ * `e2e-test-bucket` that the s3-mode platform tests write to — the suites can
+ * therefore run concurrently.
  */
 
 const E2E_S3_ENDPOINT = process.env.S3_ENDPOINT || s3Endpoint;
@@ -95,8 +96,8 @@ export async function ensureS3BucketExists(bucket: string): Promise<void> {
 /**
  * Delete every object currently in `bucket`. Used by the migration E2E to give
  * its "no duplicate blobs" assertions a deterministic baseline per case. The
- * migration suite passes its dedicated bucket, so it never empties the shared
- * platform bucket.
+ * migration suite passes its project-scoped destination bucket, so it never
+ * empties the shared platform bucket.
  */
 export async function emptyS3Bucket(bucket: string): Promise<void> {
   const client = getS3Client();

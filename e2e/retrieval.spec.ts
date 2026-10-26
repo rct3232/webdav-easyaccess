@@ -548,8 +548,16 @@ test('E2E-S3-RETRIEVAL-001: Results render as accordion zones with honest header
   // The orbit is the observable pending state; it must be absent for a clean
   // first-Enter contract, so no single-flight submit can swallow the press.
   await expect(page.getByTestId('search-action-glyph-orbit')).toHaveCount(0);
-  // Focus the search input and close any other open menu by clicking the
-  // input itself; this is observable readiness, not a blind wait.
+  // Close the file-action menu when it is open, then focus the input. A menu
+  // can consume the Enter while leaving the searchbox visually active.
+  if (
+    await page
+      .getByRole('menu')
+      .isVisible()
+      .catch(() => false)
+  ) {
+    await page.getByRole('button', { name: 'File actions' }).click();
+  }
   await searchBox(page).click();
   await expect(searchBox(page)).toBeFocused();
   await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible();

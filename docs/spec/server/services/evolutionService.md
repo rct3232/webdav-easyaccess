@@ -63,7 +63,7 @@ Membership is materialized: the pass writes the add/remove diff through the jour
 mode) with `ctx.actor='system'`; the read path never evaluates definitions. Digest/feed
 carry system acts — NO toasts for silent system acts. The `night_eval` report totals
 include `created`, `create_promoted`, `create_suppressed`, `split_created`,
-`split_promoted` and `split_suppressed`.
+`split_promoted`, `split_suppressed` and — full leg — `archived`/`purged`.
 
 The **cheap** leg runs create, reconcile, split and merge-candidates; the **full** leg
 adds archive and purge plus the auto-pin reconcile. Create runs after reconcile, so a
@@ -214,19 +214,34 @@ Journal = create command + note on the parent's digest.
 
 ### 2.6 Pass 3 — archive (uniform, no tier exemptions)
 
-`active ∧ origin='system'` and (activity ≤ ε for N consecutive nightly evals OR members ≈ 0) ⇒ `archiveCollection` (journaled, `actor='system'`). activity = Σ_members w_a of NEW
-usage events in the eval interval (the `node_activity` nightly rollup supplies it) — ε default 0 ⇒ "no positive
-usage for N days". ε/N and the **min-age grace (default 14d: system-origin collections
-younger than 14d are never archived — definition-age is a `node_activity` rollup input)**
-are T2 hot constants (defaults shipped, admin-displayed —
-**tuning values measured via admin counters**; not AI-profile numbers). **SKIPPED for pinned
-collections** (`pinned=true`, whether `pinned_by='user'|'auto'`). **Exclusion rate
-is NEVER an archive trigger** (exclusion = touch ⇒ pin) — it stays a generator-QUALITY
-metric in the admin counters only.
+`runArchivePass(userId)`. Scope: ACTIVE `origin='system'`
+rows owned by the user; runs in the FULL leg only (cheap passes never archive),
+after the auto-pin reconcile so a pin lost between nightlies is honored before
+the gate evaluates. Gate (ε=0, deterministic and idempotent):
+
+- **Skipped for pinned collections** (`pinned=true`, whether `pinned_by='user'|'auto'`).
+- **Min-age grace:** rows younger than `AI_EVOLUTION_MIN_AGE_DAYS` (default 14,
+  measured against the collection's own `created_at`; `0` disables the grace)
+  are never archived — definition-age is the grace window, never a score
+  ingredient.
+- **Activity gate:** members ≈ 0 ⇒ archive; otherwise the row survives while
+  ANY member has positive usage inside the last `AI_EVOLUTION_INACTIVE_DAYS`
+  (default 30). The window is read from the LIFETIME `node_activity.last_seen_at`
+  accumulator column via `usageStore.listNodeActivity(userId, memberIds)` —
+  the 90d raw-event roll-off can never corrupt the gate. No SQL in the
+  service; the pass holds accumulator rows only.
+- **Exclusion rate is NEVER an archive trigger** (exclusion = touch ⇒ pin) —
+  it stays a generator-QUALITY metric in the admin counters only.
+- Tier-uniform: no tier exemptions; the act is journaled via
+  `collectionsStore.archiveCollection` with `actor='system'` and reported in
+  `night_eval` totals as `archived`.
 
 ### 2.7 Pass 4 — purge + tombstone fingerprint
 
-`archived` rows older than `ARCHIVE_RETENTION_DAYS` ⇒
+`runPurgePass(userId)`. Scope: archived `origin='system'`
+rows owned by the user whose `archived_at` is older than
+`ARCHIVE_RETENTION_DAYS` (default 30; `0` disables retention — nothing is
+purged); runs in the FULL leg only, directly after archive. Each act is
 `deleteCollectionPermanent(id, { defFingerprint: fingerprintDefinition(definition) })`
 (FK cascade + tombstone + journal purge in ONE TX — permanent delete-from-archive is unrecoverable, soft-delete parity
 with trash). Tombstone lifetime defaults to `ARCHIVE_RETENTION_DAYS`; EXPIRY CLEANUP
@@ -234,7 +249,7 @@ of tombstones is the nightly rollup GC slot's job (`purgeExpiredTombstones` —
 [maintenanceScheduler](../infrastructure/maintenanceScheduler.md) §3.1; aiJobsStore-style
 "GC calls" attribution), NOT this pass. Fingerprint = NORMALIZED definition (schema +
 core params: θ / path / size — NOT raw centroid values, so trivial member drift
-cannot slip past). Suppression effectiveness is measured, then
+cannot slip past). Counted in the `night_eval` totals as `purged`. Suppression effectiveness is measured, then
 tuned, via admin counters: `tombstone-suppressed` vs `regenerated-anyway`.
 
 ### 2.8 Pass 5 — merge candidates (containment-safe) + arbiter advisory

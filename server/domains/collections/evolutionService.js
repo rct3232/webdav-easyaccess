@@ -21,9 +21,9 @@
  * against the definition's admitted set (adds ← θ_in, removes ← θ_out,
  * hysteresis via the stored member set from collectionsService).
  *
- * As-built scope: create + split + reconcile + merge candidates (cheap+full)
- * and the auto-pin reconcile (full). Archive/purge are later waves; their
- * config keys are registered but unread here.
+ * As-built scope: create + split + reconcile + merge candidates (cheap+full);
+ * the full leg additionally runs the auto-pin reconcile, the archive pass
+ * (§2.6) and the purge pass (§2.7). Cheap passes never archive or purge.
  */
 
 /* eslint-disable no-console -- background pass logging, never throws to callers */
@@ -84,6 +84,20 @@ const MERGE_JACCARD_MIN = 0.7;
 const MERGE_CENTROID_PREFILTER = 0.7;
 const MERGE_DISMISS_FIRST_MS = 14 * 86400000;
 const MERGE_DISMISS_REPEAT_MS = 30 * 86400000;
+
+/**
+ * Archive/purge passes (§2.6/§2.7). The gate is EVENT-based with ε=0: a
+ * system collection survives while ANY member has positive usage inside the
+ * `AI_EVOLUTION_INACTIVE_DAYS` window, read from the lifetime
+ * `node_activity.last_seen_at` column (raw-event retention never corrupts the
+ * gate). Min-age is a grace window on the collection's own `created_at`.
+ * Purge keys on `archived_at` past `ARCHIVE_RETENTION_DAYS` and is
+ * unrecoverable by design (trash-parity, no inverse).
+ */
+const ARCHIVE_INACTIVE_DAYS_DEFAULT = 30;
+const ARCHIVE_MIN_AGE_DAYS_DEFAULT = 14;
+const ARCHIVE_RETENTION_DAYS_DEFAULT = 30;
+const DAY_MS = 86400000;
 /**
  * Upper bound of node ids per journaled item command. Mirrors the API's
  * MAX_NODE_IDS id-list bound so a large reconcile never writes an unbounded
@@ -292,9 +306,23 @@ async function runUserPass(userId, mode = 'cheap') {
     const created = await runCreatePass(userId);
     const split = await runSplitPass(userId);
     const mergeCandidates = await runMergeCandidatePass(userId);
-    // Auto-pin reconcile is nightly-only (§2.9 / §2.3 pass dispatch).
+    // Full-leg-only passes (§2.3): auto-pin reconcile precedes archive so a
+    // pin lost between nightlies is honored before the gate evaluates; cheap
+    // passes never archive or purge.
     const pinned = mode === 'full' ? await reconcileAutoPinUser(userId) : null;
-    return { userId, reconciled, created, split, mergeCandidates, pinned, arbiterCalls: 0 };
+    const archived = mode === 'full' ? await runArchivePass(userId) : null;
+    const purged = mode === 'full' ? await runPurgePass(userId) : null;
+    return {
+      userId,
+      reconciled,
+      created,
+      split,
+      mergeCandidates,
+      pinned,
+      archived,
+      purged,
+      arbiterCalls: 0,
+    };
   } catch (error) {
     console.error(`[evolution] reconcile failed for user ${userId}:`, error.message);
     return { userId, error: error.message };
@@ -338,6 +366,12 @@ async function writeNightEvalReport(passes, perUser) {
       if (entry && entry.pinned) {
         acc.auto_pins_cleared += entry.pinned.cleared ?? 0;
       }
+      if (entry && entry.archived) {
+        acc.archived += entry.archived.archived ?? 0;
+      }
+      if (entry && entry.purged) {
+        acc.purged += entry.purged.purged ?? 0;
+      }
       return acc;
     },
     {
@@ -355,6 +389,8 @@ async function writeNightEvalReport(passes, perUser) {
       split_promoted: 0,
       split_suppressed: 0,
       auto_pins_cleared: 0,
+      archived: 0,
+      purged: 0,
     }
   );
   const payload = { passes, perUser, totals };
@@ -1594,6 +1630,122 @@ async function loadActiveCentroids(collectionIds) {
 }
 
 // ---------------------------------------------------------------------------
+// Pass 3 — archive (§2.6) + Pass 4 — purge (§2.7)
+// ---------------------------------------------------------------------------
+
+function emptyArchiveResult() {
+  return { archived: 0 };
+}
+
+function emptyPurgeResult() {
+  return { purged: 0 };
+}
+
+/**
+ * Archive pass (§2.6). Scope: ACTIVE `origin='system'` rows owned by the
+ * user. Skipped for pinned rows (either `pinned_by` — auto-pin reconcile ran
+ * first in the full leg). Gate (ε=0, event-based):
+ * - min-age grace: rows younger than `AI_EVOLUTION_MIN_AGE_DAYS` are never
+ *   archived (0 disables the grace);
+ * - members ≈ 0 ⇒ archive; otherwise the row survives while ANY member has
+ *   positive activity inside the last `AI_EVOLUTION_INACTIVE_DAYS`, read
+ *   from the lifetime `node_activity.last_seen_at` accumulator column so raw
+ *   `usage_events` retention never corrupts the gate;
+ * - uniform across tiers (no tier exemptions).
+ * The act is journaled `actor='system'` via `collectionsStore.archiveCollection`;
+ * idempotent (the guarded mutator reports `changes: 0` when already archived).
+ *
+ * @param {number} userId
+ * @returns {Promise<{ archived: number }>}
+ */
+async function runArchivePass(userId) {
+  const result = emptyArchiveResult();
+  const ownerId = Number(userId);
+  if (!Number.isInteger(ownerId) || ownerId <= 0) return result;
+
+  const active = (await collectionsStore.listForUser(ownerId, { status: 'active' })).filter(
+    (row) => row.ownerId === ownerId && row.origin === 'system' && !row.pinned
+  );
+  if (active.length === 0) return result;
+
+  const inactiveDays = readPositiveNumber(
+    'AI_EVOLUTION_INACTIVE_DAYS',
+    ARCHIVE_INACTIVE_DAYS_DEFAULT
+  );
+  const minAgeDays = readPositiveNumber('AI_EVOLUTION_MIN_AGE_DAYS', ARCHIVE_MIN_AGE_DAYS_DEFAULT);
+  const now = Date.now();
+
+  for (const collection of active) {
+    const createdAtMs = new Date(collection.createdAt).getTime();
+    if (minAgeDays > 0 && Number.isFinite(createdAtMs) && now - createdAtMs < minAgeDays * DAY_MS) {
+      continue;
+    }
+
+    const memberIds = (await collectionsStore.listStoredItems(collection.id)).map((row) =>
+      Number(row.nodeId)
+    );
+    if (memberIds.length > 0) {
+      const activity = await usageStore.listNodeActivity(ownerId, memberIds);
+      const cutoffMs = now - inactiveDays * DAY_MS;
+      const hasRecentActivity = (activity || []).some(
+        (row) => Number(row.lastSeenAtMs) >= cutoffMs
+      );
+      if (hasRecentActivity) continue;
+    }
+
+    const archived = await collectionsStore.archiveCollection(collection.id, {
+      actor: 'system',
+    });
+    if (archived.changes > 0) result.archived += 1;
+  }
+  return result;
+}
+
+/**
+ * Purge pass (§2.7). Scope: archived `origin='system'` rows whose
+ * `archived_at` is older than `ARCHIVE_RETENTION_DAYS` (0 disables retention
+ * — nothing is purged). Permanent delete (FK cascade + tombstone + journal
+ * purge in ONE TX) carries the NORMALIZED definition fingerprint so a
+ * regenerated same-shape rule is suppressed; `ARCHIVE_RETENTION_DAYS` is the
+ * tombstone lifetime (expiry GC lives in the nightly rollup tail, NOT here).
+ * No inverse exists — permanent delete-from-archive is unrecoverable.
+ *
+ * @param {number} userId
+ * @returns {Promise<{ purged: number }>}
+ */
+async function runPurgePass(userId) {
+  const result = emptyPurgeResult();
+  const ownerId = Number(userId);
+  if (!Number.isInteger(ownerId) || ownerId <= 0) return result;
+
+  const retentionDays = readPositiveNumber(
+    'ARCHIVE_RETENTION_DAYS',
+    ARCHIVE_RETENTION_DAYS_DEFAULT
+  );
+  if (retentionDays <= 0) return result;
+
+  const archived = (await collectionsStore.listArchived(ownerId)).filter(
+    (row) => row.ownerId === ownerId && row.origin === 'system'
+  );
+  if (archived.length === 0) return result;
+
+  const cutoffMs = Date.now() - retentionDays * DAY_MS;
+  for (const collection of archived) {
+    const archivedAtMs = new Date(collection.archivedAt).getTime();
+    if (!Number.isFinite(archivedAtMs) || archivedAtMs >= cutoffMs) continue;
+    const defFingerprint =
+      collection.definition != null
+        ? definitionEngine.fingerprintDefinition(collection.definition)
+        : undefined;
+    const deleted = await collectionsStore.deleteCollectionPermanent(collection.id, {
+      defFingerprint,
+    });
+    if (deleted.changes > 0) result.purged += 1;
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Pass 6 — auto-pin touch-taxonomy reconcile (§2.9)
 // ---------------------------------------------------------------------------
 
@@ -1622,5 +1774,7 @@ module.exports = {
   runEvolutionPass,
   runCreatePass,
   runSplitPass,
+  runArchivePass,
+  runPurgePass,
   __resetEvolutionStateForTests,
 };

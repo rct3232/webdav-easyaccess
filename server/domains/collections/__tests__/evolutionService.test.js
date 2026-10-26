@@ -12,6 +12,8 @@ const embeddingsStore = require('@server/store/embeddingsStore');
 const llmModelsStore = require('@server/store/llmModelsStore');
 const lockManager = require('@server/infrastructure/lockManager');
 const Settings = require('@server/models/Settings');
+const usageStore = require('@server/store/usageStore');
+const definitionEngine = require('@server/domains/collections/definitionEngine');
 const { getSharedResolver } = require('@server/infrastructure/configResolver');
 const composition = require('@server/service/composition');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
@@ -766,5 +768,207 @@ describe('evolutionService auto-pin reconcile (§2.9 pass 6)', () => {
     });
     expect(result.perUser[0].pinned).toEqual({ cleared: 1 });
     expect((await collectionsStore.getCollection(system.id)).pinnedBy).toBeNull();
+  });
+});
+
+describe('evolutionService archive + purge (§2.6/§2.7)', () => {
+  async function addMember(ctx, collectionId, nodeId) {
+    await collectionsStore.addItem(collectionId, nodeId, ctx.user.id, {
+      source: 'manual',
+      published: true,
+    });
+  }
+
+  async function setNodeActivity(ctx, nodeId, { score, lastSeenAtMs, updatedAtMs }) {
+    await usageStore.upsertNodeActivity([
+      {
+        userId: ctx.user.id,
+        nodeId,
+        counts: { open: 0, download: 0, preview: 0, search_hit: 0, like: 0 },
+        lastSeenAtMs,
+        score,
+        updatedAtMs,
+      },
+    ]);
+  }
+
+  async function ageCollection(collectionId, { daysAgoCreated, daysAgoArchived } = {}) {
+    if (daysAgoCreated !== undefined) {
+      const created = new Date(Date.now() - daysAgoCreated * DAY_OF_MS).toISOString();
+      await dbQuery('UPDATE collections SET created_at = ? WHERE id = ?', [created, collectionId]);
+    }
+    if (daysAgoArchived !== undefined) {
+      const archived = new Date(Date.now() - daysAgoArchived * DAY_OF_MS).toISOString();
+      await dbQuery('UPDATE collections SET archived_at = ? WHERE id = ?', [
+        archived,
+        collectionId,
+      ]);
+    }
+  }
+
+  it('archives an inactive system row (no positive member activity inside the window)', async () => {
+    const ctx = await createUserWithRoot('archive-inactive');
+    const file = await fileNodeService.createFile(ctx.root.id, 'old.png');
+    const collection = await createSystemCollection(ctx, { name: 'Inactive' });
+    await addMember(ctx, collection.id, file.id);
+    await ageCollection(collection.id, { daysAgoCreated: 30 });
+    await setNodeActivity(ctx, file.id, {
+      score: 2,
+      lastSeenAtMs: Date.now() - 40 * DAY_OF_MS,
+      updatedAtMs: Date.now() - 40 * DAY_OF_MS,
+    });
+
+    const result = await evolutionService.runArchivePass(ctx.user.id);
+    expect(result).toEqual({ archived: 1 });
+    expect((await collectionsStore.getCollection(collection.id)).status).toBe('archived');
+    expect(await journalCount(collection.id, 'archive')).toBe(1);
+    // idempotent re-run
+    expect(await evolutionService.runArchivePass(ctx.user.id)).toEqual({ archived: 0 });
+  });
+
+  it('keeps a row with positive member activity inside the window', async () => {
+    const ctx = await createUserWithRoot('archive-active');
+    const file = await fileNodeService.createFile(ctx.root.id, 'hot.png');
+    const collection = await createSystemCollection(ctx, { name: 'Active' });
+    await addMember(ctx, collection.id, file.id);
+    await ageCollection(collection.id, { daysAgoCreated: 30 });
+    await setNodeActivity(ctx, file.id, {
+      score: 5,
+      lastSeenAtMs: Date.now() - 5 * DAY_OF_MS,
+      updatedAtMs: Date.now() - 5 * DAY_OF_MS,
+    });
+
+    expect(await evolutionService.runArchivePass(ctx.user.id)).toEqual({ archived: 0 });
+    expect((await collectionsStore.getCollection(collection.id)).status).toBe('active');
+  });
+
+  it('archives an empty-member row and skips pinned rows (user or auto)', async () => {
+    const ctx = await createUserWithRoot('archive-empty');
+    const empty = await createSystemCollection(ctx, { name: 'Empty' });
+    await ageCollection(empty.id, { daysAgoCreated: 30 });
+
+    const pinnedUser = await createSystemCollection(ctx, { name: 'Pinned user' });
+    await ageCollection(pinnedUser.id, { daysAgoCreated: 30 });
+    await collectionsStore.setPinned(pinnedUser.id, true, { actor: 'system' });
+
+    const pinnedAuto = await createSystemCollection(ctx, { name: 'Pinned auto' });
+    await ageCollection(pinnedAuto.id, { daysAgoCreated: 30 });
+    await dbQuery("UPDATE collections SET pinned = 1, pinned_by = 'auto' WHERE id = ?", [
+      pinnedAuto.id,
+    ]);
+
+    const result = await evolutionService.runArchivePass(ctx.user.id);
+    expect(result).toEqual({ archived: 1 });
+    expect((await collectionsStore.getCollection(empty.id)).status).toBe('archived');
+    expect((await collectionsStore.getCollection(pinnedUser.id)).status).toBe('active');
+    expect((await collectionsStore.getCollection(pinnedAuto.id)).status).toBe('active');
+  });
+
+  it('honors the min-age grace and applies the gate uniformly across tiers', async () => {
+    await setConfig('AI_EVOLUTION_MIN_AGE_DAYS', '14');
+    const ctx = await createUserWithRoot('archive-age');
+    const young = await createSystemCollection(ctx, {
+      name: 'Young loose',
+      definition: {
+        kind: 'centroid',
+        centroid_ref: null,
+        theta: 0.72,
+        tier: 'loose',
+        event_class: 'root',
+      },
+    });
+    const oldTight = await createSystemCollection(ctx, {
+      name: 'Old tight',
+      definition: {
+        kind: 'centroid',
+        centroid_ref: null,
+        theta: 0.82,
+        tier: 'tight',
+        event_class: 'root',
+      },
+    });
+    await ageCollection(young.id, { daysAgoCreated: 5 });
+    await ageCollection(oldTight.id, { daysAgoCreated: 20 });
+
+    expect(await evolutionService.runArchivePass(ctx.user.id)).toEqual({ archived: 1 });
+    expect((await collectionsStore.getCollection(young.id)).status).toBe('active');
+    expect((await collectionsStore.getCollection(oldTight.id)).status).toBe('archived');
+  });
+
+  it('never archives user/seed/search rows', async () => {
+    const ctx = await createUserWithRoot('archive-origins');
+    const userRow = await collectionsService.createCollection(ctx.user.id, { name: 'Manual' });
+    await ageCollection(userRow.collection.id, { daysAgoCreated: 30 });
+    for (const origin of ['seed', 'search']) {
+      await dbQuery(
+        "INSERT INTO collections (owner_id, name, origin, publish_mode, created_at, updated_at) VALUES (?, ?, ?, 'ask', ?, ?)",
+        [
+          ctx.user.id,
+          `Non ${origin}`,
+          origin,
+          new Date(Date.now() - 30 * DAY_OF_MS).toISOString(),
+          new Date().toISOString(),
+        ]
+      );
+    }
+    expect(await evolutionService.runArchivePass(ctx.user.id)).toEqual({ archived: 0 });
+    const rows = await dbQuery(
+      "SELECT status FROM collections WHERE owner_id = ? AND origin IN ('user','seed','search')",
+      [ctx.user.id]
+    );
+    for (const row of rows.rows) expect(row.status).toBe('active');
+  });
+
+  it('purges archived system rows past retention with tombstone + journal purge; never user/seed/search', async () => {
+    await setConfig('ARCHIVE_RETENTION_DAYS', '30');
+    const ctx = await createUserWithRoot('purge');
+    const definition = { kind: 'predicate', any_of: [{ type: 'path', value: '/gone' }] };
+    const stale = await createSystemCollection(ctx, { name: 'Stale', definition });
+    const fresh = await createSystemCollection(ctx, { name: 'Fresh', definition });
+    const userRow = await collectionsService.createCollection(ctx.user.id, { name: 'Manual' });
+    await collectionsStore.archiveCollection(stale.id, { actor: 'system' });
+    await collectionsStore.archiveCollection(fresh.id, { actor: 'system' });
+    await collectionsStore.archiveCollection(userRow.collection.id, { actor: ctx.user.id });
+    await ageCollection(stale.id, { daysAgoArchived: 40 });
+    await ageCollection(fresh.id, { daysAgoArchived: 5 });
+    await ageCollection(userRow.collection.id, { daysAgoArchived: 40 });
+    expect(await journalCount(stale.id, 'archive')).toBeGreaterThan(0);
+
+    const fingerprint = definitionEngine.fingerprintDefinition(definition);
+    expect(await collectionsStore.isTombstoned(ctx.user.id, fingerprint)).toBe(false);
+
+    expect(await evolutionService.runPurgePass(ctx.user.id)).toEqual({ purged: 1 });
+    expect(await collectionsStore.getCollection(stale.id)).toBeNull();
+    expect((await collectionsStore.getCollection(fresh.id)).status).toBe('archived');
+    expect((await collectionsStore.getCollection(userRow.collection.id)).status).toBe('archived');
+    expect(await collectionsStore.isTombstoned(ctx.user.id, fingerprint)).toBe(true);
+    expect(await journalCount(stale.id, 'archive')).toBe(0);
+    // idempotent
+    expect(await evolutionService.runPurgePass(ctx.user.id)).toEqual({ purged: 0 });
+  });
+
+  it('full leg runs archive + purge and reports the counts; cheap leg never acts', async () => {
+    const ctx = await createUserWithRoot('archive-dispatch');
+    const stale = await createSystemCollection(ctx, { name: 'Stale full' });
+    await ageCollection(stale.id, { daysAgoCreated: 30 });
+    await collectionsStore.archiveCollection(stale.id, { actor: 'system' });
+    await ageCollection(stale.id, { daysAgoArchived: 40 });
+
+    const cheap = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'cheap',
+    });
+    expect(cheap.perUser[0].archived).toBeNull();
+    expect(cheap.perUser[0].purged).toBeNull();
+    expect(await collectionsStore.getCollection(stale.id)).not.toBeNull();
+
+    const full = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'full',
+    });
+    expect(full.perUser[0].archived).toEqual({ archived: 0 });
+    expect(full.perUser[0].purged).toEqual({ purged: 1 });
+    expect(full.report.totals.purged).toBe(1);
+    expect(await collectionsStore.getCollection(stale.id)).toBeNull();
   });
 });

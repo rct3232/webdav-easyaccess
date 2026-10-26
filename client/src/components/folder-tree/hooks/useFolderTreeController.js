@@ -6,6 +6,14 @@ import explorerGateway from '../../../services/explorerGateway';
 
 const EMPTY_ANCESTORS = [];
 
+/**
+ * True for the `__collections__` virtual root and every child route (list,
+ * archive, liked, member). Route-state helper for the section auto-expand
+ * contract — exported for unit coverage.
+ */
+export const isCollectionsRoute = (path) =>
+  path === '/__collections__' || (path || '').startsWith('/__collections__/');
+
 const useFolderTreeController = ({
   currentNodeId,
   currentPath = '',
@@ -21,7 +29,11 @@ const useFolderTreeController = ({
   const [recentExpanded, setRecentExpanded] = useState(false);
   // -- AI-platform §3: __collections__ section state (flat depth-1 rows only).
   const [collectionsTreeRows, setCollectionsTreeRows] = useState([]);
-  const [collectionsExpanded, setCollectionsExpanded] = useState(false);
+  // Route-driven initial state: a remount on a collections route starts
+  // expanded (an undo/notifier refresh must never collapse the section).
+  const [collectionsExpanded, setCollectionsExpanded] = useState(() =>
+    isCollectionsRoute(currentPath)
+  );
 
   const homeNodeId = user?.is_admin ? null : (user?.rootNodeId ?? null);
 
@@ -142,10 +154,20 @@ const useFolderTreeController = ({
     if (currentPath === '/__recent__') {
       setRecentExpanded(true);
     }
-    if (currentPath === '/__collections__' || (currentPath || '').startsWith('/__collections__/')) {
-      setCollectionsExpanded(true);
-    }
   }, [currentNodeId, currentPath, homeNodeId, chain, sharedFolders]);
+
+  // Collections route auto-expand: entering a collections route (including a
+  // move between collection children) expands the section. A manual collapse on
+  // an unchanged route is never overridden, and notifier row refreshes do not
+  // participate in this effect.
+  const previousCollectionsPathRef = useRef(currentPath);
+  useEffect(() => {
+    const previousPath = previousCollectionsPathRef.current;
+    previousCollectionsPathRef.current = currentPath;
+    if (previousPath === currentPath) return;
+    if (!isCollectionsRoute(currentPath)) return;
+    setCollectionsExpanded(true);
+  }, [currentPath]);
 
   const onToggleExpand = useCallback((nodeId) => {
     setExpandedNodeIds((prev) => {

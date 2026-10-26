@@ -76,3 +76,42 @@ Close the remaining valid audit findings:
 - Global non-scratch expect timeout is reduced toward the 15s baseline while
   scratch boot/restart suites keep explicit budgets.
 - Full default/core/WebDAV, release variants, server/client/PG/vector pass.
+
+## 6. Execution status
+
+Completed on `refactor/e2e-suite-restructure`.
+
+- **F-D1**: `TESTING_STRATEGY.md` and `TEST_GIT_GUIDE.md` remain generic;
+  concrete suite/case/project details and the historical 166 collected / 160
+  executed WebDAV matrix live in `E2E_COVERAGE_PLAN.md`.
+- **F-P1 / F-E1**: `CollectionsSection` exposes `aria-expanded` and
+  `aria-controls`; the controller auto-expands the collections route on
+  mount/route transition, preserves an explicit manual collapse, and keeps the
+  state through notifier refreshes. Desktop and mobile COLLECTION-018 assert
+  the same expanded toggle and restored row after undo; mobile only opens the
+  drawer and never re-clicks the Collections toggle.
+- **F-G1**: default, core, WebDAV, and combined release commands run with zero
+  retries and fail on flaky tests. The skip-budget reporter enforces the
+  documented 6/3/0 expected-skip counts on passing runs. Ambient
+  `WEA_DB_*`/`S3_*`/`AWS_*`/`WEA_FILE_STORAGE`/`WEBDAV_*` overrides are
+  rejected unless `E2E_ALLOW_AMBIENT_ENV=1`. The global 90s test / 15s expect
+  baseline is restored; scratch boot/restart/state-heavy cases retain explicit
+  60/180/240/300s budgets.
+- **F-C1**: the retired trash-ID comment, per-project bucket comments, and the
+  unused global migration bucket are gone; MIG-004 documents the deliberate
+  duplicate-start `409` with the same `jobId` without a POST retry.
+- A final core-release pass exposed an admin settings race: a late initial
+  `GET /api/admin/settings` could overwrite the user's registration toggle.
+  `SystemSettingsContent` now ignores that late payload after the user has
+  touched the switch; a focused client regression test and the desktop/mobile
+  registration cases cover it.
+- **F-V2**: default release 240 passed / 6 skipped; core release 140 passed /
+  3 skipped; WebDAV release 41 passed / 0 skipped. The default release predates
+  the final registration late-load fix; the fix is covered by the final core
+  release and the targeted desktop/mobile registration cases. Client: 183
+  suites / 2,110 tests. Server, PG adapters, and pgvector were unchanged by
+  this follow-up: 175 suites / 3,002 tests, 440 passed / 1 skipped, and 22/22.
+  Prettier and the generic-doc grep are clean. Four-worker runs remain capacity
+  validation only; no fixed worker cap or slot pool was added.
+- The merged worktrees and feature branches were removed. No merge to `dev` or
+  `main` was performed.

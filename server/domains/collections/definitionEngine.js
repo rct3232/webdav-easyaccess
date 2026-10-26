@@ -122,12 +122,24 @@ function parseDefinition(definition) {
   };
   const { kind } = definition;
   if (kind === 'seed_vector' || kind === 'centroid') {
-    const ref = Number(
-      kind === 'seed_vector'
-        ? (definition.seed_ref ?? definition.seedRef)
-        : (definition.centroid_ref ?? definition.centroidRef)
-    );
-    if (!Number.isInteger(ref) || ref <= 0) throw serviceError('invalidDefinition', 400);
+    if (kind === 'seed_vector') {
+      const ref = Number(definition.seed_ref ?? definition.seedRef);
+      if (!Number.isInteger(ref) || ref <= 0) throw serviceError('invalidDefinition', 400);
+    } else {
+      // `centroid_ref: null` is the OWNING collection's own centroid row
+      // (system cluster definition, collectionsService.md §2.3). An explicit
+      // reference must still be a positive id; the caller resolves self
+      // references with the collection id it is evaluating.
+      const rawRef = definition.centroid_ref ?? definition.centroidRef;
+      const hasRefKey =
+        Object.prototype.hasOwnProperty.call(definition, 'centroid_ref') ||
+        Object.prototype.hasOwnProperty.call(definition, 'centroidRef');
+      if (!hasRefKey) throw serviceError('invalidDefinition', 400);
+      if (rawRef !== null && rawRef !== undefined) {
+        const ref = Number(rawRef);
+        if (!Number.isInteger(ref) || ref <= 0) throw serviceError('invalidDefinition', 400);
+      }
+    }
     const theta = Number(definition.theta);
     if (!Number.isFinite(theta)) throw serviceError('invalidDefinition', 400);
     const vector = { ...definition, theta };

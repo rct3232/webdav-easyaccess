@@ -39,6 +39,25 @@ describe('definitionEngine vector membership', () => {
     expect(engine.hasDefinition(seedDefinition)).toBe(true);
   });
 
+  it('accepts centroid_ref null as the owning collection self reference', () => {
+    const parsed = engine.parseDefinition({
+      kind: 'centroid',
+      centroid_ref: null,
+      theta: 0.8,
+      tier: 'mid',
+    });
+    expect(parsed.kind).toBe('centroid');
+    expect(parsed.vector).toMatchObject({
+      kind: 'centroid',
+      centroid_ref: null,
+      theta: 0.8,
+      tier: 'mid',
+    });
+    expect(() => engine.parseDefinition({ kind: 'centroid', theta: 0.8 })).toThrow(
+      'invalidDefinition'
+    );
+  });
+
   it('admits non-members at theta_in and keeps previous members at theta_out', async () => {
     const scores = new Map([
       [2, 0.9],

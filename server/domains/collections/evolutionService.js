@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * evolutionService — silent evolution triggers + the reconcile pass
- * (docs/spec/server/services/evolutionService.md §2.2/§2.3/§2.4-bis).
+ * evolutionService — silent evolution triggers + the create/reconcile passes
+ * (docs/spec/server/services/evolutionService.md §2.2/§2.3/§2.4/§2.4-bis).
  *
  * Trigger surface:
  * - `armUploadTrigger(userId, { immediate })` is the ONLY upload-commit hook.
@@ -21,22 +21,47 @@
  * against the definition's admitted set (adds ← θ_in, removes ← θ_out,
  * hysteresis via the stored member set from collectionsService).
  *
- * As-built scope: reconcile (cheap+full), merge candidates (cheap+full) and
- * the auto-pin reconcile (full). Create/split/archive/purge are later waves;
- * their config keys are registered but unread here.
+ * As-built scope: create + reconcile + merge candidates (cheap+full) and the
+ * auto-pin reconcile (full). Split/archive/purge are later waves; their config
+ * keys are registered but unread here.
  */
 
 /* eslint-disable no-console -- background pass logging, never throws to callers */
 
 const collectionsStore = require('../../store/collectionsStore');
 const userStore = require('../../store/userStore');
+const embeddingsStore = require('../../store/embeddingsStore');
+const llmModelsStore = require('../../store/llmModelsStore');
+const fileLikesStore = require('../../store/fileLikesStore');
+const aiTagStore = require('../../store/aiTagStore');
+const { createFileNodesStore } = require('../../store/fileNodesStore');
+const permissionStore = require('../../domains/permissions/stores/permissionStore');
 const lockManager = require('../../infrastructure/lockManager');
+const { getPresetByFamilyRole } = require('../../infrastructure/adapters/llm/presets');
 const definitionEngine = require('./definitionEngine');
+const { createNamer } = require('./namingService');
 
 const DEFAULT_DEBOUNCE_S = 90;
 const USER_LOCK_PREFIX = 'evolution:user:';
 const USER_LOCK_TTL_MS = 5 * 60 * 1000;
 const DISABLED_VALUES = ['false', '0', 'off', 'no', 'disabled'];
+/**
+ * Create pass (evolutionService.md §2.4): product gates + per-model profile
+ * tiers. Tier edge cosines come from `profile.edgeCos`; the literals are the
+ * documented fallbacks for a profile without finite values.
+ */
+const CREATE_MIN_MEMBERS = 8;
+const CREATE_K = 6;
+const CREATE_PERSISTENCE_DAYS = 14;
+const CREATE_ACTIVE_LIMIT = 12;
+const CREATE_SIZE_CAPS = { tight: 120, mid: 120, loose: 500 };
+const CREATE_JACCARD_MIN = 0.8;
+const CREATE_PATH_PURITY_MIN = 0.8;
+const CREATE_LIKE_DENSITY_MIN = 0.5;
+const CREATE_TIER_DEFAULTS = { tight: 0.82, mid: 0.8, loose: 0.72 };
+const CREATE_TIERS = ['tight', 'mid', 'loose'];
+const CREATE_TAG_SCAN_LIMIT = 50;
+
 /**
  * Merge-candidate pass (§2.8): materialized-set geometry. `sizeRatio` and
  * Jaccard are both product rules; centroid cosine is only an advisory
@@ -253,10 +278,11 @@ async function runUserPass(userId, mode = 'cheap') {
   }
   try {
     const reconciled = await reconcileUser(userId);
+    const created = await runCreatePass(userId);
     const mergeCandidates = await runMergeCandidatePass(userId);
     // Auto-pin reconcile is nightly-only (§2.9 / §2.3 pass dispatch).
     const pinned = mode === 'full' ? await reconcileAutoPinUser(userId) : null;
-    return { userId, reconciled, mergeCandidates, pinned, arbiterCalls: 0 };
+    return { userId, reconciled, created, mergeCandidates, pinned, arbiterCalls: 0 };
   } catch (error) {
     console.error(`[evolution] reconcile failed for user ${userId}:`, error.message);
     return { userId, error: error.message };
@@ -283,6 +309,11 @@ async function writeNightEvalReport(passes, perUser) {
         acc.removed += entry.reconciled.removed;
         acc.collections += entry.reconciled.collections;
       }
+      if (entry && entry.created) {
+        acc.created += entry.created.created.length;
+        acc.create_promoted += entry.created.promoted;
+        acc.create_suppressed += entry.created.suppressed;
+      }
       if (entry && entry.mergeCandidates) {
         acc.merge_suggested += entry.mergeCandidates.suggested ?? 0;
         acc.merge_reopened += entry.mergeCandidates.reopened ?? 0;
@@ -298,6 +329,9 @@ async function writeNightEvalReport(passes, perUser) {
       added: 0,
       removed: 0,
       collections: 0,
+      created: 0,
+      create_promoted: 0,
+      create_suppressed: 0,
       merge_suggested: 0,
       merge_reopened: 0,
       auto_pins_cleared: 0,
@@ -393,6 +427,694 @@ async function reconcileCollection({ evaluateDefinitionMembership }, userId, col
   }
 
   return { added, removed };
+}
+
+// ---------------------------------------------------------------------------
+// Pass 1 — create (multi-tier mutual-kNN + facets, LLM-free candidates)
+// ---------------------------------------------------------------------------
+
+function emptyCreateResult() {
+  return { created: [], promoted: 0, suppressed: 0 };
+}
+
+function createEnabled() {
+  return evolutionEnabled() && readFlag('AI_EVOLUTION_CREATE_ENABLED', true);
+}
+
+function createRateDays() {
+  return readPositiveNumber('AI_EVOLUTION_CREATE_RATE_DAYS', 7);
+}
+
+function parseEmbeddingVector(value) {
+  if (Array.isArray(value)) {
+    const out = value.map(Number);
+    return out.length > 0 && out.every((n) => Number.isFinite(n)) ? out : null;
+  }
+  if (typeof value !== 'string' || value.length === 0) return null;
+  const out = value.split(',').map(Number);
+  return out.length > 0 && out.every((n) => Number.isFinite(n)) ? out : null;
+}
+
+/** Per-tier edge cosines from the ACTIVE model preset; finite values win. */
+function resolveTierThresholds(model) {
+  const preset = getPresetByFamilyRole(model.provider, 'embed');
+  const profileEdge = preset && preset.profile && preset.profile.edgeCos;
+  const thresholds = {};
+  for (const tier of CREATE_TIERS) {
+    const raw = profileEdge ? Number(profileEdge[tier]) : NaN;
+    thresholds[tier] = Number.isFinite(raw) && raw > 0 ? raw : CREATE_TIER_DEFAULTS[tier];
+  }
+  return thresholds;
+}
+
+/**
+ * Requester-visible node map: own-root subtree + path/point grants (the
+ * collectionsService §2.3 candidate rule). Directories are retained so path
+ * facets and event classes can resolve ancestors.
+ */
+async function loadVisibleNodeMap(userId) {
+  const fileNodesStore = createFileNodesStore();
+  const nodesById = new Map();
+  const root = await fileNodesStore.getUserRootNode(userId);
+  if (root) {
+    nodesById.set(Number(root.id), root);
+    for (const row of (await fileNodesStore.getDescendants(root.id)) || []) {
+      nodesById.set(Number(row.id), row);
+    }
+  }
+  const grants = await permissionStore.getUserPermissions(userId);
+  for (const grant of grants || []) {
+    const nodeId = Number(grant.file_node_id);
+    if (!nodeId) continue;
+    if (grant.type === 'path') {
+      const folder = await fileNodesStore.getNode(nodeId);
+      if (!folder) continue;
+      nodesById.set(Number(folder.id), folder);
+      for (const row of (await fileNodesStore.getDescendants(folder.id)) || []) {
+        nodesById.set(Number(row.id), row);
+      }
+    } else {
+      const node = await fileNodesStore.getNode(nodeId);
+      if (node) nodesById.set(Number(node.id), node);
+    }
+  }
+  return { fileNodesStore, nodesById, root };
+}
+
+/**
+ * Pooled corpus of the active model intersected with the requester-visible
+ * live file set. `contentHash` comes from the pooled row, with `filecache` as
+ * the fallback for rows enqueued before the hash backfill.
+ */
+async function loadPooledCorpus(userId, modelId) {
+  const { fileNodesStore, nodesById, root } = await loadVisibleNodeMap(userId);
+  const rows = await embeddingsStore.listAll(modelId);
+  const entries = [];
+  for (const row of rows || []) {
+    const nodeId = Number(row.nodeId);
+    const node = nodesById.get(nodeId);
+    if (!node || node.type !== 'file' || node.deletedAt) continue;
+    const vector = parseEmbeddingVector(row.vector);
+    if (!vector) continue;
+    entries.push({
+      nodeId,
+      node,
+      vector,
+      contentHash: row.contentHash ? String(row.contentHash) : null,
+    });
+  }
+  entries.sort((a, b) => a.nodeId - b.nodeId);
+  for (const entry of entries) {
+    if (entry.contentHash) continue;
+    const cache = await fileNodesStore.getCache(entry.nodeId);
+    const hash = cache && cache.content_hash != null ? String(cache.content_hash) : '';
+    entry.contentHash = hash || null;
+  }
+  return { nodesById, root, entries };
+}
+
+/**
+ * content_hash dedup pre-pass: identical-content twins never join a cluster.
+ * NULL hashes pass through; a non-null group keeps its lowest node id as the
+ * deterministic representative.
+ */
+function dedupeContentTwins(entries) {
+  const byHash = new Map();
+  for (const entry of entries) {
+    if (!entry.contentHash) continue;
+    if (!byHash.has(entry.contentHash)) byHash.set(entry.contentHash, []);
+    byHash.get(entry.contentHash).push(entry);
+  }
+  const twins = new Set();
+  for (const group of byHash.values()) {
+    if (group.length < 2) continue;
+    group.sort((a, b) => a.nodeId - b.nodeId);
+    for (let i = 1; i < group.length; i += 1) twins.add(group[i].nodeId);
+  }
+  return entries.filter((entry) => !twins.has(entry.nodeId));
+}
+
+function jaccardSets(a, b) {
+  if (a.size === 0 || b.size === 0) return 0;
+  let intersection = 0;
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  for (const id of small) if (large.has(id)) intersection += 1;
+  return intersection / (a.size + b.size - intersection);
+}
+
+function nodePath(node, nodesById) {
+  const segments = [];
+  let current = node;
+  const seen = new Set();
+  while (current && !seen.has(Number(current.id))) {
+    seen.add(Number(current.id));
+    segments.unshift(String(current.name));
+    current = current.parentId == null ? null : nodesById.get(Number(current.parentId));
+  }
+  return `/${segments.join('/')}`;
+}
+
+/** Dominant top-level directory beneath the user root (loose-tier identity). */
+function eventClassFor(node, nodesById, rootId) {
+  if (!node || node.parentId == null) return 'root';
+  const topLevel = (row) => {
+    if (!row || Number(row.id) === Number(rootId)) return 'root';
+    return String(row.name).trim().toLowerCase() || 'root';
+  };
+  if (Number(node.parentId) === Number(rootId)) {
+    return node.type === 'directory' ? topLevel(node) : 'root';
+  }
+  let current = node;
+  const seen = new Set();
+  while (current && current.parentId != null && !seen.has(Number(current.id))) {
+    seen.add(Number(current.id));
+    if (Number(current.parentId) === Number(rootId)) return topLevel(current);
+    current = nodesById.get(Number(current.parentId));
+  }
+  return 'root';
+}
+
+function dominantEventClass(memberIds, entriesByNodeId, nodesById, rootId) {
+  const counts = new Map();
+  for (const nodeId of memberIds) {
+    const entry = entriesByNodeId.get(nodeId);
+    if (!entry) continue;
+    const eventClass = eventClassFor(entry.node, nodesById, rootId);
+    counts.set(eventClass, (counts.get(eventClass) || 0) + 1);
+  }
+  let best = 'root';
+  let bestCount = -1;
+  for (const [eventClass, count] of counts) {
+    if (count > bestCount || (count === bestCount && eventClass < best)) {
+      best = eventClass;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+function systemDefinition(tier, theta, eventClass) {
+  return {
+    kind: 'centroid',
+    centroid_ref: null,
+    theta,
+    tier,
+    event_class: eventClass,
+  };
+}
+
+/** Pairwise pooled cosine adjacency, kept only at/above the loosest tier. */
+function buildNeighborScores(entries, minThreshold) {
+  const byNode = new Map(entries.map((entry) => [entry.nodeId, []]));
+  for (let i = 0; i < entries.length; i += 1) {
+    for (let j = i + 1; j < entries.length; j += 1) {
+      const a = entries[i];
+      const b = entries[j];
+      const score = definitionEngine.cosineSimilarity(a.vector, b.vector);
+      if (score == null || score < minThreshold) continue;
+      byNode.get(a.nodeId).push({ nodeId: b.nodeId, score });
+      byNode.get(b.nodeId).push({ nodeId: a.nodeId, score });
+    }
+  }
+  return byNode;
+}
+
+/**
+ * One tier's components over either-side top-k edges. Mutual-kNN means an edge
+ * survives when at least one endpoint ranks the other inside its k nearest
+ * above the tier threshold — connected components must not chain arbitrary
+ * cosine chains (only local neighborhoods bind them).
+ */
+function tierComponents(entries, neighborScores, threshold, k) {
+  const parent = new Map(entries.map((entry) => [entry.nodeId, entry.nodeId]));
+  const find = (id) => {
+    let current = id;
+    while (parent.get(current) !== current) {
+      parent.set(current, parent.get(parent.get(current)));
+      current = parent.get(current);
+    }
+    return current;
+  };
+  const union = (a, b) => {
+    const rootA = find(a);
+    const rootB = find(b);
+    if (rootA !== rootB) parent.set(rootB, rootA);
+  };
+
+  for (const entry of entries) {
+    const neighbors = (neighborScores.get(entry.nodeId) || [])
+      .filter((neighbor) => neighbor.score >= threshold)
+      .sort((a, b) => (a.score !== b.score ? b.score - a.score : a.nodeId - b.nodeId))
+      .slice(0, k);
+    for (const neighbor of neighbors) union(entry.nodeId, neighbor.nodeId);
+  }
+
+  const components = new Map();
+  for (const entry of entries) {
+    const root = find(entry.nodeId);
+    if (!components.has(root)) components.set(root, []);
+    components.get(root).push(entry.nodeId);
+  }
+  return [...components.values()]
+    .filter((memberIds) => memberIds.length > 1)
+    .map((memberIds) => memberIds.sort((a, b) => a - b));
+}
+
+function buildEmbeddingCandidates(entries, nodesById, root, thresholds) {
+  const entriesByNodeId = new Map(entries.map((entry) => [entry.nodeId, entry]));
+  const minThreshold = Math.min(...CREATE_TIERS.map((tier) => thresholds[tier]));
+  const neighborScores = buildNeighborScores(entries, minThreshold);
+  const selected = [];
+  const seenSets = [];
+  let deduped = 0;
+
+  for (const tier of CREATE_TIERS) {
+    const components = tierComponents(entries, neighborScores, thresholds[tier], CREATE_K).sort(
+      (a, b) => (b.length !== a.length ? b.length - a.length : a[0] - b[0])
+    );
+    for (const memberIds of components) {
+      const memberSet = new Set(memberIds);
+      if (seenSets.some((seen) => jaccardSets(seen, memberSet) >= CREATE_JACCARD_MIN)) {
+        deduped += 1;
+        continue;
+      }
+      seenSets.push(memberSet);
+      const eventClass = dominantEventClass(memberIds, entriesByNodeId, nodesById, root.id);
+      const theta = thresholds[tier];
+      selected.push({
+        source: 'cluster',
+        tier,
+        theta,
+        memberIds,
+        memberSet,
+        eventClass,
+        definition: systemDefinition(tier, theta, eventClass),
+        reason: 'similar',
+        nameInput: { kind: 'system', tags: [], parentName: null },
+      });
+    }
+  }
+  return { candidates: selected, deduped };
+}
+
+/**
+ * Facet candidates (deterministic, LLM-free):
+ * - path-subtree purity: a non-root directory with ≥8 eligible embedded
+ *   direct-child files whose direct files are ≥80% of its eligible subtree;
+ *   members = those direct files.
+ * - like density: a non-root directory subtree with ≥8 liked eligible files
+ *   and liked/subtree density ≥0.5; members = the liked files.
+ * Both become self-centroid definitions (the snapshot is the initial batch;
+ * later membership is similarity-scored). Path facets use the mid tier;
+ * like-density facets use the mid tier and waive persistence.
+ */
+function buildFacetCandidates({ entries, nodesById, root, likes, thresholds }) {
+  const subtreeCount = new Map();
+  const directByDir = new Map();
+  const likedByDir = new Map();
+
+  for (const entry of entries) {
+    const parentId = entry.node.parentId == null ? null : Number(entry.node.parentId);
+    if (parentId != null) {
+      if (!directByDir.has(parentId)) directByDir.set(parentId, []);
+      directByDir.get(parentId).push(entry.nodeId);
+    }
+    let current = parentId == null ? null : nodesById.get(parentId);
+    const seen = new Set();
+    while (current && !seen.has(Number(current.id))) {
+      seen.add(Number(current.id));
+      const dirId = Number(current.id);
+      subtreeCount.set(dirId, (subtreeCount.get(dirId) || 0) + 1);
+      if (likes.has(entry.nodeId)) {
+        if (!likedByDir.has(dirId)) likedByDir.set(dirId, new Set());
+        likedByDir.get(dirId).add(entry.nodeId);
+      }
+      current = current.parentId == null ? null : nodesById.get(Number(current.parentId));
+    }
+  }
+
+  const directories = [...nodesById.values()]
+    .filter((node) => node.type === 'directory' && Number(node.id) !== Number(root.id))
+    .sort((a, b) => Number(a.id) - Number(b.id));
+
+  const pathCandidates = [];
+  const likeCandidates = [];
+  const midTheta = thresholds.mid;
+
+  for (const directory of directories) {
+    const dirId = Number(directory.id);
+    const total = subtreeCount.get(dirId) || 0;
+    const direct = (directByDir.get(dirId) || []).slice().sort((a, b) => a - b);
+    if (direct.length >= CREATE_MIN_MEMBERS && total > 0) {
+      const purity = direct.length / total;
+      if (purity >= CREATE_PATH_PURITY_MIN) {
+        const eventClass = eventClassFor(directory, nodesById, root.id);
+        const directoryName = String(directory.name).trim();
+        pathCandidates.push({
+          source: 'path',
+          tier: 'mid',
+          theta: midTheta,
+          memberIds: direct,
+          memberSet: new Set(direct),
+          eventClass,
+          definition: systemDefinition('mid', midTheta, eventClass),
+          reason: `path:${nodePath(directory, nodesById)}`,
+          nameInput: { kind: 'system', tags: [], parentName: directoryName },
+        });
+      }
+    }
+
+    const liked = [...(likedByDir.get(dirId) || [])].sort((a, b) => a - b);
+    if (liked.length >= CREATE_MIN_MEMBERS && total > 0) {
+      const density = liked.length / total;
+      if (density >= CREATE_LIKE_DENSITY_MIN) {
+        const eventClass = eventClassFor(directory, nodesById, root.id);
+        likeCandidates.push({
+          source: 'like',
+          tier: 'mid',
+          theta: midTheta,
+          memberIds: liked,
+          memberSet: new Set(liked),
+          eventClass,
+          definition: systemDefinition('mid', midTheta, eventClass),
+          reason: `like:${nodePath(directory, nodesById)}`,
+          nameInput: { kind: 'system', tags: [], parentName: String(directory.name).trim() },
+          waivePersistence: true,
+        });
+      }
+    }
+  }
+
+  const sortFacets = (a, b) =>
+    b.memberIds.length !== a.memberIds.length
+      ? b.memberIds.length - a.memberIds.length
+      : a.memberIds[0] - b.memberIds[0];
+  pathCandidates.sort(sortFacets);
+  likeCandidates.sort(sortFacets);
+  return [...pathCandidates, ...likeCandidates];
+}
+
+function likedDensityWaives(memberIds, likes) {
+  let liked = 0;
+  for (const nodeId of memberIds) if (likes.has(nodeId)) liked += 1;
+  return liked >= CREATE_MIN_MEMBERS && liked / memberIds.length >= CREATE_LIKE_DENSITY_MIN;
+}
+
+function isPersistent(memberIds, entriesByNodeId, now) {
+  let oldest = Infinity;
+  for (const nodeId of memberIds) {
+    const entry = entriesByNodeId.get(nodeId);
+    const createdAt = entry ? new Date(entry.node.createdAt).getTime() : NaN;
+    if (!Number.isFinite(createdAt)) return false;
+    if (createdAt < oldest) oldest = createdAt;
+  }
+  return Number.isFinite(oldest) && now - oldest >= CREATE_PERSISTENCE_DAYS * 86400000;
+}
+
+function meanVector(vectors) {
+  if (vectors.length === 0) return null;
+  const dim = vectors[0].length;
+  const out = new Array(dim).fill(0);
+  for (const vector of vectors) {
+    if (vector.length !== dim) return null;
+    for (let i = 0; i < dim; i += 1) out[i] += vector[i];
+  }
+  for (let i = 0; i < dim; i += 1) out[i] /= vectors.length;
+  return out;
+}
+
+async function topTagsFor(memberIds) {
+  const counts = new Map();
+  for (const nodeId of memberIds.slice(0, CREATE_TAG_SCAN_LIMIT)) {
+    const tags = await aiTagStore.listRawTags(nodeId);
+    for (const raw of tags || []) {
+      const tag = String(raw).trim();
+      if (!tag) continue;
+      counts.set(tag, (counts.get(tag) || 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => (a[1] !== b[1] ? b[1] - a[1] : a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .slice(0, 2)
+    .map(([tag]) => tag);
+}
+
+async function resolveSystemNamer() {
+  let adapter = null;
+  let chatConfigured = false;
+  try {
+    const { getLlmAdapter } = require('../../infrastructure/llmAdapterRuntime');
+    adapter = getLlmAdapter();
+    if (adapter && typeof adapter.roleConfigured === 'function') {
+      chatConfigured = Boolean(await adapter.roleConfigured('chat'));
+    }
+  } catch {
+    chatConfigured = false;
+  }
+  return createNamer({ llmAdapter: adapter, chatConfigured });
+}
+
+async function resolveCreateName(userId, baseName) {
+  let candidate = baseName;
+  for (let i = 2; await collectionsStore.existsActiveName(userId, candidate); i += 1) {
+    candidate = `${baseName} (${i})`;
+  }
+  return candidate;
+}
+
+function tierOf(definition) {
+  const tier = definition && typeof definition === 'object' ? definition.tier : null;
+  return CREATE_TIERS.includes(tier) ? tier : 'mid';
+}
+
+async function createCandidateCollection({
+  userId,
+  candidate,
+  entriesByNodeId,
+  modelId,
+  namer,
+  fallbackIndex,
+}) {
+  const tags = await topTagsFor(candidate.memberIds);
+  const nameInput = {
+    ...candidate.nameInput,
+    tags: tags.length > 0 ? tags : candidate.nameInput.tags,
+    index: fallbackIndex,
+  };
+  const baseName = await namer(nameInput);
+  const name = await resolveCreateName(userId, baseName);
+
+  const created = await collectionsStore.createCollection(
+    {
+      ownerId: userId,
+      name,
+      origin: 'system',
+      publishMode: 'ask',
+      definition: candidate.definition,
+    },
+    { actor: 'system' }
+  );
+
+  await collectionsStore.addItems(
+    created.id,
+    candidate.memberIds,
+    userId,
+    { published: true, source: 'system', reason: candidate.reason },
+    { actor: 'system' }
+  );
+
+  const vectors = candidate.memberIds
+    .map((nodeId) => entriesByNodeId.get(nodeId))
+    .filter(Boolean)
+    .map((entry) => entry.vector);
+  const centroid = meanVector(vectors);
+  if (centroid) {
+    await collectionsStore.upsertCentroid(
+      created.id,
+      modelId,
+      centroid.join(','),
+      candidate.memberIds.length
+    );
+  }
+
+  return {
+    id: created.id,
+    name,
+    tier: candidate.tier,
+    event_class: candidate.eventClass,
+    memberCount: candidate.memberIds.length,
+  };
+}
+
+/**
+ * Create pass (§2.4). Runs in the cheap and full legs. Candidate sources:
+ * pooled mutual-kNN over the active model's tiers, plus deterministic path
+ * purity and like-density facets. Every candidate is checked against the
+ * user's ACTIVE materialized sets (Jaccard ≥0.8 ⇒ promotion, never a
+ * duplicate), then the fingerprint tombstone set, then the per-tier gates.
+ * A created collection is system-origin, self-centroid, named by the
+ * template/chat namer, centroid-upserted, and its initial member batch is
+ * materialized `source='system'`, `published=true` inside journaled
+ * `actor='system'` commands.
+ *
+ * @param {number} userId
+ * @returns {Promise<{ created: Array<Object>, promoted: number, suppressed: number }>}
+ */
+async function runCreatePass(userId) {
+  const result = emptyCreateResult();
+  const ownerId = Number(userId);
+  if (!Number.isInteger(ownerId) || ownerId <= 0) return result;
+  if (!createEnabled()) return result;
+
+  const activeModel = await llmModelsStore.getActiveByRole('embed');
+  if (!activeModel) return result;
+  const modelId = Number(activeModel.id);
+  if (!Number.isInteger(modelId) || modelId <= 0) return result;
+
+  const thresholds = resolveTierThresholds(activeModel);
+  const corpus = await loadPooledCorpus(ownerId, modelId);
+  if (!corpus.root || corpus.entries.length < CREATE_MIN_MEMBERS) return result;
+
+  const entries = dedupeContentTwins(corpus.entries);
+  if (entries.length < CREATE_MIN_MEMBERS) return result;
+  const entriesByNodeId = new Map(entries.map((entry) => [entry.nodeId, entry]));
+  const likes = new Set((await fileLikesStore.listLikedNodeIds(ownerId)).map(Number));
+
+  const embeddingCandidates = buildEmbeddingCandidates(
+    entries,
+    corpus.nodesById,
+    corpus.root,
+    thresholds
+  );
+  const facetCandidates = buildFacetCandidates({
+    entries,
+    nodesById: corpus.nodesById,
+    root: corpus.root,
+    likes,
+    thresholds,
+  });
+  const candidates = [...embeddingCandidates.candidates, ...facetCandidates];
+  result.suppressed += embeddingCandidates.deduped;
+  if (candidates.length === 0) return result;
+
+  const owned = (await collectionsStore.listForUser(ownerId, { status: 'all' })).filter(
+    (row) => row.ownerId === ownerId
+  );
+  const ownedActive = owned.filter((row) => row.status === 'active');
+  const storedSets = new Map();
+  for (const collection of ownedActive) {
+    const rows = await collectionsStore.listStoredItems(collection.id);
+    storedSets.set(collection.id, new Set(rows.map((row) => Number(row.nodeId))));
+  }
+
+  const rateDays = createRateDays();
+  const now = Date.now();
+  const rateWindowMs = rateDays * 86400000;
+  const rateBlocked =
+    rateDays > 0 &&
+    owned.some((row) => {
+      if (row.origin !== 'system') return false;
+      const createdAt = new Date(row.createdAt).getTime();
+      return Number.isFinite(createdAt) && now - createdAt < rateWindowMs;
+    });
+  let createdThisPass = false;
+  let activeTightMid = ownedActive.filter(
+    (row) => row.origin === 'system' && tierOf(row.definition) !== 'loose'
+  ).length;
+  const looseEvents = new Set(
+    ownedActive
+      .filter((row) => row.origin === 'system' && tierOf(row.definition) === 'loose')
+      .map((row) => eventClassOf(row.definition))
+  );
+  const systemCount = owned.filter((row) => row.origin === 'system').length;
+  const namer = await resolveSystemNamer();
+
+  for (const candidate of candidates) {
+    const memberSet = candidate.memberSet;
+    if (memberSet.size < CREATE_MIN_MEMBERS) {
+      result.suppressed += 1;
+      continue;
+    }
+    const cap = CREATE_SIZE_CAPS[candidate.tier] || CREATE_SIZE_CAPS.mid;
+    if (memberSet.size > cap) {
+      result.suppressed += 1;
+      continue;
+    }
+
+    let promoted = false;
+    for (const stored of storedSets.values()) {
+      if (jaccardSets(stored, memberSet) >= CREATE_JACCARD_MIN) {
+        promoted = true;
+        break;
+      }
+    }
+    if (promoted) {
+      result.promoted += 1;
+      continue;
+    }
+
+    const fingerprint = definitionEngine.fingerprintDefinition(candidate.definition);
+    if (await collectionsStore.isTombstoned(ownerId, fingerprint)) {
+      result.suppressed += 1;
+      continue;
+    }
+
+    if (
+      !candidate.waivePersistence &&
+      !likedDensityWaives(candidate.memberIds, likes) &&
+      !isPersistent(candidate.memberIds, entriesByNodeId, now)
+    ) {
+      result.suppressed += 1;
+      continue;
+    }
+
+    if (rateDays > 0 && (rateBlocked || createdThisPass)) {
+      result.suppressed += 1;
+      continue;
+    }
+
+    if (candidate.tier === 'loose') {
+      if (looseEvents.has(candidate.eventClass)) {
+        result.suppressed += 1;
+        continue;
+      }
+    } else if (activeTightMid >= CREATE_ACTIVE_LIMIT) {
+      result.suppressed += 1;
+      continue;
+    }
+
+    try {
+      const created = await createCandidateCollection({
+        userId: ownerId,
+        candidate,
+        entriesByNodeId,
+        modelId,
+        namer,
+        fallbackIndex: systemCount + result.created.length + 1,
+      });
+      result.created.push(created);
+      createdThisPass = true;
+      storedSets.set(created.id, memberSet);
+      if (candidate.tier === 'loose') {
+        looseEvents.add(candidate.eventClass);
+      } else {
+        activeTightMid += 1;
+      }
+    } catch (error) {
+      console.error(`[evolution] create failed for user ${ownerId}:`, error.message);
+      result.suppressed += 1;
+    }
+  }
+
+  return result;
+}
+
+function eventClassOf(definition) {
+  const value =
+    definition && typeof definition === 'object'
+      ? (definition.event_class ?? definition.eventClass)
+      : null;
+  return value == null ? 'root' : String(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -575,5 +1297,6 @@ module.exports = {
   armUploadTrigger,
   armUploadTriggerForNode,
   runEvolutionPass,
+  runCreatePass,
   __resetEvolutionStateForTests,
 };

@@ -52,54 +52,89 @@ Target-contract spec (`docs/features/collections-platform.md` §4.9 silent evolu
 ### 2.3 `runEvolutionPass(scope)` — the single entry
 
 `runEvolutionPass({ users = [all-with-content], passes = 'cheap' | 'full' })` →
-`{ perUser: [{ userId, created[], reconciled[], split[], archived[], purged[], mergeCandidates[],
-pinned[], arbiterCalls }], report }`; report row persisted as
-`admin_reports(kind='night_eval')`. Idempotent full re-scan — safe to
+`{ perUser: [{ userId, created: { created[], promoted, suppressed }, reconciled[], split[],
+archived[], purged[], mergeCandidates[], pinned[], arbiterCalls }], report }`; report row
+persisted as `admin_reports(kind='night_eval')`. Idempotent full re-scan — safe to
 re-run any time; concurrent invocations serialize on the per-user lock group (second
 caller no-ops). Inputs: `node_activity`, `file_likes` (via likes store),
 pooled `embeddings` (active model space), and `collection_centroids`.
 Membership is materialized: the pass writes the add/remove diff through the journaled
 `collectionsStore` item mutators (`source='system'`, matched `reason`, publish state per
 mode) with `ctx.actor='system'`; the read path never evaluates definitions. Digest/feed
-carry system acts — NO toasts for silent system acts.
+carry system acts — NO toasts for silent system acts. The `night_eval` report totals
+include `created`, `create_promoted` and `create_suppressed`.
 
 The **cheap** leg runs create, reconcile, split and merge-candidates; the **full** leg
-adds archive and purge plus the auto-pin reconcile.
+adds archive and purge plus the auto-pin reconcile. Create runs after reconcile, so a
+new collection's initial batch is not re-scored by the same pass. `runCreatePass(userId)`
+is also callable directly; it is gated by `AI_EVOLUTION_ENABLED` and
+`AI_EVOLUTION_CREATE_ENABLED` and returns `{ created: [], promoted: 0, suppressed: 0 }`
+when either gate is off or no active embed model exists.
 
-### 2.4 Pass 1 — create (multi-tier mutual-kNN, LLM-free)
+### 2.4 Pass 1 — create (multi-tier mutual-kNN + facets, LLM-free)
 
-1. **content_hash dedup pre-pass:** identical-content twins are routed to the exact-dup finder path
-   and NEVER form clusters (hash-first; cosine-1.0 detection is
-   redundant).
-2. **Mutual-kNN seed expansion** over pooled embeddings of the user's corpus (active
-   model space only — cross-`model_id` cosine forbidden): k ≈ 6 (profile
-   constant); tier edge-cos thresholds from the model profile —
-   **tight 0.82 / mid 0.80 / loose 0.72: release-measured profile values** — either-side
-   top-k edge acceptance per tier.
-3. **Facet sources in parallel:** path-subtree purity,
-   like-density generate candidates independently. A facet/embedding cluster pair with
-   **Jaccard ≥ 0.8** does NOT double-create: the existing collection is
-   **definition-promoted** (predicate set widened) instead — promotion, not duplication.
-4. **Per-tier gates** (all T2 hot-tunable, admin impact-count preview; shipped
-   defaults shown — thresholds are release-measured profile values where θ-shaped,
-   product rules where count-shaped):
-
-- min members ≥ 8; persistence ≥ 2 weeks (WAIVED by likes-density fast path — liked clusters skip the persistence gate);
-- rate ≤ 1 create/week/user; active-system ≤ 12 (tight+mid counted) / broad tier
-  ≤ 1 event-class per user; size caps tight/mid ≤ 120, broad ≤ 500;
-- Jaccard ≥ 0.8 vs an existing collection OR vs a TOMBSTONE fingerprint set ⇒
-  merge-PROPOSAL (pass 5) instead of create — never silent re-creation of
-  tombstoned definitions (tombstones block silent regeneration of the same definition — `isTombstoned` pre-check with
-  `collectionsService.fingerprintDefinition`).
-
-5. Create as `origin='system'`, definition = centroid/cluster rule, name via
-   templateNamer (llmNamer swap only if chat configured), centroid upserted
-   (model-keyed). Initial cluster members are materialized in `collection_items` with
-   `source='system'`, the matched `reason`, and `published=true` (the initial batch is
-   the discovery snapshot). Later rule additions follow the collection's
-   `publish_mode` (`auto` ⇒ true, `ask|off` ⇒ false).
-
-- **No tier-specific lifecycle exemptions (uniform rules only)** — every created system collection faces identical split/archive/purge.
+1. **Corpus.** Requires the active embed model (`llmModelsStore.getActiveByRole('embed')`);
+   none ⇒ empty result, zero writes. Candidates are pooled `embeddings` rows of that model
+   intersected with the requester's visible live file ids (own-root subtree + path/point
+   grants). Rows of another `model_id` never participate.
+2. **content_hash dedup pre-pass.** Non-null `filecache.content_hash` groups (falling back
+   to the pooled row's `content_hash`) keep exactly their lowest node id; every other twin
+   is removed from clustering. NULL hashes pass through unchanged. Twins never form
+   clusters.
+3. **Mutual-kNN tiers.** k = 6. For each tier, an edge survives when at least one endpoint
+   ranks the other inside its top-k neighbors at/above that tier's cosine (`profile.edgeCos`
+   of the active model; fallbacks tight 0.82 / mid 0.80 / loose 0.72). Connected components
+   of those edges are the cluster candidates; components are not built by transitive cosine
+   chaining beyond the either-side top-k rule. Each candidate carries
+   `{ tier, event_class, memberIds }` where `event_class` is the dominant top-level
+   directory beneath the user root (`root` for root-level files).
+4. **Facet candidates** (deterministic, no LLM):
+   - **path-subtree purity** — a non-root directory with at least 8 eligible embedded
+     direct-child files whose direct files are at least 80% of that directory's eligible
+     embedded subtree. Members are those direct files.
+   - **like density** — a non-root directory subtree with at least 8 eligible liked files
+     and `liked / eligible subtree ≥ 0.5`. Members are the liked files.
+     Facets are generated after clusters and are processed path-first, then like-density.
+5. **Cross-tier dedupe.** A lower-tier component whose Jaccard against an already selected
+   component is ≥ 0.8 is dropped (tight precedes mid precedes loose), so the same member
+   set never creates two collections. Creation order is tight, mid, loose, path facets,
+   like-density facets; within a source larger sets precede smaller sets, ties by lowest
+   node id.
+6. **No-duplicate promotion.** Before any gate, a candidate whose Jaccard against an ACTIVE
+   collection's materialized member set is ≥ 0.8 is NOT created: the pass counts it as
+   `promoted` and leaves the existing definition and membership untouched. Promotion never
+   widens a definition silently. The `promoted` count (including facet/cluster pairs and
+   repeat passes over the same corpus) is reported per user.
+7. **Tombstone suppression.** A candidate whose normalized definition fingerprint
+   (`fingerprintDefinition`) matches an `owner` tombstone is never created and counts as
+   `suppressed`.
+8. **Gates** (product rules unless noted):
+   - members ≥ 8; size ≤ tier cap (tight 120, mid 120, loose 500) — over-cap candidates are
+     blocked, never truncated;
+   - persistence: the oldest member file's `created_at` is ≥ 14 days old. WAIVED when the
+     candidate has ≥ 8 liked members and a liked/member density ≥ 0.5, and always waived
+     for a like-density facet;
+   - rate: at most one system create per user per `AI_EVOLUTION_CREATE_RATE_DAYS` window
+     (`0` disables the gate). The window is checked against every system-origin collection
+     the user owns, and a successful create closes the window for the rest of the pass;
+   - active count: at most 12 ACTIVE system tight/mid collections per user; broad (loose)
+     at most one per `event_class` per user;
+   - tombstone and overlap checks above run before these gates.
+9. **Definition + creation.** The definition is a self-centroid system rule:
+   `{ kind: 'centroid', centroid_ref: null, theta: tier edge cosine, tier, event_class }`.
+   `centroid_ref: null` means the OWNING collection's `collection_centroids` row for the
+   active model (see [collectionsService](collectionsService.md) §2.3); reconcile, the
+   upload hook and previews resolve it with the collection id. Creation uses the journaled
+   `collectionsStore.createCollection` with `origin='system'`, `publish_mode='ask'` and
+   `ctx.actor='system'`; the name comes from `templateNamer` (`llmNamer` only while the
+   chat role is configured, falling back losslessly) with top-2 local derived tags, unique
+   among active names. After create, the centroid is upserted as the mean of the member
+   pooled vectors keyed by the active model, and the initial member batch is materialized
+   in ONE journaled command with `source='system'`, the matched `reason`
+   (`similar` / `path:<prefix>` / `like:<prefix>`) and `published=true` — the initial
+   batch is the discovery snapshot. Later rule additions follow `publish_mode`.
+10. **Lifecycle uniformity.** No tier-specific lifecycle exemptions; every created system
+    collection faces the same split/archive/purge rules.
 
 ### 2.4-bis Reconcile pass — materialized membership diff
 
@@ -248,12 +283,20 @@ driven by backfill completion). `deleteCentroids` on purge/merge loser.
       two concurrent hints coalesce to one pass (`scheduled:false` on the second)
 - [ ] Pass-1: content_hash twins never cluster; mutual-kNN yields tight∪mid∪broad at the
       three tiers; connected-components chaining absent (regression fixture)
-- [ ] Facet/cluster Jaccard ≥0.8 pair ⇒ definition-PROMOTION on the existing row, zero
-      new collections
-- [ ] Gate matrix: <8 members / <2wk persistence / rate cap / ≤12 active / size caps each
-      block creation; likes-density waives persistence only
+- [ ] Facet/cluster or repeat-pass Jaccard ≥0.8 pair ⇒ `promoted` count increments, zero
+      new collections, the existing definition and member set are byte-identical
+- [ ] Gate matrix: <8 members / over-cap size / <2wk persistence / rate cap / ≤12 active
+      tight+mid / broad one-per-event-class each block creation; ≥8 liked members at
+      density ≥0.5 waive persistence only
+- [ ] Facets: path purity requires ≥8 direct embedded files at ≥80% of the eligible
+      subtree; like density requires ≥8 liked files at ≥50% of the eligible subtree
+- [ ] Persistence: a cluster whose oldest member is younger than 14 days is blocked; the
+      same cluster after aging creates; a like-density facet is never persistence-blocked
 - [ ] Tombstoned definition ⇒ create suppressed + counters observable; drifted member
       set (same normalized definition) still suppresses (fingerprint ignores raw centroid)
+- [ ] Self-centroid: a created system definition (`centroid_ref: null`) resolves the
+      owning collection's centroid in reconcile/upload/preview; without a collection id it
+      admits nothing
 - [ ] Reconcile: two reads between passes return the same materialized set; an addition
       inside the pass writes `source='system'` + matched `reason`; a removal below
       `theta_out` deletes the row and inserts NO exclusion (re-entry above `theta_in`

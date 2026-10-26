@@ -207,9 +207,11 @@ function clampCosine(value) {
 /**
  * Resolve a definition's pooled reference vector + θ band from the ACTIVE
  * embed model. A cross-model reference (seed/centroid row from another space)
- * is ignored — membership never compares spaces.
+ * is ignored — membership never compares spaces. `centroid_ref: null` resolves
+ * the OWNING collection's centroid (`collectionId`), the system cluster
+ * definition contract (collectionsService.md §2.3).
  */
-async function resolveVectorReference(definition) {
+async function resolveVectorReference(definition, collectionId = null) {
   const parsed = definitionEngine.parseDefinition(definition);
   if (!parsed.vector) return null;
   const model = await llmModelsStore.getActiveByRole('embed');
@@ -223,9 +225,16 @@ async function resolveVectorReference(definition) {
     if (!row || Number(row.modelId) !== modelId) return null;
     reference = parseVectorText(row.vector);
   } else {
-    const refId = Number(parsed.vector.centroid_ref ?? parsed.vector.centroidRef);
+    const rawRef = parsed.vector.centroid_ref ?? parsed.vector.centroidRef;
+    const selfRef = rawRef === null || rawRef === undefined;
+    const ownerId = Number(collectionId);
+    const refId = selfRef
+      ? Number.isInteger(ownerId) && ownerId > 0
+        ? ownerId
+        : null
+      : Number(rawRef);
     const rows =
-      Number.isInteger(refId) && refId > 0
+      refId !== null && Number.isInteger(refId) && refId > 0
         ? await collectionsStore.getCentroids([refId], modelId)
         : [];
     reference = rows.length > 0 ? parseVectorText(rows[0].centroid) : null;
@@ -248,10 +257,16 @@ async function resolveVectorReference(definition) {
 
 /**
  * Score one candidate set against a definition's pooled reference.
+ * `collectionId` resolves a self-centroid (`centroid_ref: null`) definition.
  * @returns {Promise<{ scoreFor: (nodeId:number) => number|null, thetaIn:number, thetaOut:number, previousMembers:Set<number> }|null>}
  */
-async function buildVectorContext(definition, candidateIds, previousMembers = new Set()) {
-  const resolved = await resolveVectorReference(definition);
+async function buildVectorContext(
+  definition,
+  candidateIds,
+  previousMembers = new Set(),
+  collectionId = null
+) {
+  const resolved = await resolveVectorReference(definition, collectionId);
   if (!resolved) return null;
   const ids = [...new Set((candidateIds || []).map(Number))].filter(
     (id) => Number.isInteger(id) && id > 0
@@ -1076,7 +1091,7 @@ async function checkUploadAdmissions(userId, nodeId) {
 
     const isVector = definitionEngine.isVectorDefinition(collection.definition);
     const vector = isVector
-      ? await buildVectorContext(collection.definition, [parsedNodeId], new Set())
+      ? await buildVectorContext(collection.definition, [parsedNodeId], new Set(), collection.id)
       : null;
     if (isVector && !vector) continue;
 
@@ -1232,16 +1247,21 @@ async function previewCollection(userId, collectionId) {
   const stored = await collectionsStore.listStoredItems(collectionId);
   return runDefinitionPreview(userId, collection.definition, {
     previousMembers: new Set(stored.map((row) => Number(row.nodeId))),
+    collectionId,
   });
 }
 
-async function runDefinitionPreview(userId, definition, { previousMembers = new Set() } = {}) {
+async function runDefinitionPreview(
+  userId,
+  definition,
+  { previousMembers = new Set(), collectionId = null } = {}
+) {
   const candidates = await loadVisibleCandidates(userId);
   const providers = await buildProviders(userId);
   const candidateIds = [...candidates.keys()];
   const isVector = definitionEngine.isVectorDefinition(definition);
   const vector = isVector
-    ? await buildVectorContext(definition, candidateIds, previousMembers)
+    ? await buildVectorContext(definition, candidateIds, previousMembers, collectionId)
     : null;
   if (isVector && !vector) {
     return { ...EMPTY_PREVIEW, degraded: true };
@@ -1294,7 +1314,7 @@ async function evaluateDefinitionMembership(
   const isVector = definitionEngine.isVectorDefinition(definition);
   let vector = null;
   if (isVector) {
-    vector = await buildVectorContext(definition, [...candidates.keys()], previous);
+    vector = await buildVectorContext(definition, [...candidates.keys()], previous, collectionId);
     if (vector) {
       vector.keepMissing = true;
     } else {

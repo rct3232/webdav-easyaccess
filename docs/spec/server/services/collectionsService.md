@@ -95,6 +95,15 @@ config keys.
 - Definition kinds: `{kind:'predicate', any_of/all_of: [path_prefix|tag|like|date|size …]}`
   and `{kind:'seed_vector'|'centroid', seed_ref|centroid_ref, theta, theta_in?, theta_out?}`
   (vector rules may AND/OR with predicates).
+- **Self-centroid definitions.** For `{kind:'centroid', centroid_ref:null}` the reference is
+  the OWNING collection's `collection_centroids` row for the active embed model. Callers
+  that evaluate an existing collection pass its id through
+  `evaluateDefinitionMembership`/`previewCollection`; the upload hook and the evolution
+  reconcile/create passes do the same. A self-centroid definition evaluated without a
+  collection id (for example a rule preview not tied to a stored collection) has no
+  reference and degrades to no matches. System cluster creation writes exactly this shape
+  (`theta` = tier edge cosine, `tier`, `event_class`), so later writes score against the
+  same model-keyed centroid.
 - **Compute-on-write.** Definition evaluation runs only at write boundaries — the upload
   hook and [evolutionService](evolutionService.md) reconcile passes. The read path NEVER
   evaluates a definition: `GET /`, `GET /:id`, `GET /:id/items` and `POST /for-nodes`
@@ -229,8 +238,10 @@ order mirrors the input `nodeIds`; every requested node gets an entry (possibly
 
 - `preview({ definition })`: rule dry-count — predicate-only definitions are LLM-free
   (works with zero config); `seed_vector`/`centroid` definitions require the active
-  embed model and use the pooled-vector cosine of §2.3. Dry-runs never mutate
-  membership.
+  embed model and use the pooled-vector cosine of §2.3. A self-centroid definition
+  (`centroid_ref: null`) resolves the owning collection's centroid only in
+  `previewCollection` (which supplies the collection id); a free-standing definition
+  preview has no owning row and reports `degraded`. Dry-runs never mutate membership.
 - `preview({ seedNodeId })`: requires the embed role (`llmAdapter
 .roleConfigured('embed')`; pre-boot fallback `LLM_EMBED_*`, else
   `aiNotConfigured` → route 409). Seed vector = that node's pooled embedding

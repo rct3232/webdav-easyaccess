@@ -47,6 +47,7 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 | DELETE | `/:id/items`         | Token | Remove materialized rows / insert exclusions.                                                                                                                      |
 | PUT    | `/:id/items/publish` | Token | Publish/unpublish members. Body `{ nodeIds, published }`.                                                                                                          |
 | POST   | `/preview`           | Token | Dry preview: `{ seedNodeId }` or `{ definition }`.                                                                                                                 |
+| POST   | `/evolution/hint`    | Token | Upload-queue-drain hint — arm the caller's upload evolution debounce immediately.                                                                                  |
 | POST   | `/:id/preview`       | Token | Dry-run the stored definition of an existing one.                                                                                                                  |
 | GET    | `/merge-suggestions` | Token | Pending merge-suggestion cards.                                                                                                                                    |
 | POST   | `/:id/merge/:other`  | Token | Execute merge; `:id` survives.                                                                                                                                     |
@@ -58,8 +59,8 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 | DELETE | `/:id/grants/me`     | Token | Grantee revokes their OWN grant (`viewer\|editor`).                                                                                                                |
 | POST   | `/for-nodes`         | Token | Batch membership lookup for file-listing chips.                                                                                                                    |
 
-`GET /merge-suggestions` and `POST /preview` / `POST /for-nodes` are literal paths and
-MUST be registered before the `/:id` parameterized routes. `DELETE /:id/grants/me` carries the
+`GET /merge-suggestions` and `POST /preview` / `POST /evolution/hint` / `POST /for-nodes` are
+literal paths and MUST be registered before the `/:id` parameterized routes. `DELETE /:id/grants/me` carries the
 literal `me` tail segment (different segment count from `DELETE /:id/grants`, so no Express
 shadowing exists — register it BEFORE the owner `DELETE /:id/grants` as defensive convention).
 
@@ -330,6 +331,14 @@ batch).
 `count - sample.length`). Seed preview without `embed` configured → 409
 `serverErrors.ai.notConfigured`; definition previews never touch AI.
 
+- **POST /evolution/hint:** Body optional `{ uploadComplete: true }` (any body is ignored;
+  an empty body is valid). The caller's upload-batch debounce is armed for immediate
+  execution instead of waiting `AI_EVOLUTION_DEBOUNCE_S`. Returns 202
+  `{ "scheduled": true|false }`: `false` when `AI_EVOLUTION_ENABLED=false`, the trigger is
+  `nightly`, or the user already has a pass queued/running (per-user coalesce). The pass
+  itself runs asynchronously under the per-user lock; the route never waits for it and
+  never returns pass output. Auth/role failures use the normal 401/403 envelope. Hint
+  loss is safe — the server debounce remains authoritative.
 - **POST /:id/preview:** Empty body; dry-runs the collection's stored `definition` for the
   requester (predicate or pooled-vector; never mutates membership). Owner-only (granted
   viewers/editors → 403 `forbidden`; ungranted → 404 masquerade per §2.4.2). Response
@@ -378,9 +387,10 @@ Merge is allowed for any owned active pair even without a pending
 suggestion row (a suggestion state transition is opportunistic).
 
 - **POST /:id/merge-dismiss:** Body `{ otherId }`. `Later` semantics: suggestion →
-  `state='dismissed'`, `dismissed_at=now`; the nightly pass re-raises once after 2 weeks
-  then sleeps 30d (timing logic lives in the evolution pass, not the API). 200:
-  `{ "suggestion_id": 88, "state": "dismissed", "dismissed_at": "…" }`.
+  `state='dismissed'`, `dismissed_at=now`, `dismiss_count` incremented; the nightly pass
+  re-raises once after 2 weeks, then sleeps 30 days between re-raises (timing logic lives
+  in the evolution pass, not the API). 200:
+  `{ "suggestion_id": 88, "state": "dismissed", "dismissed_at": "…", "dismiss_count": 1 }`.
 - **POST /:id/merge-reject:** Body `{ otherId }`. `Keep separate`: → `state='rejected'`,
   `rejected_at=now` — permanent pair suppression. 200: `{ "suggestion_id": 88,
 "state": "rejected", "rejected_at": "…" }`.
@@ -514,10 +524,14 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
       `pinned_by='auto'`; no journal row for the pin itself
 - [ ] POST /preview with definition works with zero LLM; with `seedNodeId` and embed
       absent → 409 `serverErrors.ai.notConfigured`
+- [ ] POST /evolution/hint: 202 `{scheduled:true}` under `upload`/`both`; `false` under
+      `nightly` or disabled; two hints coalesce to one queued pass; the route returns
+      before the pass and leaks no pass output
 - [ ] Merge: both owned → 200, survivor absorbs, loser gone, suggestion → `merged`,
       undo action id returned; `:id == :other` → 400
 - [ ] Dismiss then reject on the same pair: dismiss is reversible by the pass, reject is
-      terminal (`rejected` row never re-suggested)
+      terminal (`rejected` row never re-suggested); each dismiss increments
+      `dismiss_count` and resets `dismissed_at`
 - [ ] Grants lifecycle: grant viewer → grantee lists the collection with `granted_role`
       and no `definition` field → revoke instant
 - [ ] for-nodes returns materialized membership chips only (no definition evaluation)

@@ -262,6 +262,7 @@ CREATE TABLE IF NOT EXISTS collection_merge_suggestions (
   score BIGINT NOT NULL,
   state TEXT NOT NULL DEFAULT 'pending'
     CHECK (state IN ('pending', 'merged', 'dismissed', 'rejected')),
+  dismiss_count INTEGER NOT NULL DEFAULT 0,
   dismissed_at TIMESTAMPTZ DEFAULT NULL,
   rejected_at TIMESTAMPTZ DEFAULT NULL,
   arbiter_verdict TEXT DEFAULT NULL,

@@ -35,7 +35,9 @@ Target-contract spec (`docs/features/collections-platform.md` §4.9 silent evolu
   compute but can never be WRONG — correctness never depends on the trigger instant.
 - Client hint `uploadComplete: true` (sent by `useFileOperations` when its queue
   drains) fires the pass immediately — latency sugar, crash-safe by design; the
-  debounce alone is sufficient.
+  debounce alone is sufficient. Server surface: `POST /api/collections/evolution/hint`
+  (routes/collections.md §2.4) arms the per-user timer with `immediate: true`; a
+  concurrent hint while a pass is queued/running coalesces (202 `scheduled:false`).
 - `upload` mode runs the CHEAP passes only: create / reconcile / split /
   merge-candidates. `nightly`
   runs ALL passes including archive/purge (time-based by nature — nightly is the
@@ -166,9 +168,11 @@ tuned, via admin counters: `tombstone-suppressed` vs `regenerated-anyway`.
 - `upsertMergeSuggestion(aId,bId,score)` (pair normalized, UNIQUE(a,b) conflict keeps the
   existing row + its state); `score` = jaccard×1000 (scaled int).
 - Suppression state machine: `rejected` pair ⇒ never re-suggested (permanent,
-  `Keep separate`); `dismissed` (`Later`) ⇒ re-raised ONCE after 2 weeks, then sleeps 30d
-  (this pass owns the timing — the API never does); re-raise updates `score` and resets
-  `pending`.
+  `Keep separate`); `dismissed` (`Later`) increments `dismiss_count` and stamps
+  `dismissed_at`. This pass re-raises (`dismissed → pending`, score refreshed) when the
+  row is due: `dismiss_count = 1` ⇒ `dismissed_at + 14d`; `dismiss_count ≥ 2` ⇒
+  `dismissed_at + 30d`. Re-raise preserves the count, so subsequent dismissals keep the
+  30-day cadence. The API never owns this timing.
 - **Review band 0.55–0.7**: below 0.55 no card; ≥0.7 card WITHOUT adjudication;
   band pairs, when chat configured, get the **`merge-arbiter`** pass: input = both names
 - top tags + sizes + ≤5 sampled member summaries each AND — load-bearing — the
@@ -238,7 +242,8 @@ driven by backfill completion). `deleteCentroids` on purge/merge loser.
 
 - [ ] Debounce: 5 upload commits 10s apart ⇒ exactly ONE cheap pass ~90s after the LAST
       commit; a mistimed re-fire produces zero new acts (idempotent re-scan assert)
-- [ ] `uploadComplete` hint fires immediately; trigger `nightly` ignores upload arms
+- [ ] `uploadComplete` hint fires immediately; trigger `nightly` ignores upload arms;
+      two concurrent hints coalesce to one pass (`scheduled:false` on the second)
 - [ ] Pass-1: content_hash twins never cluster; mutual-kNN yields tight∪mid∪broad at the
       three tiers; connected-components chaining absent (regression fixture)
 - [ ] Facet/cluster Jaccard ≥0.8 pair ⇒ definition-PROMOTION on the existing row, zero
@@ -265,7 +270,7 @@ driven by backfill completion). `deleteCentroids` on purge/merge loser.
       purged; `user|seed|search` origins NEVER archived/purged by any pass (silent evolution is system-origin only)
 - [ ] Merge candidates: subset pair (sizeRatio < 0.7) never suggested (geometry
       fixtures — Spain ⊂ Europe); near-identical pair suggested; rejected pair terminal;
-      dismissed re-raised once at +2wk and sleeps after
+      first dismiss re-raised at +14d, second dismiss at +30d (count preserved)
 - [ ] Arbiter: chat on + band 0.55–0.7 ⇒ recommendation on the card; request body
       contains symmetric-difference samples; chat off ⇒ same card, verdict NULL; card
       without user click NEVER merges (arbiter self-execution grep/test ban)

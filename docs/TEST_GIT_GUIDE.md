@@ -144,6 +144,16 @@ npm run test:e2e:core
 
 # WebDAV-only backend job; exactly one shared bytemark.
 npm run test:e2e:webdav
+
+# Default S3 release gate: zero retries, fail on flaky tests.
+npm run test:e2e:release
+
+# WebDAV release gate: zero retries, fail on flaky tests.
+npm run test:e2e:release:webdav
+
+# Combined release gate, when the package defines it: runs both release
+# commands above.
+npm run test:e2e:release:all
 ```
 
 Runner contract:
@@ -153,19 +163,29 @@ Runner contract:
 - `test:e2e:core` is pinned to the core group and S3.
 - A mixed default-group/WebDAV-backend request is rejected, not silently
   reinterpreted.
-- The WebDAV command is the only entry point allowed to request the WebDAV
-  backend.
+- The WebDAV commands (group and release) are the only entry points allowed to
+  request the WebDAV backend.
 - Destructive seeding and bucket operations use only the dedicated E2E
   namespace. They must never fall back to ambient `WEA_DB_*` or `S3_*`
   credentials.
 - Running the default and WebDAV groups in parallel from the same checkout is
   unsupported because they share the checkout's stack, database, and port band.
   Use separate worktrees with separate bands.
-- The release gate runs with retries disabled and fails on flaky tests. Missing
-  CI-required WebDAV/PostgreSQL/AI resources fail rather than skip. Expected
-  skip counts are canonical in
-  [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
-- Concrete project, spec, slot, and case-ID mapping is canonical in
+- Both release commands pin their group and backend and run with retries
+  disabled and fail-on-flaky enabled. A retried pass is diagnostic, not release
+  evidence. When `test:e2e:release:all` is defined, it runs both release
+  commands; otherwise run them in sequence.
+- Expected skip counts are release invariants, not per-case details. The
+  canonical expected count per group lives in
+  [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md); the skip-count reporter compares
+  actual against expected and any unexpected skip fails the release gate.
+- Missing CI-required WebDAV/PostgreSQL/AI resources fail rather than skip.
+- Ambient backend overrides are destructive and rejected: a release or stack
+  start must not take `WEA_FILE_STORAGE` or WebDAV environment variables
+  (`WEBDAV_*`) from the caller's shell. Only the generated per-run runtime env
+  or the scratch harness may select the file backend; an ambient override must
+  fail the command instead of silently switching it.
+- Concrete project, spec, slot, case-ID, and port-band mapping is canonical in
   [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
 
 Required assumptions:
@@ -200,8 +220,10 @@ Required assumptions:
   health wait, then boots the server with `DOTENV_CONFIG_PATH` pointing at the
   generated `data/e2e-runtime.env`. That file holds this checkout's band ports
   in `PORT`, `CORS_ORIGINS`, `WEBDAV_URL`, `WEBDAV_UPSTREAM_URL`, `S3_ENDPOINT`,
-  and `WEA_DB_PORT` (git-ignored; never edit it by hand). Base host ports are
-  client 3000, API 5002, MinIO 9010/9011, PostgreSQL 5433, and WebDAV 8090.
+  and `WEA_DB_PORT` (git-ignored; never edit it by hand). The band applies one
+  offset to the fixed base port set for client, API, MinIO, PostgreSQL, and
+  WebDAV; concrete values live in
+  [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
 - Specs branch on the project-name platform suffix (`-desktop`/`-mobile`),
   which stays intact under the group-scoped project names.
 - **Workers:** CI supplies the worker count and it is the only concurrency
@@ -239,16 +261,16 @@ run their suites concurrently:
   checkout.
 - **Host ports** — `scripts/lib/e2e-band.cjs` allocates one PORT BAND per
   checkout: a single offset (steps of 20) applied to the whole base port set
-  (client 3000, API 5002, WebDAV 8090, PG 5433, S3 9010/9011, plus the
-  scratch-slot range). Offset 0 is tried first and reproduces the fixed
-  contract exactly, so a solo checkout sees no change. Allocation happens once
-  per checkout and is persisted in `data/e2e-runtime.json` (git-ignored);
-  reusing the same band keeps `reuseExistingServer` dev loops stable. A band is
-  taken only when every port passes a real listener probe AND a global claim
-  lock (`<tmpdir>/webdav-e2e-ports/band-<offset>.lock`, stale dead owners are
-  reclaimed) — this closes the race between concurrent cold starts of different
-  checkouts. If another live checkout later claims our persisted band (e.g.
-  after a `/tmp` sweep), the next run reallocates transparently.
+  (client, API, WebDAV, PG, S3, plus the scratch-slot range). Offset 0 is tried
+  first and reproduces the fixed contract exactly, so a solo checkout sees no
+  change. Allocation happens once per checkout and is persisted in
+  `data/e2e-runtime.json` (git-ignored); reusing the same band keeps
+  `reuseExistingServer` dev loops stable. A band is taken only when every port
+  passes a real listener probe AND a global claim lock in the checkout's band
+  directory (stale dead owners are reclaimed) — this closes the race between
+  concurrent cold starts of different checkouts. If another live checkout later
+  claims our persisted band (e.g. after a `/tmp` sweep), the next run
+  reallocates transparently.
 - **Consumers** — compose interpolates the exported WebDAV port; the API server
   boots on `data/e2e-runtime.env`; the Playwright config, scratch suites, and
   setup/teardown helpers all resolve ports through the shared port helper
@@ -287,7 +309,8 @@ per-checkout), and Playwright browsers (shared read-only cache under `~/.cache`)
 ## Real-PostgreSQL Legs
 
 Both real-PG legs reuse the compose `postgresql-e2e` service (pgvector/pgvector:pg16,
-host port 5433). Start it once:
+published on the stack's PostgreSQL host port; see
+[E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md)). Start it once:
 
 ```bash
 docker compose -f docker-compose.e2e.yml up -d postgresql-e2e
@@ -305,10 +328,10 @@ ANN/vector leg (`webdav_vector_test`, separate database so both legs share one s
 cd server && npm run test:ci:pg:vector
 ```
 
-Override the host port with `WEA_TEST_PG_PORT` (default `5433`). Both legs
-self-provision their disposable database when it is missing (the compose user has
-`CREATEDB`). If the server is unreachable the vector suite fails with the compose
-start command in the error message.
+Override the host port with `WEA_TEST_PG_PORT`; the default is the stack's
+PostgreSQL host port. Both legs self-provision their disposable database when it
+is missing (the compose user has `CREATEDB`). If the server is unreachable the
+vector suite fails with the compose start command in the error message.
 
 ## Recommended Git Workflow
 
@@ -555,7 +578,7 @@ cat .gitignore | grep coverage
 
 **Root cause**: stale WebDAV state (locks/partial trees) or a compose container reused with the wrong host-port mapping. Earlier versions used a host bind mount (`./data/webdav:/var/lib/dav`) that `docker compose down -v` could not reset.
 
-**Fix**: The stack now uses a per-band named volume (`webdav_data`) under an explicit per-band compose project (`webdav-easyaccess-<offset>`). The WebDAV job starts one bytemark and resets its volume/root in `global-setup`; default/core never start a WebDAV container. If this issue recurs, run `docker compose -p webdav-easyaccess-<offset> -f docker-compose.e2e.yml down -v --remove-orphans` and re-run the WebDAV job.
+**Fix**: The stack now uses a per-band named volume under an explicit per-band compose project. The WebDAV job starts one bytemark and resets its volume/root in `global-setup`; default/core never start a WebDAV container. If this issue recurs, run `docker compose -p <per-band-compose-project> -f docker-compose.e2e.yml down -v --remove-orphans` (use the project name printed by the band helper) and re-run the WebDAV job.
 
 ### Q: Mobile Action Sheet tests are flaky
 
@@ -589,6 +612,6 @@ npm test
 
 ---
 
-**Last updated**: 2026-10-23  
+**Last updated**: 2026-10-26
 **Project**: WebDAV EasyAccess  
 **Test frameworks**: Jest, React Testing Library, Playwright

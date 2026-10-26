@@ -357,19 +357,34 @@ This section defines only the invariants every E2E suite must follow.
 ### Skip policy
 
 - In CI, a missing required resource (WebDAV, PostgreSQL, or AI weights) must
-  fail the gate, not skip the case. Every skip carries a reason; unexpected
-  skips fail release.
-- Expected static skip counts are documented per group in the coverage plan.
-  Any drift from those counts is a gate failure.
+  fail the gate, not skip the case. Every skip carries a reason.
+- Expected skip counts are release invariants, not reporting noise. The
+  canonical expected count per group lives in the coverage plan, and the
+  skip-count reporter compares every run against it.
+- Any unexpected skip fails release. Any mismatch against the documented count
+  is a gate failure, including a missing expected skip; update the count only
+  when the product/coverage decision is explicit.
+- Do not convert a skip into a pass through a retry, a broader timeout, or a
+  conditional guard. Fix the missing resource or the contract.
 
 ### State preservation
 
+- Route-driven expansion is initial state, not a per-refresh reset. When the
+  current route is a collections route, the collections section is expanded on
+  first render and on remount.
+- An undo or notifier refresh must preserve the user's current expansion. It
+  must not silently collapse an expanded section.
+- A manual collapse is user intent and takes precedence while the route is
+  unchanged. Only a later route entry or remount may auto-expand the section
+  again.
 - Do not reload the page to bypass a same-session fetch queue or resume
   workflow. Wait for the observable dialog/request state; reload only when boot
   or restart is the behavior under test.
-- Do not re-open or re-expand a tree merely to make an undo-state assertion
-  pass. If the product intentionally remounts or collapses the tree, assert
-  that observable state explicitly; otherwise fix the product behavior.
+- Do not reload, re-open, or re-expand a tree merely to make an undo-state
+  assertion pass. Assert the product's observable expansion state directly.
+- Collapsed, empty, and load-failure states must be distinguishable through
+  explicit accessible state (for example `aria-expanded` plus an empty or error
+  message), never inferred from row absence alone.
 
 ### Concurrency and isolation
 

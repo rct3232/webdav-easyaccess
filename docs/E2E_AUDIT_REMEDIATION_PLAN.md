@@ -143,3 +143,9 @@ Add a release command that runs with no retries and fail-on-flaky.
     `TESTING_STRATEGY.md` or `TEST_GIT_GUIDE.md`
 - Capacity note: workers=4 on the shared 6-core host remains capacity validation,
   not a gate; no fixed worker cap or per-project worker pool was added.
+
+## 7. Follow-up
+
+The remaining audit findings are tracked in
+[E2E_AUDIT_FOLLOWUP_PLAN.md](E2E_AUDIT_FOLLOWUP_PLAN.md). This remediation ledger
+is closed; the follow-up task graph is not duplicated here.

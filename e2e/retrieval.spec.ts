@@ -140,16 +140,18 @@ interface SearchPostRecord {
 }
 
 /**
- * Response-listener based traffic tracker: collects POSTs whose URL path is
- * exactly `/api/search` (the server-submit channel — `/api/search/click` and
- * every other endpoint are separate paths and are tracked independently).
+ * Request-listener based traffic tracker: collects requests whose method is
+ * POST and URL path is exactly `/api/search` (the server-submit channel —
+ * `/api/search/click` and every other endpoint are separate paths and are
+ * tracked independently). Requests, unlike responses, are recorded as soon as
+ * the browser issues them, so a missing response cannot hide a duplicate
+ * submit.
  */
 function trackSearchPosts(page: Page): () => number {
   const posts: string[] = [];
-  page.on('response', (res) => {
-    const req = res.request();
-    if (req.method() === 'POST' && new URL(res.url()).pathname === '/api/search') {
-      posts.push(res.url());
+  page.on('request', (req) => {
+    if (req.method() === 'POST' && new URL(req.url()).pathname === '/api/search') {
+      posts.push(req.url());
     }
   });
   return () => posts.length;
@@ -542,9 +544,10 @@ test('E2E-S3-RETRIEVAL-001: Results render as accordion zones with honest header
   // the bar; no results surface mounts before the submit.
   await searchBox(page).fill('al');
   await searchBox(page).pressSequentially('pha');
-  // Let the search-bar orbit/pending hold complete before submitting; a press
-  // during the single-flight window is intentionally ignored by the UI.
-  await page.waitForTimeout(4_000);
+  await expect(searchBox(page)).toHaveValue('alpha');
+  // The orbit is the observable pending state; it must be absent for a clean
+  // first-Enter contract, so no single-flight submit can swallow the press.
+  await expect(page.getByTestId('search-action-glyph-orbit')).toHaveCount(0);
   expect(searchPosts(), 'typing must never hit the server').toBe(0);
   await expect(chipBar(page)).toHaveCount(0);
   await expect(zoneHeader(page, 'a')).toHaveCount(0);
@@ -552,20 +555,12 @@ test('E2E-S3-RETRIEVAL-001: Results render as accordion zones with honest header
   // Enter submits exactly ONE POST /api/search and mounts the results surface:
   // the chip bar replaces the breadcrumb, zones A + B render, and the degraded
   // semantic zone never exists (`semantic` omitted ⇒ Zone C renders nothing).
-  const searchDeadline = Date.now() + 60_000;
-  while (
-    !(await chipBar(page)
-      .isVisible()
-      .catch(() => false)) &&
-    Date.now() < searchDeadline
-  ) {
-    // A press during the UI's single-flight orbit can be ignored. Retry only
-    // while no query has reached the server, so the one-query contract holds.
-    if (searchPosts() === 0) await searchBox(page).press('Enter');
-    await page.waitForTimeout(2_000);
-  }
+  // The first Enter is never retried; a missing/extra request fails the
+  // exactly-one assertion below.
+  await searchBox(page).press('Enter');
   await expect(chipBar(page)).toBeVisible();
   await expect.poll(() => searchPosts(), 'Enter submits exactly one server query').toBe(1);
+  expect(searchPosts()).toBe(1);
   await expect(page.getByTestId('breadcrumb')).toHaveCount(0);
 
   await expect(zoneHeader(page, 'a')).toBeVisible();

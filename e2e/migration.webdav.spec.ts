@@ -263,10 +263,10 @@ test.describe('unified migration mode (WebDAV source)', () => {
     // A7: resume — rerun apply; already-migrated nodes are skipped.
     await page.getByRole('dialog').getByRole('button', { name: 'Go to settings' }).click();
     await page.waitForURL(/\/mypage/);
-    // Reload so the resumed dialog does not inherit the cancelled job's
-    // long-lived browser connections/fetch queue (seen as a stuck "Loading
-    // migration info..." under the full parallel WebDAV job).
-    await page.reload();
+    // Same-session resume: no reload. The dialog's source-info fetch runs on
+    // open and the helper waits for the rendered source label, so a stuck
+    // fetch surfaces as a bounded failure rather than being masked by a
+    // full-page reload (which would also discard the session state under test).
     await assertOnSystemSettings(page);
     await openBlobMigrationDialog(page);
     await fillS3Dest(page, {
@@ -619,31 +619,24 @@ test.describe('unified migration mode (WebDAV source)', () => {
     // Hold the gate: start a dry-run blob migration via the admin API against
     // the hanging destination (dispatchWorker sets the gate synchronously, so
     // the 202 response already implies an active gate).
-    let startRes;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        startRes = await request.post(`${baseURL}/api/admin/migration/blobs`, {
-          headers: { Authorization: `Bearer ${token}` },
-          data: {
-            mode: 'dry-run',
-            force: false,
-            dest: {
-              type: 's3',
-              bucket: destBucket,
-              accessKey: S3_ACCESS_KEY,
-              secretKey: S3_SECRET_KEY,
-              endpoint: hangEndpoint,
-              region: S3_REGION,
-            },
-          },
-        });
-        break;
-      } catch (error) {
-        if (attempt === 2) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-    }
-    expect(startRes?.status()).toBe(202);
+    const startPayload = {
+      mode: 'dry-run',
+      force: false,
+      dest: {
+        type: 's3',
+        bucket: destBucket,
+        accessKey: S3_ACCESS_KEY,
+        secretKey: S3_SECRET_KEY,
+        endpoint: hangEndpoint,
+        region: S3_REGION,
+      },
+    };
+    const startRes = await request.post(`${baseURL}/api/admin/migration/blobs`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: startPayload,
+    });
+    expect(startRes.status()).toBe(202);
+    const { jobId } = (await startRes.json()) as { jobId: string };
 
     const statusRes = await request.get(`${baseURL}/api/migration/status`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -651,7 +644,23 @@ test.describe('unified migration mode (WebDAV source)', () => {
     expect(statusRes.ok()).toBeTruthy();
     const gateState = (await statusRes.json()) as { active?: boolean; jobId?: string };
     expect(gateState.active).toBe(true);
-    expect(gateState.jobId).toBeDefined();
+    expect(gateState.jobId).toBe(jobId);
+
+    // Exactly-once: a deliberate duplicate POST is a NEW request (not a retry
+    // of a non-idempotent write) and must be rejected while the one gate/job
+    // stays active.
+    const duplicateRes = await request.post(`${baseURL}/api/admin/migration/blobs`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: startPayload,
+    });
+    expect(duplicateRes.status()).toBe(409);
+    const gateAfterDuplicate = (await (
+      await request.get(`${baseURL}/api/migration/status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    ).json()) as { active?: boolean; jobId?: string };
+    expect(gateAfterDuplicate.active).toBe(true);
+    expect(gateAfterDuplicate.jobId).toBe(jobId);
 
     // Role a — authenticated admin: a client-side (history API) navigation away
     // from /migration is force-redirected back by the role-aware guard. A full

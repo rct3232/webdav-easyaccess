@@ -231,25 +231,10 @@ test.describe('unified migration mode (S3 backend)', () => {
     expect(modalBody).toContain('Migration completed');
     expect(modalBody).toContain('Metadata migration to PostgreSQL completed');
 
-    // Wait for the job to fully reach completed (gate cleared in the worker).
-    // Capture the jobId right after the redirect while the gate is still active;
-    // if the metadata copy was fast enough to clear it already, the terminal
-    // modal assertion above plus the B6 target assertions are sufficient proof.
-    const gate = (await (
-      await request.get(`${baseURL}/api/migration/status`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-    ).json()) as {
-      jobId?: string;
-    };
-    if (gate.jobId) {
-      const job = await pollJobStatus(baseURL, request, token, gate.jobId, [
-        'completed',
-        'failed',
-        'cancelled',
-      ]);
-      expect(job.status).toBe('completed');
-    }
+    // The terminal modal asserts `Migration completed` and the target-row
+    // assertions below prove the committed copy, so no extra status poll is
+    // needed here. The job-state contract is covered by the gate cases and the
+    // server-side migration tests.
 
     // B6: target PG holds the copied rows with ids preserved (BIGSERIAL is
     // returned as a string by node-pg; normalize both sides).

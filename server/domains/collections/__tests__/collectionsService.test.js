@@ -634,31 +634,17 @@ describe('collectionsService seed preview (§2.7)', () => {
     expect(result.sample.some((row) => row.nodeId === other.stay.id)).toBe(false);
   });
 
-  it('passes the visible ACL set and k=200 to the vectorStore seam', async () => {
+  it('scores visible candidates with pooled cosine (no retrieval scorer)', async () => {
     collectionsService.__setRuntimeSeamsForTests({ llmAdapter: embedConfiguredAdapter() });
     const ctx = await setupServiceUser('seedacl');
     const modelId = await ensureEmbedModel('seedacl');
     await embedNode(ctx.beach.id, modelId, [1, 0, 0, 0]);
-
-    const neighbors = jest.fn(async () => [
-      { nodeId: ctx.beach.id, score: 1 },
-      { nodeId: ctx.stay.id, score: 0.9 },
-    ]);
-    collectionsService.__setRuntimeSeamsForTests({
-      vectorStoreFactory: () => ({ neighbors }),
-    });
+    await embedNode(ctx.stay.id, modelId, [0.9, 0.1, 0, 0]);
 
     const result = await collectionsService.preview(ctx.user.id, { seedNodeId: ctx.beach.id });
     expect(result.count).toBe(1);
     expect(result.sample).toEqual([{ nodeId: ctx.stay.id, name: 'stay.jpg' }]);
-
-    expect(neighbors).toHaveBeenCalledTimes(1);
-    const [seedVec, k, candidates] = neighbors.mock.calls[0];
-    expect(seedVec).toEqual([1, 0, 0, 0]);
-    expect(k).toBe(200);
-    expect(candidates).toBeInstanceOf(Set);
-    expect(candidates.has(ctx.stay.id)).toBe(true);
-    expect(candidates.has(ctx.beach.id)).toBe(false);
+    expect(result.degraded).toBeUndefined();
   });
 
   it('caps the sample at 12 and flags truncation', async () => {
@@ -983,6 +969,11 @@ describe('collectionsService checkUploadAdmissions (T0.9 seam; §2.3-bis)', () =
 
     expect(result).toEqual({ nodeId: fresh.id, admittedCollectionIds: [system.id] });
     expect((await collectionsStore.getCollection(system.id)).lastMemberChangeAt).not.toBeNull();
+    expect(await collectionsStore.getStoredItem(system.id, fresh.id)).toMatchObject({
+      source: 'system',
+      reason: `path:/${ctx.user.username}/travel`,
+      published: false,
+    });
     // the member view now carries it as a derived row with its reason
     const view = await collectionsService.getItems(ctx.user.id, system.id, {});
     // established path-prefix parity (T0.3): the prefix directory itself matches
@@ -1036,6 +1027,30 @@ describe('collectionsService checkUploadAdmissions (T0.9 seam; §2.3-bis)', () =
     const storedView = await collectionsService.getItems(ctx.user.id, storedCol.id, {});
     expect(storedView.items.map((row) => row.nodeId)).toContain(fresh.id);
     expect(storedView.items.find((row) => row.nodeId === fresh.id).membership).toBe('stored');
+  });
+
+  it('admits a pooled-vector match and materializes source/reason', async () => {
+    const ctx = await createUserWithRoot('hookvec');
+    const modelId = await ensureEmbedModel('hookvec');
+    const seed = await fileNodeService.createFile(ctx.root.id, 'seed.jpg');
+    const match = await fileNodeService.createFile(ctx.root.id, 'match.jpg');
+    await embedNode(seed.id, modelId, [1, 0, 0, 0]);
+    await embedNode(match.id, modelId, [0.99, 0.1, 0, 0]);
+
+    const collection = await collectionsStore.createCollection(
+      {
+        ownerId: ctx.user.id,
+        name: 'Similar',
+        origin: 'system',
+        definition: { kind: 'seed_vector', seed_ref: seed.id, theta: 0.6 },
+      },
+      { actor: ctx.user.id }
+    );
+
+    const result = await collectionsService.checkUploadAdmissions(ctx.user.id, match.id);
+    expect(result.admittedCollectionIds).toEqual([collection.id]);
+    const row = await collectionsStore.getStoredItem(collection.id, match.id);
+    expect(row).toMatchObject({ source: 'system', reason: 'similar', published: false });
   });
 
   it('non-matching nodes, directories and vector-only definitions admit nothing', async () => {

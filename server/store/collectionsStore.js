@@ -343,14 +343,25 @@ async function getStoredItem(collectionId, nodeId) {
  * its own journal row with a no-op inverse). Default `published=true` for
  * owner-added rows.
  */
-async function addItem(collectionId, nodeId, addedBy, { published } = {}, ctx = {}) {
+async function addItem(
+  collectionId,
+  nodeId,
+  addedBy,
+  { published, source, reason } = {},
+  ctx = {}
+) {
   const repo = getRepository();
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
     { actor: ctx.actor, action: 'add-item', subjectLabel: await labelOf(repo, collectionId) },
     { inverse: { op: 'remove-item', collectionId, nodeId } },
-    (tx) => repo.insertItem(tx, collectionId, nodeId, addedBy, { published: published ?? true })
+    (tx) =>
+      repo.insertItem(tx, collectionId, nodeId, addedBy, {
+        published: published ?? true,
+        source: source ?? 'manual',
+        reason: reason ?? null,
+      })
   );
   return withActionId(committed.result, committed);
 }
@@ -374,7 +385,13 @@ async function removeItem(collectionId, nodeId, ctx = {}) {
  * reported in `alreadyMembers` (pre-read) and never re-inserted;
  * `touchMemberChange` runs inside the same TX.
  */
-async function addItems(collectionId, nodeIds, addedBy, { published } = {}, ctx = {}) {
+async function addItems(
+  collectionId,
+  nodeIds,
+  addedBy,
+  { published, source, reason } = {},
+  ctx = {}
+) {
   const repo = getRepository();
   const alreadyMembers = [];
   const toInsert = [];
@@ -403,6 +420,8 @@ async function addItems(collectionId, nodeIds, addedBy, { published } = {}, ctx 
       for (const nodeId of toInsert) {
         const result = await repo.insertItem(tx, collectionId, nodeId, addedBy, {
           published: published ?? true,
+          source: source ?? 'manual',
+          reason: reason ?? null,
         });
         if (result.changes > 0) added.push(nodeId);
       }

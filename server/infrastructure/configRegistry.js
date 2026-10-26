@@ -200,6 +200,8 @@ const CONFIG_ENTRIES = Object.freeze([
   { key: 'AI_USAGE_W_SEARCH_HIT', tier: TIER.T2, secret: false, default: 1, dbOnly: true },
   { key: 'AI_USAGE_W_LIKE', tier: TIER.T2, secret: false, default: 5, dbOnly: true },
   { key: 'AI_ACTIVITY_HALF_LIFE_DAYS', tier: TIER.T2, secret: false, default: 30, dbOnly: true },
+  // §2.3 similarity-ordering boost (collectionsService §3; ordering only).
+  { key: 'AI_VIEW_WEIGHT_ALPHA', tier: TIER.T2, secret: false, default: 0.1, dbOnly: true },
   {
     key: 'AI_USAGE_EVENT_RETENTION_DAYS',
     tier: TIER.T2,

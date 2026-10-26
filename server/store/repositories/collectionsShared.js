@@ -36,6 +36,8 @@ function mapItemRow(row) {
     nodeId: Number(row.node_id),
     addedBy: Number(row.added_by),
     published: toBoolean(row.published),
+    source: row.source ?? 'manual',
+    reason: row.reason ?? null,
     createdAt: toIsoString(row.created_at),
   };
 }

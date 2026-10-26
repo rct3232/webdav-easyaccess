@@ -24,8 +24,9 @@ const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const aiTagStore = require('../../store/aiTagStore');
 const embeddingsStore = require('../../store/embeddingsStore');
 const aiJobsStore = require('../../store/aiJobsStore');
+const llmModelsStore = require('../../store/llmModelsStore');
+const { getPresetByFamilyRole } = require('../../infrastructure/adapters/llm/presets');
 const { foldTag } = require('../ai/tagVocabulary');
-const { parseVector } = require('../ai/vectorStore/vectorMath');
 const definitionEngine = require('./definitionEngine');
 const { createNamer } = require('./namingService');
 const wire = require('./wire');
@@ -57,7 +58,6 @@ const SIMILAR_CLUSTER_COSINE = 0.7;
 // without booting an LLM. `undefined` = resolve the production default.
 const runtimeSeams = {
   llmAdapter: undefined,
-  vectorStoreFactory: undefined,
 };
 
 function __setRuntimeSeamsForTests(seams = {}) {
@@ -66,7 +66,6 @@ function __setRuntimeSeamsForTests(seams = {}) {
 
 function __resetRuntimeSeamsForTests() {
   runtimeSeams.llmAdapter = undefined;
-  runtimeSeams.vectorStoreFactory = undefined;
 }
 
 const REMOVAL_JOURNAL_ACTIONS = new Set(['remove-item', 'remove-items', 'exclude']);
@@ -126,12 +125,6 @@ async function embedRoleConfigured() {
   const baseUrl = await resolver.getConfig('LLM_EMBED_BASE_URL');
   const model = await resolver.getConfig('LLM_EMBED_MODEL');
   return Boolean(String(baseUrl || '').trim()) && Boolean(String(model || '').trim());
-}
-
-/** Vector-store seam: the boot singleton, else the JsFallback (§2.3). */
-function resolveVectorStoreFactory() {
-  if (runtimeSeams.vectorStoreFactory !== undefined) return runtimeSeams.vectorStoreFactory;
-  return require('../ai/vectorStoreRuntime').getVectorStoreOrFallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +190,98 @@ async function buildProviders(userId) {
       const folded = foldTag(value);
       if (!folded) return [];
       return aiTagStore.listNodeIdsByRawTag(folded);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Vector membership context (§2.3 — pooled vectors only)
+// ---------------------------------------------------------------------------
+
+function parseVectorText(value) {
+  if (Array.isArray(value)) {
+    const out = value.map(Number);
+    return out.every((n) => Number.isFinite(n)) ? out : null;
+  }
+  if (typeof value !== 'string' || value.length === 0) return null;
+  const out = value.split(',').map(Number);
+  return out.length > 0 && out.every((n) => Number.isFinite(n)) ? out : null;
+}
+
+function clampCosine(value) {
+  return Math.max(-1, Math.min(1, value));
+}
+
+/**
+ * Resolve a definition's pooled reference vector + θ band from the ACTIVE
+ * embed model. A cross-model reference (seed/centroid row from another space)
+ * is ignored — membership never compares spaces.
+ */
+async function resolveVectorReference(definition) {
+  const parsed = definitionEngine.parseDefinition(definition);
+  if (!parsed.vector) return null;
+  const model = await llmModelsStore.getActiveByRole('embed');
+  if (!model) return null;
+  const modelId = Number(model.id);
+
+  let reference = null;
+  if (parsed.kind === 'seed_vector') {
+    const seedId = Number(parsed.vector.seed_ref ?? parsed.vector.seedRef);
+    const row = Number.isInteger(seedId) && seedId > 0 ? await embeddingsStore.get(seedId) : null;
+    if (!row || Number(row.modelId) !== modelId) return null;
+    reference = parseVectorText(row.vector);
+  } else {
+    const refId = Number(parsed.vector.centroid_ref ?? parsed.vector.centroidRef);
+    const rows =
+      Number.isInteger(refId) && refId > 0
+        ? await collectionsStore.getCentroids([refId], modelId)
+        : [];
+    reference = rows.length > 0 ? parseVectorText(rows[0].centroid) : null;
+  }
+  if (!reference || reference.length === 0) return null;
+
+  const preset = getPresetByFamilyRole(model.provider, 'embed');
+  const band = (preset && preset.profile && preset.profile.membershipHysteresis) || {};
+  const theta = Number(parsed.vector.theta);
+  if (!Number.isFinite(theta)) return null;
+  const inDelta = Number(band.inDelta);
+  const outDelta = Number(band.outDelta);
+  return {
+    modelId,
+    reference,
+    thetaIn: Number.isFinite(inDelta) ? clampCosine(theta + inDelta) : theta,
+    thetaOut: Number.isFinite(outDelta) ? clampCosine(theta + outDelta) : theta,
+  };
+}
+
+/**
+ * Score one candidate set against a definition's pooled reference.
+ * @returns {Promise<{ scoreFor: (nodeId:number) => number|null, thetaIn:number, thetaOut:number, previousMembers:Set<number> }|null>}
+ */
+async function buildVectorContext(definition, candidateIds, previousMembers = new Set()) {
+  const resolved = await resolveVectorReference(definition);
+  if (!resolved) return null;
+  const ids = [...new Set((candidateIds || []).map(Number))].filter(
+    (id) => Number.isInteger(id) && id > 0
+  );
+  const byNode = new Map();
+  if (ids.length > 0) {
+    const rows = await embeddingsStore.getByNodeIds(ids);
+    for (const row of rows || []) {
+      if (Number(row.modelId) !== resolved.modelId) continue;
+      const vector = parseVectorText(row.vector);
+      if (!vector || vector.length !== resolved.reference.length) continue;
+      byNode.set(Number(row.nodeId), vector);
+    }
+  }
+  return {
+    thetaIn: resolved.thetaIn,
+    thetaOut: resolved.thetaOut,
+    previousMembers:
+      previousMembers instanceof Set ? previousMembers : new Set(previousMembers || []),
+    scoreFor: (nodeId) => {
+      const vector = byNode.get(Number(nodeId));
+      return vector ? definitionEngine.cosineSimilarity(resolved.reference, vector) : null;
     },
   };
 }
@@ -272,7 +357,11 @@ async function composeMemberRows(userId, collection, getCandidates) {
   for (const item of stored) storedByNodeId.set(item.nodeId, item);
 
   const derived = new Map();
-  if (definitionEngine.hasPredicates(collection.definition)) {
+  if (
+    collection.definition &&
+    collection.definition.kind === 'predicate' &&
+    definitionEngine.hasPredicates(collection.definition)
+  ) {
     const candidates = await resolveCandidates(userId);
     const providers = await buildProviders(userId);
     const admitted = await definitionEngine.evaluateDefinition({
@@ -317,9 +406,10 @@ async function resolveMemberRows(userId, collection, getCandidates) {
     if (!isRequesterOwner && !published) continue; // grantees see published rows only
 
     const readable = await canReadNode(userId, nodeId);
+    const ruleManaged = Boolean(stored && stored.source && stored.source !== 'manual');
     rows.push({
       nodeId,
-      membership: stored ? 'stored' : 'derived',
+      membership: stored ? (ruleManaged ? 'derived' : 'stored') : 'derived',
       published,
       addedBy: stored ? stored.addedBy : null,
       createdAt: stored ? stored.createdAt : (derived.get(nodeId)?.nodeCreatedAt ?? null),
@@ -327,7 +417,7 @@ async function resolveMemberRows(userId, collection, getCandidates) {
       name: readable ? node.name : null,
       type: readable ? node.type : null,
       mimeType: readable ? (node.mimeType ?? null) : null,
-      reason: stored ? null : (derived.get(nodeId)?.reason ?? null),
+      reason: stored ? (stored.reason ?? null) : (derived.get(nodeId)?.reason ?? null),
       sharedExcluded: foreign,
       liked: likedSet.has(nodeId),
     });
@@ -595,7 +685,7 @@ async function createSeedCollection(userId, { name, seedNodeId } = {}) {
       created.id,
       seedPreview.ids,
       userId,
-      { published: true },
+      { published: true, source: 'seed', reason: 'similar' },
       { actor: userId }
     );
   }
@@ -673,7 +763,7 @@ async function createSearchCollection(userId, { name, semantic } = {}) {
       created.id,
       addable,
       userId,
-      { published: true },
+      { published: true, source: 'search' },
       { actor: userId }
     );
   }
@@ -880,7 +970,7 @@ async function addItems(userId, collectionId, nodeIds) {
     collectionId,
     addable,
     userId,
-    { published },
+    { published, source: 'manual' },
     { actor: userId }
   );
   await touchSystemAutoPin(collection);
@@ -971,7 +1061,7 @@ async function publishItems(userId, collectionId, nodeIds, published) {
       collectionId,
       materializeIds,
       userId,
-      { published: true },
+      { published: true, source: collection.origin === 'user' ? 'manual' : collection.origin },
       { actor: userId }
     );
     publishedIds.push(...add.added);
@@ -994,15 +1084,16 @@ async function publishItems(userId, collectionId, nodeIds, published) {
 }
 
 // ---------------------------------------------------------------------------
-// Upload-hook rule-check SEAM (§2.3-bis, T0.9) — callable only; invocation
-// at the §4.1 commit points rides the P1 wiring (register (b)).
+// Upload-hook rule check (§2.3-bis) — materializes membership at commit points
 // ---------------------------------------------------------------------------
 
 /**
- * Point-evaluate the requester's ACTIVE predicate collections against ONE
- * freshly committed node (no corpus scan — §2.6 mechanism). Each collection
- * that newly admits the node gets `touchMemberChange` (the only coupling per
- * aiJobService §2.2); exclusions and existing stored rows short-circuit.
+ * Point-evaluate the requester's ACTIVE definition-driven collections against
+ * ONE freshly committed node (no corpus scan — §2.6 mechanism). Each admitting
+ * collection materializes the membership row with `source='system'`, the
+ * matched reason, and the publish state from `publish_mode`; the journaled
+ * item command also bumps `last_member_change_at`. Exclusions and existing
+ * rows short-circuit. This hook adds but never removes.
  * @returns {Promise<{ nodeId: number, admittedCollectionIds: number[] }>}
  */
 async function checkUploadAdmissions(userId, nodeId) {
@@ -1023,7 +1114,7 @@ async function checkUploadAdmissions(userId, nodeId) {
 
   const providers = await buildProviders(userId);
   const collections = (await collectionsStore.listForUser(userId, { status: 'active' })).filter(
-    (row) => row.ownerId === userId && definitionEngine.hasPredicates(row.definition)
+    (row) => row.ownerId === userId && definitionEngine.hasDefinition(row.definition)
   );
 
   const admittedCollectionIds = [];
@@ -1033,18 +1124,57 @@ async function checkUploadAdmissions(userId, nodeId) {
     );
     if (exclusions.has(parsedNodeId)) continue;
     if (await collectionsStore.getStoredItem(collection.id, parsedNodeId)) continue;
+
+    const isVector = definitionEngine.isVectorDefinition(collection.definition);
+    const vector = isVector
+      ? await buildVectorContext(collection.definition, [parsedNodeId], new Set())
+      : null;
+    if (isVector && !vector) continue;
+
     const admitted = await definitionEngine.evaluateDefinition({
       definition: collection.definition,
       candidateNodes: [node],
       nodesById,
       providers,
+      vector,
     });
-    if (admitted.has(parsedNodeId)) {
-      await collectionsStore.touchMemberChange(collection.id);
-      admittedCollectionIds.push(collection.id);
-    }
+    const reason = admitted.get(parsedNodeId);
+    if (!reason) continue;
+
+    const published = collection.publishMode === 'auto';
+    const result = await collectionsStore.addItems(
+      collection.id,
+      [parsedNodeId],
+      userId,
+      { published, source: 'system', reason },
+      { actor: 'system' }
+    );
+    if (result.added.length > 0) admittedCollectionIds.push(collection.id);
   }
   return { nodeId: parsedNodeId, admittedCollectionIds };
+}
+
+async function resolveOwnerIdForNode(nodeId) {
+  const fileNodesStore = createFileNodesStore();
+  let current = await fileNodesStore.getNode(nodeId);
+  while (current && current.parentId != null) {
+    current = await fileNodesStore.getNode(current.parentId);
+  }
+  if (!current) return null;
+  const owner = await userStore.findByUsername(current.name);
+  return owner && owner.id != null ? Number(owner.id) : null;
+}
+
+/**
+ * Commit-seam entry: resolve the node's owner and materialize admissions.
+ * Fire-and-forget callers log failures; the hook never throws into a request.
+ */
+async function checkUploadAdmissionsForNode(nodeId) {
+  const parsedNodeId = toFiniteId(nodeId);
+  if (!parsedNodeId) return { nodeId: parsedNodeId, admittedCollectionIds: [] };
+  const ownerId = await resolveOwnerIdForNode(parsedNodeId);
+  if (!ownerId) return { nodeId: parsedNodeId, admittedCollectionIds: [] };
+  return checkUploadAdmissions(ownerId, parsedNodeId);
 }
 
 // ---------------------------------------------------------------------------
@@ -1071,17 +1201,17 @@ async function preview(userId, target = {}) {
     };
   }
 
-  const parsed = definitionEngine.parseDefinition(target.definition);
-  return runDefinitionPreview(userId, parsed);
+  definitionEngine.parseDefinition(target.definition);
+  return runDefinitionPreview(userId, target.definition);
 }
 
 /**
  * The ONE seed-candidate computation shared by preview and creation (§2.7):
- * the seed's pooled embedding vs the requester-visible corpus through the
- * vectorStore seam (`neighbors`, k=200). The seed is excluded from its own
- * candidate set BEFORE the top-K cut. Missing pooled embedding ⇒ the
- * degraded empty shape and a fire-and-forget idempotent embed job for files
- * (preview never blocks on enrichment).
+ * the seed's pooled embedding vs the requester-visible corpus. Pooled cosine
+ * (NOT the retrieval max-over-chunks scorer), k=200. The seed is excluded from
+ * its own candidate set BEFORE the top-K cut. Missing pooled embedding or a
+ * model-space mismatch ⇒ the degraded empty shape and a fire-and-forget
+ * idempotent embed job for files (preview never blocks on enrichment).
  *
  * @returns {Promise<{ ids: number[], count: number, sample: Array<{nodeId:number,name:string|null}>, sample_truncated: boolean, degraded?: boolean }>}
  */
@@ -1092,18 +1222,33 @@ async function evaluateSeedPreview(userId, seedNodeId) {
     return { ...EMPTY_PREVIEW, ids: [], degraded: true };
   }
 
-  const seedVec = parseVector(pooled.vector, Number(pooled.dim));
+  const activeModel = await llmModelsStore.getActiveByRole('embed');
+  const seedModelId = Number(pooled.modelId);
+  if (!activeModel || Number(activeModel.id) !== seedModelId) {
+    return { ...EMPTY_PREVIEW, ids: [], degraded: true };
+  }
+  const seedVec = parseVectorText(pooled.vector);
+  if (!seedVec || seedVec.length === 0) {
+    return { ...EMPTY_PREVIEW, ids: [], degraded: true };
+  }
+
   const fileNodesStore = createFileNodesStore();
   const visibleIds = new Set(await fileNodesStore.listVisibleFileNodeIds(userId));
   visibleIds.delete(seedNodeId);
 
-  const modelId = Number(pooled.modelId);
-  const { createLoadRows } = require('../ai/vectorStoreRuntime');
-  const vectorStore = resolveVectorStoreFactory()(modelId, createLoadRows({ modelId }));
-  const ranked = await vectorStore.neighbors(seedVec, SEED_NEIGHBORS_K, visibleIds);
-  const ids = (ranked || [])
-    .map((row) => Number(row.nodeId))
-    .filter((nodeId) => Number.isInteger(nodeId) && nodeId !== seedNodeId);
+  const rows = await embeddingsStore.listAll(seedModelId);
+  const ranked = [];
+  for (const row of rows || []) {
+    const nodeId = Number(row.nodeId);
+    if (!visibleIds.has(nodeId)) continue;
+    const vector = parseVectorText(row.vector);
+    if (!vector || vector.length !== seedVec.length) continue;
+    const score = definitionEngine.cosineSimilarity(seedVec, vector);
+    if (score == null) continue;
+    ranked.push({ nodeId, score });
+  }
+  ranked.sort((a, b) => (a.score !== b.score ? b.score - a.score : a.nodeId - b.nodeId));
+  const ids = ranked.slice(0, SEED_NEIGHBORS_K).map((row) => row.nodeId);
 
   const sample = [];
   for (const nodeId of ids.slice(0, PREVIEW_SAMPLE_CAP)) {
@@ -1132,20 +1277,32 @@ async function enqueueSeedEmbeddingJob(seedNodeId) {
 async function previewCollection(userId, collectionId) {
   const { collection } = await getCollectionForRead(userId, collectionId);
   await requireOwner(userId, collection);
-  if (!definitionEngine.hasPredicates(collection.definition)) {
+  if (!definitionEngine.hasDefinition(collection.definition)) {
     return { ...EMPTY_PREVIEW };
   }
-  return runDefinitionPreview(userId, collection.definition);
+  const stored = await collectionsStore.listStoredItems(collectionId);
+  return runDefinitionPreview(userId, collection.definition, {
+    previousMembers: new Set(stored.map((row) => Number(row.nodeId))),
+  });
 }
 
-async function runDefinitionPreview(userId, definition) {
+async function runDefinitionPreview(userId, definition, { previousMembers = new Set() } = {}) {
   const candidates = await loadVisibleCandidates(userId);
   const providers = await buildProviders(userId);
+  const candidateIds = [...candidates.keys()];
+  const isVector = definitionEngine.isVectorDefinition(definition);
+  const vector = isVector
+    ? await buildVectorContext(definition, candidateIds, previousMembers)
+    : null;
+  if (isVector && !vector) {
+    return { ...EMPTY_PREVIEW, degraded: true };
+  }
   const admitted = await definitionEngine.evaluateDefinition({
     definition,
     candidateNodes: [...candidates.values()],
     nodesById: candidates,
     providers,
+    vector,
   });
   const ordered = [...admitted.keys()].sort((a, b) => a - b);
   const sample = ordered.slice(0, PREVIEW_SAMPLE_CAP).map((nodeId) => {
@@ -1328,7 +1485,13 @@ async function getForNodes(userId, nodeIds) {
 
   const visibleCollections = await collectionsStore.listForUser(userId, { status: 'active' });
   for (const collection of visibleCollections) {
-    if (!definitionEngine.hasPredicates(collection.definition)) continue;
+    if (
+      !collection.definition ||
+      collection.definition.kind !== 'predicate' ||
+      !definitionEngine.hasPredicates(collection.definition)
+    ) {
+      continue;
+    }
     const exclusions = new Set(
       (await collectionsStore.listExclusions(collection.id)).map((nodeId) => Number(nodeId))
     );
@@ -1441,6 +1604,7 @@ module.exports = {
   rejectMerge,
   getForNodes,
   checkUploadAdmissions,
+  checkUploadAdmissionsForNode,
   listGrants,
   grantCollectionAccess,
   revokeCollectionAccess,

@@ -447,12 +447,19 @@ module.exports = function createSqliteCollectionsRepository(executor) {
       return { changes: result.changes };
     },
 
-    async insertItem(tx, collectionId, nodeId, addedBy, { published } = {}) {
+    async insertItem(tx, collectionId, nodeId, addedBy, { published, source, reason } = {}) {
       const result = await tx.run(
-        `INSERT INTO collection_items (collection_id, node_id, added_by, published)
-         VALUES (?, ?, ?, ?)
+        `INSERT INTO collection_items (collection_id, node_id, added_by, published, source, reason)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (collection_id, node_id) DO NOTHING`,
-        [Number(collectionId), Number(nodeId), Number(addedBy), published ?? true]
+        [
+          Number(collectionId),
+          Number(nodeId),
+          Number(addedBy),
+          published ?? true,
+          source ?? 'manual',
+          reason ?? null,
+        ]
       );
       return { changes: result.changes };
     },

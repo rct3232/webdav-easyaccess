@@ -5,9 +5,10 @@
  *
  * Kinds (§2.3 collectionsService.md): `{ kind: 'predicate', all_of?, any_of? }`
  * with atoms of type path | tag | like | date | size, and the vector kinds
- * `seed_vector` / `centroid` (vector evaluation attaches with the T1.4
- * vectorStore seam — until then pure vector definitions contribute no derived
- * members and mixed definitions evaluate their predicate part only).
+ * `seed_vector` / `centroid`. Vector admission is scored from POOLED vectors
+ * through an injected `vector.scoreFor` seam; membership/grouping never uses
+ * the retrieval-only max-over-chunks scorer. Predicate and vector rules combine
+ * with AND; the caller supplies the θ_in/θ_out band and the previous member set.
  *
  * As-built mechanism (T0.3): atoms are evaluated per candidate node with
  * point checks injected by the service (path via the loaded ancestor map, size
@@ -106,19 +107,12 @@ function parseAtom(raw) {
 /**
  * Validate + normalize a definition payload. Throws `invalidDefinition` for
  * malformed payloads (unknown kind, non-object, unknown atom type, bad atom
- * params). Pure vector definitions pass through unchanged (T1.4 evaluates
- * them); predicate atoms are parsed strictly here.
+ * params). Vector kinds accept optional predicate atoms (AND/OR) and a
+ * reference id (`seed_ref` / `centroid_ref`).
  * @returns {{ kind: string, allOf: Array, anyOf: Array, vector?: Object }}
  */
 function parseDefinition(definition) {
   if (!definition || typeof definition !== 'object' || Array.isArray(definition)) {
-    throw serviceError('invalidDefinition', 400);
-  }
-  const { kind } = definition;
-  if (kind === 'seed_vector' || kind === 'centroid') {
-    return { kind, allOf: [], anyOf: [], vector: definition };
-  }
-  if (kind !== 'predicate') {
     throw serviceError('invalidDefinition', 400);
   }
   const parseList = (value) => {
@@ -126,6 +120,33 @@ function parseDefinition(definition) {
     if (!Array.isArray(value)) throw serviceError('invalidDefinition', 400);
     return value.map(parseAtom);
   };
+  const { kind } = definition;
+  if (kind === 'seed_vector' || kind === 'centroid') {
+    const ref = Number(
+      kind === 'seed_vector'
+        ? (definition.seed_ref ?? definition.seedRef)
+        : (definition.centroid_ref ?? definition.centroidRef)
+    );
+    if (!Number.isInteger(ref) || ref <= 0) throw serviceError('invalidDefinition', 400);
+    const theta = Number(definition.theta);
+    if (!Number.isFinite(theta)) throw serviceError('invalidDefinition', 400);
+    const vector = { ...definition, theta };
+    for (const key of ['theta_in', 'theta_out']) {
+      if (definition[key] === undefined || definition[key] === null) continue;
+      const value = Number(definition[key]);
+      if (!Number.isFinite(value)) throw serviceError('invalidDefinition', 400);
+      vector[key] = value;
+    }
+    return {
+      kind,
+      allOf: parseList(definition.all_of ?? definition.allOf),
+      anyOf: parseList(definition.any_of ?? definition.anyOf),
+      vector,
+    };
+  }
+  if (kind !== 'predicate') {
+    throw serviceError('invalidDefinition', 400);
+  }
   return {
     kind,
     allOf: parseList(definition.all_of ?? definition.allOf),
@@ -133,12 +154,48 @@ function parseDefinition(definition) {
   };
 }
 
+function isVectorDefinition(definition) {
+  return Boolean(
+    definition &&
+    typeof definition === 'object' &&
+    (definition.kind === 'seed_vector' || definition.kind === 'centroid')
+  );
+}
+
+/** True when the definition carries at least one predicate atom. */
 function hasPredicates(definition) {
   if (!definition || typeof definition !== 'object') return false;
-  if (definition.kind !== 'predicate') return false;
+  if (definition.kind !== 'predicate' && !isVectorDefinition(definition)) return false;
   const allOf = definition.all_of ?? definition.allOf;
   const anyOf = definition.any_of ?? definition.anyOf;
   return (Array.isArray(allOf) && allOf.length > 0) || (Array.isArray(anyOf) && anyOf.length > 0);
+}
+
+/** True for any evaluable rule kind (predicate or vector). */
+function hasDefinition(definition) {
+  return Boolean(
+    definition &&
+    typeof definition === 'object' &&
+    (definition.kind === 'predicate' || isVectorDefinition(definition))
+  );
+}
+
+function cosineSimilarity(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length === 0 || a.length !== b.length)
+    return null;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    const x = Number(a[i]);
+    const y = Number(b[i]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    dot += x * y;
+    normA += x * x;
+    normB += y * y;
+  }
+  if (normA === 0 || normB === 0) return null;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
 function atomLabel(atom) {
@@ -172,6 +229,10 @@ function fingerprintDefinition(definition) {
  *   `listNodesByTag` resolves a tag atom value to the node ids carrying the
  *   folded tag (T0.9, ai_tag_raw); absent ⇒ tag atoms match nothing.
  * @param {Date} [options.now]
+ * @param {{ scoreFor: (nodeId:number) => Promise<number|null>|number|null, previousMembers?: Set<number>, thetaIn?: number, thetaOut?: number }} [options.vector]
+ *   `scoreFor` supplies the pooled cosine for one candidate; `previousMembers`
+ *   selects the θ_out keep rule for existing rows. Absent ⇒ vector rules match
+ *   nothing.
  * @returns {Promise<Map<number, string>>} admitted nodeId → matched reason
  */
 async function evaluateDefinition({
@@ -180,12 +241,12 @@ async function evaluateDefinition({
   nodesById,
   providers,
   now = new Date(),
+  vector = null,
 }) {
-  if (!hasPredicates(definition)) {
-    return new Map();
-  }
   const parsed = parseDefinition(definition);
-  const { likedNodeIds, getSize, listNodesByTag } = providers;
+  const hasAtoms = parsed.allOf.length > 0 || parsed.anyOf.length > 0;
+  if (!hasAtoms && !parsed.vector) return new Map();
+  const { likedNodeIds, getSize, listNodesByTag } = providers || {};
   const liked = likedNodeIds instanceof Set ? likedNodeIds : new Set(likedNodeIds || []);
   const parentOf = (node) => {
     if (!node || node.parentId == null) return null;
@@ -251,10 +312,23 @@ async function evaluateDefinition({
   };
 
   const matched = new Map();
+  const previous =
+    vector && vector.previousMembers instanceof Set
+      ? vector.previousMembers
+      : new Set((vector && vector.previousMembers) || []);
+  const thetaIn = parsed.vector
+    ? Number(vector && vector.thetaIn != null ? vector.thetaIn : parsed.vector.theta)
+    : null;
+  const thetaOut = parsed.vector
+    ? Number(vector && vector.thetaOut != null ? vector.thetaOut : thetaIn)
+    : null;
+
   for (const node of candidateNodes) {
     if (!node || node.deletedAt) continue;
+    const nodeId = Number(node.id);
+    const labels = [];
+
     if (parsed.allOf.length > 0) {
-      const labels = [];
       let allMatch = true;
       for (const atom of parsed.allOf) {
         if (!(await evaluateAtom(atom, node))) {
@@ -264,17 +338,23 @@ async function evaluateDefinition({
         labels.push(atomLabel(atom));
       }
       if (!allMatch) continue;
-      if (parsed.anyOf.length > 0) {
-        const anyLabels = await matchAnyOf(parsed.anyOf, node, evaluateAtom);
-        if (!anyLabels) continue;
-        matched.set(Number(node.id), [...labels, anyLabels].join('+'));
-      } else {
-        matched.set(Number(node.id), labels.join('+'));
-      }
-      continue;
     }
-    const label = await matchAnyOf(parsed.anyOf, node, evaluateAtom);
-    if (label) matched.set(Number(node.id), label);
+    if (parsed.anyOf.length > 0) {
+      const anyLabel = await matchAnyOf(parsed.anyOf, node, evaluateAtom);
+      if (!anyLabel) continue;
+      labels.push(anyLabel);
+    }
+    if (parsed.vector) {
+      if (!vector || typeof vector.scoreFor !== 'function') continue;
+      const rawScore = await vector.scoreFor(nodeId);
+      const score = Number(rawScore);
+      if (rawScore == null || !Number.isFinite(score)) continue;
+      const keep = previous.has(nodeId) ? score >= thetaOut : score >= thetaIn;
+      if (!keep) continue;
+      labels.push('similar');
+    }
+    if (labels.length === 0) continue;
+    matched.set(nodeId, labels.join('+'));
   }
   return matched;
 
@@ -289,7 +369,10 @@ async function evaluateDefinition({
 module.exports = {
   ATOM_TYPES,
   parseDefinition,
+  isVectorDefinition,
   hasPredicates,
+  hasDefinition,
+  cosineSimilarity,
   fingerprintDefinition,
   evaluateDefinition,
 };

@@ -548,6 +548,11 @@ test('E2E-S3-RETRIEVAL-001: Results render as accordion zones with honest header
   // The orbit is the observable pending state; it must be absent for a clean
   // first-Enter contract, so no single-flight submit can swallow the press.
   await expect(page.getByTestId('search-action-glyph-orbit')).toHaveCount(0);
+  // Close any open action menu and restore focus to the search input before
+  // the one submit. This is observable readiness, not a blind wait.
+  await page.keyboard.press('Escape');
+  await searchBox(page).focus();
+  await expect(searchBox(page)).toBeFocused();
   expect(searchPosts(), 'typing must never hit the server').toBe(0);
   await expect(chipBar(page)).toHaveCount(0);
   await expect(zoneHeader(page, 'a')).toHaveCount(0);

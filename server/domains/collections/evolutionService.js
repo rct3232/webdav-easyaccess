@@ -21,8 +21,9 @@
  * against the definition's admitted set (adds ← θ_in, removes ← θ_out,
  * hysteresis via the stored member set from collectionsService).
  *
- * As-built scope: the reconcile pass only. Create/split/merge/auto-pin are
- * later waves; their config keys are registered but unread here.
+ * As-built scope: reconcile (cheap+full), merge candidates (cheap+full) and
+ * the auto-pin reconcile (full). Create/split/archive/purge are later waves;
+ * their config keys are registered but unread here.
  */
 
 /* eslint-disable no-console -- background pass logging, never throws to callers */
@@ -36,6 +37,17 @@ const DEFAULT_DEBOUNCE_S = 90;
 const USER_LOCK_PREFIX = 'evolution:user:';
 const USER_LOCK_TTL_MS = 5 * 60 * 1000;
 const DISABLED_VALUES = ['false', '0', 'off', 'no', 'disabled'];
+/**
+ * Merge-candidate pass (§2.8): materialized-set geometry. `sizeRatio` and
+ * Jaccard are both product rules; centroid cosine is only an advisory
+ * prefilter and never grounds a suggestion.
+ */
+const MERGE_MEMBER_CAP = 500;
+const MERGE_SIZE_RATIO_MIN = 0.7;
+const MERGE_JACCARD_MIN = 0.7;
+const MERGE_CENTROID_PREFILTER = 0.7;
+const MERGE_DISMISS_FIRST_MS = 14 * 86400000;
+const MERGE_DISMISS_REPEAT_MS = 30 * 86400000;
 /**
  * Upper bound of node ids per journaled item command. Mirrors the API's
  * MAX_NODE_IDS id-list bound so a large reconcile never writes an unbounded
@@ -219,13 +231,13 @@ async function runEvolutionPass({ users, passes = 'cheap' } = {}) {
 
   const perUser = [];
   for (const userId of userIds) {
-    perUser.push(await runUserPass(userId));
+    perUser.push(await runUserPass(userId, mode));
   }
   const report = await writeNightEvalReport(mode, perUser);
   return { perUser, report };
 }
 
-async function runUserPass(userId) {
+async function runUserPass(userId, mode = 'cheap') {
   let lock = null;
   try {
     lock = await lockManager.acquireLock(`${USER_LOCK_PREFIX}${userId}`, {
@@ -241,7 +253,10 @@ async function runUserPass(userId) {
   }
   try {
     const reconciled = await reconcileUser(userId);
-    return { userId, reconciled };
+    const mergeCandidates = await runMergeCandidatePass(userId);
+    // Auto-pin reconcile is nightly-only (§2.9 / §2.3 pass dispatch).
+    const pinned = mode === 'full' ? await reconcileAutoPinUser(userId) : null;
+    return { userId, reconciled, mergeCandidates, pinned, arbiterCalls: 0 };
   } catch (error) {
     console.error(`[evolution] reconcile failed for user ${userId}:`, error.message);
     return { userId, error: error.message };
@@ -268,9 +283,25 @@ async function writeNightEvalReport(passes, perUser) {
         acc.removed += entry.reconciled.removed;
         acc.collections += entry.reconciled.collections;
       }
+      if (entry && entry.mergeCandidates) {
+        acc.merge_suggested += entry.mergeCandidates.suggested ?? 0;
+        acc.merge_reopened += entry.mergeCandidates.reopened ?? 0;
+      }
+      if (entry && entry.pinned) {
+        acc.auto_pins_cleared += entry.pinned.cleared ?? 0;
+      }
       return acc;
     },
-    { users: 0, reconciled_users: 0, added: 0, removed: 0, collections: 0 }
+    {
+      users: 0,
+      reconciled_users: 0,
+      added: 0,
+      removed: 0,
+      collections: 0,
+      merge_suggested: 0,
+      merge_reopened: 0,
+      auto_pins_cleared: 0,
+    }
   );
   const payload = { passes, perUser, totals };
   try {
@@ -362,6 +393,182 @@ async function reconcileCollection({ evaluateDefinitionMembership }, userId, col
   }
 
   return { added, removed };
+}
+
+// ---------------------------------------------------------------------------
+// Pass 5 — merge candidates on MATERIALIZED sets (§2.8)
+// ---------------------------------------------------------------------------
+
+function pairKey(aId, bId) {
+  return `${Math.min(Number(aId), Number(bId))}:${Math.max(Number(aId), Number(bId))}`;
+}
+
+function parseCentroid(raw) {
+  if (Array.isArray(raw)) return raw.map(Number);
+  if (typeof raw !== 'string') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(Number) : null;
+  } catch {
+    return null;
+  }
+}
+
+function cosine(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || a.length === 0) {
+    return null;
+  }
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  if (normA === 0 || normB === 0) return null;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+function mergeGeometry(a, b) {
+  if (a.size === 0 || b.size === 0) return null;
+  const intersection = countIntersection(a, b);
+  const union = a.size + b.size - intersection;
+  const sizeRatio = Math.min(a.size, b.size) / Math.max(a.size, b.size);
+  const jaccard = union === 0 ? 0 : intersection / union;
+  if (sizeRatio < MERGE_SIZE_RATIO_MIN || jaccard < MERGE_JACCARD_MIN) return null;
+  return { sizeRatio, jaccard };
+}
+
+function countIntersection(a, b) {
+  let count = 0;
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  for (const id of small) if (large.has(id)) count += 1;
+  return count;
+}
+
+function dismissedDue(row, now) {
+  if (!row.dismissedAt) return false;
+  const dismissedAt = new Date(row.dismissedAt).getTime();
+  if (!Number.isFinite(dismissedAt)) return false;
+  const delay =
+    Number(row.dismissCount ?? 0) >= 2 ? MERGE_DISMISS_REPEAT_MS : MERGE_DISMISS_FIRST_MS;
+  return now - dismissedAt >= delay;
+}
+
+/**
+ * Cheap pass: propose merges from materialized membership only. Scope =
+ * same-owner ACTIVE pairs where at least one side is `origin='system'`.
+ * `sizeRatio ≥ 0.7 AND jaccard ≥ 0.7` are the product rules; centroid cosine
+ * (when both rows have one in the active embed space) is an advisory
+ * prefilter, never grounds for a card. Rejected rows stay terminal because
+ * `upsertMergeSuggestion` preserves an existing row/state; dismissed rows are
+ * re-raised once due (+14d after the first dismiss, +30d thereafter).
+ */
+async function runMergeCandidatePass(userId) {
+  if (!readFlag('AI_MERGE_SUGGESTIONS_ENABLED', true)) {
+    return { suggested: 0, reopened: 0, pairs: 0, prefiltered: 0 };
+  }
+  const owned = (await collectionsStore.listForUser(userId, { status: 'active' })).filter(
+    (row) => row.ownerId === Number(userId)
+  );
+  if (owned.length < 2) return { suggested: 0, reopened: 0, pairs: 0, prefiltered: 0 };
+
+  const memberSets = new Map();
+  for (const collection of owned) {
+    const rows = await collectionsStore.listStoredItems(collection.id);
+    memberSets.set(
+      collection.id,
+      new Set(rows.slice(0, MERGE_MEMBER_CAP).map((row) => Number(row.nodeId)))
+    );
+  }
+
+  // Advisory centroid prefilter (never a gate): count pairs whose centroid
+  // cosine is already high; the materialized-set rule below is authoritative.
+  let prefiltered = 0;
+  const centroidVectors = await loadActiveCentroids(owned.map((row) => row.id));
+
+  const collectionIds = owned.map((row) => row.id);
+  const dismissedRows = await collectionsStore.listMergeSuggestions(collectionIds, {
+    state: 'dismissed',
+  });
+  const dismissedByPair = new Map(dismissedRows.map((row) => [pairKey(row.aId, row.bId), row]));
+
+  const now = Date.now();
+  let suggested = 0;
+  let reopened = 0;
+  let pairs = 0;
+  for (let i = 0; i < owned.length; i += 1) {
+    for (let j = i + 1; j < owned.length; j += 1) {
+      const a = owned[i];
+      const b = owned[j];
+      if (a.origin !== 'system' && b.origin !== 'system') continue;
+
+      const aSet = memberSets.get(a.id);
+      const bSet = memberSets.get(b.id);
+      const geometry = mergeGeometry(aSet, bSet);
+      if (!geometry) continue;
+      pairs += 1;
+
+      const cosineScore = cosine(
+        centroidVectors.get(a.id) || null,
+        centroidVectors.get(b.id) || null
+      );
+      if (cosineScore !== null && cosineScore >= MERGE_CENTROID_PREFILTER) prefiltered += 1;
+
+      const score = Math.round(geometry.jaccard * 1000);
+      const existing = dismissedByPair.get(pairKey(a.id, b.id));
+      if (existing) {
+        if (!dismissedDue(existing, now)) continue;
+        const result = await collectionsStore.reopenMergeSuggestion(existing.id, { score });
+        if (result.changes > 0) reopened += 1;
+        continue;
+      }
+      const row = await collectionsStore.upsertMergeSuggestion(a.id, b.id, score);
+      if (row && row.state === 'pending') suggested += 1;
+    }
+  }
+  return { suggested, reopened, pairs, prefiltered };
+}
+
+async function loadActiveCentroids(collectionIds) {
+  const map = new Map();
+  try {
+    const llmModelsStore = require('../../store/llmModelsStore');
+    const active = await llmModelsStore.getActiveByRole('embed');
+    if (!active) return map;
+    const rows = await collectionsStore.getCentroids(collectionIds, Number(active.id));
+    for (const row of rows || []) {
+      const vector = parseCentroid(row.centroid);
+      if (vector) map.set(Number(row.collectionId), vector);
+    }
+  } catch {
+    // prefilters are advisory only; absence never blocks the set rule
+  }
+  return map;
+}
+
+// ---------------------------------------------------------------------------
+// Pass 6 — auto-pin touch-taxonomy reconcile (§2.9)
+// ---------------------------------------------------------------------------
+
+/**
+ * Nightly idempotent reconcile: `pinned_by='auto'` is legal ONLY on
+ * `origin='system'` rows whose pin flag is set. Illegal auto pins are cleared
+ * (non-journaled, like the pin itself); `pinned_by='user'` is never touched.
+ */
+async function reconcileAutoPinUser(userId) {
+  const owned = (await collectionsStore.listForUser(userId, { status: 'all' })).filter(
+    (row) => row.ownerId === Number(userId)
+  );
+  let cleared = 0;
+  for (const collection of owned) {
+    if (collection.pinnedBy !== 'auto') continue;
+    if (collection.origin === 'system' && collection.pinned) continue;
+    const result = await collectionsStore.clearAutoPin(collection.id);
+    cleared += result.changes;
+  }
+  return { cleared };
 }
 
 module.exports = {

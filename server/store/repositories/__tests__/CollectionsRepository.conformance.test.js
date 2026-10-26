@@ -113,6 +113,64 @@ describe('CollectionsRepository conformance', () => {
       expect((await repo.getCollection(autoId)).publishMode).toBe('auto');
     });
 
+    it('clearAutoPin removes illegal auto pins only (non-system or lost flag), never user pins', async () => {
+      const owner = await uniqueUser();
+      let systemId;
+      let manualId;
+      let userPinId;
+      await inTx(async (tx) => {
+        systemId = (
+          await repo.insertCollection(tx, {
+            ownerId: owner.id,
+            name: 'Auto system',
+            origin: 'system',
+          })
+        ).id;
+        manualId = (
+          await repo.insertCollection(tx, {
+            ownerId: owner.id,
+            name: 'Auto manual',
+            origin: 'user',
+          })
+        ).id;
+        userPinId = (
+          await repo.insertCollection(tx, {
+            ownerId: owner.id,
+            name: 'User pinned',
+            origin: 'user',
+          })
+        ).id;
+      });
+      const trueLiteral = isSqliteBackend() ? '1' : 'TRUE';
+      const falseLiteral = isSqliteBackend() ? '0' : 'FALSE';
+      await dbQuery(
+        `UPDATE collections SET pinned = ${trueLiteral}, pinned_by = 'auto' WHERE id = ?`,
+        [systemId]
+      );
+      await dbQuery(
+        `UPDATE collections SET pinned = ${trueLiteral}, pinned_by = 'auto' WHERE id = ?`,
+        [manualId]
+      );
+      await dbQuery(
+        `UPDATE collections SET pinned = ${trueLiteral}, pinned_by = 'user' WHERE id = ?`,
+        [userPinId]
+      );
+
+      await inTx(async (tx) => {
+        await expect(repo.clearAutoPin(tx, systemId)).resolves.toMatchObject({ changes: 0 });
+        await expect(repo.clearAutoPin(tx, manualId)).resolves.toMatchObject({ changes: 1 });
+      });
+      expect((await repo.getCollection(systemId)).pinnedBy).toBe('auto');
+      expect((await repo.getCollection(manualId)).pinnedBy).toBeNull();
+      expect((await repo.getCollection(userPinId)).pinnedBy).toBe('user');
+
+      await dbQuery(`UPDATE collections SET pinned = ${falseLiteral} WHERE id = ?`, [systemId]);
+      await inTx(async (tx) => {
+        await expect(repo.clearAutoPin(tx, systemId)).resolves.toMatchObject({ changes: 1 });
+      });
+      expect((await repo.getCollection(systemId)).pinnedBy).toBeNull();
+    });
+
     it('enforces the partial-unique (owner,name) over ACTIVE rows only', async () => {
       const owner = await uniqueUser();
       let firstId;
@@ -401,6 +459,41 @@ describe('CollectionsRepository conformance', () => {
 
       const future = new Date(Date.now() + 5000).toISOString();
       await expect(repo.listStoredItems(id, { since: future })).resolves.toEqual([]);
+    });
+
+    it('countTrashedMembersSince counts materialized members trashed after since', async () => {
+      const owner = await uniqueUser();
+      let id;
+      await inTx(async (tx) => {
+        id = (
+          await repo.insertCollection(tx, {
+            ownerId: owner.id,
+            name: 'Digest trash',
+            origin: 'user',
+          })
+        ).id;
+      });
+      const kept = await uniqueNode(`col-digest-kept-${Date.now()}.txt`);
+      const trashed = await uniqueNode(`col-digest-trashed-${Date.now()}.txt`);
+      await inTx(async (tx) => {
+        await repo.insertItem(tx, id, kept.nodeId, owner.id);
+        await repo.insertItem(tx, id, trashed.nodeId, owner.id);
+      });
+
+      await expect(
+        repo.countTrashedMembersSince(id, new Date(Date.now() - 60000).toISOString())
+      ).resolves.toBe(0);
+
+      await dbQuery(
+        `UPDATE file_nodes SET deleted_at = ${isSqliteBackend() ? "datetime('now')" : 'NOW()'} WHERE id = ?`,
+        [trashed.nodeId]
+      );
+      await expect(
+        repo.countTrashedMembersSince(id, new Date(Date.now() - 60000).toISOString())
+      ).resolves.toBe(1);
+      await expect(
+        repo.countTrashedMembersSince(id, new Date(Date.now() + 60000).toISOString())
+      ).resolves.toBe(0);
     });
 
     it('setItemPublished toggles the published flag on stored rows', async () => {
@@ -730,6 +823,7 @@ describe('CollectionsRepository conformance', () => {
         bId: Math.max(Number(aId), Number(bId)),
         score: 88,
         state: 'pending',
+        dismissCount: 0,
       });
       const again = await inTx(async (tx) => repo.upsertMergeSuggestion(tx, aId, bId, 88));
       expect(again.id).toBe(first.id); // pair normalization → ONE row
@@ -752,6 +846,33 @@ describe('CollectionsRepository conformance', () => {
         });
       });
       expect(await repo.listMergeSuggestions()).toEqual([]);
+
+      const [dismissed] = await repo.listMergeSuggestions([aId, bId], { state: 'dismissed' });
+      expect(dismissed).toMatchObject({
+        id: first.id,
+        state: 'dismissed',
+        dismissCount: 1,
+      });
+      expect(typeof dismissed.dismissedAt).toBe('string');
+
+      // dismissed → pending re-raise: refreshes score, preserves dismiss_count
+      await inTx(async (tx) => {
+        await expect(
+          repo.reopenMergeSuggestion(tx, first.id, { score: 91 })
+        ).resolves.toMatchObject({ changes: 1 });
+        await expect(
+          repo.reopenMergeSuggestion(tx, first.id, { score: 92 })
+        ).resolves.toMatchObject({
+          changes: 0,
+        });
+      });
+      const [reopened] = await repo.listMergeSuggestions([aId, bId]);
+      expect(reopened).toMatchObject({
+        id: first.id,
+        state: 'pending',
+        score: 91,
+        dismissCount: 1,
+      });
     });
   });
 

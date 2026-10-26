@@ -118,6 +118,22 @@ module.exports = function createSqliteCollectionsRepository(executor) {
       }
     },
 
+    async countTrashedMembersSince(collectionId, since) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT COUNT(*) AS n
+           FROM collection_items ci
+           JOIN file_nodes fn ON fn.id = ci.node_id
+           WHERE ci.collection_id = ? AND fn.deleted_at IS NOT NULL
+             AND julianday(fn.deleted_at) > julianday(?)`,
+          [Number(collectionId), new Date(since).toISOString()]
+        );
+        return Number(rows[0] ? rows[0].n : 0);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async getStoredItem(collectionId, nodeId) {
       try {
         const { rows } = await executor.query(
@@ -340,19 +356,19 @@ module.exports = function createSqliteCollectionsRepository(executor) {
       }
     },
 
-    async listMergeSuggestions(collectionIds) {
+    async listMergeSuggestions(collectionIds, { state = 'pending' } = {}) {
       try {
         const scoped =
           Array.isArray(collectionIds) && collectionIds.length > 0
             ? `AND (a_id IN (${placeholders(collectionIds.length)}) OR b_id IN (${placeholders(collectionIds.length)}))`
             : '';
-        const params =
-          Array.isArray(collectionIds) && collectionIds.length > 0
-            ? [...collectionIds.map(Number), ...collectionIds.map(Number)]
-            : [];
+        const params = [String(state)];
+        if (Array.isArray(collectionIds) && collectionIds.length > 0) {
+          params.push(...collectionIds.map(Number), ...collectionIds.map(Number));
+        }
         const { rows } = await executor.query(
           `SELECT * FROM collection_merge_suggestions
-           WHERE state = 'pending' ${scoped}
+           WHERE state = ? ${scoped}
            ORDER BY created_at DESC, id DESC`,
           params
         );
@@ -412,6 +428,16 @@ module.exports = function createSqliteCollectionsRepository(executor) {
         `UPDATE collections
          SET pinned = 1, pinned_by = 'auto', updated_at = CURRENT_TIMESTAMP
          WHERE id = ? AND origin = 'system' AND pinned = 0`,
+        [Number(collectionId)]
+      );
+      return { changes: result.changes };
+    },
+
+    async clearAutoPin(tx, collectionId) {
+      const result = await tx.run(
+        `UPDATE collections
+         SET pinned = 0, pinned_by = NULL, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND pinned_by = 'auto' AND (origin <> 'system' OR pinned = 0)`,
         [Number(collectionId)]
       );
       return { changes: result.changes };
@@ -611,7 +637,7 @@ module.exports = function createSqliteCollectionsRepository(executor) {
 
     async setSuggestionState(tx, suggestionId, state) {
       const stamps = {
-        dismissed: 'dismissed_at = CURRENT_TIMESTAMP',
+        dismissed: 'dismissed_at = CURRENT_TIMESTAMP, dismiss_count = dismiss_count + 1',
         rejected: 'rejected_at = CURRENT_TIMESTAMP',
         merged: null,
       };
@@ -620,6 +646,16 @@ module.exports = function createSqliteCollectionsRepository(executor) {
       const result = await tx.run(
         `UPDATE collection_merge_suggestions SET ${setClause} WHERE id = ? AND state = 'pending'`,
         [state, Number(suggestionId)]
+      );
+      return { changes: result.changes };
+    },
+
+    async reopenMergeSuggestion(tx, suggestionId, { score } = {}) {
+      const result = await tx.run(
+        `UPDATE collection_merge_suggestions
+         SET state = 'pending', score = CASE WHEN ? IS NULL THEN score ELSE ? END
+         WHERE id = ? AND state = 'dismissed'`,
+        [score ?? null, score ?? null, Number(suggestionId)]
       );
       return { changes: result.changes };
     },

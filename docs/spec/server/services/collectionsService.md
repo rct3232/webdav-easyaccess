@@ -192,6 +192,9 @@ JOIN-TIME ACL check of the REQUESTER against `fileNodesStore`:
 - `reason` = the `collection_items.reason` captured when a rule-managed row was
   materialized (`"tag:poster"`, `"path:/travel/2026"`, `"similar"`); `null` for manual
   rows. Read paths never recompute it.
+- `membership` = `'stored'` for `source='manual'` rows and `'derived'` for every
+  rule-managed `source` (`system|seed|search`) — a rendering label over the one
+  materialized row, never a second read-time membership set.
 - `mime`: the row carries the node's `mimeType` (filecache value; `null` on revoked
   rows like `name`/`type`). Same field feeds `preview_items` on collection rows.
 - Adding: unreadable nodes go to `rejected_not_readable`, the rest still add (200). A

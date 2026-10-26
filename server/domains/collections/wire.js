@@ -116,6 +116,7 @@ function serializeSuggestion(row, names) {
     overlap_count: names.overlapCount,
     merged_count: names.mergedCount,
     score: row.score,
+    dismiss_count: Number(row.dismissCount ?? 0),
     created_at: row.createdAt ?? null,
     recommendation: names.recommendation ?? null,
   };

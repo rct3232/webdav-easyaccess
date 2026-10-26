@@ -181,6 +181,17 @@ async function setAutoPin(collectionId) {
   return storage.getExecutor().transaction((tx) => repo.setAutoPin(tx, collectionId));
 }
 
+/**
+ * NON-JOURNALED pass-6 reconcile: clears an ILLEGAL auto pin — a
+ * `pinned_by='auto'` row that is not an `origin='system'` collection (or a
+ * system row whose pin flag was lost). User pins (`pinned_by='user'`) are
+ * never touched, and no journal row is written (the pin has none either).
+ */
+async function clearAutoPin(collectionId) {
+  const repo = getRepository();
+  return storage.getExecutor().transaction((tx) => repo.clearAutoPin(tx, collectionId));
+}
+
 /** JOURNALED. status='archived', archived_at=now(); guarded → changes: 0 when already archived. */
 async function archiveCollection(collectionId, ctx = {}) {
   const repo = getRepository();
@@ -336,6 +347,11 @@ async function listStoredItems(collectionId, options = {}) {
 
 async function getStoredItem(collectionId, nodeId) {
   return getRepository().getStoredItem(collectionId, nodeId);
+}
+
+/** Digest removed-half: materialized members trashed after `since`. */
+async function countTrashedMembersSince(collectionId, since) {
+  return getRepository().countTrashedMembersSince(collectionId, since);
 }
 
 /**
@@ -684,8 +700,8 @@ async function upsertMergeSuggestion(aId, bId, score) {
   return storage.getExecutor().transaction((tx) => repo.upsertMergeSuggestion(tx, aId, bId, score));
 }
 
-async function listMergeSuggestions(collectionIds) {
-  return getRepository().listMergeSuggestions(collectionIds);
+async function listMergeSuggestions(collectionIds, options = {}) {
+  return getRepository().listMergeSuggestions(collectionIds, options);
 }
 
 async function setSuggestionState(suggestionId, state) {
@@ -693,6 +709,14 @@ async function setSuggestionState(suggestionId, state) {
   return storage
     .getExecutor()
     .transaction((tx) => repo.setSuggestionState(tx, suggestionId, state));
+}
+
+/** `dismissed → pending` re-raise (evolution pass; non-journaled). */
+async function reopenMergeSuggestion(suggestionId, { score } = {}) {
+  const repo = getRepository();
+  return storage
+    .getExecutor()
+    .transaction((tx) => repo.reopenMergeSuggestion(tx, suggestionId, { score }));
 }
 
 module.exports = {
@@ -705,6 +729,7 @@ module.exports = {
   setPinned,
   setPublishMode,
   setAutoPin,
+  clearAutoPin,
   archiveCollection,
   restoreCollection,
   deleteCollectionPermanent,
@@ -712,6 +737,7 @@ module.exports = {
   touchMemberChange,
   listStoredItems,
   getStoredItem,
+  countTrashedMembersSince,
   addItem,
   removeItem,
   addItems,
@@ -742,4 +768,5 @@ module.exports = {
   upsertMergeSuggestion,
   listMergeSuggestions,
   setSuggestionState,
+  reopenMergeSuggestion,
 };

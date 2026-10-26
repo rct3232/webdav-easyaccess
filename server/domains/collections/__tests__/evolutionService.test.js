@@ -517,3 +517,254 @@ describe('evolutionService reconcile pass (§2.4-bis)', () => {
     });
   });
 });
+
+describe('evolutionService merge candidates (§2.8)', () => {
+  async function addMembers(collectionId, nodeIds, ownerId) {
+    await collectionsStore.addItems(
+      collectionId,
+      nodeIds,
+      ownerId,
+      { published: true, source: 'system' },
+      { actor: ownerId }
+    );
+  }
+
+  async function setupPair(tag) {
+    const ctx = await createUserWithRoot(tag);
+    const folder = await fileNodeService.createDirectory(ctx.root.id, 'merge-sets');
+    const files = [];
+    for (let i = 0; i < 6; i += 1) {
+      files.push(await fileNodeService.createFile(folder.id, `m${i}.jpg`));
+    }
+    return { ctx, files };
+  }
+
+  it('suggests near-identical materialized sets; subset pairs never qualify', async () => {
+    const { ctx, files } = await setupPair('geom');
+    const a = await createSystemCollection(ctx, { name: 'Europe' });
+    const b = await createSystemCollection(ctx, { name: '2026 trip' });
+    const subset = await createSystemCollection(ctx, { name: 'Spain' });
+
+    await addMembers(
+      a.id,
+      files.slice(0, 4).map((f) => f.id),
+      ctx.user.id
+    );
+    await addMembers(
+      b.id,
+      files.slice(0, 4).map((f) => f.id),
+      ctx.user.id
+    );
+    await addMembers(
+      subset.id,
+      files.slice(0, 2).map((f) => f.id),
+      ctx.user.id
+    );
+
+    const result = await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    expect(result.perUser[0].mergeCandidates).toMatchObject({ suggested: 1, reopened: 0 });
+
+    const pending = await collectionsStore.listMergeSuggestions([a.id, b.id, subset.id]);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({
+      aId: Math.min(a.id, b.id),
+      bId: Math.max(a.id, b.id),
+      state: 'pending',
+      score: 1000,
+      arbiterVerdict: null,
+      arbiterReason: null,
+    });
+
+    // idempotent re-run: upsert preserves the single pending row
+    const second = await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    expect(second.perUser[0].mergeCandidates.suggested).toBe(1);
+    expect(await collectionsStore.listMergeSuggestions([a.id, b.id, subset.id])).toHaveLength(1);
+  });
+
+  it('requires at least one system side and both collections active', async () => {
+    const { ctx, files } = await setupPair('scope');
+    const manualA = await collectionsService.createCollection(ctx.user.id, { name: 'Manual A' });
+    const manualB = await collectionsService.createCollection(ctx.user.id, { name: 'Manual B' });
+    await addMembers(
+      manualA.collection.id,
+      files.slice(0, 3).map((f) => f.id),
+      ctx.user.id
+    );
+    await addMembers(
+      manualB.collection.id,
+      files.slice(0, 3).map((f) => f.id),
+      ctx.user.id
+    );
+
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    expect(
+      await collectionsStore.listMergeSuggestions([manualA.collection.id, manualB.collection.id])
+    ).toHaveLength(0);
+
+    const system = await createSystemCollection(ctx, { name: 'System side' });
+    await addMembers(
+      system.id,
+      files.slice(0, 3).map((f) => f.id),
+      ctx.user.id
+    );
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    const systemPair = await collectionsStore.listMergeSuggestions([
+      manualA.collection.id,
+      system.id,
+    ]);
+    expect(
+      systemPair.filter(
+        (row) =>
+          row.aId === Math.min(manualA.collection.id, system.id) &&
+          row.bId === Math.max(manualA.collection.id, system.id)
+      )
+    ).toHaveLength(1);
+
+    // archived side: no new pair is written
+    await collectionsStore.archiveCollection(system.id, { actor: ctx.user.id });
+    const afterArchive = await createSystemCollection(ctx, { name: 'New system side' });
+    await addMembers(
+      afterArchive.id,
+      files.slice(0, 3).map((f) => f.id),
+      ctx.user.id
+    );
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    const archivePair = await collectionsStore.listMergeSuggestions([
+      manualA.collection.id,
+      afterArchive.id,
+    ]);
+    expect(
+      archivePair.filter(
+        (row) =>
+          row.aId === Math.min(manualA.collection.id, afterArchive.id) &&
+          row.bId === Math.max(manualA.collection.id, afterArchive.id)
+      )
+    ).toHaveLength(1);
+  });
+
+  it('rejected pairs are terminal across passes', async () => {
+    const { ctx, files } = await setupPair('reject');
+    const a = await createSystemCollection(ctx, { name: 'Reject A' });
+    const b = await createSystemCollection(ctx, { name: 'Reject B' });
+    await addMembers(a.id, [files[0].id, files[1].id], ctx.user.id);
+    await addMembers(b.id, [files[0].id, files[1].id], ctx.user.id);
+
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    const pairScope = [a.id, b.id];
+    const [suggestion] = await collectionsStore.listMergeSuggestions(pairScope);
+    await collectionsStore.setSuggestionState(suggestion.id, 'rejected');
+
+    const result = await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    expect(result.perUser[0].mergeCandidates.suggested).toBe(0);
+    expect(await collectionsStore.listMergeSuggestions(pairScope)).toHaveLength(0);
+    const rejected = await collectionsStore.listMergeSuggestions(pairScope, {
+      state: 'rejected',
+    });
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].id).toBe(suggestion.id);
+  });
+
+  it('re-raises dismissed pairs at +14d, then at +30d, preserving dismiss_count', async () => {
+    const { ctx, files } = await setupPair('cadence');
+    const a = await createSystemCollection(ctx, { name: 'Cadence A' });
+    const b = await createSystemCollection(ctx, { name: 'Cadence B' });
+    await addMembers(a.id, [files[0].id, files[1].id], ctx.user.id);
+    await addMembers(b.id, [files[0].id, files[1].id], ctx.user.id);
+
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    const pairScope = [a.id, b.id];
+    const [suggestion] = await collectionsStore.listMergeSuggestions(pairScope);
+    await collectionsStore.setSuggestionState(suggestion.id, 'dismissed');
+
+    // not due yet
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    expect(await collectionsStore.listMergeSuggestions(pairScope)).toHaveLength(0);
+
+    // first dismiss: due after 14 days
+    await dbQuery(
+      "UPDATE collection_merge_suggestions SET dismissed_at = datetime('now', '-15 days') WHERE id = ?",
+      [suggestion.id]
+    );
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    const [reopened] = await collectionsStore.listMergeSuggestions(pairScope);
+    expect(reopened.id).toBe(suggestion.id);
+    expect(reopened.dismissCount).toBe(1);
+
+    // second dismiss: 20 days is still inside the 30-day sleep
+    await collectionsStore.setSuggestionState(suggestion.id, 'dismissed');
+    await dbQuery(
+      "UPDATE collection_merge_suggestions SET dismissed_at = datetime('now', '-20 days') WHERE id = ?",
+      [suggestion.id]
+    );
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    expect(await collectionsStore.listMergeSuggestions(pairScope)).toHaveLength(0);
+
+    // past 30 days it re-raises with the count preserved
+    await dbQuery(
+      "UPDATE collection_merge_suggestions SET dismissed_at = datetime('now', '-31 days') WHERE id = ?",
+      [suggestion.id]
+    );
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    const [again] = await collectionsStore.listMergeSuggestions(pairScope);
+    expect(again.id).toBe(suggestion.id);
+    expect(again.dismissCount).toBe(2);
+  });
+});
+
+describe('evolutionService auto-pin reconcile (§2.9 pass 6)', () => {
+  it('clears illegal auto pins on non-system rows, keeps system auto pins and user pins', async () => {
+    const ctx = await createUserWithRoot('autopin');
+    const manual = await collectionsService.createCollection(ctx.user.id, { name: 'Manual pin' });
+    const system = await createSystemCollection(ctx, { name: 'System pin' });
+    const userPinned = await collectionsService.createCollection(ctx.user.id, {
+      name: 'User pin',
+    });
+
+    await dbQuery("UPDATE collections SET pinned = 1, pinned_by = 'auto' WHERE id = ?", [
+      manual.collection.id,
+    ]);
+    await dbQuery("UPDATE collections SET pinned = 1, pinned_by = 'auto' WHERE id = ?", [
+      system.id,
+    ]);
+    await dbQuery("UPDATE collections SET pinned = 1, pinned_by = 'user' WHERE id = ?", [
+      userPinned.collection.id,
+    ]);
+
+    // cheap leg does not run pass 6
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id], passes: 'cheap' });
+    expect((await collectionsStore.getCollection(manual.collection.id)).pinnedBy).toBe('auto');
+
+    const result = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'full',
+    });
+    expect(result.perUser[0].pinned).toEqual({ cleared: 1 });
+
+    const cleared = await collectionsStore.getCollection(manual.collection.id);
+    expect(cleared).toMatchObject({ pinned: false, pinnedBy: null });
+    expect((await collectionsStore.getCollection(system.id)).pinnedBy).toBe('auto');
+    expect((await collectionsStore.getCollection(userPinned.collection.id)).pinnedBy).toBe('user');
+
+    // idempotent
+    const again = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'full',
+    });
+    expect(again.perUser[0].pinned).toEqual({ cleared: 0 });
+  });
+
+  it('system rows with a lost pin flag are also reconciled', async () => {
+    const ctx = await createUserWithRoot('autopin-lost');
+    const system = await createSystemCollection(ctx, { name: 'Lost pin' });
+    await dbQuery("UPDATE collections SET pinned = 0, pinned_by = 'auto' WHERE id = ?", [
+      system.id,
+    ]);
+
+    const result = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'full',
+    });
+    expect(result.perUser[0].pinned).toEqual({ cleared: 1 });
+    expect((await collectionsStore.getCollection(system.id)).pinnedBy).toBeNull();
+  });
+});

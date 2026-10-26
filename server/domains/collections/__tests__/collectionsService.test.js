@@ -222,6 +222,7 @@ describe('collectionsService member view and membership', () => {
       { actor: ctx.user.id }
     );
 
+    await collectionsService.checkUploadAdmissions(ctx.user.id, ctx.beach.id);
     await dbRun("UPDATE file_nodes SET deleted_at = datetime('now') WHERE id = ?", [ctx.beach.id]);
     await dbRun('DELETE FROM permissions_user_files WHERE file_node_id = ?', [ctx.beach.id]);
 
@@ -231,7 +232,7 @@ describe('collectionsService member view and membership', () => {
     expect(row).toBeUndefined();
   });
 
-  it('excludes derived matches after an exclusion; stored rows ignore exclusions', async () => {
+  it('stored rows ignore exclusions at read time; exclusions only gate evaluation passes', async () => {
     const ctx = await setupServiceUser('exclude');
     const system = await collectionsStore.createCollection(
       {
@@ -246,11 +247,16 @@ describe('collectionsService member view and membership', () => {
       { actor: ctx.user.id }
     );
 
+    // materialize beach as a rule-managed membership row at the write boundary
+    await collectionsService.checkUploadAdmissions(ctx.user.id, ctx.beach.id);
+    expect(await collectionsStore.getStoredItem(system.id, ctx.beach.id)).not.toBeNull();
+
+    // exclusion is never a read-time subtractor: the materialized row survives
     await collectionsStore.addExclusion(system.id, ctx.beach.id, { actor: ctx.user.id });
     const view = await collectionsService.getItems(ctx.user.id, system.id, {});
-    const ids = view.items.map((i) => i.nodeId);
-    expect(ids).not.toContain(ctx.beach.id);
-    // stored rows survive exclusions
+    expect(view.items.map((i) => i.nodeId)).toContain(ctx.beach.id);
+
+    // stored rows survive exclusions in every render
     await collectionsService.addItems(ctx.user.id, system.id, [ctx.stay.id]);
     await collectionsStore.addExclusion(system.id, ctx.stay.id, { actor: ctx.user.id });
     const after = await collectionsService.getItems(ctx.user.id, system.id, {});
@@ -272,6 +278,42 @@ describe('collectionsService member view and membership', () => {
     const byNode = new Map(view.items.map((i) => [i.nodeId, i]));
     expect(byNode.get(ctx.beach.id).liked).toBe(true);
     expect(byNode.get(ctx.stay.id).liked).toBe(false);
+  });
+
+  it('reads never evaluate definitions: a matching file appears only after write-boundary materialization', async () => {
+    const ctx = await setupServiceUser('readstable');
+    const definition = {
+      kind: 'predicate',
+      any_of: [{ type: 'path', value: `/${ctx.user.username}/travel` }],
+    };
+    const system = await collectionsStore.createCollection(
+      { ownerId: ctx.user.id, name: 'Stable rule', origin: 'system', definition },
+      { actor: ctx.user.id }
+    );
+
+    // preview is the live dry-run and sees the existing fan-out
+    const live = await collectionsService.previewCollection(ctx.user.id, system.id);
+    expect(live.count).toBeGreaterThan(0);
+
+    // a read of the materialized state stays empty
+    const before = await collectionsService.getItems(ctx.user.id, system.id, {});
+    expect(before.items).toEqual([]);
+    const listBefore = await collectionsService.listCollections(ctx.user.id, { include: 'mine' });
+    expect(listBefore.collections.find((row) => row.collection_id === system.id).item_count).toBe(
+      0
+    );
+
+    // a later matching node does NOT leak into reads until a write boundary runs
+    const fresh = await fileNodeService.createFile(ctx.travel.id, 'later.jpg');
+    const stillEmpty = await collectionsService.getItems(ctx.user.id, system.id, {});
+    expect(stillEmpty.items).toEqual([]);
+    expect((await collectionsService.getForNodes(ctx.user.id, [fresh.id])).memberships).toEqual([
+      { nodeId: fresh.id, collectionIds: [] },
+    ]);
+
+    await collectionsService.checkUploadAdmissions(ctx.user.id, fresh.id);
+    const after = await collectionsService.getItems(ctx.user.id, system.id, {});
+    expect(after.items.map((row) => row.nodeId)).toContain(fresh.id);
   });
 });
 
@@ -319,7 +361,7 @@ describe('collectionsService preview and for-nodes', () => {
     ).rejects.toThrow('invalidDefinition');
   });
 
-  it('getForNodes includes derived membership and exclusions, one entry per node', async () => {
+  it('getForNodes reads materialized membership only; exclusions do not remove stored rows', async () => {
     const ctx = await setupServiceUser('fornodes');
     const system = await collectionsStore.createCollection(
       {
@@ -333,11 +375,14 @@ describe('collectionsService preview and for-nodes', () => {
       },
       { actor: ctx.user.id }
     );
+    // write-boundary materialization (the read path never evaluates)
+    await collectionsService.checkUploadAdmissions(ctx.user.id, ctx.travel.id);
+    await collectionsService.checkUploadAdmissions(ctx.user.id, ctx.beach.id);
     await collectionsStore.addExclusion(system.id, ctx.beach.id, { actor: ctx.user.id });
 
     const result = await collectionsService.getForNodes(ctx.user.id, [ctx.beach.id, ctx.travel.id]);
     expect(result.memberships).toEqual([
-      { nodeId: ctx.beach.id, collectionIds: [] },
+      { nodeId: ctx.beach.id, collectionIds: [system.id] },
       { nodeId: ctx.travel.id, collectionIds: [system.id] },
     ]);
   });
@@ -909,6 +954,7 @@ describe('collectionsService rule evaluation (T0.9 tag atoms)', () => {
       { ownerId: ctx.user.id, name: 'Jpg rule', origin: 'system', definition },
       { actor: ctx.user.id }
     );
+    await collectionsService.checkUploadAdmissions(ctx.user.id, ctx.beach.id);
     const view = await collectionsService.getItems(ctx.user.id, system.id, {});
     const beachRow = view.items.find((row) => row.nodeId === ctx.beach.id);
     expect(beachRow).toMatchObject({ membership: 'derived', reason: 'tag:EXT:JPG' });
@@ -975,6 +1021,9 @@ describe('collectionsService checkUploadAdmissions (T0.9 seam; §2.3-bis)', () =
       published: false,
     });
     // the member view now carries it as a derived row with its reason
+    // (the prefix directory itself matches the path atom and is materialized
+    // at the same write boundary)
+    await collectionsService.checkUploadAdmissions(ctx.user.id, folder.id);
     const view = await collectionsService.getItems(ctx.user.id, system.id, {});
     // established path-prefix parity (T0.3): the prefix directory itself matches
     expect(view.items.map((row) => row.nodeId).sort((x, y) => x - y)).toEqual(
@@ -1186,7 +1235,7 @@ describe('collectionsService publishItems (P-4)', () => {
     expect(inverse).toMatchObject({ op: 'set-items-published', published: true });
   });
 
-  it('publishing a DERIVED member materializes a stored published=true marker (membership stays derived, auto-pin touched)', async () => {
+  it('publishing a rule-managed stored member flips it and auto-pins the system collection', async () => {
     const ctx = await setupServiceUser('publish-derived');
     const system = await collectionsStore.createCollection(
       {
@@ -1200,10 +1249,11 @@ describe('collectionsService publishItems (P-4)', () => {
       },
       { actor: ctx.user.id }
     );
-    // pre: beach is a derived member, virtually published:false, NO stored row
-    expect(await collectionsStore.getStoredItem(system.id, ctx.beach.id)).toBeNull();
+    // write-boundary materialization: beach is a stored rule-managed row
+    await collectionsService.checkUploadAdmissions(ctx.user.id, ctx.beach.id);
     const before = await collectionsService.getItems(ctx.user.id, system.id, {});
-    expect(before.items.find((i) => i.nodeId === ctx.beach.id).published).toBe(false);
+    const beforeRow = before.items.find((i) => i.nodeId === ctx.beach.id);
+    expect(beforeRow).toMatchObject({ membership: 'derived', published: false });
     expect(before.publishPendingCount).toBeGreaterThan(0);
 
     const result = await collectionsService.publishItems(
@@ -1214,9 +1264,8 @@ describe('collectionsService publishItems (P-4)', () => {
     );
     expect(result.published).toEqual([ctx.beach.id]);
     const stored = await collectionsStore.getStoredItem(system.id, ctx.beach.id);
-    expect(stored).toMatchObject({ published: true, addedBy: ctx.user.id });
+    expect(stored).toMatchObject({ published: true, addedBy: ctx.user.id, source: 'system' });
 
-    // membership TRUTH stays derived: the view renders the node ONCE (stored wins)
     const after = await collectionsService.getItems(ctx.user.id, system.id, {});
     const rows = after.items.filter((i) => i.nodeId === ctx.beach.id);
     expect(rows).toHaveLength(1);
@@ -1228,7 +1277,7 @@ describe('collectionsService publishItems (P-4)', () => {
     expect(col.pinnedBy).toBe('auto');
   });
 
-  it('unpublishing a derived-only row is a NO-OP (already virtually unpublished) — ignored', async () => {
+  it('unpublishing a non-member row is a NO-OP (never materializes) — ignored', async () => {
     const ctx = await setupServiceUser('publish-unpub');
     const system = await collectionsStore.createCollection(
       {

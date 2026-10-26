@@ -607,6 +607,8 @@ describe('member view (stored ∪ derived − exclusions)', () => {
       fileNodeId: foreignFile.id,
       permission: 'read',
     });
+    // write-boundary materialization of the path rule (reads never evaluate)
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
 
     // stored member: /stay.jpg via API
     const add = await request(app)
@@ -630,7 +632,7 @@ describe('member view (stored ∪ derived − exclusions)', () => {
       published: false,
       reason: `path:/${ctx.user.username}/travel`,
       shared_excluded: false,
-      added_by: null,
+      added_by: ctx.user.id,
       liked: false,
     });
     expect(byNode.get(ctx.stay.id)).toMatchObject({
@@ -671,6 +673,7 @@ describe('member view (stored ∪ derived − exclusions)', () => {
       kind: 'predicate',
       all_of: [{ type: 'path', value: `/${ctx.user.username}` }],
     });
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
 
     const add = await request(app)
       .post(`/api/collections/${system.id}/items`)
@@ -748,6 +751,33 @@ describe('member view (stored ∪ derived − exclusions)', () => {
       .set('Authorization', `Bearer ${ctx.token}`);
     expect(second.status).toBe(200);
     expect(second.body.digest).toEqual({ added_since: 0, removed_since: 0 });
+  });
+
+  it('digest counts member trashing after since as a removal (materialized rows only)', async () => {
+    const ctx = await setupOwnerWithNodes('digest-trash');
+    const manual = await createCollectionViaApi(ctx.token, { name: 'Trash digest' });
+    const id = manual.body.collection.collection_id;
+    await request(app)
+      .post(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ nodeIds: [ctx.beach.id] });
+
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const since = new Date();
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+
+    // a membership change after `since` bypasses the zero-change fast path
+    await request(app)
+      .post(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ nodeIds: [ctx.stay.id] });
+    await dbRun("UPDATE file_nodes SET deleted_at = datetime('now') WHERE id = ?", [ctx.beach.id]);
+
+    const res = await request(app)
+      .get(`/api/collections/${id}/items?since=${encodeURIComponent(since.toISOString())}`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.digest).toEqual({ added_since: 1, removed_since: 1 });
   });
 
   it('publish gate: ask-mode new members are invisible to grantees; auto flips; pending count is owner-only', async () => {
@@ -1239,7 +1269,11 @@ describe('merge suggestions and execution', () => {
       .set('Authorization', `Bearer ${ctx.token}`)
       .send({ otherId: ctx.bId });
     expect(dismiss.status).toBe(200);
-    expect(dismiss.body).toMatchObject({ suggestion_id: expect.any(Number), state: 'dismissed' });
+    expect(dismiss.body).toMatchObject({
+      suggestion_id: expect.any(Number),
+      state: 'dismissed',
+      dismiss_count: 1,
+    });
     expect(typeof dismiss.body.dismissed_at).toBe('string');
 
     const missing = await request(app)
@@ -1298,6 +1332,9 @@ describe('POST /for-nodes membership chips', () => {
       .post(`/api/collections/${manual.body.collection.collection_id}/items`)
       .set('Authorization', `Bearer ${ctx.token}`)
       .send({ nodeIds: [stay.id] });
+
+    // rule membership is materialized by the evolution pass, not by reads
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
 
     const res = await request(app)
       .post('/api/collections/for-nodes')

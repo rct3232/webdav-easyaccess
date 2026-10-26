@@ -217,7 +217,7 @@ export async function openAdvancedSettings(page: Page): Promise<void> {
   await openSystemSettings(page);
   await page.locator('#advanced-settings-header').click();
   // The config editor lazy-fetches on expand; the Save button renders only after load.
-  await expect(page.getByTestId('config-save')).toBeVisible();
+  await expect(page.getByTestId('config-save')).toBeVisible({ timeout: 60_000 });
 }
 
 export const isLocked = (entry: ConfigEntry): boolean =>

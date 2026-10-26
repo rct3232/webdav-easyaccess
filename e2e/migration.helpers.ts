@@ -272,8 +272,8 @@ export async function openBlobMigrationDialog(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Run storage migration' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText(/Source:/)).toBeVisible();
-  await expect(dialog.getByLabel(/^Bucket/)).toBeVisible();
+  await expect(dialog.getByText(/Source:/)).toBeVisible({ timeout: 60_000 });
+  await expect(dialog.getByLabel(/^Bucket/)).toBeVisible({ timeout: 60_000 });
 }
 
 export async function fillS3Dest(

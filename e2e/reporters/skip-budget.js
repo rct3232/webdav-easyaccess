@@ -16,6 +16,9 @@ const path = require('node:path');
  * swallowed by Playwright's reporter multiplexer (the run still exits 0), so
  * `onEnd` converts the budget error into the reporter API's `failed` status,
  * which makes the CLI exit non-zero.
+ *
+ * A failed run already exits non-zero; its cascading serial skips are not a
+ * skip-budget signal, so the budget is only asserted when the run itself passed.
  */
 class SkipBudgetReporter {
   constructor(options = {}) {
@@ -32,8 +35,9 @@ class SkipBudgetReporter {
     });
   }
 
-  onEnd() {
+  onEnd(result) {
     if (this.expectedSkips === null || this.listMode) return;
+    if (result && result.status !== 'passed') return;
 
     try {
       this.assertWithinBudget();

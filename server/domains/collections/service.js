@@ -25,6 +25,8 @@ const aiTagStore = require('../../store/aiTagStore');
 const embeddingsStore = require('../../store/embeddingsStore');
 const aiJobsStore = require('../../store/aiJobsStore');
 const llmModelsStore = require('../../store/llmModelsStore');
+const usageStore = require('../../store/usageStore');
+const { decayItemScore, HALF_LIFE_DAYS } = require('../../infrastructure/usage/activityScore');
 const { getPresetByFamilyRole } = require('../../infrastructure/adapters/llm/presets');
 const { foldTag } = require('../ai/tagVocabulary');
 const definitionEngine = require('./definitionEngine');
@@ -431,13 +433,45 @@ function buildPreviewItems(rows) {
 }
 
 /**
- * Item ordering: activity score desc, then node_id asc (stable cursor).
- * Scores arrive with the T0.6 node_activity rollup; until then every score is
- * absent → node_id asc (routes spec §2.4.2 as-built Decision).
+ * Item ordering (§3.4 item ordering): read-time lazy decay
+ * `S_read = S·2^(−(now−updated_at)/H)` over the per-user `node_activity`
+ * accumulator rows, then activity score desc with the deterministic
+ * `node_id` asc tie-break. Rows without an accumulator (all-zero state)
+ * score 0 and fall back to node_id asc — behavior is stable when scores are
+ * absent. H = `AI_ACTIVITY_HALF_LIFE_DAYS` (dbOnly T2 constant, default 30).
  */
+function activityHalfLifeDays() {
+  try {
+    const { getSharedResolver } = require('../../infrastructure/configResolver');
+    const raw = getSharedResolver().getConfigSync('AI_ACTIVITY_HALF_LIFE_DAYS');
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : HALF_LIFE_DAYS;
+  } catch {
+    return HALF_LIFE_DAYS;
+  }
+}
+
+async function attachActivityScores(userId, rows) {
+  if (rows.length === 0) return rows;
+  const now = Date.now();
+  const halfLifeDays = activityHalfLifeDays();
+  const activity = await usageStore.listNodeActivity(
+    userId,
+    rows.map((row) => Number(row.nodeId))
+  );
+  const byNodeId = new Map(activity.map((row) => [Number(row.nodeId), row]));
+  return rows.map((row) => {
+    const accumulator = byNodeId.get(Number(row.nodeId));
+    const score = accumulator
+      ? decayItemScore(accumulator.score, accumulator.updatedAtMs, now, halfLifeDays)
+      : 0;
+    return { ...row, score };
+  });
+}
+
 function sortItemRows(rows) {
   return rows
-    .map((row) => ({ ...row, score: 0 }))
+    .slice()
     .sort((a, b) => (a.score !== b.score ? b.score - a.score : a.nodeId - b.nodeId));
 }
 
@@ -856,7 +890,9 @@ async function getItems(userId, collectionId, { since } = {}) {
   // are deleted; retired `cursor`/`limit` params are ignored upstream (route
   // does not read them). Ordering (score desc, node_id asc) is unchanged —
   // the client renders the head of this array, no re-sort.
-  const rows = sortItemRows(await resolveMemberRows(userId, collection));
+  const rows = sortItemRows(
+    await attachActivityScores(userId, await resolveMemberRows(userId, collection))
+  );
 
   const payload = {
     items: rows,

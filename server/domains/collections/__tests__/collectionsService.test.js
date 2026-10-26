@@ -6,6 +6,7 @@ const collectionsService = require('../service');
 const collectionsStore = require('@server/store/collectionsStore');
 const fileLikesStore = require('@server/store/fileLikesStore');
 const aiTagStore = require('@server/store/aiTagStore');
+const usageStore = require('@server/store/usageStore');
 const embeddingsStore = require('@server/store/embeddingsStore');
 const llmModelsStore = require('@server/store/llmModelsStore');
 const composition = require('@server/service/composition');
@@ -1638,5 +1639,54 @@ describe('collectionsService revoke deletes the grantee cursor (ruling B, 2026-1
     });
     const row = collections.find((c) => c.collection_id === collection.id);
     expect(row).toHaveProperty('last_visited_at', null);
+  });
+});
+
+describe('collectionsService item ordering (§3.4 lazy decay)', () => {
+  async function setupOrdered(tag) {
+    const ctx = await createUserWithRoot(tag);
+    const a = await fileNodeService.createFile(ctx.root.id, 'a.png');
+    const b = await fileNodeService.createFile(ctx.root.id, 'b.png');
+    const { collection } = await collectionsService.createCollection(ctx.user.id, {
+      name: `Order ${tag}`,
+    });
+    await collectionsService.addItems(ctx.user.id, collection.id, [a.id, b.id]);
+    return { ctx, a, b, collection };
+  }
+
+  async function setActivity(ctx, nodeId, { score, updatedAtMs }) {
+    await usageStore.upsertNodeActivity([
+      {
+        userId: ctx.user.id,
+        nodeId,
+        counts: { open: 0, download: 0, preview: 0, search_hit: 0, like: 0 },
+        lastSeenAtMs: updatedAtMs,
+        score,
+        updatedAtMs,
+      },
+    ]);
+  }
+
+  it('orders by lazy-decayed score desc, node_id asc as tie-break (decay correct)', async () => {
+    const { ctx, a, b, collection } = await setupOrdered('decay');
+    const now = Date.now();
+    // a: 10 now; b: 6 with a 30d-old rollup ⇒ H=30d half-life ⇒ ≈3
+    await setActivity(ctx, a.id, { score: 10, updatedAtMs: now });
+    await setActivity(ctx, b.id, { score: 6, updatedAtMs: now - 30 * 86400000 });
+
+    const { items } = await collectionsService.getItems(ctx.user.id, collection.id, {});
+    const scores = new Map(items.map((item) => [item.nodeId, item.score]));
+    expect(items.map((item) => item.nodeId)).toEqual([a.id, b.id]);
+    expect(scores.get(a.id)).toBeCloseTo(10, 1);
+    expect(scores.get(b.id)).toBeCloseTo(3, 1);
+  });
+
+  it('falls back to node_id asc when every score is absent (stable zero state)', async () => {
+    const { ctx, a, b, collection } = await setupOrdered('noactivity');
+    const { items } = await collectionsService.getItems(ctx.user.id, collection.id, {});
+    expect(items.map((item) => [item.nodeId, item.score])).toEqual([
+      [a.id, 0],
+      [b.id, 0],
+    ]);
   });
 });

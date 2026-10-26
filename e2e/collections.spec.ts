@@ -1145,15 +1145,15 @@ test('E2E-S3-COLLECTION-018: Card menu rename updates the card and the sidebar r
       timeout: 15_000,
     })
     .toBe(true);
-  // The sidebar row reflects the inverse through the collections notifier
-  // (the mobile arc asserts the same restoration moment via the row's
-  // restored-name fragment below). The undo refresh can remount/collapse the
-  // tree, so re-open it when the row is temporarily absent.
+  // The undo refresh remounts the folder tree with the Collections section
+  // collapsed (the controller's initial expanded=false), so the row unmounts.
+  // Do not re-open the tree to mask that observable state: assert the collapsed
+  // state explicitly. The restored name is proven by the API poll above and by
+  // the card assertion after the navigation below.
   const restoredRow = page.getByTestId(`collection-row-${collectionId}`);
-  if (!(await restoredRow.isVisible().catch(() => false))) {
-    await page.getByTestId('collections-toggle').click();
-  }
-  await expect(restoredRow).not.toContainText('Q3 reports');
+  await expect(page.getByTestId('collections-section')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('collections-toggle')).toBeVisible();
+  await expect(restoredRow).toHaveCount(0, { timeout: 15_000 });
   await page.goto('/files/__collections__');
   await expect(collectionCard(page, name)).toBeVisible();
   await expect(collectionCard(page, 'Q3 reports')).toHaveCount(0);

@@ -32,6 +32,7 @@ import {
   restartMigrationScratch,
   startBlobMigrationFromDialog,
   startTarpit,
+  tarpitEndpoint,
   uploadAdminFile,
   waitForGateInactive,
   waitForTerminalModal,
@@ -170,11 +171,22 @@ test.describe('unified migration mode (S3 backend)', () => {
 
     const token = await loginToken(baseURL, request);
     // S3 scratch keeps the storage config in env, so the scratch settings table
-    // would otherwise be empty; the env-cutover banner is defined by non-active
-    // metadata presence (settings rows), so seed one app-owned row for this case.
+    // would otherwise be empty. Seed real app-owned, DB-sourced settings rows
+    // (not WEBDAV_* / S3_* config on an S3 source) so the migration copies a
+    // representative settings payload AND the env-cutover banner's non-active
+    // metadata-presence source is real data.
+    const seededSettings = [
+      { key: 'JWT_EXPIRES_IN', value: '45m' },
+      { key: 'EMAIL_HOST', value: 'smtp.e2e.local' },
+      { key: 'EMAIL_PORT', value: '2525' },
+      { key: 'EMAIL_SECURE', value: 'false' },
+      { key: 'AI_SEMANTIC_SEARCH_ENABLED', value: 'false' },
+    ] as const;
     await execScratchSqlite(
       dbPath,
-      "INSERT OR REPLACE INTO settings (key, value) VALUES ('E2E_MIGRATION_MARKER', '1')"
+      `INSERT OR REPLACE INTO settings (key, value) VALUES ${seededSettings
+        .map(({ key, value }) => `('${key}', '${value}')`)
+        .join(', ')}`
     );
     const folderName = `migration-d2-${Date.now()}`;
     const folderId = await createAdminFolder(baseURL, request, token, folderName);
@@ -191,9 +203,9 @@ test.describe('unified migration mode (S3 backend)', () => {
       parent_id: number | null;
       type: string;
     }>(dbPath, 'SELECT id, name, parent_id, type FROM file_nodes ORDER BY id');
-    const srcSettings = await queryScratchSqlite<{ key: string }>(
+    const srcSettings = await queryScratchSqlite<{ key: string; value: string }>(
       dbPath,
-      'SELECT key FROM settings ORDER BY key'
+      'SELECT key, value FROM settings ORDER BY key'
     );
 
     await loginAsAdminUi(page);
@@ -260,11 +272,19 @@ test.describe('unified migration mode (S3 backend)', () => {
       type: string;
     }>(pgDb!, 'SELECT id, name, parent_id, type FROM file_nodes ORDER BY id');
     expect(normalizeNodes(tNodes)).toEqual(normalizeNodes(srcNodes));
-    const tSettings = await queryScratchPg<{ key: string }>(
+    const tSettings = await queryScratchPg<{ key: string; value: unknown }>(
       pgDb!,
-      'SELECT key FROM settings ORDER BY key'
+      'SELECT key, value FROM settings ORDER BY key'
     );
-    expect(tSettings).toEqual(srcSettings);
+    // The copy transform stores every sqlite settings value as a JSON string
+    // (metadataMigrationService transformRow), so normalize the target JSONB
+    // back to the source's raw string before comparing the full key+value set.
+    expect(
+      tSettings.map((row) => ({
+        key: row.key,
+        value: typeof row.value === 'string' ? row.value : JSON.stringify(row.value),
+      }))
+    ).toEqual(srcSettings.map((row) => ({ key: row.key, value: String(row.value) })));
 
     // B8: Go to settings → System Settings is reachable (gate cleared).
     await page.getByRole('dialog').getByRole('button', { name: 'Go to settings' }).click();
@@ -273,19 +293,11 @@ test.describe('unified migration mode (S3 backend)', () => {
 
     // B8/D11: the final cutover is a manual .env step — repoint the app's
     // WEA_DB_* block at the migrated PG database and restart. The source sqlite
-    // backend still holds the metadata, so presence detection (D13) keeps the
-    // ".env setup needed" banner visible after the cutover (the metadata
-    // backend is presence-selected, so a sqlite-active boot cannot carry the
-    // WEA_DB_* identity keys needed to reach the PG target).
-    console.log(
-      'MIG-D2 source settings before restart',
-      (await queryScratchSqlite<{ cnt: number }>(dbPath, 'SELECT COUNT(*) AS cnt FROM settings'))[0]
-        .cnt,
-      'file',
-      dbPath,
-      'exists',
-      (await import('node:fs')).existsSync(dbPath)
-    );
+    // backend still holds the metadata (including the seeded settings rows), so
+    // presence detection (D13) keeps the ".env setup needed" banner visible
+    // after the cutover (the metadata backend is presence-selected, so a
+    // sqlite-active boot cannot carry the WEA_DB_* identity keys needed to
+    // reach the PG target).
     await restartMigrationScratch(scratch, {
       WEA_DB_HOST: PG_HOST,
       WEA_DB_PORT: PG_PORT,
@@ -293,12 +305,6 @@ test.describe('unified migration mode (S3 backend)', () => {
       WEA_DB_USER: PG_USER,
       WEA_DB_PASSWORD: PG_PASSWORD,
     });
-    console.log(
-      'MIG-D2 scratch dir after restart',
-      scratch.scratch,
-      'sqlite exists',
-      (await import('node:fs')).existsSync(path.join(scratch.scratch, 'webdav.db'))
-    );
 
     await loginAsAdminUi(page);
     await openSystemSettings(page);
@@ -416,5 +422,131 @@ test.describe('unified migration mode (S3 backend)', () => {
     // REST-only gate matrix which the server tests cover).
     const statusAfter = await request.get(`${baseURL}/api/migration/status`);
     expect(((await statusAfter.json()) as { active?: boolean }).active).toBe(false);
+  });
+
+  test('E2E-S3-MIG-004 (Flow F-S3): S3 source -> WebDAV destination tarpit gate and role routing', async ({
+    page,
+    browser,
+    request,
+  }, testInfo) => {
+    const caseId = 'flow-f-s3-role-aware-gate';
+    scratch = await bootMigrationScratch(testInfo, { caseId, backend: 's3' });
+    const { baseURL } = scratch;
+
+    // A real S3-source snapshot (at least one active file + object_map row) so
+    // the worker would have a blob to copy if the destination probe succeeded.
+    const token = await loginToken(baseURL, request);
+    const folderName = `migration-f-s3-${Date.now()}`;
+    const folderId = await createAdminFolder(baseURL, request, token, folderName);
+    await uploadAdminFile(baseURL, request, token, folderId, 'f-s3-file.txt');
+
+    // Provision the regular (approved, non-admin) user while the gate is still
+    // inactive; userService auto-provisions its home node + grant. The session
+    // lives in its own browser context so the admin token never leaks into it.
+    const userName = `flow-f-s3-user-${Date.now()}`;
+    const userPassword = 'FlowFS3UserE2e!123';
+    const createUser = await request.post(`${baseURL}/api/admin/users`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { username: userName, email: `${userName}@e2e.local`, password: userPassword },
+    });
+    expect(createUser.status()).toBe(201);
+
+    const userContext = await browser.newContext({ baseURL });
+    const userPage = await userContext.newPage();
+    await loginWithCredentials(userPage, userName, userPassword);
+    // Let the SPA settle on /files before the gate starts, so the later
+    // /maintenance redirect is attributable to the guard alone.
+    await expect(userPage.getByTestId('file-actions-fab')).toBeVisible({ timeout: 30_000 });
+    await expect(userPage).toHaveURL(/\/files(?:\/.*)?$/);
+
+    // Admin is already on /migration when the gate activates. Wait for the
+    // boot-time /auth/me to settle on THIS full page load before starting the
+    // gate: a still-in-flight session probe would 503 under the gate, clear the
+    // session, and race the guard's /migration redirect.
+    await loginAsAdminUi(page);
+    const adminMe = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' && new URL(response.url()).pathname === '/api/auth/me'
+    );
+    await page.goto('/migration');
+    await page.waitForURL(/\/migration/);
+    expect((await adminMe).status()).toBe(200);
+    await expect(page.getByRole('heading', { name: 'Migration', exact: true })).toBeVisible();
+
+    // A local raw TCP tarpit accepts the destination probe connection and never
+    // replies, keeping the worker in probeDestination and the gate active.
+    tarpit = await startTarpit();
+    const hangEndpoint = tarpitEndpoint(tarpit);
+
+    // S3 source -> WebDAV destination: the API route derives the expected
+    // destination type from the composition, so this exercises the real
+    // direction without any WebDAV container.
+    const startPayload = {
+      mode: 'dry-run',
+      force: false,
+      dest: {
+        type: 'webdav',
+        url: hangEndpoint,
+        username: 'e2e',
+        password: 'e2e',
+      },
+    };
+    const startRes = await request.post(`${baseURL}/api/admin/migration/blobs`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: startPayload,
+    });
+    expect(startRes.status()).toBe(202);
+    const { jobId } = (await startRes.json()) as { jobId: string };
+
+    const activeGate = (await (
+      await request.get(`${baseURL}/api/migration/status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    ).json()) as { active?: boolean; jobId?: string };
+    expect(activeGate.active).toBe(true);
+    expect(activeGate.jobId).toBe(jobId);
+
+    // Deliberate second POST (not a transport retry): one job/gate exists, so
+    // the server rejects the duplicate start with 409 and keeps the same job.
+    const secondRes = await request.post(`${baseURL}/api/admin/migration/blobs`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: startPayload,
+    });
+    expect(secondRes.status()).toBe(409);
+    const gateAfterSecond = (await (
+      await request.get(`${baseURL}/api/migration/status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    ).json()) as { active?: boolean; jobId?: string };
+    expect(gateAfterSecond.active).toBe(true);
+    expect(gateAfterSecond.jobId).toBe(jobId);
+
+    // Role a — authenticated admin: a client-side (history API) navigation away
+    // from /migration is force-redirected back by the role-aware guard.
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/mypage');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await expect(page).toHaveURL(/\/migration/, { timeout: 60_000 });
+
+    // Role b — regular non-admin user: the settled /files session is routed to
+    // the generic public maintenance page, never to /migration.
+    await expect(userPage).toHaveURL(/\/maintenance/, { timeout: 30_000 });
+    await expect(
+      userPage.getByRole('heading', { name: 'System maintenance in progress' })
+    ).toBeVisible();
+    expect(userPage.url()).not.toMatch(/\/migration/);
+    await userContext.close();
+
+    // Role c — anonymous visitor: the public /migration route redirects to the
+    // public maintenance page.
+    const anonContext = await browser.newContext({ baseURL });
+    const anonPage = await anonContext.newPage();
+    await anonPage.goto('/migration');
+    await expect(anonPage).toHaveURL(/\/maintenance/, { timeout: 30_000 });
+    await expect(
+      anonPage.getByRole('heading', { name: 'System maintenance in progress' })
+    ).toBeVisible();
+    await anonContext.close();
   });
 });

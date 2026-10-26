@@ -24,6 +24,27 @@ const lockManager = require('../infrastructure/lockManager');
 
 let _composition = null;
 
+/**
+ * Post-commit hook composition: AI enrichment stays independent, then the
+ * collections admission point-check materializes any matching membership.
+ * Admission failures are logged — they must never fail the committed write.
+ */
+function createComposedNodeContentHook(enrichmentHook) {
+  return {
+    async onNodeContentCommitted(nodeId, contentHash) {
+      await enrichmentHook.onNodeContentCommitted(nodeId, contentHash);
+      try {
+        await require('../domains/collections/service').checkUploadAdmissionsForNode(nodeId);
+      } catch (error) {
+        console.error(
+          `[collections] upload admission failed for node ${nodeId}:`,
+          error && error.message
+        );
+      }
+    },
+  };
+}
+
 function createComposition(overrides = {}) {
   const fileStorageMode = overrides.fileStorageMode || process.env.WEA_FILE_STORAGE || 's3';
 
@@ -40,10 +61,12 @@ function createComposition(overrides = {}) {
     });
   const nodeContentHook =
     overrides.nodeContentHook ||
-    createNodeContentHook({
-      aiJobsRepository: aiJobsStore,
-      fileNodesStore,
-    });
+    createComposedNodeContentHook(
+      createNodeContentHook({
+        aiJobsRepository: aiJobsStore,
+        fileNodesStore,
+      })
+    );
 
   const uploadService =
     overrides.uploadService ||

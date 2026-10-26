@@ -379,9 +379,25 @@ describe('CollectionsRepository conformance', () => {
         nodeId: Number(node.nodeId),
         addedBy: Number(owner.id),
         published: true,
+        source: 'manual',
+        reason: null,
         createdAt: expect.any(String),
       });
       expect((await repo.listStoredItems(id)).map((r) => r.nodeId)).toEqual([Number(node.nodeId)]);
+
+      const ruleNode = await uniqueNode(`col-item-rule-${Date.now()}.txt`);
+      await inTx(async (tx) => {
+        await repo.insertItem(tx, id, ruleNode.nodeId, owner.id, {
+          published: false,
+          source: 'system',
+          reason: 'similar',
+        });
+      });
+      expect(await repo.getStoredItem(id, ruleNode.nodeId)).toMatchObject({
+        source: 'system',
+        reason: 'similar',
+        published: false,
+      });
 
       const future = new Date(Date.now() + 5000).toISOString();
       await expect(repo.listStoredItems(id, { since: future })).resolves.toEqual([]);

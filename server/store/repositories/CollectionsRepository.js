@@ -36,7 +36,7 @@
  * // membership (items ∪ derived − exclusions)
  * @property {(collectionId, { since? }) => Promise<Array>} listStoredItems
  * @property {(collectionId, nodeId) => Promise<Object|null>} getStoredItem
- * @property {(tx, collectionId, nodeId, addedBy, { published? }) => Promise<{ changes }>} insertItem
+ * @property {(tx, collectionId, nodeId, addedBy, { published?, source?, reason? }) => Promise<{ changes }>} insertItem
  * @property {(tx, collectionId, nodeId) => Promise<{ changes }>} deleteItem
  * @property {(tx, collectionId, nodeIds, published) => Promise<{ changes }>} setItemPublished
  * @property {(collectionId) => Promise<number[]>} listExclusions

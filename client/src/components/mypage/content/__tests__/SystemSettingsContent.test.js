@@ -76,6 +76,38 @@ describe('SystemSettingsContent', () => {
     expect(screen.getByText(/registration setting saved/i)).toBeInTheDocument();
   });
 
+  it('keeps a user registration toggle when the initial settings read resolves late', async () => {
+    const user = userEvent.setup();
+    let releaseSettings;
+    let markGetStarted;
+    const settingsGate = new Promise((resolve) => {
+      releaseSettings = resolve;
+    });
+    const getStarted = new Promise((resolve) => {
+      markGetStarted = resolve;
+    });
+    server.use(
+      http.get('/api/admin/settings', async () => {
+        markGetStarted();
+        await settingsGate;
+        return HttpResponse.json({ registration_enabled: 'false' });
+      }),
+      http.put('/api/admin/settings', () =>
+        HttpResponse.json({ messageCode: 'serverMessages.admin.settingsSaved' })
+      )
+    );
+
+    renderSystemSettingsContent();
+    await getStarted;
+
+    const registrationSwitch = screen.getAllByRole('switch')[0];
+    await user.click(registrationSwitch);
+    await waitFor(() => expect(registrationSwitch).toBeChecked());
+
+    releaseSettings();
+    await waitFor(() => expect(registrationSwitch).toBeChecked());
+  });
+
   it('toggle show hidden files persists to localStorage', async () => {
     mockGetShowHiddenFiles.mockReturnValue(false);
     const user = userEvent.setup();

@@ -229,10 +229,12 @@ function fingerprintDefinition(definition) {
  *   `listNodesByTag` resolves a tag atom value to the node ids carrying the
  *   folded tag (T0.9, ai_tag_raw); absent ⇒ tag atoms match nothing.
  * @param {Date} [options.now]
- * @param {{ scoreFor: (nodeId:number) => Promise<number|null>|number|null, previousMembers?: Set<number>, thetaIn?: number, thetaOut?: number }} [options.vector]
+ * @param {{ scoreFor: (nodeId:number) => Promise<number|null>|number|null, previousMembers?: Set<number>, thetaIn?: number, thetaOut?: number, keepMissing?: boolean }} [options.vector]
  *   `scoreFor` supplies the pooled cosine for one candidate; `previousMembers`
- *   selects the θ_out keep rule for existing rows. Absent ⇒ vector rules match
- *   nothing.
+ *   selects the θ_out keep rule for existing rows. `keepMissing` (reconcile)
+ *   keeps an EXISTING member whose pooled vector is absent or from another
+ *   model; a non-member without a vector is never admitted. Absent vector
+ *   context ⇒ vector rules match nothing.
  * @returns {Promise<Map<number, string>>} admitted nodeId → matched reason
  */
 async function evaluateDefinition({
@@ -348,10 +350,17 @@ async function evaluateDefinition({
       if (!vector || typeof vector.scoreFor !== 'function') continue;
       const rawScore = await vector.scoreFor(nodeId);
       const score = Number(rawScore);
-      if (rawScore == null || !Number.isFinite(score)) continue;
-      const keep = previous.has(nodeId) ? score >= thetaOut : score >= thetaIn;
-      if (!keep) continue;
-      labels.push('similar');
+      if (rawScore == null || !Number.isFinite(score)) {
+        // Enrichment gap: reconcile keeps an existing member whose pooled
+        // vector is missing or belongs to another model; a non-member without
+        // a vector is never admitted.
+        if (!vector.keepMissing || !previous.has(nodeId)) continue;
+        labels.push('similar');
+      } else {
+        const keep = previous.has(nodeId) ? score >= thetaOut : score >= thetaIn;
+        if (!keep) continue;
+        labels.push('similar');
+      }
     }
     if (labels.length === 0) continue;
     matched.set(nodeId, labels.join('+'));

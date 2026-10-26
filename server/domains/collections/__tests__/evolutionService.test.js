@@ -1,0 +1,519 @@
+/**
+ * evolutionService — trigger/debounce + reconcile pass contract
+ * (docs/spec/server/services/evolutionService.md §2.2/§2.3/§2.4-bis).
+ *
+ * DB-backed: real collectionsStore/journal/embeddings fixtures; fake timers
+ * only around trigger arming (timers are the unit under test).
+ */
+const evolutionService = require('../evolutionService');
+const collectionsService = require('../service');
+const collectionsStore = require('@server/store/collectionsStore');
+const embeddingsStore = require('@server/store/embeddingsStore');
+const llmModelsStore = require('@server/store/llmModelsStore');
+const lockManager = require('@server/infrastructure/lockManager');
+const Settings = require('@server/models/Settings');
+const { getSharedResolver } = require('@server/infrastructure/configResolver');
+const composition = require('@server/service/composition');
+const { createFileNodesStore } = require('@server/store/fileNodesStore');
+const { createFileNodeService } = require('@server/service/fileNodeService');
+const { createWebdavMock } = require('@testing/mocks/webdavMock');
+const WebdavBlobStore = require('@server/infrastructure/adapters/blobstore/WebdavBlobStore');
+const { createTestDatabase, createAuthenticatedTestUser, dbQuery } = require('@server/test-utils');
+
+let dbCleanup;
+let fileNodeService;
+
+const CONFIG_DEFAULTS = {
+  AI_EVOLUTION_ENABLED: 'true',
+  AI_EVOLUTION_TRIGGER: 'both',
+  AI_EVOLUTION_DEBOUNCE_S: '90',
+  AI_EVOLUTION_NIGHTLY_ENABLED: 'true',
+};
+
+beforeAll(async () => {
+  process.env.WEA_FILE_STORAGE = 'webdav';
+  const db = await createTestDatabase();
+  dbCleanup = db.cleanup;
+  fileNodeService = createFileNodeService({ fileNodesStore: createFileNodesStore() });
+  composition.__setCompositionForTests({
+    fileStorageMode: 'webdav',
+    blobStore: new WebdavBlobStore(createWebdavMock()),
+    fileNodeService,
+  });
+});
+
+afterAll(async () => {
+  composition.resetComposition();
+  await dbCleanup?.();
+});
+
+beforeEach(async () => {
+  evolutionService.__resetEvolutionStateForTests();
+  for (const [key, value] of Object.entries(CONFIG_DEFAULTS)) {
+    // eslint-disable-next-line no-await-in-loop
+    await setConfig(key, value);
+  }
+});
+
+/**
+ * Write a DB-only registry value and prime the shared resolver's sync cache
+ * (production primes it via loadAll() at boot; tests must mirror that).
+ */
+async function setConfig(key, value) {
+  await Settings.set(key, String(value));
+  const resolver = getSharedResolver();
+  resolver.invalidateCache(key);
+  await resolver.getConfig(key);
+  return resolver.getConfigSync(key);
+}
+
+async function createUserWithRoot(tag) {
+  const { user, token } = await createAuthenticatedTestUser({
+    username: `evo-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  });
+  const root = await fileNodeService.createDirectory(null, user.username);
+  return { user, token, root };
+}
+
+async function ensureEmbedModel(tag) {
+  const unique = `${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const { id } = await llmModelsStore.upsertModel({
+    role: 'embed',
+    provider: 'embedded',
+    engine: 'embedded',
+    baseUrlKey: '',
+    modelName: unique,
+    modelRevision: null,
+    precision: 'q4',
+    maxInputChars: 8192,
+    chunkBudget: 4,
+    batchSize: 8,
+    enabled: true,
+  });
+  return Number(id);
+}
+
+async function embedNode(nodeId, modelId, vector) {
+  await embeddingsStore.upsert(Number(nodeId), {
+    modelId,
+    dim: vector.length,
+    vector,
+    source: 'fulltext',
+    contentHash: `evo-${nodeId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  });
+}
+
+async function createSystemCollection(ctx, { name, definition, publishMode } = {}) {
+  return collectionsStore.createCollection(
+    {
+      ownerId: ctx.user.id,
+      name: name || `System ${Math.random().toString(36).slice(2, 8)}`,
+      origin: 'system',
+      definition,
+      ...(publishMode ? { publishMode } : {}),
+    },
+    { actor: ctx.user.id }
+  );
+}
+
+async function storedItems(collectionId) {
+  return collectionsStore.listStoredItems(collectionId);
+}
+
+async function journalCount(collectionId, action) {
+  const result = await dbQuery(
+    'SELECT COUNT(*) AS n FROM action_journal WHERE subject = ? AND action = ?',
+    [`collection:${collectionId}`, action]
+  );
+  return Number(result.rows[0].n);
+}
+
+function withFakeTimers(fn) {
+  jest.useFakeTimers();
+  return Promise.resolve()
+    .then(fn)
+    .finally(() => {
+      evolutionService.__resetEvolutionStateForTests();
+      jest.useRealTimers();
+    });
+}
+
+const DAY_OF_MS = 86400000;
+
+describe('evolutionService triggers (§2.2)', () => {
+  const pathDefinition = (username) => ({
+    kind: 'predicate',
+    any_of: [{ type: 'path', value: `/${username}/travel` }],
+  });
+
+  async function setupTravel(tag) {
+    const ctx = await createUserWithRoot(tag);
+    const folder = await fileNodeService.createDirectory(ctx.root.id, 'travel');
+    const file = await fileNodeService.createFile(folder.id, 'dune.jpg');
+    const collection = await createSystemCollection(ctx, {
+      definition: pathDefinition(ctx.user.username),
+    });
+    return { ctx, folder, file, collection };
+  }
+
+  it('debounces upload commits: five arms 10s apart fire ONE cheap pass 90s after the last', async () => {
+    const { ctx, file, collection } = await setupTravel('debounce');
+
+    await withFakeTimers(async () => {
+      expect(evolutionService.armUploadTrigger(ctx.user.id)).toBe(true);
+      for (let i = 0; i < 4; i += 1) {
+        await jest.advanceTimersByTimeAsync(10000);
+        // re-arm coalesces into the existing queued pass
+        expect(evolutionService.armUploadTrigger(ctx.user.id)).toBe(false);
+      }
+
+      await jest.advanceTimersByTimeAsync(89999);
+      expect(await storedItems(collection.id)).toHaveLength(0);
+
+      await jest.advanceTimersByTimeAsync(1);
+      const rows = await storedItems(collection.id);
+      expect(rows.map((row) => row.nodeId)).toContain(file.id);
+      expect(await journalCount(collection.id, 'add-items')).toBe(1);
+    });
+  });
+
+  it('an immediate hint fires on the next tick and a second hint coalesces (202 scheduled:false)', async () => {
+    const { ctx, file, collection } = await setupTravel('immediate');
+
+    await withFakeTimers(async () => {
+      expect(evolutionService.armUploadTrigger(ctx.user.id, { immediate: true })).toBe(true);
+      expect(evolutionService.armUploadTrigger(ctx.user.id, { immediate: true })).toBe(false);
+
+      await jest.advanceTimersByTimeAsync(0);
+      expect((await storedItems(collection.id)).map((row) => row.nodeId)).toContain(file.id);
+      expect(await journalCount(collection.id, 'add-items')).toBe(1);
+    });
+  });
+
+  it('AI_EVOLUTION_TRIGGER=nightly ignores upload arms entirely', async () => {
+    await setConfig('AI_EVOLUTION_TRIGGER', 'nightly');
+    const { ctx, collection } = await setupTravel('nightly');
+
+    await withFakeTimers(async () => {
+      expect(evolutionService.armUploadTrigger(ctx.user.id)).toBe(false);
+      expect(evolutionService.armUploadTrigger(ctx.user.id, { immediate: true })).toBe(false);
+      await jest.advanceTimersByTimeAsync(DAY_OF_MS);
+      expect(await storedItems(collection.id)).toHaveLength(0);
+    });
+  });
+
+  it('AI_EVOLUTION_ENABLED=false disables arming and the pass (no acts)', async () => {
+    await setConfig('AI_EVOLUTION_ENABLED', 'false');
+    const { ctx, collection } = await setupTravel('disabled');
+
+    await withFakeTimers(async () => {
+      expect(evolutionService.armUploadTrigger(ctx.user.id)).toBe(false);
+      expect(evolutionService.armUploadTrigger(ctx.user.id, { immediate: true })).toBe(false);
+      const result = await evolutionService.runEvolutionPass({
+        users: [ctx.user.id],
+        passes: 'cheap',
+      });
+      expect(result).toEqual({ perUser: [], report: null, skipped: 'disabled' });
+      await jest.advanceTimersByTimeAsync(DAY_OF_MS);
+      expect(await storedItems(collection.id)).toHaveLength(0);
+    });
+  });
+
+  it('AI_EVOLUTION_NIGHTLY_ENABLED=false pauses the full leg but leaves the cheap leg running', async () => {
+    await setConfig('AI_EVOLUTION_NIGHTLY_ENABLED', 'false');
+    const { ctx, file, collection } = await setupTravel('nightlypause');
+
+    const full = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'full',
+    });
+    expect(full).toEqual({ perUser: [], report: null, skipped: 'nightly_disabled' });
+    expect(await storedItems(collection.id)).toHaveLength(0);
+
+    const cheap = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'cheap',
+    });
+    expect(cheap.perUser[0].reconciled).toEqual({ added: 2, removed: 0, collections: 1 });
+    expect((await storedItems(collection.id)).map((row) => row.nodeId)).toContain(file.id);
+  });
+
+  it('armUploadTriggerForNode resolves the node owner and arms that user', async () => {
+    const { ctx, file, collection } = await setupTravel('bynode');
+
+    await withFakeTimers(async () => {
+      expect(await evolutionService.armUploadTriggerForNode(file.id)).toBe(true);
+      await jest.advanceTimersByTimeAsync(90000);
+      expect((await storedItems(collection.id)).map((row) => row.nodeId)).toContain(file.id);
+      expect(ctx.user.id).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe('evolutionService reconcile pass (§2.4-bis)', () => {
+  it('materializes predicate admissions with source/reason/publish and removes stale non-manual rows without an exclusion', async () => {
+    const ctx = await createUserWithRoot('reconcile-pred');
+    const travel = await fileNodeService.createDirectory(ctx.root.id, 'travel');
+    const inside = await fileNodeService.createFile(travel.id, 'poster.png');
+    const outside = await fileNodeService.createFile(ctx.root.id, 'notes.txt');
+    const definition = {
+      kind: 'predicate',
+      any_of: [{ type: 'path', value: `/${ctx.user.username}/travel` }],
+    };
+
+    const autoCol = await createSystemCollection(ctx, {
+      name: 'Travel auto',
+      definition,
+      publishMode: 'auto',
+    });
+    const askCol = await createSystemCollection(ctx, {
+      name: 'Travel ask',
+      definition,
+    });
+
+    // stale rule-managed member that no longer matches the predicate
+    await collectionsStore.addItems(
+      askCol.id,
+      [outside.id],
+      ctx.user.id,
+      { published: true, source: 'seed' },
+      { actor: ctx.user.id }
+    );
+    // manual row on a system collection: never removed by reconcile
+    await collectionsService.addItems(ctx.user.id, autoCol.id, [outside.id]);
+    const manualRow = await collectionsStore.getStoredItem(autoCol.id, outside.id);
+    expect(manualRow.source).toBe('manual');
+
+    const askJournalBefore = await dbQuery(
+      'SELECT MAX(id) AS maxId FROM action_journal WHERE subject = ?',
+      [`collection:${askCol.id}`]
+    );
+    const lastSetupId = Number(askJournalBefore.rows[0].maxId) || 0;
+
+    const result = await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    expect(result.perUser).toHaveLength(1);
+    expect(result.perUser[0]).toMatchObject({
+      userId: ctx.user.id,
+      reconciled: { added: 4, removed: 1, collections: 2 },
+    });
+
+    const autoRows = await storedItems(autoCol.id);
+    const autoInside = autoRows.find((row) => row.nodeId === inside.id);
+    expect(autoInside).toMatchObject({
+      source: 'system',
+      reason: `path:/${ctx.user.username}/travel`,
+      published: true,
+      addedBy: ctx.user.id,
+    });
+    // manual outside row survives
+    expect(autoRows.some((row) => row.nodeId === outside.id)).toBe(true);
+
+    const askRows = await storedItems(askCol.id);
+    expect(askRows.find((row) => row.nodeId === inside.id)).toMatchObject({
+      source: 'system',
+      reason: `path:/${ctx.user.username}/travel`,
+      published: false,
+    });
+    expect(askRows.some((row) => row.nodeId === outside.id)).toBe(false);
+
+    // automatic removal deleted the row ONLY — no exclusion, re-entry possible
+    const exclusions = await dbQuery(
+      'SELECT COUNT(*) AS n FROM collection_exclusions WHERE collection_id = ?',
+      [askCol.id]
+    );
+    expect(Number(exclusions.rows[0].n)).toBe(0);
+
+    // every reconcile act journaled actor='system'
+    const journal = await dbQuery(
+      'SELECT actor, action FROM action_journal WHERE subject = ? AND id > ? ORDER BY id',
+      [`collection:${askCol.id}`, lastSetupId]
+    );
+    const mutationRows = journal.rows.filter(
+      (row) => row.action === 'add-items' || row.action === 'remove-items'
+    );
+    expect(mutationRows.map((row) => row.action).sort()).toEqual(['add-items', 'remove-items']);
+    expect(mutationRows.every((row) => row.actor === 'system')).toBe(true);
+
+    // member-change stamp + idempotent second pass
+    expect((await collectionsStore.getCollection(autoCol.id)).lastMemberChangeAt).not.toBeNull();
+    const journalBefore = await journalCount(askCol.id, 'add-items');
+    const second = await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    expect(second.perUser[0].reconciled).toEqual({ added: 0, removed: 0, collections: 0 });
+    expect(await journalCount(askCol.id, 'add-items')).toBe(journalBefore);
+  });
+
+  it('reconciles pooled-vector membership with hysteresis: keeps missing-vector members, removes below theta, re-admits above theta_in', async () => {
+    const ctx = await createUserWithRoot('reconcile-vec');
+    const modelId = await ensureEmbedModel('reconcile-vec');
+    const seed = await fileNodeService.createFile(ctx.root.id, 'seed.jpg');
+    const near = await fileNodeService.createFile(ctx.root.id, 'near.jpg');
+    const far = await fileNodeService.createFile(ctx.root.id, 'far.jpg');
+    const missing = await fileNodeService.createFile(ctx.root.id, 'missing.jpg');
+    const unembeddedNonMember = await fileNodeService.createFile(ctx.root.id, 'new.jpg');
+    await embedNode(seed.id, modelId, [1, 0, 0, 0]);
+    await embedNode(near.id, modelId, [0.99, 0.1, 0, 0]);
+    await embedNode(far.id, modelId, [0, 1, 0, 0]);
+
+    const collection = await createSystemCollection(ctx, {
+      definition: { kind: 'seed_vector', seed_ref: seed.id, theta: 0.6 },
+    });
+    // pre-existing rule-managed members: far (below θ) and missing (no vector)
+    await collectionsStore.addItems(
+      collection.id,
+      [far.id, missing.id],
+      ctx.user.id,
+      { published: true, source: 'seed' },
+      { actor: ctx.user.id }
+    );
+
+    const first = await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    // near clears theta_in; the seed itself scores 1.0 and is admitted (the
+    // definition engine has no seed self-exclusion; only the preview samples
+    // without it).
+    expect(first.perUser[0].reconciled).toEqual({ added: 2, removed: 1, collections: 1 });
+
+    const rows = await storedItems(collection.id);
+    expect(rows.map((row) => row.nodeId).sort((a, b) => a - b)).toEqual(
+      [seed.id, near.id, missing.id].sort((a, b) => a - b)
+    );
+    expect(rows.find((row) => row.nodeId === near.id)).toMatchObject({
+      source: 'system',
+      reason: 'similar',
+      published: false,
+    });
+    expect(rows.find((row) => row.nodeId === seed.id)).toMatchObject({
+      source: 'system',
+      reason: 'similar',
+    });
+
+    // a non-member without a pooled vector is never admitted
+    expect(rows.some((row) => row.nodeId === unembeddedNonMember.id)).toBe(false);
+
+    // automatic removal inserted NO exclusion → re-entry above theta_in
+    const exclusions = await dbQuery(
+      'SELECT COUNT(*) AS n FROM collection_exclusions WHERE collection_id = ?',
+      [collection.id]
+    );
+    expect(Number(exclusions.rows[0].n)).toBe(0);
+
+    await embedNode(far.id, modelId, [1, 0, 0, 0]);
+    const second = await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    expect(second.perUser[0].reconciled).toEqual({ added: 1, removed: 0, collections: 1 });
+    expect((await storedItems(collection.id)).some((row) => row.nodeId === far.id)).toBe(true);
+
+    const third = await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    expect(third.perUser[0].reconciled).toEqual({ added: 0, removed: 0, collections: 0 });
+  });
+
+  it('subtracts collection exclusions before the diff and leaves manual collections untouched', async () => {
+    const ctx = await createUserWithRoot('reconcile-excl');
+    const travel = await fileNodeService.createDirectory(ctx.root.id, 'travel');
+    const inside = await fileNodeService.createFile(travel.id, 'skip.png');
+    const definition = {
+      kind: 'predicate',
+      any_of: [{ type: 'path', value: `/${ctx.user.username}/travel` }],
+    };
+
+    const collection = await createSystemCollection(ctx, { definition });
+    await collectionsStore.addExclusion(collection.id, inside.id, { actor: ctx.user.id });
+
+    // manual collection (no definition): skipped by construction
+    const manual = await collectionsService.createCollection(ctx.user.id, { name: 'Manual' });
+    await collectionsService.addItems(ctx.user.id, manual.collection.id, [inside.id]);
+
+    const result = await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    // the prefix directory itself matches the path atom; the excluded file does not
+    expect(result.perUser[0].reconciled).toEqual({ added: 1, removed: 0, collections: 1 });
+    expect((await storedItems(collection.id)).map((row) => row.nodeId)).toEqual([travel.id]);
+    expect(await storedItems(manual.collection.id)).toHaveLength(1);
+  });
+
+  it('skips {kind:search} snapshot definitions', async () => {
+    const ctx = await createUserWithRoot('reconcile-search');
+    const node = await fileNodeService.createFile(ctx.root.id, 'saved.png');
+    const search = await collectionsStore.createCollection(
+      {
+        ownerId: ctx.user.id,
+        name: 'Saved search',
+        origin: 'search',
+        definition: { kind: 'search', result_ref: 'sr1.abc0123456789ef', predicates: [] },
+      },
+      { actor: ctx.user.id }
+    );
+    await collectionsStore.addItems(
+      search.id,
+      [node.id],
+      ctx.user.id,
+      { published: true, source: 'search' },
+      { actor: ctx.user.id }
+    );
+
+    const result = await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    expect(result.perUser[0].reconciled).toEqual({ added: 0, removed: 0, collections: 0 });
+    expect(await storedItems(search.id)).toHaveLength(1);
+  });
+
+  it('a concurrent pass for the same user no-ops on the per-user lock', async () => {
+    const ctx = await createUserWithRoot('reconcile-lock');
+    const travel = await fileNodeService.createDirectory(ctx.root.id, 'travel');
+    const file = await fileNodeService.createFile(travel.id, 'locked.png');
+    const collection = await createSystemCollection(ctx, {
+      definition: {
+        kind: 'predicate',
+        any_of: [{ type: 'path', value: `/${ctx.user.username}/travel` }],
+      },
+    });
+
+    const held = await lockManager.acquireLock(`evolution:user:${ctx.user.id}`, {
+      ttlMs: 30000,
+      waitMs: 0,
+    });
+    try {
+      const result = await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+      expect(result.perUser[0]).toEqual({ userId: ctx.user.id, skipped: 'locked' });
+      expect(await storedItems(collection.id)).toHaveLength(0);
+    } finally {
+      await held.release();
+    }
+
+    const after = await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+    expect(after.perUser[0].reconciled).toEqual({ added: 2, removed: 0, collections: 1 });
+    expect((await storedItems(collection.id)).map((row) => row.nodeId)).toContain(file.id);
+  });
+
+  it('defaults to all non-admin users and writes one night_eval report with the per-user summary', async () => {
+    const admin = await createAuthenticatedTestUser({
+      username: `evo-admin-${Date.now()}`,
+      isAdmin: true,
+    });
+    const ctx = await createUserWithRoot('reconcile-report');
+    const travel = await fileNodeService.createDirectory(ctx.root.id, 'travel');
+    await fileNodeService.createFile(travel.id, 'report.png');
+    await createSystemCollection(ctx, {
+      definition: {
+        kind: 'predicate',
+        any_of: [{ type: 'path', value: `/${ctx.user.username}/travel` }],
+      },
+    });
+
+    await evolutionService.runEvolutionPass({ passes: 'full' });
+
+    const report = await dbQuery(
+      "SELECT status, payload FROM admin_reports WHERE kind = 'night_eval' ORDER BY id DESC LIMIT 1"
+    );
+    expect(report.rows).toHaveLength(1);
+    expect(report.rows[0].status).toBe('ok');
+    const payload = JSON.parse(report.rows[0].payload);
+    expect(payload.passes).toBe('full');
+    const userIds = payload.perUser.map((entry) => entry.userId);
+    expect(userIds).toContain(ctx.user.id);
+    expect(userIds).not.toContain(admin.user.id);
+    const entry = payload.perUser.find((row) => row.userId === ctx.user.id);
+    expect(entry.reconciled).toEqual({ added: 2, removed: 0, collections: 1 });
+    expect(payload.totals).toMatchObject({
+      added: expect.any(Number),
+      removed: expect.any(Number),
+      collections: expect.any(Number),
+    });
+  });
+});

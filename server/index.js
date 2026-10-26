@@ -500,6 +500,7 @@ async function runBoot() {
             runStartupFailSafeRecovery,
             startGcScheduler,
             startUsageRollupScheduler,
+            startEvolutionScheduler,
             runAdminReportsRetention,
             startAdminReportsRetentionScheduler,
           } = require('./infrastructure/maintenanceScheduler');
@@ -510,6 +511,9 @@ async function runBoot() {
             .catch((err) => console.error('Fail-safe recovery on startup failed:', err));
           startGcScheduler({ gcService: composition.gcService });
           startUsageRollupScheduler({ usageService: getUsageService() });
+          startEvolutionScheduler({
+            evolutionService: require('./domains/collections/evolutionService'),
+          });
           runAdminReportsRetention()
             .then((r) => {
               if (r && r.deleted > 0) {

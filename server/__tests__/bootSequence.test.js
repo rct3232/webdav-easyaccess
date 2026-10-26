@@ -101,6 +101,7 @@ function childEnv(overrides = {}) {
     DOTENV_CONFIG_PATH: path.join(os.tmpdir(), `wea-boot-absent-env-${crypto.randomUUID()}`),
     WEA_SKIP_GC_SCHEDULER: '1',
     WEA_SKIP_ROLLUP_SCHEDULER: '1',
+    WEA_SKIP_EVOLUTION_SCHEDULER: '1',
     ...overrides,
   };
   for (const key of Object.keys(env)) {

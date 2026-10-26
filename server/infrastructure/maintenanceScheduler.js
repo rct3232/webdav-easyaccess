@@ -295,6 +295,63 @@ function startUsageRollupScheduler({ usageService, collectionsStore, actionJourn
   return timer;
 }
 
+// ── Evolution nightly slot (§3.2) ───────────────────────────────────────────
+
+function shouldSkipEvolution() {
+  const skip = String(process.env.WEA_SKIP_EVOLUTION_SCHEDULER || '').toLowerCase();
+  return ['1', 'true', 'yes', 'on'].includes(skip);
+}
+
+/**
+ * Hot kill-switch read (per fire, DB-only registry keys). Unset/invalid ⇒ the
+ * shipped default (enabled).
+ */
+function resolveEvolutionFlag(key) {
+  const { getSharedResolver } = require('./configResolver');
+  const value = getSharedResolver().getConfigSync(key);
+  if (value === undefined || value === null || value === '') return true;
+  if (value === false || value === 0) return false;
+  const normalized = String(value).trim().toLowerCase();
+  if (['false', '0', 'off', 'no', 'disabled'].includes(normalized)) return false;
+  return true;
+}
+
+/**
+ * Start the evolution nightly backbone slot (§3.2). One tick per nightly
+ * anchor calls `evolutionService.runEvolutionPass({ passes: 'full' })` — the
+ * full pass guarantees the "nightly at least once/day" invariant even in
+ * `upload` trigger mode. `AI_EVOLUTION_ENABLED` / `AI_EVOLUTION_NIGHTLY_ENABLED`
+ * are re-read at fire time; a paused tick logs and performs no acts. Failures
+ * are logged and never throw out of the timer; every tick re-arms for the next
+ * anchor (anchor hour re-read at fire time — hot).
+ *
+ * @param {Object} opts
+ * @param {Object} opts.evolutionService - exposes runEvolutionPass({ users, passes }).
+ * @returns {NodeJS.Timeout|null} the first pending timer, or null when disabled.
+ */
+function startEvolutionScheduler({ evolutionService } = {}) {
+  if (shouldSkipEvolution() || !evolutionService) return null;
+
+  const tick = async () => {
+    try {
+      if (!resolveEvolutionFlag('AI_EVOLUTION_ENABLED')) {
+        console.log('[evolution] nightly skipped: AI_EVOLUTION_ENABLED=false');
+      } else if (!resolveEvolutionFlag('AI_EVOLUTION_NIGHTLY_ENABLED')) {
+        console.log('[evolution] nightly skipped: AI_EVOLUTION_NIGHTLY_ENABLED=false');
+      } else {
+        await evolutionService.runEvolutionPass({ passes: 'full' });
+      }
+    } catch (err) {
+      console.error('Scheduled evolution pass failed:', err.message);
+    } finally {
+      timer = setTimeout(tick, resolveNightlyDelayMs(Date.now(), resolveAnchorHour()));
+    }
+  };
+
+  let timer = setTimeout(tick, resolveNightlyDelayMs(Date.now(), resolveAnchorHour()));
+  return timer;
+}
+
 // ── Admin-reports retention (§2.2.6 / admin.md §2.2.6) ─────────────────────
 
 function shouldSkipAdminReportsRetention() {
@@ -428,6 +485,8 @@ module.exports = {
   resolveAnchorHour,
   resolveNightlyDelayMs,
   startUsageRollupScheduler,
+  shouldSkipEvolution,
+  startEvolutionScheduler,
   shouldSkipAdminReportsRetention,
   resolveAdminReportsRetentionIntervalMs,
   resolveAdminReportsRetentionBatch,

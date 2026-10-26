@@ -18,6 +18,7 @@ const { createWebdavMock } = require('@testing/mocks/webdavMock');
 const WebdavBlobStore = require('@server/infrastructure/adapters/blobstore/WebdavBlobStore');
 const composition = require('@server/service/composition');
 const collectionsStore = require('@server/store/collectionsStore');
+const evolutionService = require('../evolutionService');
 
 let app;
 let dbCleanup;
@@ -1650,5 +1651,58 @@ describe('admin operator gate (403 on every collections endpoint)', () => {
       .set('Authorization', `Bearer ${owner.token}`);
     expect(listed.status).toBe(200);
     expect(listed.body.collections.map((row) => row.name)).toContain('StillMine');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /evolution/hint (§2.4 — queue-drain hint, latency sugar only)
+// ---------------------------------------------------------------------------
+
+describe('POST /api/collections/evolution/hint', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    evolutionService.__resetEvolutionStateForTests();
+  });
+
+  it('returns 202 {scheduled:true} and arms the caller upload debounce immediately', async () => {
+    const { user, token } = await createUserWithRoot('hint');
+    const arm = jest.spyOn(evolutionService, 'armUploadTrigger').mockReturnValue(true);
+
+    const res = await request(app)
+      .post('/api/collections/evolution/hint')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadComplete: true });
+
+    expect(res.status).toBe(202);
+    expect(res.body).toEqual({ scheduled: true });
+    expect(arm).toHaveBeenCalledWith(user.id, { immediate: true });
+    // the route returns before any pass runs and leaks no pass output
+    expect(res.body.perUser).toBeUndefined();
+  });
+
+  it('returns 202 {scheduled:false} while a pass is queued/running or the trigger is paused', async () => {
+    const { token } = await createUserWithRoot('hint-false');
+    jest.spyOn(evolutionService, 'armUploadTrigger').mockReturnValue(false);
+
+    const res = await request(app)
+      .post('/api/collections/evolution/hint')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(202);
+    expect(res.body).toEqual({ scheduled: false });
+  });
+
+  it('an admin requester is forbidden (router-level operator rule)', async () => {
+    const admin = await createAuthenticatedTestUser({
+      username: `col-hint-admin-${Date.now()}`,
+      isAdmin: true,
+    });
+
+    const res = await request(app)
+      .post('/api/collections/evolution/hint')
+      .set('Authorization', `Bearer ${admin.token}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBe(codes().collections.forbidden);
   });
 });

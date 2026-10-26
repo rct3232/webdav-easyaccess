@@ -26,8 +26,9 @@ let _composition = null;
 
 /**
  * Post-commit hook composition: AI enrichment stays independent, then the
- * collections admission point-check materializes any matching membership.
- * Admission failures are logged — they must never fail the committed write.
+ * collections admission point-check materializes any matching membership, and
+ * the owner's upload evolution debounce is (re-)armed. Everything after the
+ * write is best-effort — failures are logged, never propagated.
  */
 function createComposedNodeContentHook(enrichmentHook) {
   return {
@@ -38,6 +39,16 @@ function createComposedNodeContentHook(enrichmentHook) {
       } catch (error) {
         console.error(
           `[collections] upload admission failed for node ${nodeId}:`,
+          error && error.message
+        );
+      }
+      try {
+        // Batch-end trigger only (§evolutionService §2.2): re-arms the owner's
+        // trailing-edge timer; the hint path is latency sugar, never required.
+        await require('../domains/collections/evolutionService').armUploadTriggerForNode(nodeId);
+      } catch (error) {
+        console.error(
+          `[collections] evolution trigger arm failed for node ${nodeId}:`,
           error && error.message
         );
       }

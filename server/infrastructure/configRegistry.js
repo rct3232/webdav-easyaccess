@@ -211,6 +211,39 @@ const CONFIG_ENTRIES = Object.freeze([
   },
   { key: 'AI_NIGHTLY_ANCHOR_HOUR_UTC', tier: TIER.T2, secret: false, default: 3, dbOnly: true },
   { key: 'ARCHIVE_RETENTION_DAYS', tier: TIER.T2, secret: false, default: 30, dbOnly: true },
+
+  // ── Evolution triggers (evolutionService.md §2.2/§3 — T2 dbOnly, hot) ───
+  // Read per arm/pass; the scheduler + route honor the kill switches. The
+  // create/purge knobs are registered here for the later pass waves; the
+  // WEA_SKIP_EVOLUTION_SCHEDULER seam is env-allowed (test convention).
+  { key: 'AI_EVOLUTION_ENABLED', tier: TIER.T2, secret: false, default: true, dbOnly: true },
+  { key: 'AI_EVOLUTION_TRIGGER', tier: TIER.T2, secret: false, default: 'both', dbOnly: true },
+  { key: 'AI_EVOLUTION_DEBOUNCE_S', tier: TIER.T2, secret: false, default: 90, dbOnly: true },
+  {
+    key: 'AI_EVOLUTION_NIGHTLY_ENABLED',
+    tier: TIER.T2,
+    secret: false,
+    default: true,
+    dbOnly: true,
+  },
+  {
+    key: 'AI_EVOLUTION_CREATE_ENABLED',
+    tier: TIER.T2,
+    secret: false,
+    default: true,
+    dbOnly: true,
+  },
+  {
+    key: 'AI_MERGE_SUGGESTIONS_ENABLED',
+    tier: TIER.T2,
+    secret: false,
+    default: true,
+    dbOnly: true,
+  },
+  { key: 'AI_EVOLUTION_INACTIVE_DAYS', tier: TIER.T2, secret: false, default: 30, dbOnly: true },
+  { key: 'AI_EVOLUTION_MIN_AGE_DAYS', tier: TIER.T2, secret: false, default: 14, dbOnly: true },
+  { key: 'AI_EVOLUTION_CREATE_RATE_DAYS', tier: TIER.T2, secret: false, default: 7, dbOnly: true },
+  { key: 'WEA_SKIP_EVOLUTION_SCHEDULER', tier: TIER.T2, secret: false },
   {
     key: 'ADMIN_REPORTS_RETENTION_DAYS',
     tier: TIER.T2,

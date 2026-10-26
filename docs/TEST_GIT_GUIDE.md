@@ -151,7 +151,7 @@ npm run test:e2e:release
 # WebDAV release gate: zero retries, fail on flaky tests.
 npm run test:e2e:release:webdav
 
-# Combined release gate, when the package defines it: runs both release
+# Combined release gate: runs both release
 # commands above.
 npm run test:e2e:release:all
 ```
@@ -173,7 +173,7 @@ Runner contract:
   Use separate worktrees with separate bands.
 - Both release commands pin their group and backend and run with retries
   disabled and fail-on-flaky enabled. A retried pass is diagnostic, not release
-  evidence. When `test:e2e:release:all` is defined, it runs both release
+  evidence. `test:e2e:release:all` runs both release
   commands; otherwise run them in sequence.
 - Expected skip counts are release invariants, not per-case details. The
   canonical expected count per group lives in

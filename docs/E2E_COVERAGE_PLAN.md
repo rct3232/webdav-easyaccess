@@ -179,7 +179,7 @@ Rules:
 | WebDAV     | `npm run test:e2e:release:webdav` | `--retries=0 --fail-on-flaky-tests` | 0             | Required WebDAV-specific gate |
 
 The two release commands are the only accepted release evidence. A combined
-`npm run test:e2e:release:all`, when the package defines it, runs both; it does
+`npm run test:e2e:release:all` runs both release jobs; it does
 not replace separate failure attribution. The skip-count reporter compares each
 run's actual skip count with the expected value above, and any unexpected skip
 fails the release gate.
@@ -856,7 +856,7 @@ Use the following staged order when expanding browser coverage:
   canonical inventory. Release runs with retries disabled, fail on flaky tests,
   and fail on any skip beyond the documented static counts. The release
   commands are `test:e2e:release` (default S3) and
-  `test:e2e:release:webdav`; `test:e2e:release:all`, when present, runs both. A
+  `test:e2e:release:webdav`; `test:e2e:release:all` runs both. A
   skip-count reporter compares actual against expected counts per group.
 
 Practical rule:

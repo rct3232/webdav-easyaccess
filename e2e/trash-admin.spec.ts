@@ -57,7 +57,7 @@ const ADMIN_PASSWORD = 'TrashAdminE2e!123';
 const textFixtureBuffer = readTestFileFixture(TEST_FILES.smallText);
 
 // The scratch harness owns one port per project, so the whole file must run in
-// one worker per project. Same convention as admin-config.spec.ts.
+// one worker per project. Same convention as the split admin-config specs.
 test.describe.configure({ mode: 'serial' });
 
 let scratch: string;

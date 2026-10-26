@@ -9,8 +9,15 @@ admin-config / migration / trash E2E hardening).
 Make the E2E layout match the product's default backend and keep it stable at
 any Playwright worker count.
 
-- S3 is the default product backend. All functional behavior is verified on S3.
-- WebDAV mode verifies only behavior that is inherently WebDAV-specific.
+- S3 is the default product backend. Generic functional behavior is verified on
+  S3.
+- WebDAV mode verifies behavior that is inherently WebDAV-specific.
+- Backend direction is an explicit exception to the generic rule: migration
+  group ownership depends on source + destination backend. An S3 destination may
+  require a WebDAV source, and a generic S3 source -> WebDAV destination tarpit
+  gate/role case belongs in the default group. Real WebDAV source/destination
+  cases stay in the WebDAV job. Concrete ownership is canonical in
+  [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
 - No Playwright project dependencies (`dependencies: []` everywhere).
 - The Playwright worker count is the only concurrency throttle. No E2E slot
   pool, no fixed worker assumption, no per-project WebDAV container.
@@ -35,10 +42,15 @@ any Playwright worker count.
 | WebDAV     | `npm run test:e2e:webdav` | WebDAV only | PG + MinIO + shared API/client + one bytemark |
 
 - `npm run test:e2e` is the default full non-WebDAV gate and includes the core
-  cases.
-- `npm run test:e2e:core` is a fast subset of the default gate.
-- `npm run test:e2e:webdav` is a separate backend-specific job. CI may run it
-  in parallel with the default gate.
+  cases. It is the required generic release gate.
+- `npm run test:e2e:core` is a fast, optional pre-merge subset of the default
+  gate.
+- `npm run test:e2e:webdav` is a separate backend-specific job and is a
+  **required release gate** for real WebDAV-specific coverage. CI runs it in
+  parallel with the default gate, but release must not omit it. The default gate
+  covers generic gate/role behavior independently through the S3 source ->
+  WebDAV destination tarpit case; it does not replace the WebDAV-specific
+  regression coverage.
 - Worker count is supplied by CI. The suite layout accepts 1, 2, 4, or more
   workers without a second cap; CI sizes it to the host's CPU/RAM.
 
@@ -51,9 +63,12 @@ any Playwright worker count.
   most `workers` tests concurrently.
 - No per-project WebDAV container.
 - No E2E slot/resource-lock pool.
-- Non-AI scratch servers set `WEA_SKIP_AI_WORKER=1` and
-  `AI_SEMANTIC_SEARCH_ENABLED=false`; only the AI suite enables the worker and
-  model.
+- Non-AI scratch servers set `WEA_SKIP_AI_WORKER=1`, which skips the worker loop
+  only; boot provisioning still runs and must be accounted for in scratch boot
+  time and memory. `AI_SEMANTIC_SEARCH_ENABLED` is a `dbOnly` settings key;
+  environment values are ignored, so a test that needs the kill switch writes it
+  through the database/config surface. Only the AI case supplies the model
+  directory and enables the worker.
 
 ## 5. Suite structure
 
@@ -75,8 +90,9 @@ Shared S3 stack:
 S3 scratch:
 
 - `collections.spec.ts` (all cases)
-- `retrieval.spec.ts` (all cases; S3 scratch because it pins the global
-  `AI_SEMANTIC_SEARCH_ENABLED` kill switch)
+- `retrieval.spec.ts` (all cases; S3 scratch because it writes the `dbOnly`
+  `AI_SEMANTIC_SEARCH_ENABLED` kill switch through the database/config surface,
+  not the environment)
 - `ai.spec.ts`
 - `trash-admin.spec.ts`
 - `admin-config.s3.spec.ts`
@@ -248,19 +264,19 @@ WebDAV root.
 
 ## 9. Task graph
 
-| Task    | Objective                            | Inputs                                              | Expected output                                                                         | Verification                                                   | Deps  |
-| ------- | ------------------------------------ | --------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ----- |
-| E2E-R1  | Author this plan and the ID mapping  | current suite audit                                 | this document                                                                           | review                                                         | none  |
-| E2E-R2  | Add S3 scratch helper                | `setupScratch.ts`, `minio.ts`                       | `prepareScratchStorage` + project-scoped bucket/dir contract                            | focused helper tests + typecheck                               | R1    |
-| E2E-R3  | Convert feature suites to S3 scratch | R2, `collections`, `retrieval`, `ai`, `trash-admin` | S3 scratch across those four suites; no WebDAV setup; AI worker only in AI              | targeted Playwright with workers 1/2/4                         | R2    |
-| E2E-R4  | Split admin-config                   | R2                                                  | `admin-config.s3.spec.ts`, `admin-config.webdav.spec.ts`, helper                        | targeted projects                                              | R2    |
-| E2E-R5  | Split setup-wizard                   | R2                                                  | `setup-wizard.s3.spec.ts`, `setup-wizard.webdav.spec.ts`, helper                        | targeted projects                                              | R2    |
-| E2E-R6  | Split migration                      | R2                                                  | `migration.s3.spec.ts`, `migration.webdav.spec.ts`, helper                              | targeted projects                                              | R2    |
-| E2E-R7  | Add group/project config and scripts | R3-R6                                               | `E2E_GROUP=default/core/webdav`, project filters, no dependencies, one WebDAV container | `playwright test --list` for each group                        | R3-R6 |
-| E2E-R8  | Update coverage/naming docs          | R1, R3-R7                                           | IDs, mapping, coverage rows, test guide                                                 | docs consistency grep                                          | R1    |
-| E2E-R9  | Resource cleanup                     | R7                                                  | no WebDAV service in default/core, AI worker off, one bytemark in WebDAV                | compose log/pid inspection                                     | R7    |
-| E2E-R10 | Full verification                    | R3-R9                                               | green default/core/webdav at workers 1/2/4; no dependency edges                         | `npm run test:e2e`, `:core`, `:webdav`; server/client/PG gates | R3-R9 |
-| E2E-R11 | Formatting and final audit           | R10                                                 | Prettier clean, no stale IDs, branch ready                                              | prettier, grep, git diff audit                                 | R10   |
+| Task    | Objective                            | Inputs                                              | Expected output                                                                                             | Verification                                                   | Deps  |
+| ------- | ------------------------------------ | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ----- |
+| E2E-R1  | Author this plan and the ID mapping  | current suite audit                                 | this document                                                                                               | review                                                         | none  |
+| E2E-R2  | Add S3 scratch helper                | `setupScratch.ts`, `minio.ts`                       | `prepareScratchStorage` + project-scoped bucket/dir contract                                                | focused helper tests + typecheck                               | R1    |
+| E2E-R3  | Convert feature suites to S3 scratch | R2, `collections`, `retrieval`, `ai`, `trash-admin` | S3 scratch across those four suites; no WebDAV setup; AI worker only in AI                                  | targeted Playwright with workers 1/2/4                         | R2    |
+| E2E-R4  | Split admin-config                   | R2                                                  | `admin-config.s3.spec.ts`, `admin-config.webdav.spec.ts`, helper                                            | targeted projects                                              | R2    |
+| E2E-R5  | Split setup-wizard                   | R2                                                  | `setup-wizard.s3.spec.ts`, `setup-wizard.webdav.spec.ts`, helper                                            | targeted projects                                              | R2    |
+| E2E-R6  | Split migration                      | R2                                                  | `migration.s3.spec.ts`, `migration.webdav.spec.ts`, helper                                                  | targeted projects                                              | R2    |
+| E2E-R7  | Add group/project config and scripts | R3-R6                                               | `E2E_GROUP=default/core/webdav`, project filters, no dependencies, one WebDAV container                     | `playwright test --list` for each group                        | R3-R6 |
+| E2E-R8  | Update coverage/naming docs          | R1, R3-R7                                           | IDs, mapping, coverage rows, test guide                                                                     | docs consistency grep                                          | R1    |
+| E2E-R9  | Resource cleanup                     | R7                                                  | no WebDAV service in default/core, AI worker skipped (boot provisioning still runs), one bytemark in WebDAV | compose log/pid inspection                                     | R7    |
+| E2E-R10 | Full verification                    | R3-R9                                               | green default/core/webdav at workers 1/2/4; no dependency edges                                             | `npm run test:e2e`, `:core`, `:webdav`; server/client/PG gates | R3-R9 |
+| E2E-R11 | Formatting and final audit           | R10                                                 | Prettier clean, no stale IDs, branch ready                                                                  | prettier, grep, git diff audit                                 | R10   |
 
 ## 10. Execution order
 
@@ -277,7 +293,9 @@ WebDAV root.
 
 - `npm run test:e2e` at workers 1, 2, and the host's default Playwright worker count: green.
 - `npm run test:e2e:core` at workers 2: green.
-- `npm run test:e2e:webdav` at workers 2: green.
+- `npm run test:e2e:webdav` at workers 2: green. The WebDAV job is required for
+  release; the default group's S3 -> WebDAV tarpit case covers generic
+  gate/role behavior, not WebDAV-specific regression coverage.
 - A 4-worker stress run must fit the host's available CPU/RAM; it is not a
   substitute for the worker-count resource control. On the shared 6-core
   reference host it reached load average ~25-31 and produced timeout-only UI
@@ -285,10 +303,17 @@ WebDAV root.
 - Default/core logs contain no `webdav-test` container and no WebDAV project.
 - No Playwright `dependencies` edge remains.
 - All default/core hermetic suites use `WEA_FILE_STORAGE=s3`.
-- AI worker/model disabled outside the AI suite.
+- AI worker is skipped outside the AI suite; boot provisioning still runs, and
+  the AI model directory is supplied only by the AI case. `AI_SEMANTIC_SEARCH_ENABLED`
+  is `dbOnly` and never set through the environment.
+- Release gates run with retries disabled and fail on flaky tests or unexpected
+  skips; expected group counts are 244 default (238+6), 143 core (140+3), and 41
+  WebDAV. The pending `E2E-S3-MIG-004` addition updates the default count when it
+  lands.
 - server `test:ci`, client `test:ci`, PG adapters, pgvector legs green.
 - `prettier --check` clean on changed files.
-- `docs/E2E_COVERAGE_PLAN.md` has no duplicate/retired active IDs.
+- `docs/E2E_COVERAGE_PLAN.md` has no duplicate/retired active IDs and is the
+  canonical project/spec/slot/ID inventory.
 
 ## 12. Risks and mitigations
 
@@ -298,8 +323,9 @@ WebDAV root.
 - **WebDAV capacity at high worker counts**: the WebDAV job uses one bytemark;
   CI sets that job's worker count to bytemark capacity. It is a separate job, so
   it cannot slow the default/core gate.
-- **Scratch server memory**: non-AI scratch servers disable the AI worker;
-  only `ai.spec.ts` enables it.
+- **Scratch server memory**: non-AI scratch servers skip the AI worker loop, but
+  boot provisioning still runs; only the AI case supplies the model directory
+  and enables the worker. Account for provisioning in boot budgets.
 - **ID churn**: retired IDs are mapped in `E2E_COVERAGE_PLAN.md`; no ID is
   reused.
 - **Cross-suite contamination**: project-scoped buckets, DBs, scratch dirs,
@@ -315,7 +341,11 @@ WebDAV root.
   (244 total); workers=2 → 238 passed + 6 skipped; the default
   `npm run test:e2e` (Playwright default worker count, 3 on this host) →
   238 passed + 6 skipped. `npm run test:e2e:core` workers=2 → 140 passed +
-  3 skipped (143 total); `npm run test:e2e:webdav` workers=2 → 41 passed.
+  3 skipped (143 total); `npm run test:e2e:webdav` workers=2 → 41 passed +
+  0 skipped (41 total). The pending `E2E-S3-MIG-004` case is not in these
+  counts; it updates the default total to 245 or 246 depending on placement.
+  The canonical project/spec/slot/ID matrix is in
+  [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
 - Worker behavior: a workers=4 stress run on the shared 6-core reference host
   reached load average ~25-31 and produced timeout-only UI failures. No worker
   cap, slot pool, project dependency, or per-project WebDAV container was

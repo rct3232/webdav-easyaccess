@@ -269,7 +269,10 @@ runs everything (archive/purge are time-based — nightly is the backbone). Pass
    promote existing definitions instead of double-creating. Per-tier gates: minimum size, two-week
    persistence (waived by like density), weekly rate, active-system cap, tier size caps; heavy
    overlap with an existing or tombstoned definition yields a merge proposal instead. **No tier
-   gets a lifecycle exemption — uniform rules only.**
+   gets a lifecycle exemption — uniform rules only.** System cluster definitions are
+   self-centroid (`centroid_ref: null`, resolved against the owning collection's model-keyed
+   centroid); a candidate overlapping an active collection at Jaccard ≥ 0.8 is counted as a
+   promotion and creates nothing, leaving the existing definition untouched.
 2. **Split**: a hot subset crossing create gates becomes a **sibling** system collection — never
    nested.
 3. **Archive**: activity under floor for N days, or ≈0 members — never for pinned collections; no

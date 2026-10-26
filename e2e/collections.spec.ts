@@ -1077,6 +1077,9 @@ test('E2E-S3-COLLECTION-018: Card menu rename updates the card and the sidebar r
   // Card menu → Rename → RenameDialog submit (FileManager handleCardAction
   // 'rename' → collectionsApi.renameCollection → PUT /:id {name}).
   await page.goto('/files/__collections__');
+  // Route auto-expand contract: /files/__collections__ mounts the tree with the
+  // Collections section expanded — no toggle click is needed to reveal rows.
+  await expect(page.getByTestId('collections-toggle')).toHaveAttribute('aria-expanded', 'true');
   await openCardMenu(page, name, 'rename');
   const renameDialog = page.getByRole('dialog');
   await renameDialog.getByTestId('rename-name-input').fill('Q3 reports');
@@ -1086,48 +1089,11 @@ test('E2E-S3-COLLECTION-018: Card menu rename updates the card and the sidebar r
   // collections.undoRenamed). BOTH platforms verify the same rename-effect
   // contracts BEFORE the undo click — the renamed card and the server-side
   // name lock (`PUT /:id` with a `name` write sets name_locked=true,
-  // routes/collections.md PUT + store §2 renameCollection) — because those
-  // checks are cheap (one UI await + one API poll). The sidebar reflection
-  // differs by timing only, not by contract: desktop asserts the row showing
-  // the NEW name pre-undo (sidebar stays mounted — drawer-free), while mobile
-  // cannot reliably open the WebKit drawer inside the 8 s toast window and
-  // instead asserts the row showing the RESTORED name after the undo. Both
-  // platforms therefore verify the reflection, each at its stable moment.
-  if (isMobileProject(testInfo)) {
-    await expect(collectionCard(page, 'Q3 reports')).toBeVisible({ timeout: 10_000 });
-    await expect
-      .poll(
-        async () => {
-          const row = await findCollectionByName(request, token, 'Q3 reports');
-          return row?.name_locked === true && row.collection_id === collectionId;
-        },
-        { timeout: 15_000 }
-      )
-      .toBe(true);
-    await expect(page.getByText(/Collection renamed/i)).toBeVisible();
-    await expect(page.getByTestId('undo-toast-action')).toBeVisible();
-    await page.getByTestId('undo-toast-action').click();
-
-    await expect(collectionCard(page, name)).toBeVisible({ timeout: 10_000 });
-    await expect(collectionCard(page, 'Q3 reports')).toHaveCount(0);
-    await expect
-      .poll(async () => Boolean(await findCollectionByName(request, token, name)), {
-        timeout: 15_000,
-      })
-      .toBe(true);
-    // The sidebar row reflects the revert through the collections notifier.
-    await openFolderTreeSection(page, isMobileProject(testInfo));
-    await page.getByTestId('collections-toggle').click();
-    // The mobile tree row middle-truncates the long generated name — assert
-    // the stable leading fragment (the F1 back-length contract idiom).
-    await expect(page.getByTestId(`collection-row-${collectionId}`)).toContainText(
-      name.slice(0, 12)
-    );
-    return;
-  }
-
-  // Card shows the new name; PUT /:id with a `name` write sets
-  // name_locked=true (routes/collections.md PUT + store §2 renameCollection).
+  // routes/collections.md PUT + store §2 renameCollection). The desktop sidebar
+  // is permanently mounted, so it additionally verifies the notifier refresh
+  // renames the row in place while the section stays expanded. Mobile cannot
+  // reliably open the WebKit drawer inside the 8 s toast window; it asserts the
+  // same sidebar state at the stable post-undo moment instead.
   await expect(collectionCard(page, 'Q3 reports')).toBeVisible({ timeout: 10_000 });
   await expect
     .poll(
@@ -1139,13 +1105,10 @@ test('E2E-S3-COLLECTION-018: Card menu rename updates the card and the sidebar r
     )
     .toBe(true);
 
-  // Sidebar row reflects the rename through the collections notifier — on the
-  // SAME page (the tree stays mounted under the collections overlay; the
-  // section is collapsed after a reload, expand it first). Same-page also
-  // keeps the 8 s undo-toast alive for the click below.
-  await openFolderTreeSection(page, isMobileProject(testInfo));
-  await page.getByTestId('collections-toggle').click();
-  await expect(page.getByTestId(`collection-row-${collectionId}`)).toContainText('Q3 reports');
+  if (!isMobileProject(testInfo)) {
+    await expect(page.getByTestId(`collection-row-${collectionId}`)).toContainText('Q3 reports');
+    await expect(page.getByTestId('collections-toggle')).toHaveAttribute('aria-expanded', 'true');
+  }
 
   // One journaled command ⇒ one undo toast ("Collection renamed",
   // collections.undoRenamed); clicking Undo applies the inverse name.
@@ -1153,23 +1116,29 @@ test('E2E-S3-COLLECTION-018: Card menu rename updates the card and the sidebar r
   await expect(page.getByTestId('undo-toast-action')).toBeVisible();
   await page.getByTestId('undo-toast-action').click();
 
+  // The undo refresh updates the cards and the sidebar rows through the
+  // collections notifier. The route did not change, so the section must stay
+  // expanded: the restored row is visible WITHOUT re-opening the section.
   await expect
     .poll(async () => Boolean(await findCollectionByName(request, token, name)), {
       timeout: 15_000,
     })
     .toBe(true);
-  // The undo refresh remounts the folder tree with the Collections section
-  // collapsed (the controller's initial expanded=false), so the row unmounts.
-  // Do not re-open the tree to mask that observable state: assert the collapsed
-  // state explicitly. The restored name is proven by the API poll above and by
-  // the card assertion after the navigation below.
-  const restoredRow = page.getByTestId(`collection-row-${collectionId}`);
-  await expect(page.getByTestId('collections-section')).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId('collections-toggle')).toBeVisible();
-  await expect(restoredRow).toHaveCount(0, { timeout: 15_000 });
-  await page.goto('/files/__collections__');
-  await expect(collectionCard(page, name)).toBeVisible();
+  await expect(collectionCard(page, name)).toBeVisible({ timeout: 10_000 });
   await expect(collectionCard(page, 'Q3 reports')).toHaveCount(0);
+
+  // Mobile may open the folder-tree drawer only; desktop uses the permanent
+  // sidebar. Neither platform clicks `collections-toggle` after undo.
+  await openFolderTreeSection(page, isMobileProject(testInfo));
+  const collectionsSection = page.getByTestId('collections-section');
+  const restoredRow = page.getByTestId(`collection-row-${collectionId}`);
+  await expect(collectionsSection).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('collections-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await expect(restoredRow).toBeVisible({ timeout: 15_000 });
+  // Tree rows middle-truncate long generated names — assert the stable leading
+  // fragment (the F1 back-length contract idiom) on both platforms.
+  await expect(restoredRow).toContainText(name.slice(0, 12));
+  await expect(collectionsSection.getByText('Q3 reports')).toHaveCount(0);
 });
 
 test('E2E-S3-COLLECTION-019: The properties dialog header toggles the viewer-scoped like and the surfaces share the state', async ({

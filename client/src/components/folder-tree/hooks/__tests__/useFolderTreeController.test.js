@@ -3,7 +3,7 @@
  * @see docs/spec/client/hooks/useFolderTreeController.md
  */
 import { renderHook, act, waitFor } from '@testing-library/react';
-import useFolderTreeController from '../useFolderTreeController';
+import useFolderTreeController, { isCollectionsRoute } from '../useFolderTreeController';
 
 import { getRecentFiles } from '../../../../services/recentFilesRepository';
 import { onRecentFilesChange } from '../../../../services/recentFilesNotifier';
@@ -415,6 +415,77 @@ describe('useFolderTreeController — collections section (§3)', () => {
 
     unmount();
     expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it('starts expanded on a collections route and remounts expanded', async () => {
+    const first = renderCollections({ currentPath: '/__collections__' });
+    expect(first.result.current.collectionsExpanded).toBe(true);
+    await waitFor(() => expect(first.result.current.collectionsTreeRows).toHaveLength(2));
+    first.unmount();
+
+    const second = renderCollections({ currentPath: '/__collections__' });
+    expect(second.result.current.collectionsExpanded).toBe(true);
+    await waitFor(() => expect(second.result.current.collectionsTreeRows).toHaveLength(2));
+  });
+
+  it('notifier refresh updates rows without resetting an expanded section', async () => {
+    let notify;
+    explorerGateway.subscribeToCollections.mockImplementation((cb) => {
+      notify = cb;
+      return jest.fn();
+    });
+    const { result } = renderCollections({ currentPath: '/__collections__' });
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(2));
+    expect(result.current.collectionsExpanded).toBe(true);
+
+    explorerGateway.loadCollections.mockImplementation(async () => ({ collections: [rowA] }));
+    await act(async () => {
+      notify();
+    });
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(1));
+    expect(result.current.collectionsExpanded).toBe(true);
+  });
+
+  it('preserves an explicit manual collapse on the unchanged route across notifier refresh', async () => {
+    let notify;
+    explorerGateway.subscribeToCollections.mockImplementation((cb) => {
+      notify = cb;
+      return jest.fn();
+    });
+    const { result, rerender } = renderCollections({ currentPath: '/__collections__' });
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(2));
+    expect(result.current.collectionsExpanded).toBe(true);
+
+    act(() => result.current.handleCollectionsToggle({ stopPropagation: jest.fn() }));
+    expect(result.current.collectionsExpanded).toBe(false);
+
+    explorerGateway.loadCollections.mockImplementation(async () => ({
+      collections: [rowShared],
+    }));
+    await act(async () => {
+      notify();
+    });
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(1));
+    expect(result.current.collectionsExpanded).toBe(false);
+
+    rerender({
+      currentNodeId: null,
+      currentPath: '/__collections__',
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
+    });
+    expect(result.current.collectionsExpanded).toBe(false);
+  });
+
+  it('classifies only the collections virtual root and its children as collections routes', () => {
+    expect(isCollectionsRoute('/__collections__')).toBe(true);
+    expect(isCollectionsRoute('/__collections__/__archive__')).toBe(true);
+    expect(isCollectionsRoute('/__collections__/liked')).toBe(true);
+    expect(isCollectionsRoute('/__collections__/collection/7')).toBe(true);
+    expect(isCollectionsRoute('/')).toBe(false);
+    expect(isCollectionsRoute('/__collection__')).toBe(false);
+    expect(isCollectionsRoute(undefined)).toBe(false);
   });
 
   it('load failure keeps rows array-safe', async () => {

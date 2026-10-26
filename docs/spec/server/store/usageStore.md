@@ -24,14 +24,17 @@
 
 ### 2.2 Main Methods
 
-| Method                       | Signature                                                   | Description                                                                                                                                                                                           |
-| ---------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `insertUsageEvent`           | ({ userId, nodeId, action, at? }) => Promise\<{ changes }\> | One raw event row; `at` defaults to now (ISO bind — deterministic for decay tests). FK-enforced on unknown user/node.                                                                                 |
-| `readRollupGroups`           | () => Promise\<rollupGroup[]\>                              | Events joined to their existing `node_activity` row, watermark-filtered, grouped by (user_id, node_id) — the rollup's ONLY read. See §2.3.                                                            |
-| `upsertNodeActivity`         | (rows) => Promise\<{ changes }\>                            | Batch UPSERT on the PK pair (counts = lifetime totals, score/last_seen_at/updated_at overwritten).                                                                                                    |
-| `deleteUsageEventsOlderThan` | (cutoffMs) => Promise\<{ changes }\>                        | Retention roll-off (GC-parity): raw events older than the cutoff. Called by the nightly tail ONLY after a successful rollup (no unrolled event is ever deleted — maintenanceScheduler §3.1 ordering). |
+| Method                       | Signature                                                   | Description                                                                                                                                                                                                                                                               |
+| ---------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `insertUsageEvent`           | ({ userId, nodeId, action, at? }) => Promise\<{ changes }\> | One raw event row; `at` defaults to now (ISO bind — deterministic for decay tests). FK-enforced on unknown user/node.                                                                                                                                                     |
+| `readRollupGroups`           | () => Promise\<rollupGroup[]\>                              | Events joined to their existing `node_activity` row, watermark-filtered, grouped by (user_id, node_id) — the rollup's ONLY read. See §2.3.                                                                                                                                |
+| `upsertNodeActivity`         | (rows) => Promise\<{ changes }\>                            | Batch UPSERT on the PK pair (counts = lifetime totals, score/last_seen_at/updated_at overwritten).                                                                                                                                                                        |
+| `listNodeActivity`           | (userId, nodeIds) => Promise\<nodeActivityRow[]\>           | Per-node accumulator read for ONE user, restricted to the given ids (ascending node id); pairs without a row are absent, empty input ⇒ `[]`. Bind parameters are chunked by the facade. Consumed by membership selection (evolution split) instead of joining raw events. |
+| `deleteUsageEventsOlderThan` | (cutoffMs) => Promise\<{ changes }\>                        | Retention roll-off (GC-parity): raw events older than the cutoff. Called by the nightly tail ONLY after a successful rollup (no unrolled event is ever deleted — maintenanceScheduler §3.1 ordering).                                                                     |
 
 `rollupGroup = { userId, nodeId, counts: {open, download, preview, search_hit, like}, lastSeenAtMs, prevScore, prevCounts, prevUpdatedAtMs|null }` — domain-shaped (numbers; timestamps normalized to ms epoch by each dialect twin).
+
+`nodeActivityRow = { userId, nodeId, counts, lastSeenAtMs, score, updatedAtMs }` — the persisted accumulator row in the same domain shape (`listNodeActivity` reads and `upsertNodeActivity` writes it).
 
 ### 2.3 Rollup semantics (item accumulator)
 
@@ -64,4 +67,5 @@
 - [ ] Accumulator decay: a pre-existing row with `score=5, updated_at=now−30d` rolls to `2.5 + Σ w_new` (H=30d half-life)
 - [ ] Idempotent re-run: second rollup immediately after → no group returned, no changes; a NEW event after `updated_at` is consumed on the next run
 - [ ] `deleteUsageEventsOlderThan` removes only rows older than the cutoff (ISO vs `CURRENT_TIMESTAMP` written rows both honored — `julianday` parity)
+- [ ] `listNodeActivity` returns only the requested user's accumulator rows for the requested ids (ascending node id, counts/score/timestamps shaped), omits absent pairs and other users' rows, and returns `[]` for an empty id list
 - [ ] L2 conformance on real sqlite AND real PostgreSQL (`test:ci:pg:adapters`): watermark parity, score decay parity (closeTo), count accumulation, cascade wipe on node purge

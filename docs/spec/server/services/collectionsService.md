@@ -103,7 +103,9 @@ config keys.
   collection id (for example a rule preview not tied to a stored collection) has no
   reference and degrades to no matches. System cluster creation writes exactly this shape
   (`theta` = tier edge cosine, `tier`, `event_class`), so later writes score against the
-  same model-keyed centroid.
+  same model-keyed centroid. A split sibling's definition carries the same shape plus
+  `split_of: <parentId>` provenance (evolutionService §2.5); the field is inert for
+  evaluation and is excluded from the parent-equivalent tombstone fingerprint.
 - **Compute-on-write.** Definition evaluation runs only at write boundaries — the upload
   hook and [evolutionService](evolutionService.md) reconcile passes. The read path NEVER
   evaluates a definition: `GET /`, `GET /:id`, `GET /:id/items` and `POST /for-nodes`

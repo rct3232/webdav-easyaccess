@@ -34,6 +34,11 @@
  *   accumulator row's updated_at; absent rows consume ALL events).
  * @property {(rows: NodeActivityRow[]) => Promise<{ changes: number }>} upsertNodeActivity
  *   Batch UPSERT on the PK (user_id, node_id).
+ * @property {(userId: number, nodeIds: number[]) => Promise<NodeActivityRow[]>} listNodeActivity
+ *   Per-node accumulator read for ONE user, restricted to `nodeIds` (ascending
+ *   node id). Pairs without a row are absent; empty input ⇒ `[]`. Membership
+ *   consumers (evolution hot-subset selection) read activity here instead of
+ *   joining raw events.
  * @property {(cutoffMs: number) => Promise<{ changes: number }>} deleteUsageEventsOlderThan
  *   Retention roll-off (raw events older than the cutoff).
  *

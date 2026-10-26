@@ -136,6 +136,31 @@ module.exports = function createPostgresUsageRepository(executor) {
       }
     },
 
+    async listNodeActivity(userId, nodeIds) {
+      if (!Array.isArray(nodeIds) || nodeIds.length === 0) return [];
+      try {
+        const placeholders = nodeIds.map((_, index) => `$${index + 2}`).join(', ');
+        const { rows } = await executor.query(
+          `SELECT user_id, node_id, opens, downloads, previews, search_hits, likes, score,
+                  last_seen_at, updated_at
+             FROM node_activity
+            WHERE user_id = $1 AND node_id IN (${placeholders})
+            ORDER BY node_id`,
+          [Number(userId), ...nodeIds.map(Number)]
+        );
+        return rows.map((row) => ({
+          userId: Number(row.user_id),
+          nodeId: Number(row.node_id),
+          counts: countsFrom(row),
+          lastSeenAtMs: toMs(row.last_seen_at),
+          score: Number(row.score) || 0,
+          updatedAtMs: toMs(row.updated_at),
+        }));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async deleteUsageEventsOlderThan(cutoffMs) {
       try {
         const result = await executor.run('DELETE FROM usage_events WHERE created_at < $1', [

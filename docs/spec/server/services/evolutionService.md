@@ -62,14 +62,18 @@ Membership is materialized: the pass writes the add/remove diff through the jour
 `collectionsStore` item mutators (`source='system'`, matched `reason`, publish state per
 mode) with `ctx.actor='system'`; the read path never evaluates definitions. Digest/feed
 carry system acts — NO toasts for silent system acts. The `night_eval` report totals
-include `created`, `create_promoted` and `create_suppressed`.
+include `created`, `create_promoted`, `create_suppressed`, `split_created`,
+`split_promoted` and `split_suppressed`.
 
 The **cheap** leg runs create, reconcile, split and merge-candidates; the **full** leg
 adds archive and purge plus the auto-pin reconcile. Create runs after reconcile, so a
 new collection's initial batch is not re-scored by the same pass. `runCreatePass(userId)`
 is also callable directly; it is gated by `AI_EVOLUTION_ENABLED` and
 `AI_EVOLUTION_CREATE_ENABLED` and returns `{ created: [], promoted: 0, suppressed: 0 }`
-when either gate is off or no active embed model exists.
+when either gate is off or no active embed model exists. `runSplitPass(userId)` is
+callable directly under the same two gates and returns
+`{ candidates: 0, created: [], promoted: 0, suppressed: 0 }`; it runs after create so a
+freshly created collection already participates in the Jaccard overlap check.
 
 ### 2.4 Pass 1 — create (multi-tier mutual-kNN + facets, LLM-free)
 
@@ -167,6 +171,46 @@ Hot subset WITHIN a collection (activity + likes density) that independently cro
 pass-1 create gates ⇒ create a NEW SIBLING `system` collection; parent definition and
 membership are UNTOUCHED (never nested — sub-collection terminology/structure is banned).
 Journal = create command + note on the parent's digest.
+
+1. **Scope.** ACTIVE `origin='system'` collections owned by the user. The sibling inherits
+   the parent's tier and event class; `theta` is the parent definition's value, falling
+   back to the active model profile's edge cosine for that tier when the parent carries no
+   finite `theta`.
+2. **Hot-subset rule (deterministic).** A materialized member is HOT when its
+   `node_activity.score` for the requesting user is positive OR the user currently likes it
+   (`file_likes`). The subset is EVERY hot member — no ranking, no sampling, no
+   truncation — in ascending node-id order. Activity is read per node through
+   `usageStore.listNodeActivity(userId, memberIds)` (the pass holds no SQL); likes come from
+   `fileLikesStore.listLikedNodeIds`. Another user's activity never makes a member hot.
+3. **Gates** (pass-1 values): hot subset ≥ 8 members; size ≤ the parent tier cap (tight/mid
+   120, loose 500) — over-cap subsets are blocked, never truncated; Jaccard ≥ 0.8 against
+   EVERY active materialized set the user owns, the parent included (a near-copy subset
+   never splits, and a repeat pass promotes against its own sibling); an owner tombstone on
+   the parent-equivalent definition fingerprint (`split_of` is provenance and is excluded
+   from the fingerprint); the `AI_EVOLUTION_CREATE_RATE_DAYS` window across every
+   system-origin row the user owns plus one create per pass; the active limit (≤12 active
+   system tight/mid, and for a loose parent no OTHER active loose collection on the same
+   event class — the parent's own split family shares its event-class slot). The two-week
+   persistence gate is NOT applied: activity is the trigger, so fresh hot content is never
+   blocked by cluster age. Split inherits `AI_EVOLUTION_CREATE_ENABLED` and the global
+   switch; either off ⇒ empty result and zero writes.
+4. **Definition + provenance.** Self-centroid system rule
+   `{ kind: 'centroid', centroid_ref: null, theta, tier, event_class, split_of: <parentId> }`.
+   `centroid_ref: null` resolves the SIBLING's own model-keyed `collection_centroids` row
+   (§2.11), so later reconcile/upload scoring uses the hot subset's centroid.
+5. **Creation.** Journaled `collectionsStore.createCollection` with `origin='system'`,
+   `publish_mode='ask'` and `ctx.actor='system'`; the name comes from `templateNamer`
+   (`{parentName} · {diffTag}`, `diffTag` = the hot subset's top local derived tag, the
+   `Auto collection N` fallback when the subset carries no tags; `llmNamer` only while the
+   chat role is configured, lossless fallback) de-duplicated against the owner's active
+   names. The centroid is the mean of the hot members' pooled vectors keyed by the active
+   model — rows of another model never mix — and a hot subset with no pooled vector in the
+   active space is suppressed instead of producing an inert definition. The initial batch is
+   ONE journaled command with `source='system'`, `reason='split:<parentId>'` and
+   `published=true`; the parent receives `touchMemberChange` (digest note only — no
+   definition or membership write).
+6. **Idempotency.** The same activity state recomputes the same subset, which promotes
+   against the sibling's materialized set (Jaccard 1.0) and creates nothing.
 
 ### 2.6 Pass 3 — archive (uniform, no tier exemptions)
 

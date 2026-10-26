@@ -7,9 +7,11 @@ import { e2ePorts, apiOrigin, appOrigin } from './e2e/helpers/ports';
 // Ambient shell config is destructive to E2E isolation: the runner provisions
 // its own Docker stack and seeds/empties project-scoped databases and buckets,
 // so inherited WEA_DB_*/S3_*/AWS_* values could point seed or bucket operations
-// at real infrastructure. E2E runtime values come from `.env.e2e` and the
-// generated `data/e2e-runtime.env`, never the caller's shell. The escape hatch
-// exists for explicit, non-default overrides (dedicated test accounts only).
+// at real infrastructure, and inherited file-backend/WebDAV values could select
+// a backend other than the one the group provisions. E2E runtime values come
+// from `.env.e2e` and the generated `data/e2e-runtime.env`, never the caller's
+// shell. The escape hatch exists for explicit, non-default overrides (dedicated
+// test accounts only).
 const AMBIENT_DESTRUCTIVE_ENV_KEYS = [
   'WEA_DB_HOST',
   'WEA_DB_PORT',
@@ -20,6 +22,12 @@ const AMBIENT_DESTRUCTIVE_ENV_KEYS = [
   'S3_ENDPOINT',
   'AWS_ACCESS_KEY_ID',
   'AWS_SECRET_ACCESS_KEY',
+  'WEA_FILE_STORAGE',
+  'WEBDAV_URL',
+  'WEBDAV_UPSTREAM_URL',
+  'WEBDAV_USERNAME',
+  'WEBDAV_PASSWORD',
+  'WEBDAV_AUTH_TYPE',
 ] as const;
 
 const ambientDestructiveKeys = AMBIENT_DESTRUCTIVE_ENV_KEYS.filter(
@@ -304,15 +312,19 @@ export default defineConfig({
   // larger budgets (setup-wizard/migration 240s, AI 300s,
   // collections/retrieval 180s, targeted admin-config/trash-admin cases 180s).
   // Weak CI load is absorbed by retries/workers — never by global inflation.
-  timeout: 120_000,
-  expect: { timeout: 30_000 },
+  timeout: 90_000,
+  expect: { timeout: 15_000 },
   testDir: './e2e',
   testMatch: /.*\.spec\.ts$/,
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   workers: process.env.E2E_WORKERS ? Number(process.env.E2E_WORKERS) : undefined,
-  reporter: [['list'], [path.join(__dirname, 'e2e', 'reporters', 'test-end-logger.js')]],
+  reporter: [
+    ['list'],
+    [path.join(__dirname, 'e2e', 'reporters', 'test-end-logger.js')],
+    [path.join(__dirname, 'e2e', 'reporters', 'skip-budget.js')],
+  ],
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
   use: {

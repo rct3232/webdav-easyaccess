@@ -122,6 +122,10 @@ test('E2E-AUTH-010: Registration success with pending approval shows success sta
   page,
   request,
 }) => {
+  // Registration success waits on the server (bcrypt hash + pending-approval
+  // write); keep the explicit 90s success budget below inside a larger case
+  // budget.
+  test.setTimeout(180_000);
   await setRegistrationEnabled(request, true);
   await page.goto('/register');
 

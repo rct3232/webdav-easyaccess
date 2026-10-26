@@ -4,6 +4,34 @@ import { defineConfig } from '@playwright/test';
 
 import { e2ePorts, apiOrigin, appOrigin } from './e2e/helpers/ports';
 
+// Ambient shell config is destructive to E2E isolation: the runner provisions
+// its own Docker stack and seeds/empties project-scoped databases and buckets,
+// so inherited WEA_DB_*/S3_*/AWS_* values could point seed or bucket operations
+// at real infrastructure. E2E runtime values come from `.env.e2e` and the
+// generated `data/e2e-runtime.env`, never the caller's shell. The escape hatch
+// exists for explicit, non-default overrides (dedicated test accounts only).
+const AMBIENT_DESTRUCTIVE_ENV_KEYS = [
+  'WEA_DB_HOST',
+  'WEA_DB_PORT',
+  'WEA_DB_DATABASE',
+  'WEA_DB_USER',
+  'WEA_DB_PASSWORD',
+  'S3_BUCKET',
+  'S3_ENDPOINT',
+  'AWS_ACCESS_KEY_ID',
+  'AWS_SECRET_ACCESS_KEY',
+] as const;
+
+const ambientDestructiveKeys = AMBIENT_DESTRUCTIVE_ENV_KEYS.filter(
+  (key) => process.env[key] !== undefined
+);
+if (ambientDestructiveKeys.length > 0 && process.env.E2E_ALLOW_AMBIENT_ENV !== '1') {
+  throw new Error(
+    `Refusing to load the E2E config with ambient destructive environment: ${ambientDestructiveKeys.join(', ')}. ` +
+      'The E2E stack uses .env.e2e/generated runtime values; unset these keys or set E2E_ALLOW_AMBIENT_ENV=1 to opt in.'
+  );
+}
+
 const requestedMode = process.env.E2E_BACKEND_MODE || 's3';
 if (requestedMode !== 's3' && requestedMode !== 'webdav') {
   throw new Error(`Invalid E2E_BACKEND_MODE "${requestedMode}". Expected "s3" or "webdav".`);
@@ -17,11 +45,20 @@ if (!['default', 'core', 'webdav'].includes(requestedGroup)) {
     `Invalid E2E_GROUP "${requestedGroup}". Expected "default", "core", or "webdav".`
   );
 }
-if (requestedGroup === 'webdav' && requestedMode !== 'webdav') {
-  throw new Error('E2E_GROUP=webdav requires E2E_BACKEND_MODE=webdav.');
-}
-if (requestedGroup === 'core' && requestedMode !== 's3') {
-  throw new Error('E2E_GROUP=core is S3-only.');
+
+// Every group is homogeneous by backend: default/core are hermetic S3 suites,
+// webdav is the real-WebDAV smoke/hermetic group. Mixing modes would point the
+// S3 scratch suites at a WebDAV server (or vice versa), so reject it outright.
+const groupBackendMode = {
+  default: 's3',
+  core: 's3',
+  webdav: 'webdav',
+} as const;
+const expectedMode = groupBackendMode[requestedGroup as keyof typeof groupBackendMode];
+if (requestedMode !== expectedMode) {
+  throw new Error(
+    `E2E_GROUP=${requestedGroup} requires E2E_BACKEND_MODE=${expectedMode}; mixed-backend runs are not supported.`
+  );
 }
 
 const backendMode = requestedMode;
@@ -30,6 +67,11 @@ const coreGroup = e2eGroup === 'core';
 const webdavGroup = e2eGroup === 'webdav';
 const defaultGroup = e2eGroup === 'default';
 const isQuiet = process.env.E2E_QUIET === '1';
+
+// Reusing a running server is an explicit developer opt-in only. An implicit
+// reuse could silently attach an S3 suite to a stale WebDAV server (or a
+// different checkout's band), so CI and plain local runs always start fresh.
+const reuseExistingServer = !process.env.CI && process.env.E2E_REUSE_SERVER === '1';
 
 // Platform-agnostic core suites plus the platform core-flow twins.
 const sharedCoreSpec =
@@ -257,12 +299,13 @@ if (webdavGroup) {
 }
 
 export default defineConfig({
-  // Scratch suites boot a server and can take longer than a pure UI case.
-  // Assertions remain bounded by expect.timeout below.
-  // Weak CI can run several scratch servers + browsers per worker. These are
-  // per-case safety budgets, not a concurrency cap; workers remain the throttle.
-  timeout: 180_000,
-  expect: { timeout: 60_000 },
+  // Sensitive baseline: a scratch boot plus a browser flow fits here. Suites
+  // whose boot/restart is the behavior under test keep their own explicit
+  // larger budgets (setup-wizard/migration 240s, AI 300s,
+  // collections/retrieval 180s, targeted admin-config/trash-admin cases 180s).
+  // Weak CI load is absorbed by retries/workers — never by global inflation.
+  timeout: 120_000,
+  expect: { timeout: 30_000 },
   testDir: './e2e',
   testMatch: /.*\.spec\.ts$/,
   fullyParallel: true,
@@ -283,7 +326,7 @@ export default defineConfig({
     {
       command: 'npm run e2e:server',
       url: `${apiOrigin}/api/health`,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer,
       timeout: 60_000,
       stdout: isQuiet ? 'ignore' : 'pipe',
       stderr: isQuiet ? 'ignore' : 'pipe',
@@ -291,7 +334,7 @@ export default defineConfig({
     {
       command: 'node scripts/e2e-serve-client.js',
       url: `http://localhost:${e2ePorts.client}`,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer,
       timeout: 120_000,
       stdout: isQuiet ? 'ignore' : 'pipe',
       stderr: isQuiet ? 'ignore' : 'pipe',

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { loginWithCredentials } from './helpers/auth';
 import { openSystemSettings } from './helpers/setupScratch';
+import { skipWhenUnavailable } from './helpers/skipPolicy';
 import {
   ADMIN_PASSWORD,
   WEBDAV_BASE,
@@ -87,7 +88,10 @@ test.describe('admin config WebDAV connection gating', () => {
   test('E2E-WEBDAV-ADMINCFG-002: A passing connection test enables Save and editing invalidates it', async ({
     page,
   }) => {
-    test.skip(!(await detectWebdavReachable()), 'WebDAV :8090 unreachable — skipping success path');
+    skipWhenUnavailable(
+      !(await detectWebdavReachable()),
+      'WebDAV :8090 unreachable — skipping success path'
+    );
 
     await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
     await openAdvancedSettings(page);
@@ -161,7 +165,7 @@ test.describe('phase B: backend health & config/test api (WebDAV)', () => {
     // boot-time webdav probe can race container startup, so settle the tracker
     // deterministically with a successful connection probe first — the same
     // seeding pattern E2E-WEBDAV-ADMINCFG-005 uses for its failing-backend case.
-    test.skip(
+    skipWhenUnavailable(
       !(await detectWebdavReachable()),
       'WebDAV :8090 unreachable — skipping (cannot be "nothing failing")'
     );

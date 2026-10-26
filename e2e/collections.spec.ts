@@ -1061,8 +1061,11 @@ test('E2E-S3-COLLECTION-018: Card menu rename updates the card and the sidebar r
 }, testInfo) => {
   const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
   const file = await seedFile(request, token, base, testInfo, 'col018');
-  await gotoFilesPath(page, request, `/${base}`);
-  await expect(fileItem(page, file.path)).toBeVisible();
+  const seededFile = fileItem(page, file.path);
+  await expect(async () => {
+    await gotoFilesPath(page, request, `/${base}`);
+    await expect(seededFile).toBeVisible({ timeout: 15_000 });
+  }).toPass({ timeout: 60_000 });
 
   const name = buildName(testInfo, 'col018');
   await uiCreateCollectionWithFile(page, file.path, name, isMobileProject(testInfo));

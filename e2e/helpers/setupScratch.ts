@@ -6,15 +6,16 @@ import { createRequire } from 'node:module';
 
 import { expect, type Page } from '@playwright/test';
 
-import { composeProject, e2ePorts, webdavBase } from './ports';
+import { composeProject, e2ePorts, s3Endpoint, webdavBase } from './ports';
+import { emptyS3Bucket, ensureS3BucketExists } from './minio';
 
 /**
- * Hermetic scratch-instance helpers for the first-run setup-wizard
- * (`setup-wizard.spec.ts`), admin-config (`admin-config.spec.ts`) and migration
- * (`migration.spec.ts`) E2E specs. The shared E2E
- * infrastructure (`:5002` server, `:3000` client, `webdav_e2e` PG database) is
- * unusable for these specs because they spawn and supervise their own scratch
- * instance — in the wizard case restart is the behavior under test.
+ * Hermetic scratch-instance helpers for the backend-split E2E suites
+ * (`*.s3.spec.ts` / `*.webdav.spec.ts`). These suites cannot use the shared E2E
+ * infrastructure (the band's API/client servers and the shared `webdav_e2e` PG
+ * database) because each one spawns and supervises its own scratch instance
+ * with its own metadata store and file backend; in the wizard case restart is
+ * the behavior under test.
  *
  * Every helper here is scratch-owned: own `.env` via `DOTENV_CONFIG_PATH`, own
  * sqlite path, own scratch PG database (`webdav_e2e_setup`, separate from the
@@ -111,9 +112,40 @@ function getPg() {
   return Pool;
 }
 
-/** Absolute path to a case's scratch directory (`e2e-data/setup-wizard/<case>/`). */
-export function scratchDirFor(caseId: string): string {
-  return path.join(SCRATCH_ROOT, caseId);
+/** Project slug used by every project-scoped scratch resource. */
+export function scratchProjectSlug(projectName: string): string {
+  return projectName.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+}
+
+/** Absolute path to a case's scratch directory, scoped by project when supplied. */
+export function scratchDirFor(caseId: string, projectName?: string): string {
+  const scopedCase = projectName ? `${caseId}-${scratchProjectSlug(projectName)}` : caseId;
+  return path.join(SCRATCH_ROOT, scopedCase);
+}
+
+/** S3 bucket owned by one E2E project. */
+export function scratchS3Bucket(projectName: string, prefix = 'e2e-scratch'): string {
+  return `${prefix}-${scratchProjectSlug(projectName)}`;
+}
+
+/** Environment required by a scratch server that uses the S3 file backend. */
+export function s3ScratchEnv(bucket: string): Record<string, string> {
+  return {
+    WEA_FILE_STORAGE: 's3',
+    S3_BUCKET: bucket,
+    S3_ENDPOINT: process.env.S3_ENDPOINT || s3Endpoint,
+    AWS_REGION: process.env.AWS_REGION || 'us-east-1',
+    AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID || 'minioadmin',
+    AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin',
+  };
+}
+
+/** Non-AI scratch servers must not load the embedding worker/model. */
+export function scratchRuntimeEnv(extra: Record<string, string> = {}): Record<string, string> {
+  return {
+    WEA_SKIP_AI_WORKER: '1',
+    ...extra,
+  };
 }
 
 // Build bootstrap delegated to the shared scripts/lib module (single freshness
@@ -398,9 +430,10 @@ export async function seedWebdavSettings(scratchDir: string, url: string): Promi
   }
 }
 
-/** THE scratch WebDAV root contract: every case owns `/setup-e2e/<caseId>`. */
-export function scratchWebdavUrl(caseId: string): string {
-  return `${WEBDAV_BASE}/setup-e2e/${caseId}`;
+/** THE scratch WebDAV root contract: every case owns `/setup-e2e/<project>/<caseId>`. */
+export function scratchWebdavUrl(caseId: string, projectName?: string): string {
+  const scopedCase = projectName ? `${scratchProjectSlug(projectName)}/${caseId}` : caseId;
+  return `${WEBDAV_BASE}/setup-e2e/${scopedCase}`;
 }
 
 /**
@@ -408,11 +441,41 @@ export function scratchWebdavUrl(caseId: string): string {
  * the SAME URL into the scratch DB. Server URL, upstream URL, subtree creation
  * and the physical user homes all derive from this one value.
  */
-export async function prepareScratchWebdav(scratchDir: string, caseId: string): Promise<string> {
-  const url = scratchWebdavUrl(caseId);
-  await ensureWebdavSubtree(caseId);
+export async function prepareScratchWebdav(
+  scratchDir: string,
+  caseId: string,
+  projectName?: string
+): Promise<string> {
+  const url = scratchWebdavUrl(caseId, projectName);
+  await ensureWebdavSubtree(projectName ? `${scratchProjectSlug(projectName)}/${caseId}` : caseId);
   await seedWebdavSettings(scratchDir, url);
   return url;
+}
+
+/** Prepare the S3 bucket owned by one scratch project; empty it for a deterministic run. */
+export async function prepareScratchS3(
+  projectName: string,
+  bucketPrefix = 'e2e-scratch'
+): Promise<string> {
+  const bucket = scratchS3Bucket(projectName, bucketPrefix);
+  await ensureS3BucketExists(bucket);
+  await emptyS3Bucket(bucket);
+  return bucket;
+}
+
+/** Unified scratch storage setup for S3 and WebDAV hermetic suites. */
+export async function prepareScratchStorage(
+  scratchDir: string,
+  caseId: string,
+  backend: 's3' | 'webdav',
+  projectName: string
+): Promise<{ backend: 's3' | 'webdav'; bucket?: string; webdavUrl?: string }> {
+  if (backend === 'webdav') {
+    const webdavUrl = await prepareScratchWebdav(scratchDir, caseId, projectName);
+    return { backend, webdavUrl };
+  }
+  const bucket = await prepareScratchS3(projectName);
+  return { backend, bucket };
 }
 
 /**

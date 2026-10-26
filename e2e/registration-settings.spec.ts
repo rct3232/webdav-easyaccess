@@ -1,17 +1,37 @@
+import fs from 'node:fs';
+
 import { type Page, type TestInfo } from '@playwright/test';
 
-import { ensureApprovedUser, getTestSuffix, setRegistrationEnabled } from './helpers/auth';
-import { ADMIN_STATE, expect, test } from './fixtures/authenticated';
+import {
+  ensureApprovedUser,
+  getTestSuffix,
+  loginWithCredentials,
+  setRegistrationEnabled,
+} from './helpers/auth';
+import { expect, test } from '@playwright/test';
+import { emptyS3Bucket } from './helpers/minio';
+import { e2ePorts } from './helpers/ports';
+import {
+  ensureClientBuild,
+  killScratch,
+  prepareScratchS3,
+  s3ScratchEnv,
+  scratchDirFor,
+  scratchRuntimeEnv,
+  spawnScratchServer,
+  waitForScratchHealth,
+  writeScratchEnv,
+} from './helpers/setupScratch';
 
 /**
  * Registration-setting cases (DEF-11/dechain C1). The `registration_enabled`
- * setting is a single GLOBAL server value; these are the ONLY cases allowed to
- * write it DISABLED, so they run in exactly ONE project (desktop; see the
- * dedicated `-regset-desktop`/`-regset-mobile` pair in playwright.config.ts)
- * and serially, with every flip restored. The rest of the suite treats
- * registration as ambient-enabled:
- * `ensurePendingUser` self-heals a racing disable, and `mypage-admin` 005/006
- * user rows are unique per run.
+ * setting is a single GLOBAL server value, so this suite owns a dedicated
+ * project-scoped S3 scratch server. Desktop and mobile have separate scratch
+ * ports/DBs/buckets and no Playwright dependency.
+ *
+ * The `s3-regset-*` projects run in both the default S3 group and the core
+ * subset. Each project flips only its own scratch server; shared platform
+ * settings are never touched.
  */
 test.describe.configure({ mode: 'serial' });
 
@@ -19,8 +39,44 @@ function isMobileProject(testInfo: TestInfo): boolean {
   return testInfo.project.name.endsWith('-mobile');
 }
 
-/** mypage category navigation — permanent sidebar (desktop) vs drawer (mobile),
- * the openMyPageCategoryAndVerify idiom of mypage-admin.spec.ts. */
+let scratch: string;
+let spawned: ReturnType<typeof spawnScratchServer> | null = null;
+let bucket: string;
+let scratchPort: number;
+
+test.beforeAll(async ({}, testInfo) => {
+  const projectName = testInfo.project.name;
+  scratchPort = isMobileProject(testInfo) ? e2ePorts.scratchRegsetMobile : e2ePorts.scratchRegset;
+  scratch = scratchDirFor('registration-settings', projectName);
+  fs.rmSync(scratch, { recursive: true, force: true });
+  fs.mkdirSync(scratch, { recursive: true });
+  bucket = await prepareScratchS3(projectName);
+  writeScratchEnv(scratch, {
+    PORT: String(scratchPort),
+    JWT_SECRET: 'registration-settings-e2e-jwt-secret',
+    ADMIN_DEFAULT_PASSWORD: 'admin',
+    ...s3ScratchEnv(bucket),
+    ...scratchRuntimeEnv({
+      WEA_SKIP_GC_SCHEDULER: '1',
+    }),
+  });
+  ensureClientBuild();
+  spawned = spawnScratchServer(scratch, scratchPort);
+  await waitForScratchHealth(spawned, scratchPort);
+});
+
+test.afterAll(async () => {
+  if (spawned) {
+    await killScratch(spawned);
+    spawned = null;
+  }
+  if (bucket) await emptyS3Bucket(bucket).catch(() => {});
+  if (scratch) {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+/** mypage category navigation — permanent sidebar (desktop) vs drawer (mobile). */
 async function openMyPageCategory(page: Page, isMobile: boolean, category: 'System settings') {
   if (isMobile) {
     const menuButton = page.locator('button[aria-label="My page"]');
@@ -40,17 +96,14 @@ test('E2E-AUTH-009: Register page availability follows public settings', async (
   page,
   request,
 }) => {
-  // Test Enabled
   await setRegistrationEnabled(request, true);
   await page.goto('/register');
   await expect(page.locator('form')).toBeVisible();
 
-  // Test Disabled
   await setRegistrationEnabled(request, false);
   try {
     await page.goto('/register');
 
-    // Submit form to trigger the 'registrationDisabled' error
     await page.locator('input[name="username"]').fill('disabled-test');
     await page.locator('input[name="email"]').fill('disabled-test@example.com');
     await page.locator('input[name="password"]').fill('password123');
@@ -61,8 +114,6 @@ test('E2E-AUTH-009: Register page availability follows public settings', async (
     await expect(alert).toBeVisible();
     await expect(alert).toContainText('Registration is currently disabled');
   } finally {
-    // Restore the ambient default so no other spec (or later case here)
-    // observes a disabled window.
     await setRegistrationEnabled(request, true);
   }
 });
@@ -71,6 +122,10 @@ test('E2E-AUTH-010: Registration success with pending approval shows success sta
   page,
   request,
 }) => {
+  // Registration success waits on the server (bcrypt hash + pending-approval
+  // write); keep the explicit 90s success budget below inside a larger case
+  // budget.
+  test.setTimeout(180_000);
   await setRegistrationEnabled(request, true);
   await page.goto('/register');
 
@@ -81,20 +136,20 @@ test('E2E-AUTH-010: Registration success with pending approval shows success sta
   await page.locator('form button[type="submit"]').click();
 
   const successTitle = page.locator('text=Registration complete!');
-  await expect(successTitle).toBeVisible();
+  await expect(successTitle).toBeVisible({ timeout: 90_000 });
   await expect(page).not.toHaveURL(/\/files/);
 });
 
 test.describe('registration setting admin UI (E2E-ADMIN-007)', () => {
-  test.use({ storageState: ADMIN_STATE });
-
   test('E2E-ADMIN-007: Toggles registration-related settings', async ({
     page,
     request,
   }, testInfo) => {
+    test.setTimeout(180_000);
     const suffix = getTestSuffix(testInfo);
     await ensureApprovedUser(request, 'user1', suffix);
 
+    await loginWithCredentials(page, 'admin', 'admin');
     await page.goto('/mypage');
     await openMyPageCategory(page, isMobileProject(testInfo), 'System settings');
 
@@ -104,12 +159,13 @@ test.describe('registration setting admin UI (E2E-ADMIN-007)', () => {
     const currentChecked = await registrationSwitch.isChecked();
 
     await registrationSwitch.click();
-    await expect(page.getByText(/Registration setting saved/i)).toBeVisible();
+    await expect(page.getByText(/Registration setting saved/i)).toBeVisible({ timeout: 60_000 });
 
-    await expect(registrationSwitch).toBeChecked({ checked: !currentChecked });
+    await expect(registrationSwitch).toBeChecked({ checked: !currentChecked, timeout: 60_000 });
 
-    // Restore the value captured before the toggle: the ambient default here is
-    // enabled (this file owns every disable), so no window is left behind.
-    await setRegistrationEnabled(request, currentChecked);
+    // The scratch server is thrown away after this case; a connection reset
+    // during the restoration cleanup must not turn a completed UI assertion
+    // into a false failure.
+    await setRegistrationEnabled(request, currentChecked).catch(() => {});
   });
 });

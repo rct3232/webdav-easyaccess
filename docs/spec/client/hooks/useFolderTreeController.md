@@ -64,12 +64,14 @@
 - On mount / whenever `user` changes:
 - Loads shared-folder permissions for non-admin users (nodeId-keyed entries)
 - Clears shared-folder permissions for admin users
-- Whenever `currentNodeId`, `user homeNodeId`, or `sharedFolders` changes:
+- Whenever `currentNodeId`, `currentPath`, `user homeNodeId`, or `sharedFolders` changes:
 - Recomputes `expandedNodeIds` to include the current node's ancestor node ids and `homeNodeId`
 - Sets `sharedExpanded` to `true` when the current location is the `/__shared__` virtual root or within a shared folder node subtree
 - Sets `recentExpanded` to `true` when the current location is `/__recent__`
+- Sets `collectionsExpanded` to `true` when the current location is `/__collections__` or a descendant (route-driven initial expansion, applied on first render/remount and route entry)
 - Manual toggles:
 - `handleSharedToggle` and `handleRecentToggle` allow the user to collapse/expand sections after auto-expansion has been derived from location state
+- `handleCollectionsToggle` allows the same manual collapse/expand. A manual `false` takes precedence while `currentPath` is unchanged; a row/notifier refresh must not reset it. Only a later route entry (including another collections route) or remount may auto-expand again.
 
 ### 2.6 Error Handling
 
@@ -95,6 +97,10 @@ The following should be covered by `useFolderTreeController` unit tests (renderH
 - Setting the current location to `/__shared__` sets `sharedExpanded` to `true`.
 - Setting the current location to a shared folder node subtree sets `sharedExpanded` to `true`.
 - Setting the current location to `/__recent__` sets `recentExpanded` to `true`.
+- Initial render/remount on a collections route sets `collectionsExpanded` to `true`.
+- A manual collapse on a collections route keeps `collectionsExpanded` false across a notifier-driven row refresh; the refresh updates `collectionsTreeRows` only.
+- A notifier refresh while expanded does not change `collectionsExpanded`.
+- Re-entering a collections route or remounting the controller auto-expands the section again.
 - `handleSharedToggle` toggles `sharedExpanded` and calls `onNodeClick` for the `/__shared__` route when transitioning to expanded.
 - `handleRecentClick` and `handleSharedFolderClick` navigate through the host callback with the expected location (virtual-root route / nodeId).
 
@@ -115,12 +121,13 @@ Addendum per docs/features/collections-platform.md §3.1/§4.9 (archive lifecycl
   `last_visited_at == null` (the requester has NEVER opened that collection — server digest
   cursor absent). `newCollectionIds = collectionsTreeRows.filter(r => r.last_visited_at == null).map(r => r.collection_id)`. Dot state is server-derived only — no client-side `localStorage` cursor (self-created collections are seeded server-side at create; collections shared to the user dot until first open). Opening a collection stamps the cursor server-side (`GET /:id/items`); the tree reflects the cleared dot on the next rows refresh — the controller therefore RE-FETCHES the flat rows whenever `currentPath` becomes `/__collections__` (path-change effect mirroring the load call; notifier subscription unchanged).
 - **`__archive__` child row:** nested under `__collections__`, routes `/files/__collections__/__archive__`; selecting it lists the `status=archived` set (`include=mine,archived`) — restore/permanent-delete affordances live in `CollectionsListView`, not the tree.
-- **Selection → route/view mapping:** these virtual roots keep `currentNodeId` falsy (route-based selection); the mapping "active node `__collections__`/`__archive__` ⇒ `CollectionsListView` replaces the FileList region" is owned by `FileManagerView.md` §3 / the shell — this controller only marks section expansion/selection state. Auto-expansion follows the §2.5 location rule (current location within a collections route ⇒ `collectionsExpanded = true`, same as `sharedExpanded`).
-- Subscribes to collection changes independently (per `useCollections.md` ownership note): notifier events refresh the flat list rows only; no card mutations from the tree.
+- **Selection → route/view mapping:** these virtual roots keep `currentNodeId` falsy (route-based selection); the mapping "active node `__collections__`/`__archive__` ⇒ `CollectionsListView` replaces the FileList region" is owned by `FileManagerView.md` §3 / the shell — this controller only marks section expansion/selection state. Auto-expansion is route-driven: when `currentPath` is `/__collections__` or a descendant, `collectionsExpanded` becomes `true` on first render/remount and route entry. A manual collapse (`handleCollectionsToggle` from expanded) sets `false` and takes precedence while the route is unchanged. An undo/notifier refresh must not reset the manual or route-derived expansion; only a later route entry or remount may auto-expand again.
+- Subscribes to collection changes independently (per `useCollections.md` ownership note): notifier events refresh the flat list rows only; no card mutations from the tree, and no expansion reset.
 
 Verification (appends §2.7):
 
 - [x] `handleCollectionsToggle` expands and navigates the route; `handleArchiveClick` selects `/files/__collections__/__archive__` (host target string `/__collections__/__archive__`).
-- [x] Location `/files/__collections__/…` auto-expands the section; collection members never appear as tree rows (depth-1 assertion — rows come only from the flat `loadCollections` read).
+- [x] Location `/files/__collections__/…` auto-expands the section on first render/remount; collection members never appear as tree rows (depth-1 assertion — rows come only from the flat `loadCollections` read).
+- [ ] A manual collapse on a collections route survives a notifier refresh (rows refresh, expansion stays `false`); an expanded section also survives the refresh; only a later route entry or remount auto-expands again.
 - [x] `newCollectionIds` = rows with `last_visited_at == null` only — no `window.localStorage` read/write anywhere in the controller; navigating back to `/__collections__` fires a `loadCollections` re-fetch (dots clear on the refreshed rows).
 - Operator rule (admin is a pure operator): for `user.is_admin` the controller skips the collections load AND the notifier subscription — no `loadCollections` call, no `/api/collections` request, `collectionsTreeRows` stays `[]`; the section handlers are never reachable (host hides the section).

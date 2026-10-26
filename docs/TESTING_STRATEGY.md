@@ -61,20 +61,19 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   fails the test.
 - **Hermetic scratch projects:** each destructive AI E2E suite (evolution passes, merge
   execution, archive/purge lifecycles) gets its **own scratch server project** following the
-  setup-wizard/trash precedent (base slots `:5003`, `:5012`) — next free scratch slots are
-  band-based offsets from **`:5013+`** resolved through `e2e/helpers/ports.ts` (each
-  checkout's whole port set shifts together; see docs/TEST_GIT_GUIDE.md "Parallel E2E runs"), own
-  env file, own sqlite/PG scratch DB, per-case cleanup. This extends the destructive-case
-  policy: **auto-evolution mutates user data, so AI suites are scratch-only, never run
-  against the shared E2E server/database.**
-- **E2E ID ranges:** collection-lifecycle cases use `E2E-COLLECTION-NNN`, AI-behavior cases
-  use `E2E-AI-NNN`, search/retrieval cases (server-wide name search + results-mode UI,
-  `e2e/retrieval.spec.ts`, scratch-hermetic `retrieval-desktop` project) use
-  `E2E-RETRIEVAL-NNN`, third-person declarative titles per the naming convention above.
-  `E2E-AI-001` is the semantic-search zone C case: hermetic scratch project on `:5016`,
-  built-in embed engine with `WEA_MODEL_DIR` pre-seeded weights (zero download), zone C
-  end-to-end over `POST /api/search` with `semantic_available: true`.
-  Minimum lifecycle chain: create→digest→archive→undo→restore→purge (CODING_STYLE.md Express Patterns gate).
+  destructive-suite precedent. Scratch slots are project-scoped with separate desktop and
+  mobile slots resolved through the shared port-band helper (each checkout's whole port set
+  shifts together; see the runner guide's parallel-worktree section), own env file, own
+  sqlite/PG scratch DB, and per-case cleanup. This extends the destructive-case policy:
+  **auto-evolution mutates user data, so AI suites are scratch-only, never run against the
+  shared E2E server/database.** Scratch servers are process isolation for boot config,
+  global settings, DB, and restart; the project-scoped cwd, bucket, and WebDAV subtree only
+  isolate blobs.
+- **E2E case identity:** case families use backend-qualified IDs where the backend is part
+  of the contract, third-person declarative titles per the naming convention above, and the
+  minimum lifecycle chain create→digest→archive→undo→restore→purge (CODING_STYLE.md Express
+  Patterns gate). Concrete IDs, case ownership, and project/slot mapping are canonical in
+  [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
 - **Degradation-matrix suite:** one suite per §4.12 capability column — `None` (no adapter
   configured at all; the built-in embed engine suppressed by fixture — absent lock/weights ⇒
   `roleConfigured('embed')` false), `embed` (fake embed only), `embed+chat` (fake embed+chat) — and the
@@ -280,54 +279,196 @@ Anchors for the pattern — not an exhaustive matrix.
 
 ## E2E flow policy
 
-- Keep platform-owned interaction coverage split when the UI surface differs, but allow a shared spec file for platform-agnostic core flows that exercise the same user-visible path on both desktop and mobile projects.
-- Shared E2E helpers and shared flow specs may contain only platform-agnostic preparation, selectors, and assertions:
-- authentication/login setup
-- deterministic test naming
-- fixture loading
-- stable file-item locators such as `data-file-path`
-- Playwright hook signatures that use fixtures must use object destructuring for the first argument (even when unused), e.g. `test.beforeEach(async ({}, testInfo) =>...)`.
-- Do not force desktop and mobile flows to share interaction helpers when the UI surface differs. Shared FAB-based create/upload helpers are fine when the user path is the same, but desktop item-action/context-menu interactions and mobile action-sheet interactions should live in their own platform spec or helper.
-- Express platform ownership in Playwright project/spec assignment, naming, `testMatch`, or `grep` configuration rather than inline `test.skip()` branches keyed off the current project. Exception: mobile-only cases that live inside a both-platform spec (e.g. `E2E-MYPAGE-011/012`) may keep a reason-carrying `test.skip(isMobile ? false : true, 'reason')`.
-- Follow the selector policy from [features/files-sharing.md](features/files-sharing.md): semantic selectors first, `data-file-path` for explorer items, and `data-testid` only for documented unstable or icon-only seams. For SpeedDial-style action menus, prefer the visible `menuitem` names after opening the trigger when that accessibility surface is stable.
+Concrete suite names, project names, case IDs, scratch slots, skip counts, and
+per-case ownership are canonical in [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
+This section defines only the invariants every E2E suite must follow.
 
-### Naming convention (suites and cases)
+### Backend and group ownership
 
-Apply uniformly to every spec in `e2e/`:
+- S3 is the default backend. The default and core groups must not start a WebDAV
+  container; only the WebDAV job starts exactly one shared bytemark.
+- Keep platform-owned interaction coverage split when the UI surface differs,
+  but allow a shared spec for platform-agnostic core flows that exercise the
+  same user-visible path on desktop and mobile.
+- Shared E2E helpers and shared flow specs may contain only platform-agnostic
+  preparation, selectors, and assertions: authentication/login setup,
+  deterministic test naming, fixture loading, and stable item locators such as
+  `data-file-path`.
+- Playwright hook signatures that use fixtures must use object destructuring for
+  the first argument, even when unused.
+- Do not force desktop and mobile flows to share interaction helpers when the UI
+  surface differs. Shared create/upload helpers are fine when the user path is
+  the same, but desktop item actions/context menus and mobile action sheets stay
+  in their own platform spec or helper.
+- Express platform ownership in project/spec assignment, naming, `testMatch`,
+  or `grep` configuration rather than inline `test.skip()` branches keyed off
+  the current project. Mobile-only cases embedded in a both-platform spec may
+  keep a reason-carrying skip.
+- Follow the selector policy in
+  [features/files-sharing.md](features/files-sharing.md): semantic selectors
+  first, `data-file-path` for explorer items, and `data-testid` only for
+  documented unstable or icon-only seams.
 
-- **Case title format**: `E2E-<DOMAIN>-NNN: <third-person present declarative description>`.
-- Sentence case; declarative statement form (no imperative commands like `Approve pending signup`, no `[Px]` priority prefixes, no literal backticks, no emojis, no `snake_case` identifiers in the title).
-- Scenario labels for hermetic suites stay as a parenthetical between the ID and the colon, normalized: setup wizard `(Case N, both modes|s3 mode only)`, migration `(Flow <label>)`.
-- IDs should be declared in numeric order within each file. Exception: a serial suite whose execution order is load-bearing (e.g. migration job-state sequences) keeps its execution order.
-- Every `test()` carries an ID. Setup-only infrastructure tests use a documented `E2E-SETUP-NNN` slot.
-- **Suite title format**: lowercase sentence case. Platform-owned suites append `(desktop)` or `(mobile)`. Hermetic families append their ID range, e.g. `first-run setup wizard (E2E-SETUP-001..004)`.
-- **Serialization**: use `test.describe.configure({ mode: 'serial' })` (never the anonymous `test.describe.serial`). Suites that mutate shared per-project DB state are serial. Prefer parallel-safe cases (assertion-context containment); serial is required only when a suite mutates shared per-project DB state or depends on prior cases.
-- **Skips**: every `test.skip`/`test.fixme` carries a reason string. Platform ownership goes in `testMatch`/project assignment, not inline project skips (exception above).
-- **Filename style**: `<name>.<platform>.spec.ts` dot suffix for platform files (`core-flow.shared`, `core-flow.desktop`, `core-flow.mobile`). No hyphen-prefix platform files.
-- For E2E setup phases (creating test folders/files as prerequisites), avoid timing-sensitive UI seams like SpeedDial open/transition states; prefer stable API endpoints (e.g. folder create + multipart upload) to make prerequisites deterministic.
-- When using Playwright `APIRequestContext` for setup or cleanup, pass URL query strings with `params`, not `query`, so contract-required request parameters actually reach the server.
-- **Hermetic scratch projects (setup wizard):** the first-run setup spec runs in dedicated `setup-wizard-desktop` / `setup-wizard-mobile` Playwright projects that never reuse the shared `.env.e2e` boot state. Each test spawns its own scratch server instance on `:5003` (own env file via `DOTENV_CONFIG_PATH`, own sqlite path, own scratch PG DB) and supervises its own process lifecycle, because restart is the behavior under test. The spec is serial within the describe and cleans up per case in `afterEach` (kill the scratch child, remove the scratch dir, drop the scratch PG database). Keep these projects additive — do not fold them into the mode-prefixed project matrix.
-- **Per-run seed + hermetic cases (no inter-project chains):** the shared E2E database is seeded ONCE per invocation by `global-setup.ts`. Projects (`desktop`, `mobile`, `admin-*`, hermetic) are INDEPENDENT siblings and may run concurrently — Playwright `dependencies` must NOT be used to order suite projects, because dependency projects run in full regardless of the test filter, so any partial run cascades the whole chain (measured 2026-09-11: selecting one spec pulled 88 tests/10 files vs 10/1 de-chained).
-- Isolation therefore comes from CASE HERMETICITY, not from ordering: every case creates/asserts only its own data (assertion-context containment) and cleans up in `afterEach`; nothing may leave root-level or global residue.
-- **Global-state mutations are restored in-test**: a case that flips a shared setting (e.g. `registration_enabled`) must restore the prior value at the end (save → mutate → assert → restore) so concurrent suites never observe the flipped window.
-- **Globally destructive cases run SCRATCH-HERMETIC, not merely project-owned**: file-level `testMatch` ownership is NOT sufficient because the worker pool is shared and `fullyParallel` interleaves tests across spec files — a global purge on the shared server races any other project's in-flight cases (this was the webdav-smoke flake, TRASH-007 vs TRASH-001/003). Such cases get their own scratch server project (e.g. `trash-admin-desktop` on :5012); they are excluded from the shared-mode smokes.
-- Case-scoped names must be unique per RUN and per PROJECT (include the project slug and a timestamp — `buildName`/`getTestSuffix`/explicit `Date.now()`), because the same spec now executes in sibling projects concurrently.
-- **Retries must be self-healing: derived user identity is unique per ATTEMPT.** A deterministic `getTestSuffix` makes retries structurally incapable of passing for any case that permanently mutates the derived user's state (e.g. `E2E-MYPAGE-005` changes the password): the retry's `ensureApprovedUser` finds the user already exists (`400 usernameTaken`) and then logs in with the pre-mutation password (`401`) — measured 2026-09-13, CI build #47, where one transient render blip + `--max-failures=1` hard-stopped 55 cases because retries could not recover. `getTestSuffix` therefore appends `_r<retry>` when `testInfo.retry > 0` (first-attempt identities are unchanged; `testInfo.retry` is constant within an attempt, so every helper call in one attempt resolves to the same user). Consequence rule: failed attempts leave residue (their users/requests persist), so no case may assert an exact count on a listing that other attempts can also write to — filter by the case's own identifiers instead.
-- The 50-item root-render cap cannot bite: root-level accumulation was eliminated by containment (the historical `00-project-setup` re-truncate between projects is retired — do NOT reintroduce suite→suite dependencies to mask a hermeticity bug; fix the case).
+### Backend direction and release-gate composition
+
+- The default group is the full generic S3 release gate and includes the core
+  subset. The core group is a fast optional pre-merge subset. The WebDAV group
+  is required release coverage for real WebDAV-specific behavior.
+- Cross-backend migration ownership follows the source and destination backend,
+  not a single global rule. A generic gate/role check can run in the default S3 group
+  with an S3 source and a WebDAV destination tarpit (a local raw TCP listener,
+  not a WebDAV container). An S3 destination may legitimately require a WebDAV
+  source. Real WebDAV source/destination behavior remains in the WebDAV job.
+- The default S3 gate must not depend solely on the WebDAV job for generic
+  gate/role behavior, and the WebDAV job must not be treated as optional in a
+  release. Concrete cases and backend directions are listed in the coverage
+  plan.
+
+### Interaction contract
+
+- The first Enter/click on a submit control must produce exactly one request.
+  Count requests, not responses, and wait for an observable ready or completed
+  state instead of pressing again.
+- Do not retry non-idempotent writes blindly. An exactly-once job means one
+  server-side job or gate, not one transport attempt. Prove it with a deliberate
+  second write returning `409` and with the server-side job count/state; if a
+  transport retry is ever needed, use an idempotency key and assert the server
+  job count rather than only classifying the thrown error.
+
+### Test data realism
+
+- Seed actual application settings with multiple keys and distinct values, and
+  assert the copied key/value pairs. A marker-only row or a row count is not
+  evidence that settings migration works.
+- Settings that are `dbOnly` must be written through the database/config
+  surface; setting an ignored environment variable is not a valid test setup.
+
+### Timeouts, latency, and flakiness
+
+- Keep infrastructure waits (scratch boot, container health, job polling)
+  separate from product latency assertions. Do not raise a global timeout as the
+  only response to weak CI; use a per-case budget only when boot/restart is the
+  behavior under test.
+- The release gate runs with retries disabled and fails on flaky tests. Retries
+  are a development diagnostic, not release evidence.
+- A stress run at four or more workers is capacity validation only. It is not a
+  fixed worker gate and must not become a per-project worker cap.
+
+### Skip policy
+
+- In CI, a missing required resource (WebDAV, PostgreSQL, or AI weights) must
+  fail the gate, not skip the case. Every skip carries a reason.
+- Expected skip counts are release invariants, not reporting noise. The
+  canonical expected count per group lives in the coverage plan, and the
+  skip-count reporter compares every run against it.
+- Any unexpected skip fails release. Any mismatch against the documented count
+  is a gate failure, including a missing expected skip; update the count only
+  when the product/coverage decision is explicit.
+- Do not convert a skip into a pass through a retry, a broader timeout, or a
+  conditional guard. Fix the missing resource or the contract.
+
+### State preservation
+
+- Route-driven expansion is initial state, not a per-refresh reset. When the
+  current route is a collections route, the collections section is expanded on
+  first render and on remount.
+- An undo or notifier refresh must preserve the user's current expansion. It
+  must not silently collapse an expanded section.
+- A manual collapse is user intent and takes precedence while the route is
+  unchanged. Only a later route entry or remount may auto-expand the section
+  again.
+- Do not reload the page to bypass a same-session fetch queue or resume
+  workflow. Wait for the observable dialog/request state; reload only when boot
+  or restart is the behavior under test.
+- Do not reload, re-open, or re-expand a tree merely to make an undo-state
+  assertion pass. Assert the product's observable expansion state directly.
+- Collapsed, empty, and load-failure states must be distinguishable through
+  explicit accessible state (for example `aria-expanded` plus an empty or error
+  message), never inferred from row absence alone.
+
+### Concurrency and isolation
+
+- No Playwright project dependencies. Projects are independent siblings; the
+  worker count is the only concurrency throttle. Do not add a fixed
+  per-project `workers: 1`; use `serial` mode or `fullyParallel` as the suite
+  requires.
+- Per-run seeding happens once. Isolation comes from case hermeticity and
+  assertion-context containment, not from ordering.
+- Scratch servers are process isolation for boot configuration, global
+  settings, the metadata DB, and restart. The project-scoped working directory,
+  S3 bucket, PG database, and WebDAV subtree isolate blobs only.
+- Globally destructive cases run scratch-hermetic. File-level `testMatch`
+  ownership is not sufficient because `fullyParallel` interleaves tests across
+  spec files; a global purge must have its own scratch world and stay out of
+  shared-mode smoke sets.
+- Global-state mutations are restored in-test. A case that flips a shared
+  setting saves, mutates, asserts, and restores it before finishing.
+- Case-scoped names are unique per run and per project, including the project
+  slug and a timestamp or retry suffix where the helper provides one.
+- Retries must be self-healing: derived user identities are unique per attempt,
+  so a retry of a permanently mutating case does not collide with its prior
+  attempt. Failed attempts leave residue, so assertions filter by the case's
+  own identifiers rather than exact counts on shared listings.
+- Prefer parallel-safe cases. A file is serial only when it mutates shared
+  per-project DB state or depends on prior cases; state the reason.
+
+### Serialization
+
+Use `test.describe.configure({ mode: 'serial' })` (never anonymous
+`test.describe.serial`). Suites that mutate shared per-project DB state are
+serial. Assertion-context containment is the default; serial is the exception.
+
+### Naming, IDs, and hygiene
+
+Apply uniformly to every E2E spec:
+
+- Every `test()` carries a stable case ID and a third-person present declarative
+  title. Platform cases use the platform ID family; backend-specific hermetic
+  cases carry a backend qualifier. Retired IDs are never reused and are mapped
+  in the coverage plan.
+- Sentence case; no imperative commands, priority prefixes, literal backticks,
+  emojis, or `snake_case` identifiers in titles.
+- Hermetic scenario labels stay as a parenthetical between ID and colon and are
+  normalized per suite.
+- IDs are declared in numeric order within a file. A serial suite whose
+  execution order is load-bearing keeps execution order.
+- Suite titles are lowercase sentence case. Platform-owned suites append a
+  platform suffix; hermetic families append their ID range.
+- Use platform/backend dot suffixes in spec file names and keep shared helpers
+  alongside the family. No hyphen-prefix platform files.
+- Every `test.skip`/`test.fixme` carries a reason string. Platform ownership
+  belongs in project assignment, not inline project skips.
+- For setup phases, create prerequisite folders/files through stable API
+  endpoints when those operations are not the behavior under test. Exercise the
+  UI flow when it is the behavior under test.
+- When using Playwright `APIRequestContext` for setup or cleanup, pass query
+  strings with `params`, not `query`, so contract-required parameters reach the
+  server.
+- Do not leave debug `console.log` output in specs. Do not reference retired or
+  deleted suite names/IDs; the coverage plan is the canonical map.
 
 ### Assertion-context containment
 
 - The admin home is the filesystem root, and the client renders at most 50 items per listing (infinite scroll). Visibility assertions against a shared listing couple a case to creation order and break once the listing exceeds the render window under parallel workers.
 - Create and assert items only inside a case-owned folder (named via `buildName`); never assert item visibility in the admin root or another shared listing.
-- Seed the owned base folder through the stable API (resolve-or-create) and navigate into it; exercise UI creation flows (FAB, upload) inside it.
+- Seed the owned base folder through the stable API (resolve-or-create) and navigate into it. Use UI creation flows (FAB, upload) when creation is the behavior under test; otherwise seed fixture items through the API and reserve UI actions for the behavior being tested.
 - A case may render-and-assert only in a listing bounded to its own data.
-- Each case deletes its owned base folder in `afterEach` (permanent delete via the admin maintenance route `DELETE /api/admin/maintenance/perm-delete`, tolerant of the folder having already been moved/renamed/deleted by the case), so the shared admin root never accumulates one folder per case across a run. The ordinary delete channel (`POST /api/files/batch-delete`) now TRASHES — cleanup must not rely on it, or trashed residue would accumulate invisibly at the root.
-- Prefer parallel-safe cases; a case/file must be serial only when it mutates shared users/settings or depends on prior cases (state the reason).
-- A standard user's own home is role-scoped (a top-level node named after the username), not the admin root. Home-root label assertions (the breadcrumb first chip and the folder-tree home row render "Home", never the acting username — `E2E-EXP-014`) run only against that user's own home folder, never a shared listing.
+- Each case deletes its owned base folder in `afterEach` via the admin permanent
+  delete route, tolerant of the folder having already been moved, renamed, or
+  deleted by the case, so the shared admin root never accumulates residue. The
+  ordinary delete channel trashes; cleanup must not rely on it.
+- A standard user's own home is role-scoped, not the admin root. Home-root label
+  assertions run only against that user's own home folder, never a shared
+  listing.
+- Prefer parallel-safe cases; a case/file is serial only when it mutates shared
+  users/settings or depends on prior cases, with the reason stated.
 
 ### Authenticated-session reuse (L1)
 
-- Default to an authenticated session for admin-actor cases via a per-file `storageState` (see `e2e/fixtures/authenticated.ts`); only auth-state cases start unauthenticated or perform a UI login. New cases must not repeat a UI login the seeded session already provides.
+- Default to an authenticated session for admin-actor cases via a per-file
+  `storageState`; only auth-state cases start unauthenticated or perform a UI
+  login. New cases must not repeat a UI login the seeded session already
+  provides.
 
 ### Minimum flow coverage
 
@@ -335,7 +476,7 @@ Apply uniformly to every spec in `e2e/`:
 - Mobile flow: the same CRUD happy paths.
 - Treat create/upload as shared FAB-driven outcomes when the user path matches across platforms, and split only the interaction helpers that genuinely differ, such as desktop item actions/context menu versus the mobile action sheet for rename/delete.
 
-Detailed browser-flow inventory, rollout order, and planned Playwright ownership are maintained in [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md). Keep this document focused on layer policy and E2E design rules rather than exhaustive scenario tracking.
+Detailed browser-flow inventory, future expansion plan, and planned Playwright ownership are maintained in [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md). Keep this document focused on layer policy and E2E design rules rather than exhaustive scenario tracking.
 
 ### Feature-doc responsibility for E2E guidance
 
@@ -345,7 +486,7 @@ Detailed browser-flow inventory, rollout order, and planned Playwright ownership
 - selector rules unique to that feature
 - platform-specific interaction ownership (desktop vs mobile)
 - feature-only flow-structure constraints
-- Do not copy full scenario matrices, rollout order, or per-spec ownership into feature docs when the canonical E2E plan already tracks them.
+- Do not copy full scenario matrices, future expansion plan, or per-spec ownership into feature docs when the canonical E2E plan already tracks them.
 
 ---
 
@@ -390,7 +531,7 @@ Detailed browser-flow inventory, rollout order, and planned Playwright ownership
 ### New or modified E2E spec
 
 - Create/assert data only inside a case-owned folder; never assert visibility in a shared listing (assertion-context containment).
-- Do not repeat a UI login when a seeded per-file `storageState` session already provides it (see `e2e/fixtures/authenticated.ts`); only auth-state cases start unauthenticated or perform a UI login.
+- Do not repeat a UI login when a seeded per-file `storageState` session already provides it; only auth-state cases start unauthenticated or perform a UI login.
 - Verify order-independence before enabling parallel workers: run the affected project with `--workers=1` and `--workers=2` and confirm an identical passed/skipped set (repeat 3×).
 
 ---
@@ -427,7 +568,7 @@ Run from each directory: `cd client && npm run test:coverage` and `cd server && 
 ## Test Performance & Run Guidance
 
 - **Cold vs warm cache:** The first Jest run after a cache invalidation is substantially slower (a cold full client run can exceed 10 minutes). Base timing comparisons and timeout budgets on warm runs, not the first run.
-- **Avoid concurrent full-suite runs:** Running the full server and client suites simultaneously on a constrained machine causes resource contention — individual fast suites (e.g. `files.test.js`, ~2s standalone) can stall and time out. Run suites sequentially, or tune `--maxWorkers` when parallelizing.
+- **Avoid concurrent full-suite runs:** Running the full server and client suites simultaneously on a constrained machine causes resource contention — individual fast suites can stall and time out. Run suites sequentially, or tune `--maxWorkers` when parallelizing.
 - **Measure consistently:** When judging a performance regression, compare identical environment, worker count, and warm-cache state. Real-time retry backoff (see "Avoid real-time waits in tests") is the most common hidden cost in slow suites.
 - **Know the critical path:** In a parallelized suite, the wall-clock time is bounded by the slowest suite. Profile per-suite timing (Jest `--json` + duration aggregation) before optimizing; the slowest suite is usually a network/retry or heavy-rendering suite, not the largest one.
 

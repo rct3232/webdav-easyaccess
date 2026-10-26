@@ -138,6 +138,7 @@ describe('SystemConfigEditor', () => {
       config: makeConfig({
         EMAIL_SECURE: { value: false, source: 'db', tier: 'T2', secret: false },
         WEA_SKIP_GC_SCHEDULER: { value: false, source: 'db', tier: 'T2', secret: false },
+        GC_VERSION_TTL_DAYS: { value: '1', source: 'default', tier: 'T2', secret: false },
       }),
     });
 
@@ -149,6 +150,9 @@ describe('SystemConfigEditor', () => {
 
     const skipGcSwitch = screen.getByTestId('config-input-WEA_SKIP_GC_SCHEDULER');
     expect(skipGcSwitch).not.toBeDisabled();
+
+    expect(screen.getByTestId('config-input-GC_VERSION_TTL_DAYS')).toHaveValue(1);
+    expect(screen.getByTestId('config-input-GC_VERSION_TTL_DAYS')).not.toBeDisabled();
   });
 
   it('masks secrets and reveals a set-new-value field on toggle', async () => {

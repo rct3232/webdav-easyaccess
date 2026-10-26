@@ -115,7 +115,10 @@ metadata), while the physical I/O path is trash-aware.
 
 1. `path = fileNodeService.getNodePath(nodeId)`; the I/O path is `buildTrashPath(nodeId)` when the node is trashed, `path` otherwise.
 2. Auto-resume-skip if an active row has a non-null `s3_key` (unless `force`).
-3. `buf = srcBlobStore.downloadBlob(ioPath)` — trash path for a trashed node.
+3. `buf = srcBlobStore.downloadBlob(ioPath)` — trash path for a trashed node. A source read
+   that fails with a recognized transport interruption (`socket hang up`, `ECONNRESET`,
+   `EPIPE`, `ETIMEDOUT`, or `ECONNREFUSED`) is retried once after a short delay; missing blobs
+   and other failures are not retried.
 4. `key = uuid`.
 5. `destBlobStore.uploadBlob(key, buf)` — flat UUID key, no directory structure.
 6. `upsertObjectMap(nodeId, key, 'active')` (`storage_backend='s3'`, `s3_key=UUID`).
@@ -172,6 +175,8 @@ metadata), while the physical I/O path is trash-aware.
 - [ ] automatic resume: fail on node N → rerun → completed skipped, remainder copied, no duplicates
 - [ ] idempotent: full rerun → `0` copied
 - [ ] error isolation: a failing node doesn't stop the run; errors reported
+- [ ] a source download interrupted by a recognized transport failure is retried once; a
+  missing blob or non-transport source error is not retried
 - [ ] partial-blob safety: an unfinished destination blob (size mismatch) is not treated as complete
 - [ ] `onProgress` called after each node with the documented shape
 - [ ] `mode='apply'` blocks writes when the internal dry-run pass fails

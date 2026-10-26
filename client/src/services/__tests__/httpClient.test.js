@@ -104,6 +104,26 @@ describe('httpClient', () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
+  it('honors maxRetries: 0 for 5xx responses', async () => {
+    global.fetch = jest.fn().mockResolvedValue(
+      createResponse({
+        status: 500,
+        statusText: 'Internal Server Error',
+        body: { errorCode: 'serverErrors.setup.test.webdav.unreachable' },
+      })
+    );
+
+    await expect(
+      request({ url: '/admin/config/test', method: 'POST', maxRetries: 0 })
+    ).rejects.toMatchObject({
+      response: {
+        status: 500,
+        data: { errorCode: 'serverErrors.setup.test.webdav.unreachable' },
+      },
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it('does not retry 4xx responses', async () => {
     global.fetch = jest.fn().mockResolvedValue(
       createResponse({

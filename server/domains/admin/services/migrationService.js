@@ -182,6 +182,21 @@ function createMigrationService({
     return Boolean(head && head.contentLength === Number(cache.size));
   }
 
+  function isTransientSourceReadError(error) {
+    const reason = error?.params?.reason || error?.reason || error?.message || '';
+    return /\b(?:socket hang up|ECONNRESET|EPIPE|ETIMEDOUT|ECONNREFUSED)\b/i.test(reason);
+  }
+
+  async function downloadSourceBlob(key) {
+    try {
+      return await srcBlobStore.downloadBlob(key);
+    } catch (error) {
+      if (!isTransientSourceReadError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return srcBlobStore.downloadBlob(key);
+    }
+  }
+
   async function processNode({ direction, node, activeObject, nodePath, dst, resume, force }) {
     if (await shouldSkip({ direction, node, activeObject, nodePath, dst, resume, force })) {
       return { action: 'skipped', path: nodePath };
@@ -191,7 +206,7 @@ function createMigrationService({
     const ioPath = blobIoPathForNode(node, nodePath);
 
     if (direction === 'webdav-to-s3') {
-      const buf = await srcBlobStore.downloadBlob(ioPath);
+      const buf = await downloadSourceBlob(ioPath);
       if (buf == null) throw new Error('Source blob not found');
       const key = crypto.randomUUID();
       await dst.uploadBlob(key, buf);
@@ -207,7 +222,7 @@ function createMigrationService({
       return { action: 'copied', path: nodePath };
     }
 
-    const buf = await srcBlobStore.downloadBlob(activeObject.s3_key);
+    const buf = await downloadSourceBlob(activeObject.s3_key);
     if (buf == null) throw new Error('Source blob not found');
     await ensureAncestorDirectories(dst, ioPath);
     await dst.uploadBlob(ioPath, buf);

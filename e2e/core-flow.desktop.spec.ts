@@ -26,6 +26,9 @@ async function createTestFile(page: any, fileName: string) {
     mimeType: 'text/plain',
     buffer: Buffer.from('test content'),
   });
+  // The upload dialog closes before the background upload lands; wait for the
+  // row before a following navigation or selection can race the upload.
+  await expect(page.locator(`[data-file-path$="/${fileName}"]`)).toBeVisible({ timeout: 30_000 });
 }
 
 test.use({ storageState: ADMIN_STATE });

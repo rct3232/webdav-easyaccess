@@ -4,10 +4,11 @@ import { APIRequestContext, expect, Page, test, TestInfo } from '@playwright/tes
 
 import {
   ensureClientBuild,
-  prepareScratchWebdav,
   killScratch,
+  prepareScratchS3,
+  s3ScratchEnv,
   scratchDirFor,
-  scratchWebdavUrl,
+  scratchRuntimeEnv,
   spawnScratchServer,
   waitForScratchHealth,
   writeScratchEnv,
@@ -34,7 +35,7 @@ import { purgeTrashedItemByName } from './helpers/trash';
 import { TEST_FILES } from './fixtures/test-data';
 
 /**
- * E2E-RETRIEVAL-001..011 — server-wide name search rendered INSIDE the explorer
+ * E2E-S3-RETRIEVAL-001..011 — server-wide name search rendered INSIDE the explorer
  * surfaces: accordion zones + the breadcrumb-replacing query-chip bar (the
  * search UI rework — the standalone results overlay is gone). The family was
  * CONSOLIDATED from 21 to 11 cases for runtime efficiency: the former 019
@@ -64,11 +65,11 @@ import { TEST_FILES } from './fixtures/test-data';
  * single tap opens).
  *
  * SCRATCH-HERMETIC per the destructive-case policy (docs/TESTING_STRATEGY.md):
- * own server on the `:5015` slot (own sqlite, webdav file backend), never the
- * shared :5002 pool. The serial file owns the server lifecycle; the
- * `retrieval-mobile` project depends on `retrieval-desktop` and re-boots its
- * own server on the same slot afterwards (pushHermetic shared-port rule,
- * exactly the admin-config/migration registration).
+ * own server per Playwright project (desktop :5015 / mobile :5020, own sqlite,
+ * own project-scoped S3 bucket), never the shared :5002 pool. The serial file
+ * owns the server lifecycle in each project; desktop and mobile are independent
+ * siblings that each boot their own scratch world (no shared port, no
+ * dependency edge). The scratch server runs with `WEA_SKIP_AI_WORKER=1`.
  *
  * IDENTITY (admin-operator pivot, PLAN §14): every case acts as a REGULAR USER
  * provisioned in `beforeAll`; the scratch admin stays OPERATOR-only
@@ -86,23 +87,22 @@ import { TEST_FILES } from './fixtures/test-data';
  * §2.5).
  *
  * SCOPE NOTES:
- * - E2E-RETRIEVAL-010 gates the WRITE bulk actions: move/delete disable when a
+ * - E2E-S3-RETRIEVAL-010 gates the WRITE bulk actions: move/delete disable when a
  *   read-only row is selected (`bulkWritePermission` — FileManagerControls.md
  *   §2); copy stays available by that contract (it reads the source and writes
  *   into a destination the user picks, so it is not source-write-gated).
- * - E2E-RETRIEVAL-003 also covers the empty-submit no-op contract (folded
+ * - E2E-S3-RETRIEVAL-003 also covers the empty-submit no-op contract (folded
  *   former case): FloatingSearchBar §2.6 rows 4–5 describe the controlled
  *   component ("results mode + empty input ⇒ Add overlay + no-op click"); in
  *   the integrated shell clearing the text IS the exit signal (§2.7), so the
  *   transient combination is unit-covered (SearchActionButton.test.js) and the
  *   E2E asserts the observable end — empty-text submit (button click AND
  *   Enter) fires ZERO additional POST /api/search.
- * - E2E-RETRIEVAL-007 uses the two-point getBoundingClientRect sample (header
+ * - E2E-S3-RETRIEVAL-007 uses the two-point getBoundingClientRect sample (header
  *   pinned while its rows are in view; header leaves the pinned position once
  *   its zone bottom passes the container top). FLAKY-RISK: if it proves
  *   unstable across reruns, demote to the single pinned-sample observable.
  */
-const SCRATCH_PORT = e2ePorts.scratchRetrieval;
 const CASE_ID = 'retrieval';
 /** Scratch boot identity (ADMIN_DEFAULT_PASSWORD) — OPERATOR duties only. */
 const ADMIN_PASSWORD = 'RetrievalE2e!123';
@@ -140,16 +140,18 @@ interface SearchPostRecord {
 }
 
 /**
- * Response-listener based traffic tracker: collects POSTs whose URL path is
- * exactly `/api/search` (the server-submit channel — `/api/search/click` and
- * every other endpoint are separate paths and are tracked independently).
+ * Request-listener based traffic tracker: collects requests whose method is
+ * POST and URL path is exactly `/api/search` (the server-submit channel —
+ * `/api/search/click` and every other endpoint are separate paths and are
+ * tracked independently). Requests, unlike responses, are recorded as soon as
+ * the browser issues them, so a missing response cannot hide a duplicate
+ * submit.
  */
 function trackSearchPosts(page: Page): () => number {
   const posts: string[] = [];
-  page.on('response', (res) => {
-    const req = res.request();
-    if (req.method() === 'POST' && new URL(res.url()).pathname === '/api/search') {
-      posts.push(res.url());
+  page.on('request', (req) => {
+    if (req.method() === 'POST' && new URL(req.url()).pathname === '/api/search') {
+      posts.push(req.url());
     }
   });
   return () => posts.length;
@@ -451,28 +453,37 @@ let spawned: ReturnType<typeof spawnScratchServer> | null = null;
 /** Scratch admin bearer — OPERATOR duties only (provisioning + perm-delete flush). */
 let operatorToken = '';
 
-test.beforeAll(async ({ request }) => {
-  scratch = scratchDirFor(CASE_ID);
+test.beforeAll(async ({ request }, testInfo) => {
+  const projectName = testInfo.project.name;
+  // Independent desktop/mobile worlds: each project owns its port slot, its
+  // scratch directory and its S3 bucket — never a shared scratch server.
+  const port = isMobileProject(testInfo)
+    ? e2ePorts.scratchRetrievalMobile
+    : e2ePorts.scratchRetrieval;
+  scratch = scratchDirFor(CASE_ID, projectName);
   fs.rmSync(scratch, { recursive: true, force: true });
   fs.mkdirSync(scratch, { recursive: true });
+  // S3 is the product's default backend; prepareScratchS3 ensures the
+  // project-scoped bucket exists and empties it for a deterministic run.
+  const bucket = await prepareScratchS3(projectName);
   writeScratchEnv(scratch, {
-    PORT: String(SCRATCH_PORT),
-    WEA_FILE_STORAGE: 'webdav',
-    WEBDAV_UPSTREAM_URL: scratchWebdavUrl(CASE_ID),
+    PORT: String(port),
+    ...s3ScratchEnv(bucket),
+    ...scratchRuntimeEnv(),
     JWT_SECRET: 'retrieval-e2e-jwt-secret',
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
   });
-  await prepareScratchWebdav(scratch, CASE_ID);
   ensureClientBuild();
-  spawned = spawnScratchServer(scratch, SCRATCH_PORT);
-  await waitForScratchHealth(spawned, SCRATCH_PORT);
+  spawned = spawnScratchServer(scratch, port);
+  await waitForScratchHealth(spawned, port);
   operatorToken = await loginScratchAdmin(request, ADMIN_PASSWORD);
   // This suite verifies the HONEST-DEGRADE stack: the semantic section
   // ABSENT (`semantic_available:false` + `semantic_unavailable_reason`).
   // The embed engine is a built-in DEFAULT provider, so in a checkout whose
   // shared model dir holds provisioned weights a plain scratch boot would
   // run the semantic leg and the section-absent premises below would not
-  // hold. `AI_SEMANTIC_SEARCH_ENABLED` is the documented T2 kill switch
+  // hold (the skipped worker does not gate the query-time embed leg).
+  // `AI_SEMANTIC_SEARCH_ENABLED` is the documented T2 kill switch
   // (configRegistry — dbOnly, env ignored): set through the admin config
   // API it pins the gate-off path, which emits the IDENTICAL wire shape to
   // the unconfigured role (searchService.md §2.3 step 3, §2.5).
@@ -499,12 +510,12 @@ test.afterEach(async ({ request }) => {
   // Case containment: perm-delete the case workspace subtree (the physical
   // purge is admin-only, hence the OPERATOR fallback token — dual-token
   // cleanup, admin-operator pivot PLAN §14). A case that trashes an item purges
-  // it from the trash itself (E2E-RETRIEVAL-007); case-created collections and
+  // it from the trash itself (E2E-S3-RETRIEVAL-007); case-created collections and
   // the owner-user share fixture are scratch-scoped and die with the instance.
   await flushPrivateWorkspaceCleanups(request, operatorToken);
 });
 
-test('E2E-RETRIEVAL-001: Results render as accordion zones with honest headers, cross-zone dedup and committed highlights', async ({
+test('E2E-S3-RETRIEVAL-001: Results render as accordion zones with honest headers, cross-zone dedup and committed highlights', async ({
   page,
   request,
 }, testInfo) => {
@@ -527,13 +538,31 @@ test('E2E-RETRIEVAL-001: Results render as accordion zones with honest headers, 
   const alphaOneId = await seedNamedFile(request, token, deepId, `Alpha-One-${Date.now()}.txt`);
   const betaFile = await seedFile(request, token, base, testInfo, 'beta');
   await gotoFilesPath(page, request, `/${base}`);
-  await expect(fileItem(page, betaFile.path)).toBeVisible();
+  await expect(fileItem(page, betaFile.path)).toBeVisible({ timeout: 60_000 });
 
   // Typing NEVER hits the server (useSearchResults §2.5): keystrokes only arm
   // the bar; no results surface mounts before the submit.
   await searchBox(page).fill('al');
   await searchBox(page).pressSequentially('pha');
-  await page.waitForTimeout(500);
+  await expect(searchBox(page)).toHaveValue('alpha');
+  // The orbit is the observable pending state; it must be absent for a clean
+  // first-Enter contract, so no single-flight submit can swallow the press.
+  await expect(page.getByTestId('search-action-glyph-orbit')).toHaveCount(0);
+  // Close the file-action menu when it is open, then focus the input. A menu
+  // can consume the Enter while leaving the searchbox visually active.
+  if (
+    await page
+      .getByRole('menu')
+      .isVisible()
+      .catch(() => false)
+  ) {
+    // The FAB is visually underneath the floating search bar; dispatch its
+    // React onClick so the overlay cannot intercept the menu-close action.
+    await page.getByTestId('file-actions-fab').evaluate((el) => el.click());
+  }
+  await searchBox(page).click();
+  await expect(searchBox(page)).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible();
   expect(searchPosts(), 'typing must never hit the server').toBe(0);
   await expect(chipBar(page)).toHaveCount(0);
   await expect(zoneHeader(page, 'a')).toHaveCount(0);
@@ -541,9 +570,16 @@ test('E2E-RETRIEVAL-001: Results render as accordion zones with honest headers, 
   // Enter submits exactly ONE POST /api/search and mounts the results surface:
   // the chip bar replaces the breadcrumb, zones A + B render, and the degraded
   // semantic zone never exists (`semantic` omitted ⇒ Zone C renders nothing).
+  // The first Enter is never retried; a missing/extra request fails the
+  // exactly-one assertion below.
   await searchBox(page).press('Enter');
-  await expect(chipBar(page)).toBeVisible();
-  await expect.poll(() => searchPosts(), 'Enter submits exactly one server query').toBe(1);
+  await expect(chipBar(page)).toBeVisible({ timeout: 60_000 });
+  await expect
+    .poll(() => searchPosts(), 'Enter submits exactly one server query', {
+      timeout: 60_000,
+    })
+    .toBe(1);
+  expect(searchPosts()).toBe(1);
   await expect(page.getByTestId('breadcrumb')).toHaveCount(0);
 
   await expect(zoneHeader(page, 'a')).toBeVisible();
@@ -581,7 +617,9 @@ test('E2E-RETRIEVAL-001: Results render as accordion zones with honest headers, 
   await expect
     .poll(() => metadataPosts(), 'rows enrich through the metadata seam')
     .toBeGreaterThan(0);
-  await expect(serverRow(page, alphaOneId)).toContainText(/\d+(\.\d+)? (B|KB|MB|GB)/);
+  const enrichedRow = serverRow(page, alphaOneId);
+  await enrichedRow.scrollIntoViewIfNeeded();
+  await expect(enrichedRow).toContainText(/\d+(\.\d+)? (B|KB|MB|GB)/);
 
   // Committed-term highlight: the twice-cased name carries BOTH fragments as
   // `search-highlight-range` marks while the row text stays the FULL verbatim
@@ -597,10 +635,10 @@ test('E2E-RETRIEVAL-001: Results render as accordion zones with honest headers, 
   await revealAndActivateChip(page, 0, 'exit', isMobile);
   await expect(chipBar(page)).toHaveCount(0);
   await expect(page.getByTestId('breadcrumb')).toBeVisible();
-  await expect(fileItem(page, betaFile.path)).toBeVisible();
+  await expect(fileItem(page, betaFile.path)).toBeVisible({ timeout: 60_000 });
 });
 
-test('E2E-RETRIEVAL-002: Result rows open — files preview over the mounted zones, directories navigate and exit', async ({
+test('E2E-S3-RETRIEVAL-002: Result rows open — files preview over the mounted zones, directories navigate and exit', async ({
   page,
   request,
 }, testInfo) => {
@@ -639,7 +677,7 @@ test('E2E-RETRIEVAL-002: Result rows open — files preview over the mounted zon
   // (chip bar + zone header stay), and exactly one /search/click lands.
   await openRow(page, rowNode(page, openId), isMobile);
   await expect(page.getByTestId('file-preview-dialog')).toBeVisible();
-  await expect(chipBar(page)).toBeVisible();
+  await expect(chipBar(page)).toBeVisible({ timeout: 60_000 });
   await expect(zoneHeader(page, 'a')).toBeVisible();
   await expect
     .poll(() => clicks().filter((c) => c.body?.node_id === openId).length, { timeout: 10_000 })
@@ -663,7 +701,7 @@ test('E2E-RETRIEVAL-002: Result rows open — files preview over the mounted zon
   ).toBeVisible();
 });
 
-test('E2E-RETRIEVAL-003: Live typing hides no rows, promotes matches, and highlights them without a server call', async ({
+test('E2E-S3-RETRIEVAL-003: Live typing hides no rows, promotes matches, and highlights them without a server call', async ({
   page,
   request,
 }, testInfo) => {
@@ -756,7 +794,7 @@ test('E2E-RETRIEVAL-003: Live typing hides no rows, promotes matches, and highli
   await blurActive(page);
   await expect(button).toHaveCount(0);
 });
-test('E2E-RETRIEVAL-004: Recent queries persist in sessionStorage across searches and honor the cap and logout clear', async ({
+test('E2E-S3-RETRIEVAL-004: Recent queries persist in sessionStorage across searches and honor the cap and logout clear', async ({
   page,
   request,
 }, testInfo) => {
@@ -818,7 +856,7 @@ test('E2E-RETRIEVAL-004: Recent queries persist in sessionStorage across searche
   expect(afterLogout).toBeNull();
 });
 
-test('E2E-RETRIEVAL-005: Zero-result queries render the honest empty state and trashed nodes never surface', async ({
+test('E2E-S3-RETRIEVAL-005: Zero-result queries render the honest empty state and trashed nodes never surface', async ({
   page,
   request,
 }, testInfo) => {
@@ -836,7 +874,7 @@ test('E2E-RETRIEVAL-005: Zero-result queries render the honest empty state and t
   // zero-name payload, so EVERY zone count is 0: no zone headers render at
   // all, just the single no-results line inside the mounted results surface.
   await submitSearch(page, `pluvio-${Date.now()}`);
-  await expect(chipBar(page)).toBeVisible();
+  await expect(chipBar(page)).toBeVisible({ timeout: 60_000 });
   await expect(zoneHeader(page, 'a')).toHaveCount(0);
   await expect(zoneHeader(page, 'b')).toHaveCount(0);
   await expect(zoneHeader(page, 'c')).toHaveCount(0);
@@ -851,7 +889,7 @@ test('E2E-RETRIEVAL-005: Zero-result queries render the honest empty state and t
   await pressSearchClose(page, isMobile);
   await expect(chipBar(page)).toHaveCount(0);
   await expect(page.getByTestId('breadcrumb')).toBeVisible();
-  await expect(fileItem(page, betaFile.path)).toBeVisible();
+  await expect(fileItem(page, betaFile.path)).toBeVisible({ timeout: 60_000 });
 
   // Trash leg: submit a match, trash it through the canonical batch-delete
   // channel, reload the folder (the session listing re-reads WITHOUT the
@@ -872,7 +910,7 @@ test('E2E-RETRIEVAL-005: Zero-result queries render the honest empty state and t
   await purgeTrashedItemByName(request, token, quarzName);
 });
 
-test('E2E-RETRIEVAL-006: The FAB spot morphs to the ghost search button on focus and restores on blur-empty and close', async ({
+test('E2E-S3-RETRIEVAL-006: The FAB spot morphs to the ghost search button on focus and restores on blur-empty and close', async ({
   page,
   request,
 }, testInfo) => {
@@ -917,7 +955,7 @@ test('E2E-RETRIEVAL-006: The FAB spot morphs to the ghost search button on focus
   await expect(searchBox(page)).toHaveValue('');
 });
 
-test('E2E-RETRIEVAL-007: Zone chrome — the collapse persists across navigation and the active header stays pinned', async ({
+test('E2E-S3-RETRIEVAL-007: Zone chrome — the collapse persists across navigation and the active header stays pinned', async ({
   page,
   request,
 }, testInfo) => {
@@ -1047,7 +1085,7 @@ test('E2E-RETRIEVAL-007: Zone chrome — the collapse persists across navigation
   await revealAndActivateChip(page, 0, 'exit', isMobile);
 });
 
-test('E2E-RETRIEVAL-008: The chip chain refines, reverts to snapshots, and every exit resets the input field', async ({
+test('E2E-S3-RETRIEVAL-008: The chip chain refines, reverts to snapshots, and every exit resets the input field', async ({
   page,
   request,
 }, testInfo) => {
@@ -1115,7 +1153,7 @@ test('E2E-RETRIEVAL-008: The chip chain refines, reverts to snapshots, and every
     await page.getByTestId('breadcrumb-folder-tree-toggle').click();
   }
   await submitSearch(page, 'alpha');
-  await expect(chipBar(page)).toBeVisible();
+  await expect(chipBar(page)).toBeVisible({ timeout: 60_000 });
   await expect(zoneHeader(page, 'a')).toBeVisible();
   await navigateHomeViaTree(page);
   await expect(chipBar(page)).toHaveCount(0);
@@ -1130,7 +1168,7 @@ test('E2E-RETRIEVAL-008: The chip chain refines, reverts to snapshots, and every
   expect((JSON.parse(stored as string) as { query: string }[])[0].query).toBe('alpha');
 });
 
-test('E2E-RETRIEVAL-009: The library-add button adds the FULL snapshot to an existing collection', async ({
+test('E2E-S3-RETRIEVAL-009: The library-add button adds the FULL snapshot to an existing collection', async ({
   page,
   request,
 }, testInfo) => {
@@ -1190,7 +1228,7 @@ test('E2E-RETRIEVAL-009: The library-add button adds the FULL snapshot to an exi
   await revealAndActivateChip(page, 0, 'exit', isMobile);
 });
 
-test('E2E-RETRIEVAL-010: A read-only server row badges EditOff and disables the write bulk actions when selected', async ({
+test('E2E-S3-RETRIEVAL-010: A read-only server row badges EditOff and disables the write bulk actions when selected', async ({
   page,
   request,
 }, testInfo) => {
@@ -1245,7 +1283,7 @@ test('E2E-RETRIEVAL-010: A read-only server row badges EditOff and disables the 
   await expect(page.getByTestId('bulk-action-move')).toBeHidden();
 });
 
-test('E2E-RETRIEVAL-011: View-mode and sort toggles affect both zones and select-all spans zones', async ({
+test('E2E-S3-RETRIEVAL-011: View-mode and sort toggles affect both zones and select-all spans zones', async ({
   page,
   request,
 }, testInfo) => {

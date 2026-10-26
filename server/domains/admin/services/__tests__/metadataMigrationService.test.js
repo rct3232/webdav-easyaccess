@@ -377,6 +377,104 @@ describe('scanTarget', () => {
 });
 
 // ---------------------------------------------------------------------------
+// PostgreSQL connection timeout (WEA_DB_CONNECTION_TIMEOUT_MS)
+// ---------------------------------------------------------------------------
+
+describe('PostgreSQL connection timeout', () => {
+  const PG_ENV_KEYS = [
+    'WEA_DB_HOST',
+    'WEA_DB_PORT',
+    'WEA_DB_DATABASE',
+    'WEA_DB_USER',
+    'WEA_DB_PASSWORD',
+    'WEA_DB_CONNECTION_TIMEOUT_MS',
+  ];
+  const explicitTarget = {
+    backend: 'postgresql',
+    pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' },
+  };
+
+  let savedEnv;
+
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(PG_ENV_KEYS.map((key) => [key, process.env[key]]));
+    for (const key of PG_ENV_KEYS) delete process.env[key];
+  });
+
+  afterEach(() => {
+    for (const key of PG_ENV_KEYS) {
+      if (savedEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = savedEnv[key];
+    }
+  });
+
+  async function captureConfig(scanArgs) {
+    const fake = new FakePg({ schemaExists: true });
+    const configs = [];
+    const service = createMetadataMigrationService({
+      pgConnectionProvider: (config) => {
+        configs.push(config);
+        return fake;
+      },
+    });
+    await service.scanTarget(scanArgs);
+    return configs[0];
+  }
+
+  it('uses 30,000 ms for an explicit dialog target when the env is set', async () => {
+    process.env.WEA_DB_CONNECTION_TIMEOUT_MS = '30000';
+
+    const config = await captureConfig(explicitTarget);
+
+    expect(config.connectionTimeoutMillis).toBe(30000);
+  });
+
+  it('defaults an explicit dialog target to 10,000 ms when the env is unset', async () => {
+    const config = await captureConfig(explicitTarget);
+
+    expect(config.connectionTimeoutMillis).toBe(10000);
+  });
+
+  it.each(['0', '-5000'])(
+    'falls back to 10,000 ms for an explicit dialog target when the env is %s',
+    async (value) => {
+      process.env.WEA_DB_CONNECTION_TIMEOUT_MS = value;
+
+      const config = await captureConfig(explicitTarget);
+
+      expect(config.connectionTimeoutMillis).toBe(10000);
+    }
+  );
+
+  it('honors the env timeout for an env-selected target', async () => {
+    process.env.WEA_DB_HOST = 'env-host';
+    process.env.WEA_DB_DATABASE = 'env-db';
+    process.env.WEA_DB_USER = 'env-user';
+    process.env.WEA_DB_PASSWORD = 'env-pass';
+    process.env.WEA_DB_CONNECTION_TIMEOUT_MS = '30000';
+
+    const config = await captureConfig({ backend: 'postgresql' });
+
+    expect(config).toMatchObject({ host: 'env-host', connectionTimeoutMillis: 30000 });
+  });
+
+  it.each(['0', '-5000'])(
+    'falls back to 10,000 ms for an env-selected target when the env is %s',
+    async (value) => {
+      process.env.WEA_DB_HOST = 'env-host';
+      process.env.WEA_DB_DATABASE = 'env-db';
+      process.env.WEA_DB_USER = 'env-user';
+      process.env.WEA_DB_PASSWORD = 'env-pass';
+      process.env.WEA_DB_CONNECTION_TIMEOUT_MS = value;
+
+      const config = await captureConfig({ backend: 'postgresql' });
+
+      expect(config.connectionTimeoutMillis).toBe(10000);
+    }
+  );
+});
+
+// ---------------------------------------------------------------------------
 // postgresqlToSqlite — real sqlite target (black-box)
 // ---------------------------------------------------------------------------
 

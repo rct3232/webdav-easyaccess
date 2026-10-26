@@ -92,6 +92,7 @@ const BOOLEAN_COLUMNS = { users: ['is_admin'] };
 
 const BATCH_SIZE = 500;
 const VALID_DIRECTIONS = ['sqliteToPostgresql', 'postgresqlToSqlite'];
+const DEFAULT_PG_CONNECTION_TIMEOUT_MS = 10_000;
 
 class MigrationCancelledError extends Error {
   constructor() {
@@ -108,6 +109,11 @@ function defaultSqlitePath() {
 
 // Resolve PG connection config from an explicit payload or the WEA_DB_* env
 // (mirrors storage.resolvePgConfig, which is not exported).
+function parsePgConnectionTimeoutMs(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_PG_CONNECTION_TIMEOUT_MS;
+}
+
 function resolvePgConfig(pg) {
   if (!pg) {
     const required = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
@@ -121,7 +127,7 @@ function resolvePgConfig(pg) {
       database: process.env.WEA_DB_DATABASE,
       user: process.env.WEA_DB_USER,
       password: process.env.WEA_DB_PASSWORD,
-      connectionTimeoutMillis: Number(process.env.WEA_DB_CONNECTION_TIMEOUT_MS) || 5000,
+      connectionTimeoutMillis: parsePgConnectionTimeoutMs(process.env.WEA_DB_CONNECTION_TIMEOUT_MS),
       ssl: ['1', 'true', 'yes', 'on'].includes((process.env.WEA_DB_SSL || '').trim().toLowerCase())
         ? { rejectUnauthorized: false }
         : false,
@@ -140,7 +146,7 @@ function resolvePgConfig(pg) {
     database: String(pg.database),
     user: String(pg.user),
     password: String(pg.password),
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: parsePgConnectionTimeoutMs(process.env.WEA_DB_CONNECTION_TIMEOUT_MS),
     ssl: pg.ssl ? { rejectUnauthorized: false } : false,
   };
 }

@@ -5,10 +5,10 @@ import { DatabaseSync } from 'node:sqlite';
 import { APIRequestContext, expect, test } from '@playwright/test';
 
 import {
-  prepareScratchWebdav,
   killScratch,
+  prepareScratchS3,
+  s3ScratchEnv,
   scratchDirFor,
-  scratchWebdavUrl,
   spawnScratchServer,
   waitForScratchHealth,
   writeScratchEnv,
@@ -23,9 +23,10 @@ import {
 } from './helpers/scratchUser';
 import { flushPrivateWorkspaceCleanups, uploadFileAt } from './helpers/files';
 import { resolveNodeId } from './helpers/resolvePath';
+import { skipWhenUnavailable } from './helpers/skipPolicy';
 
 /**
- * E2E-AI-001 — semantic search over the embed-enabled engine
+ * E2E-S3-AI-001 — semantic search over the embed-enabled engine
  * (docs/spec/server/routes/search.md §2.4, searchService.md §2.3): the
  * scratch server boots with the built-in embed engine pointed at the
  * PRE-SEEDED EG2 weights (`WEA_MODEL_DIR`) so boot provisioning is a
@@ -35,10 +36,12 @@ import { resolveNodeId } from './helpers/resolvePath';
  * exercises the embed leg end-to-end.
  *
  * SCRATCH-HERMETIC per the destructive-case policy (docs/TESTING_STRATEGY.md):
- * own server on the `:5016` slot (own sqlite, webdav file backend), never the
- * shared :5002 pool. The file is serial and owns the server lifecycle. The
- * actor is a provisioned REGULAR USER; the scratch admin stays OPERATOR-only
- * (provisioning + the perm-delete cleanup fallback).
+ * own server per Playwright project (desktop :5016, own sqlite,
+ * project-scoped S3 bucket), never the shared :5002 pool. The file is serial
+ * and owns the server lifecycle. This is the ONLY scratch suite that leaves the
+ * AI worker/model enabled (no `WEA_SKIP_AI_WORKER`). The actor is a provisioned
+ * REGULAR USER; the scratch admin stays OPERATOR-only (provisioning + the
+ * perm-delete cleanup fallback).
  *
  * WIRE SHAPE asserted at this stage (searchService.md §2.5a): the embed leg
  * RAN — `semantic_available:true`, the `semantic` key PRESENT,
@@ -157,26 +160,28 @@ let operatorToken = '';
 let userToken = '';
 let homeNodeId = 0;
 
-test.beforeAll(async ({ request }) => {
-  test.skip(
+test.beforeAll(async ({ request }, testInfo) => {
+  skipWhenUnavailable(
     !fs.existsSync(
       path.join(WEA_MODEL_DIR, modelLock.repo, modelLock.revision, 'onnx', 'model_q4.onnx')
     ),
     `pre-seeded EG2 weights not found under ${WEA_MODEL_DIR} — a boot without them would attempt a network download, which the hermetic-scratch policy forbids`
   );
 
-  scratch = scratchDirFor(CASE_ID);
+  const projectName = testInfo.project.name;
+  scratch = scratchDirFor(CASE_ID, projectName);
   fs.rmSync(scratch, { recursive: true, force: true });
   fs.mkdirSync(scratch, { recursive: true });
+  // S3 is the product's default backend; prepareScratchS3 ensures the
+  // project-scoped bucket exists and empties it for a deterministic run.
+  const bucket = await prepareScratchS3(projectName);
   writeScratchEnv(scratch, {
     PORT: String(SCRATCH_PORT),
-    WEA_FILE_STORAGE: 'webdav',
-    WEBDAV_UPSTREAM_URL: scratchWebdavUrl(CASE_ID),
+    ...s3ScratchEnv(bucket),
     JWT_SECRET: 'ai-e2e-jwt-secret',
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
     WEA_MODEL_DIR,
   });
-  await prepareScratchWebdav(scratch, CASE_ID);
   spawned = spawnScratchServer(scratch, SCRATCH_PORT);
   await waitForScratchHealth(spawned, SCRATCH_PORT);
   operatorToken = await loginScratchAdmin(request, ADMIN_PASSWORD);
@@ -200,7 +205,7 @@ test.afterEach(async ({ request }) => {
   await flushPrivateWorkspaceCleanups(request, operatorToken);
 });
 
-test('E2E-AI-001: a semantic search returns an uploaded document no name matches and reports the section available', async ({
+test('E2E-S3-AI-001: a semantic search returns an uploaded document no name matches and reports the section available', async ({
   page,
   request,
 }) => {

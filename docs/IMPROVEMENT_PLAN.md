@@ -220,8 +220,8 @@ AGENTS.md §2.1. Root cause and shipped state:
   (setup-wizard/admin-config/migration) are now INDEPENDENT siblings — each owns a distinct
   scratch port (:5003 wizard / :5010 admin-config / :5011 migration / :5012 trash-admin) mirrored by its
   playwright.config baseURL, distinct scratch PG DB names (wizard `webdav_e2e_setup`, migration
-  `webdav_e2e_migration_<case>`), and migration targets a dedicated MinIO bucket
-  (`e2e-migration-bucket`). The webdav container restart is done once up-front in
+  `webdav_e2e_migration_<case>`), and migration targets project-scoped MinIO destination buckets
+  (`e2e-migration-<project>`). The webdav container restart is done once up-front in
   `e2e/global-setup.ts` (both modes), removing the mid-run lazy restarts. A suite's mobile
   variant still depends on its desktop, so one suite never overlaps itself on its own port.
 - W6 reassessment (2026-09-07): the migration/setup/admin-config "depth" is NOT trimmed — those

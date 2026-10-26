@@ -642,6 +642,45 @@ async function copyFile(
  * differently (405 Method Not Allowed, 301/302/303 redirects, or a message
  * containing "already exists").
  */
+const MKCOL_TRANSPORT_RETRY_DELAYS_MS = [50, 150];
+
+/**
+ * WebDAV servers (bytemark included) can drop a connection with `socket hang
+ * up` / ECONNRESET while a collection is being created under parallel load.
+ * Retry only transport-level failures; status responses (405/409/etc.) keep
+ * their existing idempotency handling.
+ */
+function isTransientWebdavTransportError(error) {
+  if (!error) return false;
+  const code = error.code || error.cause?.code;
+  if (code && ['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT'].includes(code)) {
+    return true;
+  }
+  return /socket hang up|ECONNRESET|ECONNREFUSED|EPIPE|network error/i.test(
+    String(error.message || '')
+  );
+}
+
+async function createDirectoryWithTransportRetry(client, requestPath) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= MKCOL_TRANSPORT_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      await client.createDirectory(requestPath);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (
+        !isTransientWebdavTransportError(error) ||
+        attempt === MKCOL_TRANSPORT_RETRY_DELAYS_MS.length
+      ) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, MKCOL_TRANSPORT_RETRY_DELAYS_MS[attempt]));
+    }
+  }
+  throw lastError;
+}
+
 function isAlreadyExistsError(error) {
   if (!error) return false;
   const status = error.status || error.response?.status;
@@ -691,7 +730,7 @@ async function ensureDirectoryExists(directoryPath) {
     }
     if (alreadyThere) continue;
     try {
-      await client.createDirectory(requestPath);
+      await createDirectoryWithTransportRetry(client, requestPath);
     } catch (error) {
       if (isAlreadyExistsError(error)) {
         continue;

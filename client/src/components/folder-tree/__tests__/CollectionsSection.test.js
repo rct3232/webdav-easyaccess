@@ -182,6 +182,35 @@ describe('CollectionsSection', () => {
     expect(screen.queryByTestId('collection-row-1')).not.toBeInTheDocument();
     expect(screen.queryByTestId('collections-archive-node')).not.toBeInTheDocument();
   });
+
+  it('exposes aria-expanded on a focusable toggle and associates the collapsible content', () => {
+    const props = defaultProps();
+    const { unmount } = renderWithProviders(<CollectionsSection {...props} />);
+    const toggle = screen.getByTestId('collections-toggle');
+    expect(toggle).toHaveAttribute('role', 'button');
+    expect(toggle).toHaveAttribute('tabindex', '0');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const contentId = toggle.getAttribute('aria-controls');
+    expect(contentId).toBeTruthy();
+    expect(document.getElementById(contentId)).toBeInTheDocument();
+    expect(screen.getByTestId('collection-row-1')).toBeVisible();
+
+    unmount();
+    renderWithProviders(<CollectionsSection {...props} collectionsExpanded={false} />);
+    expect(screen.getByTestId('collections-toggle')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('collection-row-1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Roadtrip')).not.toBeInTheDocument();
+  });
+
+  it('activates the toggle from the keyboard (Enter/Space)', () => {
+    const props = defaultProps();
+    renderWithProviders(<CollectionsSection {...props} />);
+    const toggle = screen.getByTestId('collections-toggle');
+    fireEvent.keyDown(toggle, { key: 'Enter' });
+    expect(props.onCollectionsToggle).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(toggle, { key: ' ' });
+    expect(props.onCollectionsToggle).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('CollectionsSection — Likes child row (P-5)', () => {

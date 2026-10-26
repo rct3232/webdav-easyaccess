@@ -7,11 +7,12 @@
  * `healthy` (the stack has no fixed `container_name:` — names are project-
  * scoped, so containers are matched by the `Service` field instead):
  *
- *   - webdav-test    — always required
  *   - postgresql-e2e — always required
- *   - minio-e2e      — required only in s3 mode
+ *   - minio-e2e      — always required (S3 scratch/platform + migration)
+ *   - webdav-test    — required only for the WebDAV group
  *
- * Mode comes from `E2E_BACKEND_MODE` (defaults to `s3`).
+ * Mode comes from `E2E_BACKEND_MODE` (defaults to `s3`); the E2E group comes
+ * from `E2E_GROUP` (defaults to `default`). Default/core never start WebDAV.
  *
  * Before `up -d` the script ensures this checkout owns a per-checkout PORT
  * BAND (scripts/lib/e2e-band.cjs): offset 0 = the historical fixed ports, or
@@ -63,12 +64,9 @@ if (backendMode !== 's3' && backendMode !== 'webdav') {
 // fixed `container_name:` (project-scoped names allow parallel worktree
 // stacks), so health is polled per SERVICE. The stack always starts MinIO,
 // but webdav runs do not depend on it being healthy.
-const ALWAYS_REQUIRED_SERVICES = ['webdav-test', 'postgresql-e2e'];
-const S3_REQUIRED_SERVICES = ['minio-e2e'];
-const requiredServices =
-  backendMode === 's3'
-    ? [...ALWAYS_REQUIRED_SERVICES, ...S3_REQUIRED_SERVICES]
-    : [...ALWAYS_REQUIRED_SERVICES];
+const e2eGroup = process.env.E2E_GROUP || 'default';
+const needsWebdav = e2eGroup === 'webdav' || backendMode === 'webdav';
+const requiredServices = ['postgresql-e2e', 'minio-e2e', ...(needsWebdav ? ['webdav-test'] : [])];
 
 function resolveComposeCommand() {
   const candidates = [
@@ -93,7 +91,7 @@ const composeProject = composeProjectName(bandOffset);
 writeRuntimeEnv(ROOT_DIR, bandPorts);
 console.log(
   `[e2e-wait-healthy] Port band offset ${bandOffset}: ` +
-    `api=${bandPorts.api} client=${bandPorts.client} webdav=${bandPorts.webdav} ` +
+    `api=${bandPorts.api} client=${bandPorts.client} webdav=${needsWebdav ? bandPorts.webdav : 'off'} ` +
     `pg=${bandPorts.pg} s3=${bandPorts.s3}/${bandPorts.s3Console} ` +
     `scratch=${bandPorts.scratchWizard},${bandPorts.scratchAdminConfig},${bandPorts.scratchMigration},${bandPorts.scratchTrashAdmin},${bandPorts.scratchCollections}`
 );
@@ -112,7 +110,7 @@ function runUp() {
   console.log('[e2e-wait-healthy] Bringing the E2E Docker stack up (idempotent)...');
   const result = spawnSync(
     compose.command,
-    [...compose.args, '-p', composeProject, '-f', COMPOSE_FILE, 'up', '-d'],
+    [...compose.args, '-p', composeProject, '-f', COMPOSE_FILE, 'up', '-d', ...requiredServices],
     {
       cwd: ROOT_DIR,
       env: composePortsEnv(),

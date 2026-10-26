@@ -240,6 +240,37 @@ describe('createMigrationService', () => {
     expect(activeRow.rows[0].sync_status).toBe('active');
   });
 
+  it('retries a source download once after a transient socket hang-up', async () => {
+    const { rootNodeId } = await createUserTree();
+    const src = createFakeBlobStore();
+    await seedWebdavNativeFile({
+      parentId: rootNodeId,
+      name: 'transient-read.txt',
+      content: 'retry-content',
+      srcStore: src,
+    });
+    const downloadBlob = src.downloadBlob.bind(src);
+    src.downloadBlob = jest
+      .fn()
+      .mockRejectedValueOnce(
+        Object.assign(new Error('serverErrors.webdav.operationFailed'), {
+          params: { reason: 'request failed, reason: socket hang up' },
+        })
+      )
+      .mockImplementation(downloadBlob);
+
+    const dst = createFakeBlobStore();
+    buildDestBlobStore = () => ({ blobStore: dst, summary: 's3 fake' });
+    const service = makeService(src);
+
+    const result = await service.run({ destConfig: { type: 's3' }, mode: 'apply' });
+
+    expect(result).toEqual({ copied: 1, skipped: 0, failed: 0, errors: [], dryRun: false });
+    expect(src.downloadBlob).toHaveBeenCalledTimes(2);
+    expect(dst.count()).toBe(1);
+    expect(dst.getBuffer(dst.listKeys()[0]).toString()).toBe('retry-content');
+  });
+
   it('webdav source: orphaned_node file nodes are excluded from the snapshot', async () => {
     const { rootNodeId } = await createUserTree();
     const src = createFakeBlobStore();

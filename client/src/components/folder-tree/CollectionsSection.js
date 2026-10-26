@@ -20,6 +20,7 @@ import {
 import TreeRow, { TreeRowSpacer } from './TreeRow';
 
 const COLLECTION_ROUTE_PREFIX = '/__collections__/collection/';
+const COLLECTIONS_CONTENT_ID = 'collections-section-content';
 
 /**
  * CollectionsSection — collapsible folder-tree section for the `__collections__`
@@ -45,6 +46,13 @@ const CollectionsSection = ({
   const isHeaderSelected = currentPath === '/__collections__';
   const isArchiveSelected = currentPath === '/__collections__/__archive__';
   const isLikesSelected = currentPath === '/__collections__/liked';
+
+  const handleToggleKeyDown = (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    event.stopPropagation();
+    onCollectionsToggle(event);
+  };
 
   return (
     <>
@@ -78,8 +86,14 @@ const CollectionsSection = ({
           <ListItemIcon sx={{ minWidth: 24, mr: 0.5 }}>
             <Box
               component="span"
+              role="button"
+              tabIndex={0}
+              aria-label={t('nav.collections')}
+              aria-expanded={collectionsExpanded}
+              aria-controls={COLLECTIONS_CONTENT_ID}
               data-testid="collections-toggle"
               onClick={onCollectionsToggle}
+              onKeyDown={handleToggleKeyDown}
               sx={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -115,7 +129,7 @@ const CollectionsSection = ({
         </ListItemButton>
       </ListItem>
 
-      <Collapse in={collectionsExpanded} timeout="auto" unmountOnExit>
+      <Collapse id={COLLECTIONS_CONTENT_ID} in={collectionsExpanded} timeout="auto" unmountOnExit>
         <List component="div" disablePadding>
           {/* LikesNode (P-5; MOVED TO TOP by M-2, 2026-09-30 owner ruling) — the
               static child row leads the section body, before the active

@@ -22,7 +22,7 @@
  *   4. `E2E_PORT_OFFSET` pins the band exactly (parallel-run scheduling);
  *      per-port `E2E_*_PORT` env vars override the effective ports last.
  *
- * BAND_STEP (20) must exceed the span of the scratch base ports (5002..5016)
+ * BAND_STEP (20) must exceed the span of the scratch base ports (5002..5020)
  * so two allocated bands can never overlap each other's slots.
  *
  * The module also regenerates `data/e2e-runtime.env` — a copy of the mode's
@@ -42,12 +42,19 @@ const PORT_BASES = {
   client: 3000,
   api: 5002,
   scratchWizard: 5003,
+  scratchWizardMobile: 5004,
+  scratchRegset: 5005,
+  scratchRegsetMobile: 5006,
   scratchAdminConfig: 5010,
+  scratchAdminConfigMobile: 5017,
   scratchMigration: 5011,
+  scratchMigrationMobile: 5018,
   scratchTrashAdmin: 5012,
+  scratchTrashAdminMobile: 5019,
   scratchCollections: 5013,
-  scratchCollectionsMobile: 5014, // reserved — former standalone mobile-twin slot (twin retired; slot kept to avoid band shifts)
+  scratchCollectionsMobile: 5014,
   scratchRetrieval: 5015,
+  scratchRetrievalMobile: 5020,
   scratchAi: 5016,
   webdav: 8090,
   pg: 5433,
@@ -62,12 +69,19 @@ const PORT_ENV_OVERRIDES = {
   client: 'E2E_CLIENT_PORT',
   api: 'E2E_API_PORT',
   scratchWizard: 'E2E_SCRATCH_WIZARD_PORT',
+  scratchWizardMobile: 'E2E_SCRATCH_WIZARD_MOBILE_PORT',
+  scratchRegset: 'E2E_SCRATCH_REGSET_PORT',
+  scratchRegsetMobile: 'E2E_SCRATCH_REGSET_MOBILE_PORT',
   scratchAdminConfig: 'E2E_SCRATCH_ADMIN_CONFIG_PORT',
+  scratchAdminConfigMobile: 'E2E_SCRATCH_ADMIN_CONFIG_MOBILE_PORT',
   scratchMigration: 'E2E_SCRATCH_MIGRATION_PORT',
+  scratchMigrationMobile: 'E2E_SCRATCH_MIGRATION_MOBILE_PORT',
   scratchTrashAdmin: 'E2E_SCRATCH_TRASH_ADMIN_PORT',
+  scratchTrashAdminMobile: 'E2E_SCRATCH_TRASH_ADMIN_MOBILE_PORT',
   scratchCollections: 'E2E_SCRATCH_COLLECTIONS_PORT',
   scratchCollectionsMobile: 'E2E_SCRATCH_COLLECTIONS_MOBILE_PORT',
   scratchRetrieval: 'E2E_SCRATCH_RETRIEVAL_PORT',
+  scratchRetrievalMobile: 'E2E_SCRATCH_RETRIEVAL_MOBILE_PORT',
   scratchAi: 'E2E_SCRATCH_AI_PORT',
   webdav: 'E2E_WEBDAV_PORT',
   pg: 'E2E_PG_PORT',

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Accordion,
@@ -44,6 +44,7 @@ const SystemSettingsContent = () => {
 
   const [tempSettings, setTempSettings] = useState({ registration_enabled: 'false' });
   const [registrationSaving, setRegistrationSaving] = useState(false);
+  const registrationTouchedRef = useRef(false);
   const [showHiddenFiles, setShowHiddenFiles] = useState(() => getShowHiddenFiles());
   const [message, setMessage] = useState({ type: '', text: '' });
   const [cleanupLoading, setCleanupLoading] = useState(false);
@@ -65,7 +66,9 @@ const SystemSettingsContent = () => {
   const loadSettings = useCallback(async () => {
     try {
       const data = await adminService.getSettings();
-      setTempSettings(data);
+      // A slow initial settings read must not overwrite a user's in-flight
+      // registration toggle (the switch is interactive before the fetch lands).
+      if (!registrationTouchedRef.current) setTempSettings(data);
     } catch (error) {
       setMessage({ type: 'error', text: t('admin.settingsLoadFail') });
     }
@@ -115,6 +118,7 @@ const SystemSettingsContent = () => {
   }, [loadSettings, loadActiveBackends, loadHealth, loadMigrationPresence]);
 
   const handleToggleRegistration = async () => {
+    registrationTouchedRef.current = true;
     const newValue = tempSettings.registration_enabled === 'true' ? 'false' : 'true';
     const nextSettings = { ...tempSettings, registration_enabled: newValue };
     setTempSettings(nextSettings);

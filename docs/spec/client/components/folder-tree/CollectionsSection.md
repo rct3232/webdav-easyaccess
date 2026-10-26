@@ -43,6 +43,15 @@ Target-contract spec.
   per-section computed-paddingLeft tests). Section children use the tree's level-based indent:
   the sections and the file tree share ONE row implementation.
 - Header row: `{CollectionsIcon} Collections` (`nav.collections`), collapsible like RecentFilesSection.
+- **Header expansion contract:** the `collections-toggle` control exposes
+  `aria-expanded={collectionsExpanded}`. The section is a controlled view: when the
+  current route is `/__collections__` or a descendant, the controller auto-expands the
+  section on first render/remount; an undo/notifier refresh preserves the current
+  expansion; a manual collapse is preserved while the route is unchanged. Collapsed
+  state is never inferred from row absence: `aria-expanded` distinguishes collapsed
+  from expanded, and an expanded section with zero rows renders the empty hint. A
+  row-load failure is not represented as a collapse; expansion remains route/manual
+  state, so a failed load cannot masquerade as a user collapse.
 - Collection row: icon + name (the row secondary keeps only the `new` dot — no item-count
   display); **shared-with-me rows** (`granted_role != null`)
   render the plain collections icon and are never hoisted — same
@@ -86,6 +95,10 @@ Target-contract spec.
 ### 2.7 Verification Scenarios
 
 - [ ] Header toggles expand/collapse; header click navigates to `__collections__`.
+- [ ] `collections-toggle` exposes `aria-expanded` equal to `collectionsExpanded`; a
+      collapsed section is distinguishable from an expanded empty section (empty hint).
+- [ ] A route-driven expansion and a later manual collapse keep their respective
+      `aria-expanded` states across a row refresh (no internal state overrides the prop).
 - [ ] Rows render in given order (no client re-sort); NO count text (secondary is the
       `new` dot only).
 - [ ] `granted_role != null` row shows the PLAIN collections icon (no chip) and is NOT hoisted.

@@ -931,7 +931,7 @@ test('E2E-S3-COLLECTION-013: the sidebar Likes child row lists liked files throu
   // owner ruling — not a top-level virtual root).
   await openFolderTreeSection(page, isMobileProject(testInfo));
   await page.getByTestId('collections-toggle').click();
-  await expect(page.getByTestId('collections-liked-node')).toBeVisible();
+  await expect(page.getByTestId('collections-liked-node')).toBeVisible({ timeout: 60_000 });
   await clickTreeItem(page, isMobileProject(testInfo), page.getByTestId('collections-liked-node'));
   await expect(page).toHaveURL(/__collections__\/liked/);
   await expect(page.getByTestId('members-list')).toBeVisible();

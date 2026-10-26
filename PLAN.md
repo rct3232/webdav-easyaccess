@@ -2150,10 +2150,10 @@ infra wave.
 
 ### 28.12 Admin config + trash-admin E2E follow-up (2026-10-23)
 
-| Task | Objective | Inputs | Expected outputs | Verification | Dependencies |
-| --- | --- | --- | --- | --- | --- |
-| 28.12a | Expose registered `GC_VERSION_TTL_DAYS` as an editable Runtime number field | config registry + SystemConfigEditor contract | Spec, UI metadata/locale, unit and E2E pins agree | targeted client tests + admin-config-desktop | none |
-| 28.12b | Remove unrelated UI upload setup from global-trash test | `uploadFileAt` precedent in `E2E-TRASH-003` | API-seeded fixture; trash/purge behavior remains UI-tested | trash-admin desktop/mobile E2E | none |
+| Task   | Objective                                                                   | Inputs                                        | Expected outputs                                           | Verification                                 | Dependencies |
+| ------ | --------------------------------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------- | ------------ |
+| 28.12a | Expose registered `GC_VERSION_TTL_DAYS` as an editable Runtime number field | config registry + SystemConfigEditor contract | Spec, UI metadata/locale, unit and E2E pins agree          | targeted client tests + admin-config-desktop | none         |
+| 28.12b | Remove unrelated UI upload setup from global-trash test                     | `uploadFileAt` precedent in `E2E-TRASH-003`   | API-seeded fixture; trash/purge behavior remains UI-tested | trash-admin desktop/mobile E2E               | none         |
 
 Both tasks are independent; docs precede tests and implementation. Follow-up diagnosis confirmed
 that UI delete returns after the async job is accepted, not completed; E2E-TRASH-007 now captures
@@ -2173,10 +2173,10 @@ UI to leave “Testing...”.
 
 ### 28.13 E2E-ADMINCFG-006 connection-probe retry diagnosis
 
-| Task | Objective | Inputs | Expected outputs | Verification | Dependencies |
-| --- | --- | --- | --- | --- | --- |
-| 28.13a | Stop retrying an intentional failed admin connection probe | config probe contract + shared HTTP retry behavior | `testConfig` sends one request; normal retry policy remains unchanged | adminService/httpClient unit tests + ADMINCFG-006 | none |
-| 28.13b | Validate the repaired surface and repository regression gates | 28.13a implementation | All affected admin E2E, client/server CI, related trash E2E green | serial E2E runs + `npm run test:ci` in client/server | 28.13a |
+| Task   | Objective                                                     | Inputs                                             | Expected outputs                                                      | Verification                                         | Dependencies |
+| ------ | ------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------- | ------------ |
+| 28.13a | Stop retrying an intentional failed admin connection probe    | config probe contract + shared HTTP retry behavior | `testConfig` sends one request; normal retry policy remains unchanged | adminService/httpClient unit tests + ADMINCFG-006    | none         |
+| 28.13b | Validate the repaired surface and repository regression gates | 28.13a implementation                              | All affected admin E2E, client/server CI, related trash E2E green     | serial E2E runs + `npm run test:ci` in client/server | 28.13a       |
 
 Verified hypothesis: `/api/admin/config/test` reports an unreachable WebDAV probe as HTTP 500;
 the generic transport retries all 5xx, so the UI remains in `testing` while repeat probes run.
@@ -2192,3 +2192,61 @@ before the seeded item rendered; the serial desktop/mobile rerun passed (2/2). S
 173 suites / 2,978 tests (28 skipped). Client CI initially had 11 test timeouts while competing
 with server/E2E workloads, then passed serially: 183 suites / 2,103 tests. No implementation
 failure remained reproducible. `git diff --check` was clean; changes remain uncommitted.
+
+## 29. P2 execution plan — membership snapshot overlay (2026-10-26)
+
+> Execution ledger overlay for §7 P2. Task rows/definitions stay unchanged; this section records
+> the binding D1/D2 resolution and the wave order. Docs-first (AGENTS §2.1): Wave 0 lands the
+> contract text + schema before any P2 code. `ai-feature`-only merges; `dev` untouched.
+
+### 29.1 Binding decisions (full rationale: AI_FEATURE_PLAN §12.14)
+
+- **D1** — definition evaluation is **compute-on-write**. `collection_items` is the single
+  membership state; reads never evaluate definitions. Reconcile applies
+  `score >= theta_in` (add) / `>= theta_out` (keep) / `< theta_out` (remove); offsets come from
+  `profile.membershipHysteresis`. No derived snapshot table.
+- **D2** — `system|seed|search` definitions materialize into `collection_items` with
+  `source`/`reason`; initial batches `published=true`, later rule adds follow `publish_mode`.
+  Manual rows and rule rows coexist; `Exclude` deletes + inserts the exclusion. Wire
+  `membership` keeps `stored` (manual) vs `derived` (rule-managed).
+- **D3** — membership/seed/centroid/grouping use pooled vectors; `vectorStore.neighbors`
+  (max-over-chunks) stays retrieval-only.
+- **D4** — merge suggestion state machine gains `dismiss_count` (2-week re-raise once, then
+  30-day sleep); `rejected` stays terminal.
+- **D5** — archive constants: `AI_EVOLUTION_INACTIVE_DAYS=30`, `AI_EVOLUTION_MIN_AGE_DAYS=14`
+  (ε=0), with `AI_EVOLUTION_CREATE_RATE_DAYS=7`.
+- **D6** — queue-drain hint (`uploadComplete`) stays in P2 scope (latency sugar; the server
+  debounce is authoritative). Its route contract lands in the T2.2 docs step.
+- **D7** — P2 writes merge suggestion score/state only; arbiter recommendation stays T3.1/T3.4
+  (`arbiter_verdict/reason` NULL in P2).
+
+### 29.2 Wave plan (branches from `ai-feature`; merge back to `ai-feature` only)
+
+| Wave | Unit                    | Branch                             | Scope                                                                                                                                                                     | Deps    | Status   |
+| ---- | ----------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | -------- |
+| 0    | P2.0 contracts/schema   | `chore/p2-contract-reconciliation` | snapshot-contract specs; `001` adds `collection_items.source/reason` + `collection_merge_suggestions.dismiss_count`; hint route contract; docs-purity + schema parity     | P1      | `[done]` |
+| 1a   | T2.1 vectors + hook     | `feature/t21-definition-vectors`   | pooled seed/centroid evaluator, predicate+vector AND, `AI_VIEW_WEIGHT_ALPHA`, `checkUploadAdmissions` materialization + 4 commit seams, seed preview/creation replacement | Wave 0  | `[todo]` |
+| 1b   | T2.2a triggers/skeleton | `feature/t22-evolution-triggers`   | `evolutionService` skeleton, `AI_EVOLUTION_*` registry, `startEvolutionScheduler`, `WEA_SKIP_EVOLUTION_SCHEDULER`, per-user lock, `night_eval` report, debounce + hint    | Wave 0  | `[todo]` |
+| 2    | T2.2b passes            | `feature/t22-evolution-passes`     | create (dedup/mutual-kNN/facets/gates/tombstones), reconcile diff, split, merge candidates (D4), auto-pin reconcile                                                       | 1a + 1b | `[todo]` |
+| 3    | T2.3 archive/purge      | `feature/t23-archive-purge`        | archive gate (D5) + purge/tombstone, member-activity read, item ordering activity decay                                                                                   | 1b + 2  | `[todo]` |
+| 3    | T2.4 digest             | `feature/t24-digest-derived`       | materialized `added_since`, removed_since trash/purge refinement, cursor regression                                                                                       | 1a      | `[todo]` |
+| 3    | T2.5 preview close      | `test/t25-preview-close`           | vector definition preview + owner/400/409 regression                                                                                                                      | 1a      | `[todo]` |
+| 4    | Integration             | orchestrator                       | `index.js` scheduler mount + hint route mount; full gates; PLAN ledger closure                                                                                            | Wave 3  | `[todo]` |
+
+### 29.3 P2 verification gates
+
+- Per wave: RED-first suites; full `cd server && npm run test:ci`; client `test:ci` only when the
+  hint/UI seam changes.
+- Repository/schema touched ⇒ `test:ci:pg:adapters` with new conformance cases (item `source`/
+  `reason` round-trip, dismiss counter, member-activity read).
+- Vector native path touched ⇒ `test:ci:pg:vector`.
+- Membership stability: two reads between passes return the same set; `GET /`,
+  `GET /:id/items` and `for-nodes` perform zero definition evaluation.
+- Hysteresis: `theta_out ≤ score < theta_in` keeps a member and rejects a non-member; removal
+  below `theta_out` writes row-delete + exclusion.
+- Journal/report: every pass act `actor='system'`; `admin_reports(kind='night_eval')` written;
+  no tag writes; kill switches leave suggestions/rendering intact.
+- E2E: `collections-desktop` lifecycle after T2.3; `ai-desktop` smoke after T2.1/T2.2. The full
+  hermetic AI/degradation matrix remains T4.3.
+- CI grep gates unchanged (`CacheAdapter|operationProgress`, tag-purge absence);
+  `docsStatePurity` green; prettier/eslint clean.

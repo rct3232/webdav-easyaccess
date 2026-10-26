@@ -26,14 +26,17 @@ absence removes speed or convenience, never the product.
    system.
 2. **Exposure expansion is always explicit.** No automation ever shares anything — the only consent
    prompt allowed inside the silent model.
-3. **Silent evolution is system-origin only.** Other origins: ordering gravity only.
+3. **Silent evolution's create/split/archive/purge are system-origin only.** Reconcile
+   materializes definition-driven membership for `system`/`seed`/`search`; every other origin gets
+   ordering gravity only.
 4. **The undo journal replaces proposal inboxes.** System acts silently with journaled inverses;
    undo, not pre-approval, is the safety valve. Sole exception: merging is proposed in an
    in-context card (§4.4), never a notifications center.
 5. **User-triggered destructive/change actions get one confirmation dialog; system actions none,
    but are always journaled.** Collection removal is archive → delete, trash parity.
-6. **Membership is derived, not stored — except manual.** The view is stored ∪ derived −
-   exclusions; trash, purge, and permission changes propagate.
+6. **Membership is materialized, never computed on read.** Definition-driven members are written
+   to `collection_items` with `source`/`reason` at commit and reconcile boundaries; reads return
+   the stored set. Trash, purge, and permission changes propagate at render time.
 7. **Naming is template-first.** The template namer is default and final; the LLM namer names only
    new creations once chat is configured, never renaming locked names.
 8. **No new in-memory cache state.** AI and collection state is database-backed by design,
@@ -92,13 +95,15 @@ default newest-added first — date = membership-added stamp; revoked rows pin t
 
 ### 3.2 Members
 
-Manual membership is stored; removing a member never trashes the file. Derived membership evaluates
-the definition (path/tag/like/date/size predicates, optionally seed or centroid similarity) with no
-stored rows; a soft view-count boost moves only borderline members and ordering, under
-enter-above/leave-below hysteresis. Tag predicates match by folded string equality in every
-state (§4.18). Exclusions ("Exclude") block derived adds;
-excluding is a touch, hence auto-pins (§4.9), and its rate is an admin quality metric, never an
-archive trigger.
+Membership is materialized; removing a member never trashes the file. Manual rows coexist with
+rule-managed rows (`source` = `system`/`seed`/`search`) in `collection_items`. Definition
+evaluation (path/tag/like/date/size predicates, optionally pooled seed or centroid similarity)
+runs only at write boundaries — the upload hook and reconcile passes — which add/remove rows with
+a captured `reason`. Enter above `theta_in`, leave below `theta_out`; a soft view-count boost
+moves ordering only. Reads never evaluate definitions, so the member set stays fixed between
+passes. Tag predicates match by folded string equality in every state (§4.18). Exclusions
+("Exclude") delete the row and block future rule adds; excluding is a touch, hence auto-pins
+(§4.9), and its rate is an admin quality metric, never an archive trigger.
 
 Member rows render per read with a live permission check: normal; revoked (gray placeholder, no
 name/thumbnail); trashed-by-owner (hidden); purged (gone).
@@ -181,8 +186,8 @@ factor is a release constant.
 
 ### 4.4 Merge proposals (the only proposal UI)
 
-Detection runs nightly or on pair signals: derived pairs by centroid similarity, stored pairs by
-membership overlap (LLM-free, same pipeline). Proposals live at the object, never in an inbox: one
+Detection runs nightly or on pair signals: centroid similarity as a prefilter, then the
+containment-safe set rule over materialized membership (LLM-free, same pipeline). Proposals live at the object, never in an inbox: one
 card atop the collection list, never stacked (an `+N more` chip cycles; zero pending = zero layout
 footprint), collapsed to a 68px line —
 `"Merge "A" into "B"? · N overlapping files · M after merge"` — with a thumbnail strip that
@@ -234,8 +239,8 @@ membership. Shared views resolve **live**, with a publish gate: in ask/off colle
 post-creation adds start unpublished and hidden, and the owner sees a `N awaiting publish` banner with
 batch or individual publish; auto publishes every add, explicitly chosen. The initial set
 of seed and saved-search collections is created **published** — the §4.5/§4.6 confirm dialog is
-that batch approval, unseen remainder included. A derived member's publish state stores as a marker
-(the one exception to derived-no-rows); unpublishing never removes owner-added rows. The
+that batch approval, unseen remainder included. Rule-managed members carry a normal `published`
+value on their materialized row; unpublishing never removes rows. The
 viewer-side `Revoke permission` card action is an actual self-grant revocation
 (`DELETE /:id/grants/me`, instant, no confirm — the owner may trivially re-grant); foreign-owned
 members never

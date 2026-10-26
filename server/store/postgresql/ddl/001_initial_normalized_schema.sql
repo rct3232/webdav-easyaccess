@@ -207,6 +207,9 @@ CREATE TABLE IF NOT EXISTS collection_items (
   node_id BIGINT NOT NULL REFERENCES file_nodes(id) ON DELETE CASCADE,
   added_by BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   published BOOLEAN NOT NULL DEFAULT TRUE,
+  source TEXT NOT NULL DEFAULT 'manual'
+    CHECK (source IN ('manual', 'system', 'seed', 'search')),
+  reason TEXT DEFAULT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (collection_id, node_id)
 );
@@ -259,6 +262,7 @@ CREATE TABLE IF NOT EXISTS collection_merge_suggestions (
   score BIGINT NOT NULL,
   state TEXT NOT NULL DEFAULT 'pending'
     CHECK (state IN ('pending', 'merged', 'dismissed', 'rejected')),
+  dismiss_count INTEGER NOT NULL DEFAULT 0,
   dismissed_at TIMESTAMPTZ DEFAULT NULL,
   rejected_at TIMESTAMPTZ DEFAULT NULL,
   arbiter_verdict TEXT DEFAULT NULL,

@@ -1756,5 +1756,42 @@ from the FileGrid\* JSX bodies with the original suites kept UNCHANGED as regres
   corpus). The per-segment AND gate amendment was measured and REFUTED (single-word segments
   behave like junk: .030–.048); the best-segment variant measured 4/6 composites but was NOT
   adopted — the specced COMPOSED gate stands and composite (multi-segment) queries may return
-  honestly-empty (accepted v1 behavior; the name section covers them). Implementation rule:
+  honestly-empty (accepted v1 behavior; the name section covers it). Implementation rule:
   the baseline sample excludes the candidate set (searchService §2.3).
+
+### 12.14 P2 membership-snapshot rulings (2026-10-26)
+
+**D1 — hysteresis state = materialized membership.** Read-time derived membership cannot carry
+`theta_out` state ("was this node a member?") without a new snapshot table, and its recomputation
+made the visible set drift between reads. Decision: definition evaluation is compute-on-write;
+`collection_items` is the single membership state. A reconcile pass keeps an existing row while
+`score >= theta_out`, admits a non-member while `score >= theta_in`, and removes below the band.
+`theta_in`/`theta_out` derive from the definition's `theta` plus
+`profile.membershipHysteresis.inDelta/outDelta`; absent finite offsets collapse to
+`theta_in = theta_out = theta`. No derived-state table is introduced (rejected: stored derived
+snapshot / read-time re-evaluation). Previews remain explicit dry-runs and may evaluate live.
+
+**D2 — definition-driven membership is materialized.** `system`/`seed`/`search` definitions write
+their members into `collection_items`; reads (`GET /`, `GET /:id`, `GET /:id/items`,
+`POST /for-nodes`) never evaluate a definition. The former "derived rows are never stored" rule
+made publish state unrepresentable (`published` exists only on item rows). Decision: manual and
+rule-managed rows coexist; `source ∈ manual|system|seed|search` and `reason` record provenance and
+the matched rule; `membership` on the wire keeps `stored` (manual) vs `derived` (rule-managed).
+Initial seed/search/system batches are `published=true`; later rule additions follow
+`publish_mode` (`auto` true, `ask|off` false). `Exclude` deletes the row and inserts the exclusion
+so the next reconcile cannot re-admit it. Rejected: virtual derived publish state; separate
+derived-membership table; per-read evaluation.
+
+**D3–D7 — accepted with this design.** D3 pooled vectors for membership/seed/centroid/grouping
+(max-over-chunks stays retrieval-only); D4 `collection_merge_suggestions.dismiss_count` for the
+14-day re-raise / 30-day sleep state machine; D5 `AI_EVOLUTION_INACTIVE_DAYS=30` +
+`AI_EVOLUTION_MIN_AGE_DAYS=14`; D6 queue-drain hint stays in P2 (latency sugar, debounce is
+authoritative; endpoint contract lands with its docs step); D7 merge-arbiter recommendation stays
+with T3.1/T3.4 (P2 writes score/state, arbiter columns NULL).
+
+**Consequences.** Invariants `docs/features/collections-platform.md` §2.3/§2.6 and the
+`collectionsService`/`collectionsStore`/`routes`/`evolutionService` specs now state the snapshot
+contract; `001_initial_normalized_schema.sql` gains `collection_items.source`/`reason`. The read
+path drops corpus evaluation (stable UX and list performance); membership changes only at commit
+boundaries and are journaled/digested as such. Reconcile covers definition-driven collections
+only and never mutates manual `origin='user'` rows.

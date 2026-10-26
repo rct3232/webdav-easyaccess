@@ -224,8 +224,8 @@ Required assumptions:
   `WEA_SKIP_AI_WORKER=1` skips the worker loop only; boot provisioning still
   runs. `AI_SEMANTIC_SEARCH_ENABLED` is a `dbOnly` setting and is ignored from
   the environment; tests that need the kill switch write it through the
-  database/config surface. Only the AI case supplies the model directory and
-  enables the worker.
+  database/config surface. Only AI-dependent tests supply the model directory and
+  enable the worker.
 
 ### Parallel E2E runs (multiple git worktrees / checkouts)
 

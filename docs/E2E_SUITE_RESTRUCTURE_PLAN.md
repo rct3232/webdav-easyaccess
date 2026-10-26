@@ -307,9 +307,8 @@ WebDAV root.
   the AI model directory is supplied only by the AI case. `AI_SEMANTIC_SEARCH_ENABLED`
   is `dbOnly` and never set through the environment.
 - Release gates run with retries disabled and fail on flaky tests or unexpected
-  skips; expected group counts are 244 default (238+6), 143 core (140+3), and 41
-  WebDAV. The pending `E2E-S3-MIG-004` addition updates the default count when it
-  lands.
+  skips; expected group counts are 246 default (240+6), 143 core (140+3), and 41
+  WebDAV. `E2E-S3-MIG-004` is included in the default count.
 - server `test:ci`, client `test:ci`, PG adapters, pgvector legs green.
 - `prettier --check` clean on changed files.
 - `docs/E2E_COVERAGE_PLAN.md` has no duplicate/retired active IDs and is the
@@ -337,13 +336,13 @@ WebDAV root.
 - R1-R9 are implemented: S3 scratch conversion, backend splits, ID renumbering,
   group/project config, one-bytemark WebDAV job, and WebDAV provisioning
   isolation.
-- Current verification: `npm run test:e2e` workers=1 → 238 passed + 6 skipped
-  (244 total); workers=2 → 238 passed + 6 skipped; the default
+- Current verification: `npm run test:e2e` workers=1 → 240 passed + 6 skipped
+  (246 total); workers=2 → 240 passed + 6 skipped; the default
   `npm run test:e2e` (Playwright default worker count, 3 on this host) →
-  238 passed + 6 skipped. `npm run test:e2e:core` workers=2 → 140 passed +
+  240 passed + 6 skipped. `npm run test:e2e:core` workers=2 → 140 passed +
   3 skipped (143 total); `npm run test:e2e:webdav` workers=2 → 41 passed +
-  0 skipped (41 total). The pending `E2E-S3-MIG-004` case is not in these
-  counts; it updates the default total to 245 or 246 depending on placement.
+  0 skipped (41 total). The default count includes `E2E-S3-MIG-004` in both
+  migration platform projects.
   The canonical project/spec/slot/ID matrix is in
   [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
 - Worker behavior: a workers=4 stress run on the shared 6-core reference host

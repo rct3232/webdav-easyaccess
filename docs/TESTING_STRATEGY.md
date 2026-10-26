@@ -314,8 +314,8 @@ This section defines only the invariants every E2E suite must follow.
 - The default group is the full generic S3 release gate and includes the core
   subset. The core group is a fast optional pre-merge subset. The WebDAV group
   is required release coverage for real WebDAV-specific behavior.
-- Migration-suite ownership follows the source and destination backend, not a
-  single global rule. A generic gate/role check can run in the default S3 group
+- Cross-backend migration ownership follows the source and destination backend,
+  not a single global rule. A generic gate/role check can run in the default S3 group
   with an S3 source and a WebDAV destination tarpit (a local raw TCP listener,
   not a WebDAV container). An S3 destination may legitimately require a WebDAV
   source. Real WebDAV source/destination behavior remains in the WebDAV job.

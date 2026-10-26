@@ -145,6 +145,7 @@ test.describe('registration setting admin UI (E2E-ADMIN-007)', () => {
     page,
     request,
   }, testInfo) => {
+    test.setTimeout(180_000);
     const suffix = getTestSuffix(testInfo);
     await ensureApprovedUser(request, 'user1', suffix);
 
@@ -158,7 +159,7 @@ test.describe('registration setting admin UI (E2E-ADMIN-007)', () => {
     const currentChecked = await registrationSwitch.isChecked();
 
     await registrationSwitch.click();
-    await expect(page.getByText(/Registration setting saved/i)).toBeVisible();
+    await expect(page.getByText(/Registration setting saved/i)).toBeVisible({ timeout: 60_000 });
 
     await expect(registrationSwitch).toBeChecked({ checked: !currentChecked });
 

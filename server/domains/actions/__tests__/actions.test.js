@@ -548,10 +548,10 @@ describe('GET /api/actions is_tip — per-subject across actors', () => {
 
     // Tip returns to the owner's newest applied row once the cross-actor
     // applied row is gone.
-    const after = await request(app).get('/api/actions').set('Authorization', `Bearer ${ownerToken}`);
-    const afterGrant = after.body.actions.find(
-      (a) => a.subject === subject && a.chain_seq === 2
-    );
+    const after = await request(app)
+      .get('/api/actions')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    const afterGrant = after.body.actions.find((a) => a.subject === subject && a.chain_seq === 2);
     expect(afterGrant.is_tip).toBe(true);
   });
 });

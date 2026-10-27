@@ -10,9 +10,12 @@
  */
 const shareService = require('../shareService');
 const collectionsService = require('../service');
+// Load the actions domain once: it registers the collection-domain undo
+// executor (actions/service.js) that actionJournalStore.undoAction dispatches
+// to for the re-grant/revoke-undo cases below.
+require('@server/domains/actions/service');
 const collectionsStore = require('@server/store/collectionsStore');
 const actionJournalStore = require('@server/store/actionJournalStore');
-const Settings = require('@server/models/Settings');
 const composition = require('@server/service/composition');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
 const { createFileNodeService } = require('@server/service/fileNodeService');
@@ -86,13 +89,9 @@ async function setupSharedCollection(tag, role) {
   const { collection } = await collectionsService.createCollection(owner.user.id, {
     name: `Shared ${tag}`,
   });
-  await collectionsStore.grantAccess(
-    collection.id,
-    grantee.user.id,
-    role,
-    owner.user.id,
-    { actor: owner.user.id }
-  );
+  await collectionsStore.grantAccess(collection.id, grantee.user.id, role, owner.user.id, {
+    actor: owner.user.id,
+  });
   return { owner, grantee, stranger, collection };
 }
 
@@ -155,12 +154,12 @@ describe('shareService getRole / role gates', () => {
     await expect(
       shareService.requireOwnerOrRole(stranger.user.id, collection, 'editor')
     ).rejects.toMatchObject({ message: 'notFound', status: 404 });
-    await expect(shareService.requireOwnerOrRole(editor.user.id, collection, 'editor')).resolves.toBe(
-      'editor'
-    );
-    await expect(shareService.requireOwnerOrRole(owner.user.id, collection, 'editor')).resolves.toBe(
-      'owner'
-    );
+    await expect(
+      shareService.requireOwnerOrRole(editor.user.id, collection, 'editor')
+    ).resolves.toBe('editor');
+    await expect(
+      shareService.requireOwnerOrRole(owner.user.id, collection, 'editor')
+    ).resolves.toBe('owner');
 
     // hidden flag keeps the read-side 404 masquerade (P0 read-side input)
     await collectionsStore.setVisible(viewer.user.id, collection.id, true);
@@ -202,7 +201,7 @@ describe('shareService getRole / role gates', () => {
 // ---------------------------------------------------------------------------
 
 describe('shareService isVisibleToGrantee / publishPendingCount', () => {
-  it('live resolution formula: published flag OR auto mode', () => {
+  it('live resolution formula: flag-gated rows, virtual rows follow auto', () => {
     const publishedRow = { published: true };
     const parkedRow = { published: false };
     const virtual = { published: false, virtual: true };
@@ -210,9 +209,12 @@ describe('shareService isVisibleToGrantee / publishPendingCount', () => {
     expect(shareService.isVisibleToGrantee({ publishMode: 'ask' }, publishedRow)).toBe(true);
     expect(shareService.isVisibleToGrantee({ publishMode: 'ask' }, parkedRow)).toBe(false);
     expect(shareService.isVisibleToGrantee({ publishMode: 'off' }, parkedRow)).toBe(false);
-    // auto mode admits the row even before the flag materializes (§2.3 note)
-    expect(shareService.isVisibleToGrantee({ publishMode: 'auto' }, parkedRow)).toBe(true);
+    // auto publishes ON ADD — a parked materialized row is NOT republished
+    // retroactively (routes/collections.md §2.4: grantees only ever see true)
+    expect(shareService.isVisibleToGrantee({ publishMode: 'auto' }, parkedRow)).toBe(false);
+    // the auto arm covers the VIRTUAL row materialization lag only
     expect(shareService.isVisibleToGrantee({ publishMode: 'auto' }, virtual)).toBe(true);
+    expect(shareService.isVisibleToGrantee({ publishMode: 'ask' }, virtual)).toBe(false);
   });
 
   it('publishPendingCount is owner-only over the resolved rows', async () => {
@@ -221,7 +223,6 @@ describe('shareService isVisibleToGrantee / publishPendingCount', () => {
     const { collection } = await collectionsService.createCollection(owner.user.id, {
       name: 'Pending count',
     });
-    await collectionsService.addItems(owner.user.id, collection.id, [1]);
     // rows fixture: three parked, one published
     const rows = [
       { published: false },
@@ -442,6 +443,22 @@ describe('shareService revoke / revokeOwnGrant', () => {
     ).rejects.toMatchObject({ message: 'grantNotFound', status: 404 });
   });
 
+  it('revoking a never-opened grant (no cursor row) succeeds: absent row is a no-op, not a throw', async () => {
+    const owner = await setupShareUser('rb-noc-o');
+    const grantee = await setupShareUser('rb-noc-g');
+    const { collection } = await collectionsService.createCollection(owner.user.id, {
+      name: 'RB NoCursor',
+    });
+    await shareService.grant(owner.user.id, collection.id, {
+      granteeId: grantee.user.id,
+      role: 'viewer',
+    });
+    expect(await collectionsStore.getDigestCursor(grantee.user.id, collection.id)).toBeNull();
+    await expect(
+      shareService.revoke(owner.user.id, collection.id, grantee.user.id)
+    ).resolves.toMatchObject({ revoked: true });
+  });
+
   it('re-grant after revoke re-dots: the grantee list row carries last_visited_at null', async () => {
     const { owner, grantee, collection } = await setupOpenedShare('regrant');
     await shareService.revoke(owner.user.id, collection.id, grantee.user.id);
@@ -492,9 +509,10 @@ describe('shareService revoke / revokeOwnGrant', () => {
 
   it('collection owner self-calls throw grantNotFound (no self-grant row)', async () => {
     const { owner, collection } = await setupSharedCollection('owner-self', 'viewer');
-    await expect(
-      shareService.revokeOwnGrant(owner.user.id, collection.id)
-    ).rejects.toMatchObject({ message: 'grantNotFound', status: 404 });
+    await expect(shareService.revokeOwnGrant(owner.user.id, collection.id)).rejects.toMatchObject({
+      message: 'grantNotFound',
+      status: 404,
+    });
   });
 
   it('zero-access callers and unknown collections throw the notFound masquerade', async () => {
@@ -502,17 +520,18 @@ describe('shareService revoke / revokeOwnGrant', () => {
     await expect(
       shareService.revokeOwnGrant(stranger.user.id, collection.id)
     ).rejects.toMatchObject({ message: 'notFound', status: 404 });
-    await expect(
-      shareService.revokeOwnGrant(stranger.user.id, 99999999)
-    ).rejects.toMatchObject({ message: 'notFound', status: 404 });
+    await expect(shareService.revokeOwnGrant(stranger.user.id, 99999999)).rejects.toMatchObject({
+      message: 'notFound',
+      status: 404,
+    });
   });
 
   it('a revoked grantee re-calling is zero-access: notFound masquerade', async () => {
     const { grantee, collection } = await setupSharedCollection('twice', 'viewer');
     await shareService.revokeOwnGrant(grantee.user.id, collection.id);
-    await expect(
-      shareService.revokeOwnGrant(grantee.user.id, collection.id)
-    ).rejects.toMatchObject({ message: 'notFound', status: 404 });
+    await expect(shareService.revokeOwnGrant(grantee.user.id, collection.id)).rejects.toMatchObject(
+      { message: 'notFound', status: 404 }
+    );
   });
 });
 
@@ -551,9 +570,7 @@ describe('shareService publish', () => {
     expect(unpublish.published).toEqual([ctx.beach.id]);
     expect(await publishedOf(manual.collection.id, ctx.beach.id)).toBe(false);
     // unpublish NEVER deletes the stored row
-    expect(
-      await collectionsStore.getStoredItem(manual.collection.id, ctx.beach.id)
-    ).not.toBeNull();
+    expect(await collectionsStore.getStoredItem(manual.collection.id, ctx.beach.id)).not.toBeNull();
 
     const journal = await dbQuery(
       'SELECT payload FROM action_journal WHERE subject = ? AND action = ? ORDER BY id DESC LIMIT 1',
@@ -627,8 +644,18 @@ describe('shareService publish', () => {
     const viewer = await createUserWithRoot('pub-viewer');
     const stranger = await createUserWithRoot('pub-stranger');
     const manual = await collectionsService.createCollection(owner.user.id, { name: 'Acl pub' });
-    await collectionsStore.grantAccess(manual.collection.id, editor.user.id, 'editor', owner.user.id);
-    await collectionsStore.grantAccess(manual.collection.id, viewer.user.id, 'viewer', owner.user.id);
+    await collectionsStore.grantAccess(
+      manual.collection.id,
+      editor.user.id,
+      'editor',
+      owner.user.id
+    );
+    await collectionsStore.grantAccess(
+      manual.collection.id,
+      viewer.user.id,
+      'viewer',
+      owner.user.id
+    );
     const ownerBeach = await fileNodeService.createFile(owner.root.id, 'apub.jpg');
 
     const ok = await shareService.publish(
@@ -702,9 +729,10 @@ describe('shareService assertMemberConsumable', () => {
     ).resolves.not.toThrow();
   });
 
-  it('auto mode admits parked rows through the gate (live-resolution formula)', async () => {
+  it('auto mode: adds publish-on-add and consume through the gate; parked history stays forbidden', async () => {
     const owner = await setupShareUser('amc-auto-o');
     const viewer = await setupShareUser('amc-auto-v');
+    const stay = await fileNodeService.createFile(owner.root.id, 'stay.jpg');
     const { collection } = await collectionsService.createCollection(owner.user.id, {
       name: 'AMC auto',
     });
@@ -716,10 +744,16 @@ describe('shareService assertMemberConsumable', () => {
     await collectionsService.updateCollection(owner.user.id, collection.id, {
       publishMode: 'auto',
     });
+    await collectionsService.addItems(owner.user.id, collection.id, [stay.id]);
 
+    // the auto-mode add starts published:true → consumable immediately
+    await expect(
+      shareService.assertMemberConsumable(viewer.user.id, collection.id, stay.id)
+    ).resolves.not.toThrow();
+    // the parked pre-switch row is NOT republished retroactively
     await expect(
       shareService.assertMemberConsumable(viewer.user.id, collection.id, owner.beach.id)
-    ).resolves.not.toThrow();
+    ).rejects.toMatchObject({ message: 'forbidden' });
   });
 
   it('foreign-owned member is never consumable through a shared view (cross-leak parity)', async () => {
@@ -805,9 +839,15 @@ describe('shareService assertMemberConsumable', () => {
       name: 'AMC unread',
     });
     // store-level row WITHOUT the addItems ACL gate — a vanished/never-granted member
-    await collectionsStore.addItem(collection.id, carol.beach.id, owner.user.id, {}, {
-      actor: owner.user.id,
-    });
+    await collectionsStore.addItem(
+      collection.id,
+      carol.beach.id,
+      owner.user.id,
+      {},
+      {
+        actor: owner.user.id,
+      }
+    );
 
     await expect(
       shareService.assertMemberConsumable(owner.user.id, collection.id, carol.beach.id)

@@ -583,11 +583,25 @@ async function getGrant(collectionId, granteeId) {
 /** JOURNALED. UPSERT on PK (collection, grantee) — role change replaces in place. */
 async function grantAccess(collectionId, granteeId, role, grantedBy, ctx = {}) {
   const repo = getRepository();
+  const existing = await repo.getGrant(collectionId, granteeId);
+  // A re-grant replaces the single PK row in place; its inverse restores the
+  // PREVIOUS role/grantedBy, not absence (collectionShareService.md §2.4 —
+  // undo of a re-grant is an exposure RESTORE, never a silent full removal).
+  // A first grant keeps the revoke-access inverse (undo → absence).
+  const inverse = existing
+    ? {
+        op: 'grant-access',
+        collectionId,
+        granteeId,
+        role: existing.role,
+        grantedBy: existing.grantedBy,
+      }
+    : { op: 'revoke-access', collectionId, granteeId };
   const committed = await actionJournalStore.commitChange(
     'collection',
     `collection:${collectionId}`,
     { actor: ctx.actor, action: 'grant', subjectLabel: await labelOf(repo, collectionId) },
-    { inverse: { op: 'revoke-access', collectionId, granteeId } },
+    { inverse },
     (tx) => repo.upsertGrant(tx, collectionId, granteeId, role, grantedBy)
   );
   return withActionId(committed.result, committed);

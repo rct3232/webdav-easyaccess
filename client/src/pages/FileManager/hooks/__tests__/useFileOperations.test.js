@@ -8,7 +8,7 @@ import { useFileOperations } from '../useFileOperations';
 
 import * as fileService from '../../../../services/fileService';
 import { notifyRecentFilesChange } from '../../../../services/recentFilesNotifier';
-import { notifyEvolutionHint } from '../../../../services/explorerGateway';
+import explorerGateway from '../../../../services/explorerGateway';
 
 jest.mock('react-i18next', () => {
   const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
@@ -26,7 +26,10 @@ jest.mock('../../../../services/recentFilesNotifier', () => {
 });
 
 jest.mock('../../../../services/explorerGateway', () => ({
-  notifyEvolutionHint: jest.fn(),
+  __esModule: true,
+  default: {
+    notifyEvolutionHint: jest.fn(),
+  },
 }));
 
 const mockOnProgress = jest.fn();
@@ -237,11 +240,29 @@ describe('useFileOperations', () => {
     });
 
     expect(returned).toBeUndefined();
-    expect(notifyEvolutionHint).toHaveBeenCalledTimes(1);
+    expect(explorerGateway.notifyEvolutionHint).toHaveBeenCalledTimes(1);
   });
 
   it('absorbs a rejecting hint seam without surfacing the failure', () => {
-    notifyEvolutionHint.mockReturnValue(Promise.reject(new Error('transport down')));
+    explorerGateway.notifyEvolutionHint.mockReturnValue(
+      Promise.reject(new Error('transport down'))
+    );
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const { result } = renderHook(() => useFileOperations({}));
+
+    expect(() =>
+      act(() => {
+        result.current.notifyUploadQueueDrained();
+      })
+    ).not.toThrow();
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('absorbs a SYNCHRONOUSLY throwing hint seam without surfacing the failure', () => {
+    explorerGateway.notifyEvolutionHint.mockImplementation(() => {
+      throw new Error('seam binding broken');
+    });
     const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     const { result } = renderHook(() => useFileOperations({}));
 

@@ -1482,6 +1482,7 @@ failed, reason: socket hang up`. The migration's per-node isolation correctly re
   (`--maxWorkers=2`, the same discipline as `server npm run test:ci` on this host).
 - **Verification**: `Test Suites: 183 passed / Tests: 2130 passed` green at maxWorkers=2;
   isolated Setup run green (25/25).
+
 ---
 
 ## 2026-10-27 — T3.2a: the literal `isVisibleToGrantee` `|| auto` arm contradicted the route pin (spec ambiguity)
@@ -1490,7 +1491,7 @@ failed, reason: socket hang up`. The migration's per-node isolation correctly re
   `shareService.isVisibleToGrantee` (collectionShareService.md §2.3 formula, read
   literally: `viewRow.published || collection.publishMode === 'auto'`), the existing
   `collections.test.js` pin `publish gate: ask-mode new members are invisible to
-  grantees; auto flips` failed — a row parked under `ask` became grantee-visible once
+grantees; auto flips` failed — a row parked under `ask` became grantee-visible once
   the owner later switched the collection to `auto`.
 - **Diagnosis**: spec-vs-spec contradiction on the auto/parked edge. routes/collections.md
   §2.4 is unambiguous for materialized rows ("grantees only ever see `published:true`
@@ -1502,7 +1503,7 @@ failed, reason: socket hang up`. The migration's per-node isolation correctly re
   the only one consistent with BOTH specs (routes §2.4 + §2.3's virtual-row note);
   no behavior was ever pinned the other way, and the route pin was kept.
 - **Action**: `isVisibleToGrantee` = `published === true || (viewRow.virtual === true ∧
-  publishMode === 'auto')`; collectionShareService.md §2.3 live-resolution bullet
+publishMode === 'auto')`; collectionShareService.md §2.3 live-resolution bullet
   amended to state the virtual-row scoping explicitly; share-suite formula test and the
   `assertMemberConsumable` auto case rewritten to the reconciled rule.
 - **Verification**: collections-domain suites 12 files / 293 tests green; the previously
@@ -1523,6 +1524,7 @@ failed, reason: socket hang up`. The migration's per-node isolation correctly re
 - **Action**: the suite requires `@server/domains/actions/service` at the top level with
   a comment naming the registration dependency.
 - **Verification**: suite green (34 share-service cases).
+
 ---
 
 ## 2026-10-27 — Merge undo was never executable: the undo executor had no `merge-collections` case
@@ -1573,3 +1575,29 @@ test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
   an undo affordance). Docs unchanged (already correct).
 - **Verification**: `useCollections.test.js` 14/14 green; merge-slot shell tests
   dispatch→refresh→card-drop chains green.
+
+## 2026-10-27 — T3.2b sharing-dialog RED/GREEN: two test-side assertion errors and a hook-return effect dependency (update loop)
+
+- **Summary**: while turning the CollectionPropertiesDialog suite green, two
+  RED assertions were wrong (Case B) and the shell host test hit
+  "Maximum update depth exceeded" (implementation bug, tests correct).
+- **Diagnosis**:
+  1. The tab-order pin used `className.split(' ').find((c) => /Mui…-root/)` —
+     the predicate was the bare regex OBJECT (always truthy), so `find`
+     returned the first class token (`MuiTypography-root`). Test error; the
+     rendered structure matched the spec (§2.3 title → tabs → body).
+  2. The grantee-row pin asserted the collection name as text; the name
+     renders in the inline-rename TextField VALUE (an input attribute is not
+     a text node). Test error; spec §2.3 defines the field.
+  3. The shell open-reads effect listed `collectionsApi` in its deps; the
+     hook returns a fresh object literal every render and the effect's async
+     resolve calls `setCollectionShareableUsers` with a new array — effect →
+     setState → re-render → effect loop.
+- **Classification**: (1)+(2) **Case B** (assertions fixed against the spec,
+  implementation untouched). (3) source bug in the T3.2b code itself —
+  deps narrowed to the stable target/owner/seed identity with the file's
+  established `react-hooks/exhaustive-deps` disable idiom and a stated
+  reason (the `collectionsApi` closure stays render-current).
+- **Verification**: dialog suite 18/18, useCollections 19/19, shell
+  `collection-properties` block 2/2 green; full client gate in the unit
+  report.

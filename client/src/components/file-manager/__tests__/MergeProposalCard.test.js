@@ -80,7 +80,7 @@ describe('MergeProposalCard', () => {
   it('Merge dispatches with the pair ids and opens NO dialog (the card IS the confirmation)', () => {
     const onMerge = jest.fn();
     render({ onMerge });
-    fireEvent.click(screen.getByRole('button', { name: 'Merge' }));
+    fireEvent.click(screen.getByTestId('merge-accept'));
     expect(onMerge).toHaveBeenCalledWith(17, 23);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
@@ -152,11 +152,12 @@ describe('MergeProposalCard', () => {
       thumbnailMap: new Map([[101, '/api/thumbnails/e2e.jpg?token=abc']]),
     });
     fireEvent.click(screen.getByTestId('merge-strip'));
-    const tile = screen.getByTestId('merge-sample-tile-101');
+    const overlay = screen.getByTestId('merge-compare-overlay');
+    const tile = within(overlay).getByTestId('merge-sample-tile-101');
     expect(tile.tagName).toBe('IMG');
     expect(tile).toHaveAttribute('src', '/api/thumbnails/e2e.jpg?token=abc');
     // unloaded sample keeps a placeholder — never a fake image
-    expect(screen.getByTestId('merge-sample-tile-102').tagName).not.toBe('IMG');
+    expect(within(overlay).getByTestId('merge-sample-tile-102').tagName).not.toBe('IMG');
   });
 
   it('the expand toggle also collapses (strip click is the toggle)', () => {

@@ -2066,11 +2066,15 @@ describe('FileManager', () => {
         // undo toast rides the mergePair → onUndoable seam
         expect(await screen.findByText('Collections merged')).toBeInTheDocument();
 
-        // merged pair left the pending set (server truth re-read): no chip now
-        await waitFor(() =>
-          expect(screen.queryByTestId('merge-proposal-card')).not.toBeInTheDocument()
-        );
-        // zero pending ⇒ zero footprint (card gone, list still rendered)
+        // the merged pair left the pending set (server truth re-read): the
+        // remaining card shows the FIRST pair again (cursor clamps) with no chip
+        await waitFor(() => {
+          const next = screen.getByTestId('merge-proposal-card');
+          expect(next).toHaveTextContent('Europe');
+          expect(screen.queryByTestId('merge-cycle-chip')).not.toBeInTheDocument();
+        });
+        // the single card still owns exactly one DOM node; the list renders on
+        expect(screen.getAllByTestId('merge-proposal-card')).toHaveLength(1);
         expect(screen.getByTestId('collection-card-1')).toBeInTheDocument();
       }, 15000);
 

@@ -117,9 +117,11 @@ export const useCollections = ({ showError, gateway, onUndoable, include } = {})
    * Shared mutation plumbing: the repository absorbs failures into `null` and
    * hands the error envelope to onError; the hook branches on null → mapped
    * showError, never onUndoable. Success → refresh + undo-toast forward.
+   * `withUndo: false` marks the non-journaled seams (proposal-state
+   * transitions): same refresh + error mapping, NEVER an undo affordance.
    */
   const runMutation = useCallback(
-    async (mutation, { textKey } = {}) => {
+    async (mutation, { textKey, withUndo = true } = {}) => {
       let envelope = null;
       const options = {
         onError: (error) => {
@@ -135,7 +137,7 @@ export const useCollections = ({ showError, gateway, onUndoable, include } = {})
         return null;
       }
       await refresh();
-      if (onUndoable) {
+      if (withUndo && onUndoable) {
         onUndoable(payload, textKey);
       }
       return payload;
@@ -211,9 +213,19 @@ export const useCollections = ({ showError, gateway, onUndoable, include } = {})
     [io, runMutation]
   );
 
-  // dismiss/reject touch proposal state only (non-journaled) — no undo affordance
-  const dismissMergeSuggestion = useCallback((id, otherId) => io.dismissMerge(id, otherId), [io]);
-  const rejectMergeSuggestion = useCallback((id, otherId) => io.rejectMerge(id, otherId), [io]);
+  // dismiss/reject touch proposal state only (non-journaled) — success refreshes
+  // the pending set (the resolved card drops out) and never yields an undo
+  // affordance; absorbed failures surface the mapped envelope (useCollections.md §2.3).
+  const dismissMergeSuggestion = useCallback(
+    (id, otherId) =>
+      runMutation((options) => io.dismissMerge(id, otherId, options), { withUndo: false }),
+    [io, runMutation]
+  );
+  const rejectMergeSuggestion = useCallback(
+    (id, otherId) =>
+      runMutation((options) => io.rejectMerge(id, otherId, options), { withUndo: false }),
+    [io, runMutation]
+  );
 
   /**
    * Grantee self-revocation (Path 1, DELETE /:id/grants/me): instant, no undo

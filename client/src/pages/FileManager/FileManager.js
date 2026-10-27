@@ -16,7 +16,7 @@ import { useSelection } from './hooks/useSelection';
 import { useDropToUpload } from '../../hooks/useDropToUpload';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useMessage } from '../../hooks/useMessage';
-import { resolvePath } from '../../services/fileService';
+import { resolvePath, requestThumbnailsBatch } from '../../services/fileService';
 import { normalizePath, getBasename, getParentPath } from '../../utils/pathUtils';
 import { getFileType } from '@webdav-easyaccess/shared/fileTypes';
 import { getEntryKey, getCollectionEntryKey } from '../../utils/fileViewUtils';
@@ -29,6 +29,7 @@ import { useSearchResults } from './hooks/useSearchResults';
 import { useUndoToast } from '../../hooks/useUndoToast';
 import { getServerErrorDisplay } from '../../utils/errorUtils';
 import MemberRowControls from '../../components/file-manager/MemberRowControls';
+import MergeProposalCard from '../../components/file-manager/MergeProposalCard';
 import AddToCollectionMenu from '../../components/file-manager/AddToCollectionMenu';
 import SearchSaveDialog from '../../components/file-manager/SearchSaveDialog';
 import { ConfirmDialog, RenameDialog } from '../../components/dialogs';
@@ -775,6 +776,79 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     [handleThumbnailsLoaded]
   );
 
+  // -- T3.1 merge-proposal card slot (FileManager.md merge slot) ----------
+  // ONE card over the score-desc pending set; the `+N more` chip cycles a
+  // shell-owned cursor, resolution (Later/Keep separate) rides the hook's
+  // refresh, merge rides the existing onUndoable seam. Strip thumbnails reuse
+  // the SAME preview-thumbnail cache the collections grid batches into — the
+  // card itself stays IO-free (MergeProposalCard.md §2.7).
+  const [mergeCursor, setMergeCursor] = useState(0);
+  const {
+    suggestions: mergePending,
+    mergePair,
+    dismissMergeSuggestion,
+    rejectMergeSuggestion,
+  } = collectionsApi;
+  const suggestionsLength = mergePending.length;
+  const handleMergeCycle = useCallback(() => {
+    setMergeCursor((cursor) => {
+      if (suggestionsLength === 0) return 0;
+      return (Math.min(cursor, suggestionsLength - 1) + 1) % suggestionsLength;
+    });
+  }, [suggestionsLength]);
+
+  useEffect(() => {
+    // the pending set emptied (resolved/merged elsewhere): park the cursor so
+    // the NEXT suggestion wave starts on its top-scored pair
+    if (suggestionsLength === 0) setMergeCursor(0);
+  }, [suggestionsLength]);
+
+  const handleMergeSampleThumbnails = useCallback(
+    (nodeIds) => {
+      if (!Array.isArray(nodeIds) || nodeIds.length === 0) return;
+      requestThumbnailsBatch(nodeIds)
+        .then((response) => {
+          const thumbnailMap = new Map();
+          (response?.thumbnails ?? []).forEach(({ nodeId, thumbnailUrl }) => {
+            if (thumbnailUrl) thumbnailMap.set(nodeId, thumbnailUrl);
+          });
+          if (thumbnailMap.size > 0) handlePreviewThumbnailsLoaded(thumbnailMap);
+        })
+        .catch(() => {
+          // cosmetic failure — strip tiles stay placeholders (zero fabrication)
+        });
+    },
+    [handlePreviewThumbnailsLoaded]
+  );
+
+  const mergeSlotNode = useMemo(() => {
+    if (mergePending.length === 0) return null;
+    const current = mergePending[Math.min(mergeCursor, mergePending.length - 1)];
+    if (!current) return null;
+    return (
+      <MergeProposalCard
+        key={current.suggestion_id}
+        suggestion={current}
+        remainingCount={mergePending.length - 1}
+        onCycle={handleMergeCycle}
+        onMerge={(aId, bId) => mergePair(aId, bId)}
+        onKeepSeparate={(aId, bId) => rejectMergeSuggestion(aId, bId)}
+        onLater={(aId, bId) => dismissMergeSuggestion(aId, bId)}
+        thumbnailMap={previewThumbnails}
+        onRequestThumbnails={handleMergeSampleThumbnails}
+      />
+    );
+  }, [
+    mergePending,
+    mergePair,
+    rejectMergeSuggestion,
+    dismissMergeSuggestion,
+    mergeCursor,
+    handleMergeCycle,
+    handleMergeSampleThumbnails,
+    previewThumbnails,
+  ]);
+
   // Card selection uses synthetic path keys (getCollectionEntryKey) in the
   // page-level selection Set — no collision with numeric file nodeIds. The
   // 350ms double-open window is resolved card-locally inside
@@ -1259,9 +1333,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       include: collectionsInclude,
       // M-2: Likes/Archive pseudo-tile navigation dispatch (virtual routes only).
       onPseudoTileNavigate: handlePseudoTileNavigate,
-      // MergeProposalCard lands with T1.6+/T2.x — zero pending ⇒ zero footprint;
-      // suggestions data is already fetched by useCollections for that host.
-      mergeSlot: null,
+      // MergeProposalCard slot (T3.1): ONE card when the pending set is
+      // non-empty, `null` (zero layout footprint) when it is not.
+      mergeSlot: mergeSlotNode,
       onCardAction: handleCardAction,
       // P-3 file-parity selection + preview merge (consumed by FileManagerView
       // and forwarded into CollectionsListView; state stays shell-side).
@@ -1300,6 +1374,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     handleCollectionsBulkConfirm,
     dismissCollectionsBulkConfirm,
     handlePseudoTileNavigate,
+    mergeSlotNode,
   ]);
 
   // -- Search-results model (FileManager §7): the shell prepares the results

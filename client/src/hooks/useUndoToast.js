@@ -28,7 +28,8 @@ const CASCADE_ERROR_CODE = 'serverErrors.actions.cascadeConfirmRequired';
  *   action-slot extension; hosts inject THEIR bundle so the toast renders in
  *   their snackbar host. A private fallback bundle is used when omitted.
  * @param {() => void|Promise<void>} [options.refresh] - host listing re-read
- *   invoked after a successful undo.
+ *   invoked after a successful undo. A per-call `showUndoToast({ refresh })`
+ *   override replaces it for that toast's executions (useUndoToast.md §2.3).
  * @returns {{ showUndoToast, showReportToast, undoNow, cascadeConfirm, busy }}
  */
 export const useUndoToast = ({ gateway, message, refresh } = {}) => {
@@ -45,11 +46,15 @@ export const useUndoToast = ({ gateway, message, refresh } = {}) => {
    * Execute one undo attempt. Guard failures map per §2.4: cascade-required
    * arms the confirm dialog (409-then-repost); terminal refusals report via
    * showError and drop the action slot (never a dead [Undo] button).
+   * `refreshOverride` — the toast's per-call refresh (showUndoToast
+   * §2.3/§2.4): takes precedence over the mount-level refresh for this
+   * toast's executions, including after a cascade confirm re-post.
    */
-  const runUndo = async (actionId, { confirmCascade = false } = {}) => {
+  const runUndo = async (actionId, { confirmCascade = false, refreshOverride } = {}) => {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
+    const executeRefresh = typeof refreshOverride === 'function' ? refreshOverride : refresh;
     try {
       const result = await resolvedGateway.undoAction(
         actionId,
@@ -57,9 +62,9 @@ export const useUndoToast = ({ gateway, message, refresh } = {}) => {
       );
 
       if (result && result.ok) {
-        if (typeof refresh === 'function') {
+        if (typeof executeRefresh === 'function') {
           try {
-            await refresh();
+            await executeRefresh();
           } catch (refreshError) {
             // refresh failure: report it, do not re-show undo (already undone)
             msg.showError(
@@ -88,7 +93,7 @@ export const useUndoToast = ({ gateway, message, refresh } = {}) => {
           laterChanges: Number((result && result.params && result.params.laterChanges) || 0),
           confirm: () => {
             setCascadeConfirm(null);
-            runUndo(actionId, { confirmCascade: true });
+            runUndo(actionId, { confirmCascade: true, refreshOverride });
           },
           cancel: () => setCascadeConfirm(null),
         });
@@ -105,7 +110,7 @@ export const useUndoToast = ({ gateway, message, refresh } = {}) => {
   };
 
   const showUndoToast = useCallback(
-    ({ actionId, action_id, text, params, shownAt } = {}) => {
+    ({ actionId, action_id, text, params, shownAt, refresh: refreshOverride } = {}) => {
       const resolvedActionId = actionId != null ? actionId : action_id != null ? action_id : null;
       const shownAtMs =
         shownAt instanceof Date
@@ -119,7 +124,10 @@ export const useUndoToast = ({ gateway, message, refresh } = {}) => {
 
       const action =
         resolvedActionId != null && withinWindow
-          ? { labelKey: 'actions.undo', onClick: () => runUndo(resolvedActionId) }
+          ? {
+              labelKey: 'actions.undo',
+              onClick: () => runUndo(resolvedActionId, { refreshOverride }),
+            }
           : null;
 
       msg.showMessage(

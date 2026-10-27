@@ -11,7 +11,12 @@ import { useFileOperations } from '../useFileOperations';
 import { showErrorFromError } from '../../../../utils/errorUtils';
 import { validateFileName } from '@webdav-easyaccess/shared/validation';
 import { getValidationMessage } from '../../../../utils/validationMessage';
+import { notifyTrashChanged } from '../../../../services/trashNotifier';
 import { useExplorerCommands } from '../useExplorerCommands';
+
+jest.mock('../../../../services/trashNotifier', () => ({
+  notifyTrashChanged: jest.fn(),
+}));
 
 jest.mock('../../../../services/explorerGateway', () => {
   const { createExplorerGatewayMock } = require('../../../../testing/mocks/serviceMocks');
@@ -378,5 +383,79 @@ describe('useExplorerCommands upload-queue-drain hint (useFileOperations.md §3)
 
     expect(fileOperationsState.notifyUploadQueueDrained).not.toHaveBeenCalled();
     expect(explorerGateway.uploadToPath).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Bulk undo seam wiring (FileManager.md §7 / useBulkOperations.md §2.6) ───
+
+describe('useExplorerCommands — bulk undo seam', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useBulkOperations.mockImplementation(() => createBulkState());
+    useFileOperations.mockImplementation(() => createFileOperationsState());
+  });
+
+  /** options argument the controller hands to useBulkOperations. */
+  function capturedBulkOptions(props) {
+    renderHook(() => useExplorerCommands(props));
+    const call = useBulkOperations.mock.calls[useBulkOperations.mock.calls.length - 1];
+    return call[8];
+  }
+
+  it('forwards a journaled batch result to the host with a file-surface refresh (move)', () => {
+    const props = createProps();
+    const onUndoable = jest.fn();
+    const options = capturedBulkOptions({ ...props, onUndoable });
+
+    expect(typeof options.onUndoable).toBe('function');
+
+    const job = { status: 'completed', undo: { action_id: 5 } };
+    options.onUndoable(job, 'fileManager.bulkMoveToast', { count: 2 }, { action: 'move' });
+
+    expect(onUndoable).toHaveBeenCalledTimes(1);
+    const [payload, labelKey, params, refresh] = onUndoable.mock.calls[0];
+    expect(payload).toBe(job);
+    expect(labelKey).toBe('fileManager.bulkMoveToast');
+    expect(params).toEqual({ count: 2 });
+    expect(typeof refresh).toBe('function');
+
+    refresh();
+    expect(props.refreshNow).toHaveBeenCalledTimes(1);
+    expect(props.setTreeUpdateTrigger).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'refresh' })
+    );
+    expect(notifyTrashChanged).not.toHaveBeenCalled();
+  });
+
+  it('copy-undo refresh additionally notifies the trash surface', () => {
+    const props = createProps();
+    const onUndoable = jest.fn();
+    const options = capturedBulkOptions({ ...props, onUndoable });
+
+    options.onUndoable(
+      { undo: { action_id: 6 } },
+      'fileManager.bulkCopyToast',
+      { count: 1 },
+      { action: 'copy' }
+    );
+
+    const refresh = onUndoable.mock.calls[0][3];
+    refresh();
+    expect(notifyTrashChanged).toHaveBeenCalledTimes(1);
+    expect(props.refreshNow).toHaveBeenCalledTimes(1);
+  });
+
+  it('is inert when the host passes no onUndoable (no throw)', () => {
+    const props = createProps();
+    const options = capturedBulkOptions(props);
+
+    expect(() =>
+      options.onUndoable(
+        { undo: { action_id: 5 } },
+        'fileManager.bulkMoveToast',
+        { count: 1 },
+        { action: 'move' }
+      )
+    ).not.toThrow();
   });
 });

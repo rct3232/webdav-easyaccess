@@ -289,7 +289,9 @@
     "memberLike": "좋아요",
     "memberUnlike": "좋아요 취소",
     "memberAddToOther": "다른 컬렉션에 추가",
-    "memberNotShared": "소유자의 파일이 아닙니다 — 공유되지 않음"
+    "memberNotShared": "소유자의 파일이 아닙니다 — 공유되지 않음",
+    "bulkMoveToast": "이동 완료 ({{count}}개 항목)",
+    "bulkCopyToast": "복사 완료 ({{count}}개 항목)"
   },
   "actions": {
     "move": "이동",
@@ -875,7 +877,9 @@
       "unexclude": "제외 해제됨",
       "set-items-published": "공개 상태 변경됨",
       "grant": "공유됨",
-      "revoke": "공유 해제됨"
+      "revoke": "공유 해제됨",
+      "move": "일괄 이동됨",
+      "copy": "일괄 복사됨"
     },
     "collectionsStatusTitle": "컬렉션 상태",
     "collectionsActiveMeta": "활성 {{count}}개",

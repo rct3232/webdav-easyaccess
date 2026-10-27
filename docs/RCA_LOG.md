@@ -1460,3 +1460,25 @@ failed, reason: socket hang up`. The migration's per-node isolation correctly re
   hook-test mock (`__esModule` + `default`), and added a sync-throw absorption test.
 - **Verification**: `FileManager.test.js` + `useFileOperations.test.js` 73/73 green
   (upload-flow cases included); full client gate re-run after the fix.
+
+## 2026-10-27 — Batch journal T3.5 client gate: Setup wizard suites timeout under full-suite parallel load (environment flake — no code defect)
+
+- **Summary**: two consecutive full client `npm run test:ci` runs (the batch-journal
+  branch) failed only `pages/Setup/__tests__/SetupAiStep.test.js` and
+  `pages/Setup/__tests__/Setup.test.js` — 1 test and then 13 tests respectively, every
+  failure the literal "Exceeded timeout of 5000 ms for a test" inside heavy `userEvent`
+  wizard flows. 181/183 other suites, including every suite touching the changed files
+  (`useUndoToast`, `useBulkOperations`, `useExplorerCommands`, `FileManager.test`), passed.
+- **Diagnosis**: neither Setup suite imports any module changed on this branch; the same
+  two suites passed 25/25 when run in isolation on the same tree. `uptime`/`ps` at the
+  failure window showed load average 11.8 with a sibling worktree's own
+  `react-scripts test --coverage` jest workers consuming the shared 6-core host —
+  jsdom timers in the slowest suites starve past the 5 s budget. This matches the
+  previously recorded pattern ("SetupAiStep failed only under full-suite parallel load
+  and passed isolated").
+- **Classification**: **environment/timing flake** (host contention), not Case A/B/C —
+  no source, test-logic, or spec defect found; no production-code change made.
+- **Action**: re-ran the full client gate with the contention-aware worker setting
+  (`--maxWorkers=2`, the same discipline as `server npm run test:ci` on this host).
+- **Verification**: `Test Suites: 183 passed / Tests: 2130 passed` green at maxWorkers=2;
+  isolated Setup run green (25/25).

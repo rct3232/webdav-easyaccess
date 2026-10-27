@@ -289,7 +289,9 @@
     "memberLike": "Like",
     "memberUnlike": "Unlike",
     "memberAddToOther": "Add to another collection",
-    "memberNotShared": "Not owner's file — not shared"
+    "memberNotShared": "Not owner's file — not shared",
+    "bulkMoveToast": "Move completed ({{count}} items)",
+    "bulkCopyToast": "Copy completed ({{count}} items)"
   },
   "actions": {
     "move": "Move",
@@ -875,7 +877,9 @@
       "unexclude": "exclusion lifted",
       "set-items-published": "publishing updated",
       "grant": "shared",
-      "revoke": "sharing revoked"
+      "revoke": "sharing revoked",
+      "move": "moved in batch",
+      "copy": "copied in batch"
     },
     "collectionsStatusTitle": "Collections status",
     "collectionsActiveMeta": "{{count}} active",

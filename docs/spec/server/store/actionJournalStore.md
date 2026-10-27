@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item         | Description                                                                                                                                                                                                                                                 |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role         | The generic undo journal (`action_journal`) — common infrastructure, NOT ai-prefixed. Owns `commitChange` (the ONLY journaled write path: change + journal row in one TX under `lockManager`), the undo executor, the 30-day feed, and retention GC.        |
-| Design owner | `docs/features/collections-platform.md` §4.11 (rules, subjects, retention, toast boundaries); the undo journal replaces proposal-inboxes — system acts silently, every act is journaled with an inverse, and the UI safety valve is undo, not pre-approval. |
-| Consumers v1 | collections domain (all silent/user acts); later: batch worker (P3.5), admin settings , file rename / sharing. `permissions` and `tags` are reserved enum values with NO writer.                                                                            |
+| Item         | Description                                                                                                                                                                                                                                                                                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role         | The generic undo journal (`action_journal`) — common infrastructure, NOT ai-prefixed. Owns `commitChange` (the ONLY journaled write path: change + journal row in one TX under `lockManager`), the undo executor, the 30-day feed, and retention GC.                                                                                                               |
+| Design owner | `docs/features/collections-platform.md` §4.11 (rules, subjects, retention, toast boundaries); the undo journal replaces proposal-inboxes — system acts silently, every act is journaled with an inverse, and the UI safety valve is undo, not pre-approval.                                                                                                        |
+| Consumers    | collections domain (all silent/user acts) and the batch worker (move/copy command rows — `services/batchOperationService.md` §5.4–§5.5); `settings`, `file`, `sharing`, `permissions` and `tags` are enum-reserved with no writer (their designated writers: admin settings `PUT`, rename-undo, share-link create/cancel — each arrives with its row, not before). |
 
 ---
 
@@ -29,15 +29,15 @@ chain_seq, status, created_at, undone_at, expires_at)`; `UNIQUE(domain,subject,c
 - `subject` opaque TEXT, **no FK** — the journal intentionally outlives its subject for
   audit / restore-after-undo reasoning. Per-domain subject formats:
 
-| Domain        | Subject format     | Example row produced by                                                                                                                  |
-| ------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `collection`  | `collection:<id>`  | collectionsStore journaled mutators (auto-pin touch side effects ride these rows — no separate journal row)                              |
-| `batch`       | `batch:<jobId>`    | P3.5 batch worker `_processBulkJob` — ONE command row, item-level inverse list in payload                                                |
-| `settings`    | `settings:<KEY>`   | P4 `PUT /api/admin/config` — key + old value in payload                                                                                  |
-| `tags`        | `tags:<CANONICAL>` | RESERVED, no writer — the tag design has no merge/alias operation to journal                                                             |
-| `file`        | `file:<nodeId>`    | rename undo (undo-availability matrix row addition)                                                                                      |
-| `sharing`     | `sharing:<nodeId>` | share-link create/cancel                                                                                                                 |
-| `permissions` | (reserved)         | enum reserved, no writer; grant-undo=revoke allowed silently, revoke-undo=grant is explicit-only (exposure expansion is always explicit) |
+| Domain        | Subject format     | Example row produced by                                                                                                                                                                                                           |
+| ------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `collection`  | `collection:<id>`  | collectionsStore journaled mutators (auto-pin touch side effects ride these rows — no separate journal row)                                                                                                                       |
+| `batch`       | `batch:<jobId>`    | batch worker `_processBulkJob` — ONE command row per move/copy job with succeeded items, item-level inverse list in the payload (`services/batchOperationService.md` §5.4); delete batches ride the trash restore surface instead |
+| `settings`    | `settings:<KEY>`   | P4 `PUT /api/admin/config` — key + old value in payload                                                                                                                                                                           |
+| `tags`        | `tags:<CANONICAL>` | RESERVED, no writer — the tag design has no merge/alias operation to journal                                                                                                                                                      |
+| `file`        | `file:<nodeId>`    | RESERVED, no writer — rename-undo is the designated writer; the rename surface does not journal until it ships                                                                                                                    |
+| `sharing`     | `sharing:<nodeId>` | share-link create/cancel                                                                                                                                                                                                          |
+| `permissions` | (reserved)         | enum reserved, no writer; grant-undo=revoke allowed silently, revoke-undo=grant is explicit-only (exposure expansion is always explicit)                                                                                          |
 
 - `status` TEXT + CHECK: `applied | undone | expired`.
 - `payload` JSONB: `{ inverse, items?, fingerprint?, note? }` — `inverse` is the
@@ -67,6 +67,9 @@ chain_seq, status, created_at, undone_at, expires_at)`; `UNIQUE(domain,subject,c
    `(domain,subject)` → INSERT the journal row (`status='applied'`, `expires_at`) —
    ONE TX; any throw rolls BOTH back. `chain_seq = MAX(chain_seq)+1` over ALL rows of the
    subject (undone rows keep consuming their slot — the chain never reuses numbers).
+   Command rows whose item-level work already committed under its own transaction boundaries
+   (the batch worker) pass a no-op `mutation`; the payload's `items` list is the inverse
+   record.
 3. Release lock; return `{ id, chainSeq, result }`. Routes surface `undo: { actionId: id }`
    in the mutation response (toast contract).
 
@@ -93,6 +96,9 @@ chain_seq, status, created_at, undone_at, expires_at)`; `UNIQUE(domain,subject,c
    undone newest-first (LIFO) as one operation.
 3. Dispatch to the domain's registered executor. Per-item fingerprint mismatch ⇒ that item
    is SKIPPED, not failed (mixed results allowed: `11 undone, 1 skipped (state changed since)`).
+   Registered executors: `collection` → `domains/actions/service.js`; `batch` →
+   `domains/files/services/batchOperationService.js` §5.5 (registers at module load). A domain
+   row whose executor is missing throws — the undo aborts and the row stays `applied`.
 4. Flip each row `status='undone'`, `undone_at=now()`. The undo itself is NOT journaled
    (no undo-of-undo; status flip is the record).
 

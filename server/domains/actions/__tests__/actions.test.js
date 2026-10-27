@@ -130,6 +130,48 @@ describe('GET /api/actions', () => {
     expect(resBad.body.errorCode).toBe(actionsErrorCode('invalidDomain'));
   });
 
+  it('lists a batch command row for its actor (domain=batch writer contract)', async () => {
+    const committed = await actionJournalStore.commitChange(
+      'batch',
+      'batch:feed-job-1',
+      { actor: String(owner.id), action: 'move' },
+      {
+        inverse: { op: 'undo-batch', operation: 'move', jobId: 'feed-job-1' },
+        items: [
+          {
+            nodeId: 5,
+            kind: 'move',
+            fingerprint: { parentId: 6 },
+            inverse: { op: 'move-back', nodeId: 5, parentId: 7 },
+          },
+        ],
+      },
+      async () => null
+    );
+
+    const res = await request(app)
+      .get('/api/actions?domain=batch')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(res.status).toBe(200);
+    const row = res.body.actions.find((a) => a.action_id === committed.id);
+    expect(row).toMatchObject({
+      domain: 'batch',
+      subject: 'batch:feed-job-1',
+      action: 'move',
+      status: 'applied',
+      chain_seq: 1,
+      is_tip: true,
+      undo_available: true,
+    });
+    expect(row).not.toHaveProperty('payload');
+
+    // foreign actors cannot see the row (masquerade 404 on undo)
+    const foreignUndo = await request(app)
+      .post(`/api/actions/${committed.id}/undo`)
+      .set('Authorization', `Bearer ${otherToken}`);
+    expect(foreignUndo.status).toBe(404);
+  });
+
   it('scopes rows to the requester; system rows only when their subject is owned', async () => {
     const ownCollection = await collectionsStore.createCollection(
       { ownerId: owner.id, name: 'Owner coll', origin: 'user' },

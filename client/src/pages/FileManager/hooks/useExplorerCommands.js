@@ -28,6 +28,7 @@ export function useExplorerCommands({
   setSelectedFiles,
   setSelectionMode,
   showError,
+  onUndoable,
   // dialogs / UI state (shell-owned)
   closeUploadDialog,
   closeBulkDeleteDialog,
@@ -107,6 +108,23 @@ export function useExplorerCommands({
     [currentNodeIdRef, getCurrentNodeIdNow, refreshNow, setTreeUpdateTrigger]
   );
 
+  // Bulk undo seam (FileManager.md §7 / useBulkOperations.md §2.6): the shell's
+  // handleUndoable renders the toast; the undo re-reads the FILE surface the
+  // batch touched (listing + tree), and copy-undo additionally notifies the
+  // pinned trash icon (the batch trashes the created nodes on undo).
+  const bulkUndoable = useCallback(
+    (payload, textKey, params, meta) => {
+      if (typeof onUndoable !== 'function') return;
+      const refresh = () => {
+        if (typeof refreshNow === 'function') refreshNow();
+        setTreeUpdateTrigger({ type: 'refresh', timestamp: Date.now() });
+        if (meta && meta.action === 'copy') notifyTrashChanged();
+      };
+      onUndoable(payload, textKey, params, refresh);
+    },
+    [onUndoable, refreshNow, setTreeUpdateTrigger]
+  );
+
   const {
     folderPickerOpen,
     folderPickerAction,
@@ -134,7 +152,12 @@ export function useExplorerCommands({
     setSelectedFiles,
     setSelectionMode,
     () => currentNodeIdRef?.current ?? currentNodeId,
-    { markProcessing, clearProcessing, shareToken: isShareLinkMode ? shareToken : undefined }
+    {
+      markProcessing,
+      clearProcessing,
+      shareToken: isShareLinkMode ? shareToken : undefined,
+      onUndoable: bulkUndoable,
+    }
   );
 
   const dismissFailedItemsSafe = useCallback(() => {

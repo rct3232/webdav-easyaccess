@@ -509,4 +509,242 @@ describe('batchOperationService', () => {
       expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
     });
   });
+
+  // ─── Per-item cancellation & journal capture (batchOperationService.md §2.3/§5.4) ───
+
+  describe('per-item cancellation gate', () => {
+    it('batchDelete stops at the item boundary and reports remaining items skipped/cancelled', async () => {
+      let cancelled = false;
+      const fileNodeService = createFileNodeServiceMock();
+      const fileService = createMockFileService({
+        deleteNode: jest.fn().mockImplementation(async () => {
+          cancelled = true; // cancel lands right after the first item executes
+          return { deletedCount: 1 };
+        }),
+      });
+      const aclService = createAclServiceMock();
+
+      const service = createBatchOperationService({ fileNodeService, fileService, aclService });
+      const result = await service.batchDelete(
+        [42, 43, 44],
+        1,
+        { id: 1 },
+        {
+          isCancelled: () => cancelled,
+        }
+      );
+
+      expect(result.deletedCount).toBe(1);
+      expect(result.succeeded).toEqual([42]);
+      expect(result.cancelled).toBe(true);
+      expect(result.errors).toEqual([
+        { nodeId: 43, status: 'skipped', reason: 'cancelled' },
+        { nodeId: 44, status: 'skipped', reason: 'cancelled' },
+      ]);
+      expect(fileService.deleteNode).toHaveBeenCalledTimes(1);
+    });
+
+    it('batchDelete cancelled before the first item processes nothing', async () => {
+      const fileNodeService = createFileNodeServiceMock();
+      const fileService = createMockFileService();
+      const aclService = createAclServiceMock();
+
+      const service = createBatchOperationService({ fileNodeService, fileService, aclService });
+      const result = await service.batchDelete(
+        [42, 43],
+        1,
+        { id: 1 },
+        {
+          isCancelled: () => true,
+        }
+      );
+
+      expect(result).toEqual({
+        deletedCount: 0,
+        succeeded: [],
+        errors: [
+          { nodeId: 42, status: 'skipped', reason: 'cancelled' },
+          { nodeId: 43, status: 'skipped', reason: 'cancelled' },
+        ],
+        cancelled: true,
+      });
+      expect(fileService.deleteNode).not.toHaveBeenCalled();
+      expect(aclService.checkFilePermission).not.toHaveBeenCalled();
+    });
+
+    it('batchMove stops at the item boundary; succeeded prefix stays intact', async () => {
+      let cancelled = false;
+      const fileNodeService = createFileNodeServiceMock({
+        getNode: jest.fn().mockImplementation(async (nodeId) => ({ id: nodeId, parentId: 3 })),
+      });
+      const fileService = createMockFileService({
+        moveNode: jest.fn().mockImplementation(async (nodeId, dest) => {
+          cancelled = true;
+          return { nodeId, newParentId: dest };
+        }),
+      });
+      const aclService = createAclServiceMock();
+
+      const service = createBatchOperationService({ fileNodeService, fileService, aclService });
+      const result = await service.batchMove(
+        [
+          { sourceNodeId: 10, destinationParentNodeId: 20 },
+          { sourceNodeId: 11, destinationParentNodeId: 20 },
+          { sourceNodeId: 12, destinationParentNodeId: 20 },
+        ],
+        1,
+        { id: 1 },
+        { isCancelled: () => cancelled }
+      );
+
+      expect(result.movedCount).toBe(1);
+      expect(result.cancelled).toBe(true);
+      expect(result.succeeded).toEqual([
+        { sourceNodeId: 10, destinationParentNodeId: 20, previousParentNodeId: 3 },
+      ]);
+      expect(result.errors).toEqual([
+        { sourceNodeId: 11, destinationParentNodeId: 20, status: 'skipped', reason: 'cancelled' },
+        { sourceNodeId: 12, destinationParentNodeId: 20, status: 'skipped', reason: 'cancelled' },
+      ]);
+      expect(fileService.moveNode).toHaveBeenCalledTimes(1);
+    });
+
+    it('batchCopy stops at the item boundary; succeeded prefix stays intact', async () => {
+      let cancelled = false;
+      const fileNodeService = createFileNodeServiceMock({
+        getNode: jest
+          .fn()
+          .mockImplementation(async (nodeId) => ({ id: nodeId, name: `n${nodeId}` })),
+      });
+      const fileService = createMockFileService({
+        copyFile: jest.fn().mockImplementation(async (sourceNodeId) => {
+          cancelled = true;
+          return { sourceNodeId, copiedNodeId: sourceNodeId + 100 };
+        }),
+      });
+      const aclService = createAclServiceMock();
+
+      const service = createBatchOperationService({ fileNodeService, fileService, aclService });
+      const result = await service.batchCopy(
+        [
+          { sourceNodeId: 10, destinationParentNodeId: 20 },
+          { sourceNodeId: 11, destinationParentNodeId: 20 },
+        ],
+        1,
+        { id: 1 },
+        { isCancelled: () => cancelled }
+      );
+
+      expect(result.copiedCount).toBe(1);
+      expect(result.cancelled).toBe(true);
+      expect(result.succeeded).toEqual([
+        {
+          sourceNodeId: 10,
+          destinationParentNodeId: 20,
+          copiedNodeId: 110,
+          name: 'n110',
+        },
+      ]);
+      expect(result.errors).toEqual([
+        { sourceNodeId: 11, destinationParentNodeId: 20, status: 'skipped', reason: 'cancelled' },
+      ]);
+    });
+
+    it('isCancelled absent keeps the loop unconditional and flags cancelled:false', async () => {
+      const fileNodeService = createFileNodeServiceMock({
+        getNode: jest.fn().mockImplementation(async (nodeId) => ({ id: nodeId, parentId: 3 })),
+      });
+      const fileService = createMockFileService({
+        moveNode: jest.fn().mockResolvedValue({ nodeId: 10, newParentId: 20 }),
+      });
+      const aclService = createAclServiceMock();
+
+      const service = createBatchOperationService({ fileNodeService, fileService, aclService });
+      const result = await service.batchMove(
+        [{ sourceNodeId: 10, destinationParentNodeId: 20 }],
+        1,
+        { id: 1 }
+      );
+
+      expect(result.cancelled).toBe(false);
+      expect(result.movedCount).toBe(1);
+    });
+  });
+
+  describe('journal capture fields', () => {
+    it('batchMove reads the previous parent BEFORE moving each item', async () => {
+      const calls = [];
+      const fileNodeService = createFileNodeServiceMock({
+        getNode: jest.fn().mockImplementation(async (nodeId) => {
+          calls.push(`getNode:${nodeId}`);
+          return { id: nodeId, parentId: 7 };
+        }),
+      });
+      const fileService = createMockFileService({
+        moveNode: jest.fn().mockImplementation(async (nodeId) => {
+          calls.push(`moveNode:${nodeId}`);
+          return { nodeId, newParentId: 20 };
+        }),
+      });
+      const aclService = createAclServiceMock();
+
+      const service = createBatchOperationService({ fileNodeService, fileService, aclService });
+      const result = await service.batchMove(
+        [{ sourceNodeId: 10, destinationParentNodeId: 20 }],
+        1,
+        { id: 1 }
+      );
+
+      expect(result.succeeded).toEqual([
+        { sourceNodeId: 10, destinationParentNodeId: 20, previousParentNodeId: 7 },
+      ]);
+      expect(calls).toEqual(['getNode:10', 'moveNode:10']);
+    });
+
+    it('batchMove keeps a missing previous parent unjournaled (undefined capture) but still moves', async () => {
+      const fileNodeService = createFileNodeServiceMock({
+        getNode: jest.fn().mockResolvedValue(null),
+      });
+      const fileService = createMockFileService({
+        moveNode: jest.fn().mockResolvedValue({ nodeId: 10, newParentId: 20 }),
+      });
+      const aclService = createAclServiceMock();
+
+      const service = createBatchOperationService({ fileNodeService, fileService, aclService });
+      const result = await service.batchMove(
+        [{ sourceNodeId: 10, destinationParentNodeId: 20 }],
+        1,
+        { id: 1 }
+      );
+
+      expect(result.movedCount).toBe(1);
+      expect(result.succeeded[0].previousParentNodeId).toBeUndefined();
+    });
+
+    it('batchCopy captures copiedNodeId from the copyFile return and the created-node name', async () => {
+      const fileNodeService = createFileNodeServiceMock({
+        getNode: jest
+          .fn()
+          .mockImplementation(async (nodeId) =>
+            Number(nodeId) === 88 ? { id: 88, name: 'report-copy.pdf' } : { id: nodeId, name: 'x' }
+          ),
+      });
+      const fileService = createMockFileService({
+        copyFile: jest.fn().mockResolvedValue({ sourceNodeId: 10, copiedNodeId: 88 }),
+      });
+      const aclService = createAclServiceMock();
+
+      const service = createBatchOperationService({ fileNodeService, fileService, aclService });
+      const result = await service.batchCopy(
+        [{ sourceNodeId: 10, destinationParentNodeId: 6 }],
+        1,
+        { id: 1 }
+      );
+
+      expect(result.succeeded).toEqual([
+        { sourceNodeId: 10, destinationParentNodeId: 6, copiedNodeId: 88, name: 'report-copy.pdf' },
+      ]);
+      expect(fileNodeService.getNode).toHaveBeenCalledWith(88);
+    });
+  });
 });

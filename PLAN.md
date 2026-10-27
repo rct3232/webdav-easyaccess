@@ -2369,3 +2369,51 @@ All §7 P3 rows closed (T3.1 includes the T3.1b/1c legs), full server/client `te
 `test:ci:pg:adapters` green on the merged tip, extended E2E suites green, grep-gates +
 docsStatePurity clean, this ledger updated. The single `ai-feature`→`dev` merge remains a later
 event after ALL §7 phases (P4 still open).
+
+### Wave 1 execution log (2026-10-27 — orchestrator; tip `45aeaf2b`)
+
+Base `e2182166` (§30 committed). Worktrees wt-t35/t33/t32a/t31 with symlinked root
+node_modules (npm-workspaces-safe: `@webdav-easyaccess/shared` → the worktree's own `shared/`);
+bands 40/60/80/100. Merged in §30.3 order T3.5 → T3.3 → T3.2a → T3.1.
+
+- **T3.5 `[done]`** — merge `ac116fe9`. Branch gates server 179/3117, client 183/2130. Audit
+  miss found+fixed: `batchMove/batchCopy` never returned `succeeded` entries (client always
+  showed `0/N done`); poll response gained additive `undo:{action_id}`; `useUndoToast` per-call
+  `refresh` override. Delete batches deliberately NOT journaled (undo-matrix rule), cancelled
+  move/copy batches journal the succeeded prefix. RCA: Setup-suite contention flake class.
+- **T3.3 `[done]`** — merge `7edac8e5` + boot wiring `fc28c8b7` (expiry scheduler in
+  `server/index.js`, orchestrator-owned). Branch gates server 183/3160, PG 31/455(+1 skip — the
+  REQUIRED new-twins leg), client 183/2125. Generator placements: short-doc cosine exception
+  lives in the persisted generator leg (§4.17 assigns it to the near-dup suggestion VARIANT;
+  computed C4 summary block stays verbatim); θ_dup read from the active profile — never
+  hardcoded. Accept-undo applies inside the journal TX via the tx-bound repository client
+  (nested withSqliteTransaction deadlock avoided — documented, `dashboardService.md` §2.6).
+- **T3.2a `[done]`** — merge `f841f916`. Branch gates server 180/3114; collections route-parity
+  matrix byte-identical after the `shareService.js` split. §30.1 under-called three gaps, all
+  closed: `assertMemberConsumable` never existed, self-grant ban, re-grant hidden-clear (+
+  `grantAccess` inverse now captures `{role, grantedBy}` — journal-inverse behavior change,
+  pinned). `isVisibleToGrantee` auto-arm scoped to virtual rows (Case C, RCA-logged).
+- **T3.1 `[done]`** — merge `45aeaf2b`. Branch gates server 179/3106, client 185/2143 (serial),
+  PG 30/445(+1 skip). REAL Case-A defect found by the §2.4 audit: **merge undo was never
+  executable** (no `merge-collections` inverse case ⇒ every Undo 409'd) — full inverse executor
+  shipped (name_locked/added_by/published/source/reason fidelity, dropped-set-stripping
+  move-back) + `insertCollection nameLocked` twin extension + conformance pin. Second Case-A:
+  `dismiss/rejectMergeSuggestion` skipped the hook-spec refresh/error channel. Payload
+  extension per R2 shipped (`overlap_sample` cap 8 + per-side unique samples cap 4, revoked
+  members excluded). E2E 021/022 (merge card, dual) + 023 (suggestions lifecycle) planned;
+  021/022 spec code written (`playwright --list` verified), 023 code at exit gate.
+- **Conflict resolutions (orchestrator)**: `actionJournalStore.md` Consumers/domain tables
+  unioned (batch rows + file suggestion-accept rows; `file` is no longer writer-less);
+  `FileManager.md` undo-toast/merge-slot bullets unioned; RCA_LOG append-only ×2;
+  **E2E-ID collision**: T3.1's merge-card keeps `E2E-S3-COLLECTION-021/022` (spec code shipped
+  under those ids), T3.3's planned suggestion case renumbered to **023**.
+- **Wave-1 exit gates (merged tip)**: server `test:ci` **184 suites / 3209 pass (28 skip)**;
+  client `test:ci` **185 / 2158**; `test:ci:pg:adapters` **31 / 456 (1 skip)** on the shared
+  :5433 (its `webdav_test` DB was stale-schema — dropped and recreated fresh from current 001
+  by T3.1, drift source eliminated); grep-gates + docsStatePurity green (in-suite). PG vector
+  leg N/A (no vectorStore engine path changed). Carried to exit gate: E2E runs (021/022
+  green-run deferred, 023 code), `ai-desktop` regression, TEST_SUMMARY refresh.
+- **R1 provenance** (§4.19 "chat off ⇒ card still appears" supersession): NOT yet recorded —
+  no AI_FEATURE_PLAN §12 P3 section exists; lands at the T3.4/T3.1c docs steps per ruling.
+
+**Wave 2 (T3.2b ∥ T3.6 ∥ T3.4) launched from tip `45aeaf2b`; merge order T3.2b → T3.6 → T3.4.**

@@ -31,7 +31,14 @@ const { getPresetByFamilyRole } = require('../../infrastructure/adapters/llm/pre
 const { foldTag } = require('../ai/tagVocabulary');
 const definitionEngine = require('./definitionEngine');
 const { createNamer } = require('./namingService');
+const shareService = require('./shareService');
 const wire = require('./wire');
+
+// Sharing predicates (roles, read masquerade, publish gate) are owned by
+// shareService — the collections routes' grants/self-revocation/publish
+// endpoints delegate there directly (docs/spec/server/services/
+// collectionShareService.md). Destructured for unchanged call sites.
+const { getCollectionForRead, requireOwner, requireOwnerOrRole } = shareService;
 
 // Constants with later-task owners (§3.1/§3.4): SIMILAR_MODEL_ID is a
 // placeholder until the T1.1 model registry supplies the active embed model;
@@ -40,7 +47,6 @@ const VALID_SORTS = ['activity', 'name', 'created', 'updated', 'similar'];
 const STORE_SORTS = new Set(['activity', 'name', 'created', 'updated']);
 const VALID_INCLUDE_TOKENS = ['mine', 'shared', 'archived'];
 const VALID_PUBLISH_MODES = ['ask', 'off', 'auto'];
-const VALID_GRANT_ROLES = ['viewer', 'editor'];
 const MAX_NODE_IDS = 200;
 const PREVIEW_SAMPLE_CAP = 12;
 const SEED_NEIGHBORS_K = 200;
@@ -299,41 +305,6 @@ async function buildVectorContext(
 // Access guards
 // ---------------------------------------------------------------------------
 
-async function getCollectionForRead(userId, collectionId) {
-  const collection = await collectionsStore.getCollection(collectionId);
-  if (!collection) throw serviceError('notFound');
-  if (collection.ownerId !== userId) {
-    const grant = await collectionsStore.getGrant(collectionId, userId);
-    if (!grant || (await collectionsStore.isHiddenFor(userId, collectionId))) {
-      // 404 masquerade — existence never leaks (routes spec §2.4.2)
-      throw serviceError('notFound');
-    }
-    return { collection, grant };
-  }
-  return { collection, grant: null };
-}
-
-async function requireOwner(userId, collection) {
-  if (collection.ownerId !== userId) throw serviceError('forbidden');
-}
-
-/**
- * Returns the requester's role for the collection ('owner' | 'viewer' |
- * 'editor'); masquerades 404 for zero-access and 403s when the role is below
- * the required one.
- */
-async function requireOwnerOrRole(userId, collection, minimumRole) {
-  if (collection.ownerId === userId) return 'owner';
-  const grant = await collectionsStore.getGrant(collection.id, userId);
-  if (!grant || (await collectionsStore.isHiddenFor(userId, collection.id))) {
-    throw serviceError('notFound');
-  }
-  if (minimumRole === 'editor' && grant.role !== 'editor') {
-    throw serviceError('forbidden');
-  }
-  return grant.role;
-}
-
 /** §4.9b auto-pin on user touch of a system collection (non-journaled). */
 async function touchSystemAutoPin(collection) {
   if (collection && collection.origin === 'system') {
@@ -385,7 +356,9 @@ async function resolveMemberRows(userId, collection) {
     if (!isRequesterOwner && foreign) continue; // cross-leak rule (§3.2/§4.7)
 
     const published = Boolean(stored.published);
-    if (!isRequesterOwner && !published) continue; // grantees see published rows only
+    // Publish gate via the shareService live resolution (spec §2.3):
+    // grantees see published rows only (auto mode admits by mode).
+    if (!isRequesterOwner && !shareService.isVisibleToGrantee(collection, stored)) continue;
 
     const readable = await canReadNode(userId, nodeId);
     const ruleManaged = Boolean(stored.source && stored.source !== 'manual');
@@ -473,10 +446,6 @@ function sortItemRows(rows) {
   return rows
     .slice()
     .sort((a, b) => (a.score !== b.score ? b.score - a.score : a.nodeId - b.nodeId));
-}
-
-function countPublishPending(rows) {
-  return rows.reduce((count, row) => (row.published ? count : count + 1), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -899,7 +868,12 @@ async function getItems(userId, collectionId, { since } = {}) {
   };
 
   if (isRequesterOwner) {
-    payload.publishPendingCount = countPublishPending(rows);
+    // owner-only key; the count rides the SAME resolved rows (zero extra reads)
+    payload.publishPendingCount = await shareService.publishPendingCount(
+      userId,
+      collectionId,
+      rows
+    );
   }
 
   if (since !== undefined && since !== null && since !== '') {
@@ -1038,48 +1012,6 @@ async function removeItems(userId, collectionId, nodeIds) {
     excluded: result.excluded,
     ignored,
     undo: { actionId: result.actionId },
-  };
-}
-
-/**
- * P-4 member publish (PUT /:id/items/publish, routes spec). Owner or editor.
- * Classification runs against the RAW materialized membership
- * (`composeMemberRows`) — never the grantee-filtered view — so editors can
- * flip stored rows invisible to their own listing. Rows flip through the
- * journaled `setItemPublished` (inverse/undo pre-existing); ids outside the
- * materialized membership are `ignored[]` — the read path never derives
- * membership, so this function can never graft a node in. Publishing a row on
- * a `system` collection is a user touch → auto-pin.
- */
-async function publishItems(userId, collectionId, nodeIds, published) {
-  const parsed = parseNodeIds(nodeIds);
-  if (published !== true && published !== false) throw serviceError('invalidPublishMode');
-  const { collection } = await getCollectionForRead(userId, collectionId);
-  await requireOwnerOrRole(userId, collection, 'editor');
-
-  const { storedByNodeId } = await composeMemberRows(userId, collection);
-  const flipIds = [];
-  const ignored = [];
-  for (const nodeId of parsed) {
-    if (storedByNodeId.has(nodeId)) {
-      flipIds.push(nodeId);
-    } else {
-      ignored.push(nodeId);
-    }
-  }
-
-  let actionId = null;
-  if (flipIds.length > 0) {
-    const flip = await collectionsStore.setItemPublished(collectionId, flipIds, published, {
-      actor: userId,
-    });
-    actionId = flip.actionId;
-    await touchSystemAutoPin(collection);
-  }
-  return {
-    published: flipIds,
-    ignored,
-    undo: actionId == null ? null : { actionId },
   };
 }
 
@@ -1619,70 +1551,10 @@ async function getForNodes(userId, nodeIds) {
 }
 
 // ---------------------------------------------------------------------------
-// Grants
+// Sharing surface (grants CRUD, self-revocation, publish) — lives in
+// shareService.js (docs/spec/server/services/collectionShareService.md);
+// routes.js delegates those endpoints there directly.
 // ---------------------------------------------------------------------------
-
-async function listGrants(userId, collectionId) {
-  const { collection } = await getCollectionForRead(userId, collectionId);
-  await requireOwner(userId, collection);
-  const grants = await collectionsStore.listGrants(collectionId);
-  const rows = [];
-  for (const grant of grants) {
-    const grantee = await userStore.findById(grant.granteeId);
-    rows.push(wire.serializeGrant(grant, grantee ? grantee.username : null));
-  }
-  return { grants: rows };
-}
-
-async function grantCollectionAccess(userId, collectionId, granteeId, role) {
-  if (!VALID_GRANT_ROLES.includes(role)) throw serviceError('invalidRole');
-  const { collection } = await getCollectionForRead(userId, collectionId);
-  await requireOwner(userId, collection);
-  const granteeNumber = Number(granteeId);
-  const grantee =
-    Number.isInteger(granteeNumber) && granteeNumber > 0
-      ? await userStore.findById(granteeNumber)
-      : null;
-  if (!grantee) throw serviceError('granteeNotFound');
-  // Operator rule (owner pivot 2026-10-01): admin-as-grantee is banned at grant
-  // creation — collections never reference admins (routes spec §2.3).
-  if (grantee.is_admin) throw serviceError('forbidden');
-  const result = await collectionsStore.grantAccess(collectionId, grantee.id, role, userId, {
-    actor: userId,
-  });
-  const grant = await collectionsStore.getGrant(collectionId, grantee.id);
-  return { grant, username: grantee.username, undo: { actionId: result.actionId } };
-}
-
-async function revokeCollectionAccess(userId, collectionId, granteeId) {
-  const { collection } = await getCollectionForRead(userId, collectionId);
-  await requireOwner(userId, collection);
-  const granteeNumber = Number(granteeId);
-  const existing =
-    Number.isInteger(granteeNumber) && granteeNumber > 0
-      ? await collectionsStore.getGrant(collectionId, granteeNumber)
-      : null;
-  if (!existing) throw serviceError('grantNotFound');
-  const result = await collectionsStore.revokeAccess(collectionId, granteeNumber, {
-    actor: userId,
-  });
-  return { grantee_id: granteeNumber, revoked: true, undo: { actionId: result.actionId } };
-}
-
-/**
- * Grantee self-revocation (Path 1, routes spec DELETE /:id/grants/me — replaces
- * the retired recipient-local `Leave` hide). Removal + journaling ride the SAME
- * `collectionsStore.revokeAccess` path as the owner side (action `revoke`,
- * inverse `grant-access`, actor = grantee). Zero-access/unknown id masquerades
- * 404 `notFound` via getCollectionForRead; a readable collection with no grant
- * row for the caller (i.e. the owner) throws `grantNotFound`. Instant (§4.7).
- */
-async function revokeOwnGrant(userId, collectionId) {
-  const { collection, grant } = await getCollectionForRead(userId, collectionId);
-  if (collection.ownerId === userId || !grant) throw serviceError('grantNotFound');
-  const result = await collectionsStore.revokeAccess(collectionId, userId, { actor: userId });
-  return { grantee_id: userId, revoked: true, undo: { actionId: result.actionId } };
-}
 
 module.exports = {
   getCollection,
@@ -1697,7 +1569,6 @@ module.exports = {
   getItems,
   addItems,
   removeItems,
-  publishItems,
   preview,
   previewCollection,
   listMergeSuggestions,
@@ -1709,10 +1580,6 @@ module.exports = {
   checkUploadAdmissionsForNode,
   resolveOwnerIdForNode,
   evaluateDefinitionMembership,
-  listGrants,
-  grantCollectionAccess,
-  revokeCollectionAccess,
-  revokeOwnGrant,
   fingerprintDefinition: definitionEngine.fingerprintDefinition,
   SEED_VECTOR_THETA,
   __setRuntimeSeamsForTests,

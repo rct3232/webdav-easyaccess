@@ -524,6 +524,80 @@ describe('POST /api/actions/:id/undo', () => {
   });
 });
 
+// -- is_tip across actors (cross-user sharing writes) -------------------------
+
+describe('GET /api/actions is_tip — per-subject across actors', () => {
+  it('an owner row is NOT a tip while a granted editor holds the chain tip; displayed flag and undo guard agree', async () => {
+    const editorCtx = await createAuthenticatedTestUser({
+      username: `actions-editor-${Date.now()}`,
+    });
+
+    const collection = await collectionsStore.createCollection(
+      { ownerId: owner.id, name: 'Shared chain', origin: 'user' },
+      { actor: owner.id }
+    );
+    await collectionsStore.grantAccess(collection.id, editorCtx.user.id, 'editor', owner.id, {
+      actor: owner.id,
+    });
+    const node = await createTestFileNode({ name: `tipmatrix-${Date.now()}.txt` });
+    await collectionsStore.addItem(
+      collection.id,
+      node.nodeId,
+      editorCtx.user.id,
+      {},
+      { actor: editorCtx.user.id }
+    );
+    const subject = `collection:${collection.id}`;
+
+    // Owner feed: create + grant rows only — the editor's applied row is not
+    // feed-visible, yet it IS the subject's tip (full-chain rule).
+    const ownerFeed = await request(app)
+      .get('/api/actions')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    expect(ownerFeed.status).toBe(200);
+    const ownerRows = ownerFeed.body.actions.filter((a) => a.subject === subject);
+    expect(ownerRows).toHaveLength(2);
+    const grantRow = ownerRows.find((r) => r.chain_seq === 2);
+    const createRow = ownerRows.find((r) => r.chain_seq === 1);
+    expect(grantRow.actor).toBe(owner.id);
+    expect(grantRow.undo_available).toBe(true);
+    expect(grantRow.is_tip).toBe(false);
+    expect(createRow.is_tip).toBe(false);
+
+    // Consistency: the guard already treats this as non-tip — 409 cascade
+    // with laterChanges counting the OTHER actor's applied row.
+    const undo = await request(app)
+      .post(`/api/actions/${grantRow.action_id}/undo`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({});
+    expect(undo.status).toBe(409);
+    expect(undo.body.errorCode).toBe(actionsErrorCode('cascadeConfirmRequired'));
+    expect(undo.body.params.laterChanges).toBe(1);
+
+    // Editor feed: their own row is the tip and undoes free (no cascade).
+    const editorFeed = await request(app)
+      .get('/api/actions')
+      .set('Authorization', `Bearer ${editorCtx.token}`);
+    const editorRow = editorFeed.body.actions.find((a) => a.subject === subject);
+    expect(editorRow.actor).toBe(editorCtx.user.id);
+    expect(editorRow.is_tip).toBe(true);
+
+    const editorUndo = await request(app)
+      .post(`/api/actions/${editorRow.action_id}/undo`)
+      .set('Authorization', `Bearer ${editorCtx.token}`)
+      .send({});
+    expect(editorUndo.status).toBe(200);
+
+    // Tip returns to the owner's newest applied row once the cross-actor
+    // applied row is gone.
+    const after = await request(app)
+      .get('/api/actions')
+      .set('Authorization', `Bearer ${ownerToken}`);
+    const afterGrant = after.body.actions.find((a) => a.subject === subject && a.chain_seq === 2);
+    expect(afterGrant.is_tip).toBe(true);
+  });
+});
+
 // -- mount contract ----------------------------------------------------------
 
 describe('setup-mode mount guard', () => {

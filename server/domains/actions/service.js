@@ -126,16 +126,24 @@ async function getActionsFeed(requesterId, { domain } = {}) {
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || b.id - a.id)
     .slice(0, FEED_LIMIT);
 
-  // is_tip = highest chain_seq among the subject's applied rows. Every applied
-  // row of a subject is visible to its owner in v1 (writers = owner + system
-  // acts scoped to that owner), so the feed itself is the chain source;
-  // revisit when cross-user writes land (T3.2 grants).
-  const tipSeqBySubject = new Map();
+  // is_tip is the undo guard's rule rendered for display: highest chain_seq
+  // among the subject's `applied` rows, computed SERVER-SIDE over the FULL
+  // chain across every actor (routes/actions.md §2.4). Sharing makes this
+  // load-bearing: a granted editor's journaled member ops land on the
+  // owner's `collection:<id>` subject, so the feed's requester-visible
+  // subset can legitimately omit the chain tip — deriving the flag from the
+  // subset would disagree with the guard (store §2.4 step 2 checks the same
+  // full chain). Per applied row: no later applied row on the subject.
+  const tipByAppliedRow = new Map();
   for (const row of feed) {
     if (row.status !== 'applied') continue;
-    const key = `${row.domain}:${row.subject}`;
-    const known = tipSeqBySubject.get(key);
-    if (known === undefined || row.chainSeq > known) tipSeqBySubject.set(key, row.chainSeq);
+    // eslint-disable-next-line no-await-in-loop
+    const laterCount = await actionJournalStore.countLaterChanges(
+      row.domain,
+      row.subject,
+      row.chainSeq
+    );
+    tipByAppliedRow.set(row.id, laterCount === 0);
   }
 
   return {
@@ -148,9 +156,7 @@ async function getActionsFeed(requesterId, { domain } = {}) {
       action: row.action,
       status: row.status,
       chain_seq: row.chainSeq,
-      is_tip:
-        row.status === 'applied' &&
-        tipSeqBySubject.get(`${row.domain}:${row.subject}`) === row.chainSeq,
+      is_tip: row.status === 'applied' && tipByAppliedRow.get(row.id) === true,
       undo_available: row.status === 'applied',
       created_at: row.createdAt,
       undone_at: row.undoneAt,

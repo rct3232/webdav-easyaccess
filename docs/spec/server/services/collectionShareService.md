@@ -21,6 +21,13 @@ Target-contract spec.
 - Store used end-to-end: `collectionsStore` journaled mutators `grantAccess`,
   `revokeAccess`, `setItemPublished` + non-journaled `setVisible`/`isHiddenFor`/
   `listGrants`/`getGrant` (see its spec §2.1/§2.4).
+- Route surfaces delegated HERE by `routes.js`: `GET /:id/grants`, `POST /:id/grants`,
+  `DELETE /:id/grants`, `DELETE /:id/grants/me`, `PUT /:id/items/publish`. The router-level
+  `ERROR_MAP` is shared — delegation changes no thrown code, status, or response shape.
+  Dependency direction is one way: `service.js` consumes this module (role/visibility
+  predicates, read-masquerade helper, pending count); this module reads the stores
+  directly and never imports `service.js`. Membership classification for `publish` uses
+  the materialized `collection_items` read (the same row set the item view composes).
 
 ### 2.2 Roles and capability matrix
 
@@ -28,6 +35,13 @@ Target-contract spec.
 collection row + grants row; archived collections resolve role normally — archived is a
 display state, not an ACL state). Null role on any access attempt → caller throws
 `notFound` (404 masquerade, existence never leaks).
+
+Read-path gates supplied by this module: `getCollectionForRead(userId, collectionId)` →
+`{ collection, grant, role }` (unknown collection, null role, or hidden flag set for a
+grantee → `notFound`); `requireOwner(userId, collection)` (`forbidden` for any grantee
+role); `requireOwnerOrRole(userId, collection, minimumRole)` → the live role, `forbidden`
+below the minimum, `notFound` on zero access. [collectionsService](collectionsService.md)
+consumes these predicates; `routes.js` reaches them through the delegated surfaces.
 
 | Capability                                      | owner | editor               | viewer |
 | ----------------------------------------------- | ----- | -------------------- | ------ |
@@ -58,22 +72,32 @@ Mode lives on the collection row (`publish_mode`), changed only by the owner
   execution of a `seed`/`search` collection is created `published=true` — the seed/search
   confirm dialog is the batch approval, including the unseen remainder (copy obligation
   in collectionsService §2.7). Subsequent arrivals park per the mode above.
-- `publishPendingCount(userId, id)` → owner-only number of `published=false` rows in the
-  resolved view (stored + derived); the route omits the key for grantees.
+- `publishPendingCount(userId, collectionId, rows)` → owner-only number of
+  `published=false` rows in the requester-resolved view (stored + derived). The items
+  route passes the SAME rows it just resolved (in-memory count, zero extra reads); the
+  owner gate lives here — a non-owner caller throws `forbidden`, and the route omits the
+  key for grantees.
 - `publish(userId, id, nodeIds, published=true|false)` → owner or editor (viewer →
-  `forbidden`). Stored rows flip via
+  `forbidden`). Route surface `PUT /:id/items/publish`. `nodeIds` ride the shared
+  `emptyNodeIds` boundary (1–200) and `published` must be boolean
+  (`invalidPublishMode`). Stored rows flip via
   `setItemPublished` (journaled; batch = ONE command row with item inverses); publishing
   a DERIVED member materializes a stored marker row `published=true` via `addItem` (the
   `stored ∪ derived` view dedups by node, so membership truth stays derived and undo
   stays row-local — collectionsService §2.2); unpublish flips the marker back to `false`
-  and NEVER deletes an owner-added stored row. Publishes on a `system` collection are a
-  user touch → `setAutoPin`.
+  and NEVER deletes an owner-added stored row. Ids outside the materialized membership
+  land in `ignored[]` — publish never ADDS membership (anti-injection); `undo` is the
+  flip command or `null` for an all-`ignored` batch. Publishes on a `system` collection
+  are a user touch → `setAutoPin`.
 - Live resolution: evaluated at READ time by collectionsService via
-  `isVisibleToGrantee(collection, viewRow)` → `viewRow.published ||`
-  `collection.publishMode === 'auto'` — `viewRow` may be VIRTUAL (a derived member
-  without a stored row enters the grantee path as `published:false` until materialized;
-  auto-mode rows are always published at add, so the flag still carries truth for a
-  later mode downgrade).
+  `isVisibleToGrantee(collection, viewRow)` — a materialized row is visible when
+  its `published` flag is true; the `|| collection.publishMode === 'auto'` arm
+  applies ONLY to a VIRTUAL viewRow (a derived member without a stored row
+  enters the grantee path as `published:false` until materialized). Mode `auto`
+  publishes ON ADD — it never republishes parked history, so grantees only ever
+  see `published:true` materialized rows (routes/collections.md §2.4). The flag
+  carries truth for a later mode downgrade because auto-mode rows were published
+  at add.
 
 ### 2.4 Grants CRUD + revocation
 
@@ -97,8 +121,11 @@ createdAt }` (username resolved via `userStore` at read).
 ### 2.5 Visibility / grantee self-revocation
 
 There is no `leave` route: a grantee removes their own access via self-revocation —
-`DELETE /:id/grants/me` → `collectionsService.revokeOwnGrant` (that spec §2.2) —
-a journaled revoke, identical to the owner-side path. The `collection_visibility`
+`DELETE /:id/grants/me` → `revokeOwnGrant(userId, id)` — a journaled revoke riding the
+SAME `collectionsStore.revokeAccess` path as the owner side (actor = grantee, digest
+cursor deleted in the same TX). The caller must hold a `viewer|editor` grant; zero
+access/unknown id → `notFound` (read-masquerade), a caller with no grant row (incl. the
+owner) → `grantNotFound`. The `collection_visibility`
 hidden flag is a read-side input at P0: the list SQL omits collections whose flag is
 set for the requester and single-collection reads honor it (`isHiddenFor`), while
 `setVisible` has no API caller at P0. A re-grant clears the grantee's hidden flag
@@ -106,13 +133,13 @@ set for the requester and single-collection reads honor it (`isHiddenFor`), whil
 
 ### 2.6 "View by collection, mutate by file" — enforcement points
 
-| Layer                   | Enforcement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Routes                  | `/api/collections/*` accepts NO file-mutating verb (no rename/move/delete of nodes). File-mutating routes (`/api/files*`) accept NO collection parameter — they run pure file ACL.                                                                                                                                                                                                                                                                                                                                                        |
-| Service                 | `getRole` gates every collections route (§2.2); member ops call `removeItem`/`addExclusion` (membership rows only) — never a node service.                                                                                                                                                                                                                                                                                                                                                                                                |
-| Store                   | `collectionsStore` exposes no node mutator; `collection_grants`/`collection_visibility` are absent from `permissionStore`/`aclService` code paths (grep-gate + permissions integration assertion in the store spec §2.9).                                                                                                                                                                                                                                                                                                                 |
-| Download/preview bridge | Collection views offer download/preview of members. v1 rule: member rows offer download only when the FILE ACL allows. For grant-initiated access to owner-owned members, the preview/download route passes `collectionId`; `assertMemberConsumable(viewerId, collectionId, nodeId)` (role ≠ null ∧ `isVisibleToGrantee` ∧ node readable via its OWN file ACL) executes as a route-level pre-check OUTSIDE the ACL subsystem — it never caches into permission stores. Collection sharing remains additive to, not a bypass of, file ACL. |
-| Undo asymmetry          | grant-undo = revoke (exposure reduction — silent allowed); revoke-undo = grant (expansion — explicit user click only — exposure expansion never acts silently), applied to collection grants by the same rule.                                                                                                                                                                                                                                                                                                                            |
+| Layer                   | Enforcement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Routes                  | `/api/collections/*` accepts NO file-mutating verb (no rename/move/delete of nodes). File-mutating routes (`/api/files*`) accept NO collection parameter — they run pure file ACL.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Service                 | `getRole` gates every collections route (§2.2); member ops call `removeItem`/`addExclusion` (membership rows only) — never a node service.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Store                   | `collectionsStore` exposes no node mutator; `collection_grants`/`collection_visibility` are absent from `permissionStore`/`aclService` code paths (grep-gate + permissions integration assertion in the store spec §2.9).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Download/preview bridge | Collection views offer download/preview of members. v1 rule: member rows offer download only when the FILE ACL allows. For grant-initiated access to owner-owned members, the preview/download route passes `collectionId`; `assertMemberConsumable(viewerId, collectionId, nodeId)` (role ≠ null ∧ `isVisibleToGrantee` ∧ node readable via its OWN file ACL) executes as a route-level pre-check OUTSIDE the ACL subsystem — it never caches into permission stores. Collection sharing remains additive to, not a bypass of, file ACL. Code contract of the pre-check: zero-access requester, unknown collection, hidden flag set, a nodeId absent from the materialized membership (nothing exists behind this collection), or a trashed/vanished member node (the same liveness read the item view uses) → `notFound` (404 masquerade). Grantee requesters (`viewer`/`editor`) additionally require `isVisibleToGrantee` on the materialized row and the node to be the collection OWNER's own (cross-leak parity — a foreign-owned member is never consumable through a shared view; the owner's ACL over it never leaks through sharing). An owner requester passes the visibility gate (owners see every row) and must be able to read the node via its own file ACL (ownership or granted READ). The predicate never writes into or bypasses permission caches; with NO collection context a grant never replaces the file ACL — the plain file routes stay pure ACL. No shipped files-domain route carries a collection context in v1 — the pre-check is the seam the bridge consumes when one does. |
+| Undo asymmetry          | grant-undo = revoke (exposure reduction — silent allowed); revoke-undo = grant (expansion — explicit user click only — exposure expansion never acts silently), applied to collection grants by the same rule.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ### 2.7 Thrown string codes
 
@@ -126,9 +153,12 @@ Same collections router `ERROR_MAP` (shared with collectionsService — see its 
 - `collectionsStore` (grants, visibility, item rows, `setItemPublished`, `setAutoPin`)
 - `userStore` (grantee existence + username), `actionJournalStore` (indirect — via the
   journaled store mutators)
-- Called by: `server/domains/collections/routes.js` (grants/self-revocation endpoints) and
-  [collectionsService](collectionsService.md) (`getRole`, visibility predicates,
-  `assertMemberConsumable` from the files domain preview/download routes)
+- Called by: `server/domains/collections/routes.js` (grants/self-revocation and publish
+  endpoints) and
+  [collectionsService](collectionsService.md) (`getRole`-based read/role gates,
+  `isVisibleToGrantee`, `publishPendingCount`);
+  `assertMemberConsumable` is the predicate the files domain preview/download routes pass a
+  collection context through (spec §2.6)
 
 ## 4. Verification Scenarios
 
@@ -152,6 +182,9 @@ Same collections router `ERROR_MAP` (shared with collectionsService — see its 
       caller with no grant row (incl. the owner) → `grantNotFound`
 - [ ] `assertMemberConsumable`: grantee preview of a published member passes; unpublished
       fails; foreign-owned member fails in shared view (cross-leak parity with the item
-      view); permission caches unchanged after any collection read (grep + cache probe)
+      view); owner requester passes its own members (visibility gate not applied); nodeId
+      absent from the materialized membership → `notFound`; hidden-flag grantee →
+      `notFound`; owner requester on a member their own file ACL cannot read →
+      `forbidden`; permission caches unchanged after any collection read (grep + cache probe)
 - [ ] Live resolution: membership change on a derived collection shows in the grantee's
       next read without re-sharing; cursor/visibility survive archive→restore

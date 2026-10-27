@@ -6,6 +6,7 @@ const requireNonAdmin = require('../../middleware/requireNonAdmin');
 const { asyncHandler, mapServiceError } = require('../../utils/errorHandler');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const collectionsService = require('./service');
+const shareService = require('./shareService');
 const wire = require('./wire');
 
 const ERROR_MAP = {
@@ -344,7 +345,7 @@ router.put(
   asyncHandler(async (req, res) => {
     try {
       const body = req.body || {};
-      const result = await collectionsService.publishItems(
+      const result = await shareService.publish(
         req.user.full.id,
         Number(req.params.id),
         body.nodeIds,
@@ -446,6 +447,8 @@ router.post(
   })
 );
 
+// Sharing endpoints delegate to shareService (spec §2.1); the shared
+// ERROR_MAP and every response shape stay as documented in routes spec §2.4.
 router.get(
   '/:id/grants',
   authenticateToken,
@@ -453,7 +456,7 @@ router.get(
   requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
-      res.json(await collectionsService.listGrants(req.user.full.id, Number(req.params.id)));
+      res.json(await shareService.listGrants(req.user.full.id, Number(req.params.id)));
     } catch (e) {
       throw handleServiceError(e);
     }
@@ -467,12 +470,11 @@ router.post(
   requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
-      const result = await collectionsService.grantCollectionAccess(
-        req.user.full.id,
-        Number(req.params.id),
-        (req.body || {}).userId,
-        (req.body || {}).role
-      );
+      const body = req.body || {};
+      const result = await shareService.grant(req.user.full.id, Number(req.params.id), {
+        granteeId: body.userId,
+        role: body.role,
+      });
       res.status(201).json({
         grant: wire.serializeGrant(result.grant, result.username),
         undo: { action_id: result.undo.actionId },
@@ -493,10 +495,7 @@ router.delete(
   requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
-      const result = await collectionsService.revokeOwnGrant(
-        req.user.full.id,
-        Number(req.params.id)
-      );
+      const result = await shareService.revokeOwnGrant(req.user.full.id, Number(req.params.id));
       res.json({
         grantee_id: result.grantee_id,
         revoked: result.revoked,
@@ -515,7 +514,7 @@ router.delete(
   requireNonAdmin,
   asyncHandler(async (req, res) => {
     try {
-      const result = await collectionsService.revokeCollectionAccess(
+      const result = await shareService.revoke(
         req.user.full.id,
         Number(req.params.id),
         req.query.userId

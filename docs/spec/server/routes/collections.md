@@ -23,8 +23,7 @@ undo (trash-parity: it is unrecoverable).
 ### 2.1 File Path
 
 - **Source:** `server/domains/collections/routes.js`
-- **Service:** `server/domains/collections/service.js` (business logic; throws bare string
-  codes translated by route-level `ERROR_MAP`/`mapServiceError`)
+- **Service:** `server/domains/collections/service.js` (business logic) + `server/domains/collections/shareService.js` (the grants/self-revocation/publish endpoints delegate here — [collectionShareService.md](../services/collectionShareService.md)). Both throw bare string codes translated by the shared route-level `ERROR_MAP`/`mapServiceError`.
 - **Test file:** `server/domains/collections/__tests__/collections.test.js`
 
 **Mount:** `server/index.js` registers the router **after** the app-level migrationGate and
@@ -79,7 +78,7 @@ toggle and the whole-viewer liked-ids read ride the separate `/api/file-likes` m
 - **Actor restriction (operator rule):** EVERY route in this router responds
   **403 `serverErrors.collections.forbidden`** when the requester is an ADMIN (`requireNonAdmin`).
   `POST /:id/grants` additionally 403s (same code) when the resolved **grantee is an admin**
-  (service-level ban in `grantCollectionAccess`); collections never reference admins.
+  (service-level ban in `shareService.grant` — [collectionShareService.md](../services/collectionShareService.md) §2.4); collections never reference admins.
 - `setupModeGuardInstance` at mount (see §2.1)
 - `parseNodeId`-style validation for `nodeIds`/`seedNodeId` payload fields (numeric nodeIds
   only; invalid ids are rejected 400, never normalized)

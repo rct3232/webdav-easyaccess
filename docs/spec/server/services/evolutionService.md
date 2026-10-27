@@ -47,14 +47,18 @@ Target-contract spec (`docs/features/collections-platform.md` §4.9 silent evolu
 - Kill switches (all T2/dbOnly, checked PER PASS, pause never destroys queued work
   silently): `AI_EVOLUTION_ENABLED` (global — pauses acts, rendering unaffected),
   `AI_EVOLUTION_NIGHTLY_ENABLED` (nightly-batch pause), `AI_EVOLUTION_CREATE_ENABLED`
-  (create-pause; split inherits it), `AI_MERGE_SUGGESTIONS_ENABLED`.
+  (create-pause; split inherits it), `AI_MERGE_SUGGESTIONS_ENABLED`,
+  `AI_MERGE_ARBITER_ENABLED` (merge-arbiter adjudication pause — §2.8; suggestion rows and
+  rendering are untouched).
 
 ### 2.3 `runEvolutionPass(scope)` — the single entry
 
 `runEvolutionPass({ users = [all-with-content], passes = 'cheap' | 'full' })` →
 `{ perUser: [{ userId, created: { created[], promoted, suppressed }, reconciled[], split[],
-archived[], purged[], mergeCandidates[], pinned[], arbiterCalls }], report }`; report row
-persisted as `admin_reports(kind='night_eval')`. Idempotent full re-scan — safe to
+archived[], purged[], mergeCandidates[], pinned[], arbiterCalls }], report }`;
+`arbiterCalls` counts the merge-arbiter chat calls issued for the user (`0` when the
+arbiter is ineligible — §2.8). Report row persisted as
+`admin_reports(kind='night_eval')`. Idempotent full re-scan — safe to
 re-run any time; concurrent invocations serialize on the per-user lock group (second
 caller no-ops). Inputs: `node_activity`, `file_likes` (via likes store),
 pooled `embeddings` (active model space), and `collection_centroids`.
@@ -63,7 +67,8 @@ Membership is materialized: the pass writes the add/remove diff through the jour
 mode) with `ctx.actor='system'`; the read path never evaluates definitions. Digest/feed
 carry system acts — NO toasts for silent system acts. The `night_eval` report totals
 include `created`, `create_promoted`, `create_suppressed`, `split_created`,
-`split_promoted`, `split_suppressed` and — full leg — `archived`/`purged`.
+`split_promoted`, `split_suppressed`, `arbiter_calls`, `arbiter_suggested` and — full
+leg — `archived`/`purged`.
 
 The **cheap** leg runs create, reconcile, split and merge-candidates; the **full** leg
 adds archive and purge plus the auto-pin reconcile. Create runs after reconcile, so a
@@ -269,17 +274,28 @@ tuned, via admin counters: `tombstone-suppressed` vs `regenerated-anyway`.
   row is due: `dismiss_count = 1` ⇒ `dismissed_at + 14d`; `dismiss_count ≥ 2` ⇒
   `dismissed_at + 30d`. Re-raise preserves the count, so subsequent dismissals keep the
   30-day cadence. The API never owns this timing.
-- **Review band 0.55–0.7**: below 0.55 no card; ≥0.7 card WITHOUT adjudication;
-  band pairs, when chat configured, get the **`merge-arbiter`** pass: input = both names
-- top tags + sizes + ≤5 sampled member summaries each AND — load-bearing — the
-  SYMMETRIC DIFFERENCE (unique-member counts/ratios + samples from each side — feeding only shared-sample + overlap ratio makes every pair look "nearly identical"). Output
-  `{verdict ∈ merge|keep_separate|sibling, reason}` written as prefilled recommendation
-  on the suggestion row (additive columns; read by
-  [collectionsService](collectionsService.md) §2.9). `sibling` ⇒ no card in v1.
-  **It advises, never acts** — no arbiter call is self-executing; chat off ⇒ band pairs
-  get no recommendation (card still appears, no preselection). Budget: the nightly
-  aggregate ≈ ≤1 chat call/user/day — arbiter calls are batched into one
-  structured multi-output per user, reasoning OFF.
+- **Review band 0.55–0.7** (`merge-arbiter`): the card gate is Jaccard ≥ 0.7 — a band pair
+  becomes a suggestion row ONLY through an arbiter verdict (chat configured). Chat
+  unconfigured, the arbiter paused, budget/breaker degradation, a failed call, an
+  invalid/unparsable response or the `sibling` verdict ⇒ the pair writes NOTHING, so no
+  card exists for it. `AI_MERGE_ARBITER_ENABLED` (T2/dbOnly, default `true`) pauses
+  adjudication only — existing verdicts and rows stay intact.
+  Input = both collection names + top tags + sizes + ≤5 sampled member summaries per side
+  AND — load-bearing — the SYMMETRIC DIFFERENCE (unique-member counts/ratios + samples
+  from each side — feeding only shared-sample + overlap ratio makes every pair look
+  "nearly identical"). Output `{verdict ∈ merge|keep_separate|sibling, reason}`:
+  `merge`/`keep_separate` ⇒ the row is written (pair-normalized, `score = jaccard×1000`)
+  with `arbiter_verdict`/`arbiter_reason` persisted (additive columns; read as
+  `recommendation` by [collectionsService](collectionsService.md) §2.9); `sibling` ⇒ no
+  card in v1. Pairs with an existing row in ANY state are never re-adjudicated (a
+  `dismissed` band row still follows the re-raise cadence and keeps its stored verdict).
+  Budget: the nightly aggregate ≈ ≤1 chat call/user/day — arbiter calls are batched into
+  ONE structured multi-output per user per pass (highest-Jaccard first, cap 8 pairs per
+  call, the remainder waits for the next night), reasoning OFF. A chat failure of any
+  class is swallowed: zero rows that night, the rest of the pass unaffected. Verdict-
+  promoted rows count in `mergeCandidates.arbiterSuggested`; the per-user `arbiterCalls`
+  metric counts calls issued (`0` when the arbiter is ineligible). **It advises, never
+  acts** — no arbiter call is self-executing; the user still presses Merge.
 
 ### 2.9 Pass 6 — auto-pin touch taxonomy reconcile
 
@@ -307,18 +323,18 @@ driven by backfill completion). `deleteCentroids` on purge/merge loser.
 
 ## 3. Configuration summary (T2/dbOnly hot; configRegistry T2 precedent)
 
-| Key                                                                                             | Default | Class                                                                                                                    |
-| ----------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `AI_EVOLUTION_ENABLED`                                                                          | `true`  | global kill switch                                                                                                       |
-| `AI_EVOLUTION_TRIGGER`                                                                          | `both`  | trigger mode                                                                                                             |
-| `AI_EVOLUTION_DEBOUNCE_S`                                                                       | `90`    | batch-end debounce                                                                                                       |
-| `AI_EVOLUTION_NIGHTLY_ENABLED` / `AI_EVOLUTION_CREATE_ENABLED` / `AI_MERGE_SUGGESTIONS_ENABLED` | `true`  | per-surface pauses                                                                                                       |
-| `AI_EVOLUTION_INACTIVE_DAYS`                                                                    | `30`    | archive gate: no positive member activity for this window (ε = 0)                                                        |
-| `AI_EVOLUTION_MIN_AGE_DAYS`                                                                     | `14`    | archive grace for system-origin collections                                                                              |
-| `AI_EVOLUTION_CREATE_RATE_DAYS`                                                                 | `7`     | max one system create per user per window                                                                                |
-| membership hysteresis offsets                                                                   | profile | `membershipHysteresis.inDelta/outDelta` around `definition.theta`; absent finite values fall back to no band             |
-| tier edge-cos 0.82/0.80/0.72, k≈6, δ/θ shapes                                                   | profile | **release-measured profile values** (release artifacts — no runtime calibration; re-open trigger: measured corpus drift) |
-| min 8 / ≤1-wk / ≤12 active / caps 120·500 / band 0.55–0.7 / ratio·jaccard 0.7                   | fixed   | product rules                                                                                                            |
+| Key                                                                                                                          | Default | Class                                                                                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `AI_EVOLUTION_ENABLED`                                                                                                       | `true`  | global kill switch                                                                                                       |
+| `AI_EVOLUTION_TRIGGER`                                                                                                       | `both`  | trigger mode                                                                                                             |
+| `AI_EVOLUTION_DEBOUNCE_S`                                                                                                    | `90`    | batch-end debounce                                                                                                       |
+| `AI_EVOLUTION_NIGHTLY_ENABLED` / `AI_EVOLUTION_CREATE_ENABLED` / `AI_MERGE_SUGGESTIONS_ENABLED` / `AI_MERGE_ARBITER_ENABLED` | `true`  | per-surface pauses                                                                                                       |
+| `AI_EVOLUTION_INACTIVE_DAYS`                                                                                                 | `30`    | archive gate: no positive member activity for this window (ε = 0)                                                        |
+| `AI_EVOLUTION_MIN_AGE_DAYS`                                                                                                  | `14`    | archive grace for system-origin collections                                                                              |
+| `AI_EVOLUTION_CREATE_RATE_DAYS`                                                                                              | `7`     | max one system create per user per window                                                                                |
+| membership hysteresis offsets                                                                                                | profile | `membershipHysteresis.inDelta/outDelta` around `definition.theta`; absent finite values fall back to no band             |
+| tier edge-cos 0.82/0.80/0.72, k≈6, δ/θ shapes                                                                                | profile | **release-measured profile values** (release artifacts — no runtime calibration; re-open trigger: measured corpus drift) |
+| min 8 / ≤1-wk / ≤12 active / caps 120·500 / band 0.55–0.7 / ratio·jaccard 0.7 / arbiter cap 8 pairs per call                 | fixed   | product rules                                                                                                            |
 
 ## 4. Dependencies
 
@@ -376,8 +392,14 @@ driven by backfill completion). `deleteCentroids` on purge/merge loser.
 - [ ] Merge candidates: subset pair (sizeRatio < 0.7) never suggested (geometry
       fixtures — Spain ⊂ Europe); near-identical pair suggested; rejected pair terminal;
       first dismiss re-raised at +14d, second dismiss at +30d (count preserved)
-- [ ] Arbiter: chat on + band 0.55–0.7 ⇒ recommendation on the card; request body
-      contains symmetric-difference samples; chat off ⇒ same card, verdict NULL; card
+- [ ] Arbiter: chat on + band 0.55–0.7 + verdict `merge`/`keep_separate` ⇒ suggestion row
+      with the verdict/reason as the card's `recommendation`; request body carries EACH
+      side's unique-member count/ratio and per-side unique samples (never only the
+      intersection); `sibling` ⇒ no row; chat off / `AI_MERGE_ARBITER_ENABLED:false` /
+      budget-or-breaker failure ⇒ band pairs write nothing (card gate stays Jaccard ≥0.7);
+      ≥0.7 rows are never adjudicated (`recommendation` NULL); ONE batched call per user
+      per pass; a pair with an existing row (any state) is never re-adjudicated; a
+      dismissed band row re-raises on the cadence with its verdict preserved; card
       without user click NEVER merges (arbiter self-execution grep/test ban)
 - [ ] Auto-pin reconcile: each touch type (per §2.9) pins a system row (`pinned_by='auto'`,
       no journal row for the pin); read/view/like touches do NOT pin; user-origin rows

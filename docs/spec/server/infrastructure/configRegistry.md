@@ -181,6 +181,7 @@ can manage them from day one.
 | `LLM_BREAKER_COOLDOWN_S`     | T2   | no      | `300`           | breaker OPEN cooldown before the half-open probe (`llmAdapter.md` §2.5)         |
 | `AI_SEMANTIC_SEARCH_ENABLED` | T2   | no      | `true`          | query-embed kill switch (`searchService` consumer)                              |
 | `AI_NL_PARSE_ENABLED`        | T2   | no      | `true`          | `parse.nl` kill switch (`searchService.md` §2.8)                                |
+| `AI_MERGE_ARBITER_ENABLED`   | T2   | no      | `true`          | merge-arbiter adjudication kill switch (`evolutionService.md` §2.8)             |
 | `SEARCH_SEMANTIC_LIMIT`      | T2   | no      | `50`            | semantic-section cap (`searchService.md` §2.3 step 7)                           |
 | `BASELINE_SAMPLE_DOCS`       | T2   | no      | `500`           | dynamic-baseline corpus sample size (`searchService.md` §2.3 step 6)            |
 | `AI_WORKER_POLL_MS`          | T2   | no      | `5000`          | AI jobs worker idle claim poll (`aiJobService.md` §2.3)                         |

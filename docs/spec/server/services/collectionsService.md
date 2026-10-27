@@ -317,8 +317,12 @@ collectionId)` removes the grantee's row for that collection. A re-grant after a
 
 - Suggestion READ (`listMergeSuggestions`): pending rows where requester owns both sides;
   `score` desc; additive `recommendation` rendered from the suggestion row's arbiter
-  columns (written by [evolutionService](evolutionService.md) pass 5; chat-off ⇒ NULL ⇒
-  card shows no preselection — the card still appears). The read also composes the
+  columns (written ONLY by [evolutionService](evolutionService.md) pass 5 arbiter
+  adjudication — a pending row exists for a review-band pair only because a verdict
+  promoted it; rows at `score` ≥ 700 carry no verdict: the arbiter never adjudicates a
+  pair that clears the set rule, so `recommendation` is NULL there and the card shows no
+  preselection; with the arbiter off or chat unconfigured, band pairs have no rows at
+  all). The read also composes the
   card's capped sample fields from the SAME already-resolved member views (zero extra
   repository reads): `overlap_sample` = shared-node pairs `{ a_node_id, b_node_id }`
   (node id asc, cap 8), `a_unique_sample`/`b_unique_sample` = per-side `{ node_id, name }`

@@ -1487,6 +1487,225 @@ describe('merge suggestions and execution', () => {
     expect(reject2.body.state).toBe('rejected');
     expect(typeof reject2.body.rejected_at).toBe('string');
   });
+
+  // -- §2.4 conformance audit pins (merge-suggestions surface) ---------------
+
+  it('orders the pending set by score desc across pairs', async () => {
+    const ctx = await setupMergePair('order');
+    const other = await setupMergePair('order-b');
+    await collectionsStore.upsertMergeSuggestion(other.aId, other.bId, 700);
+    await collectionsStore.upsertMergeSuggestion(ctx.aId, ctx.bId, 900);
+
+    const res = await request(app)
+      .get('/api/collections/merge-suggestions')
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(res.status).toBe(200);
+    // two DIFFERENT owners (setupMergePair creates a fresh user per tag) — this
+    // requester owns only the 900 pair; prove ownership scoping + score value.
+    expect(res.body.suggestions.map((row) => row.score)).toEqual([900]);
+    expect(res.body.suggestions[0].a_id).toBe(ctx.aId);
+
+    // same-owner second pair → score-desc order across rows
+    const second = await createCollectionViaApi(ctx.token, { name: 'Japan' });
+    const third = await createCollectionViaApi(ctx.token, { name: 'Kyoto' });
+    await collectionsStore.upsertMergeSuggestion(
+      second.body.collection.collection_id,
+      third.body.collection.collection_id,
+      650
+    );
+    const res2 = await request(app)
+      .get('/api/collections/merge-suggestions')
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(res2.body.suggestions.map((row) => row.score)).toEqual([900, 650]);
+  });
+
+  it('payload rows carry the documented snake_case shape with capped real samples', async () => {
+    const ctx = await setupMergePair('payload');
+    const sharedIds = [];
+    for (let i = 0; i < 10; i += 1) {
+      const file = await fileNodeService.createFile(ctx.root.id, `shared-${i}.jpg`);
+      sharedIds.push(file.id);
+    }
+    const uniqueA = await fileNodeService.createFile(ctx.root.id, 'only-a.jpg');
+    const uniqueB = await fileNodeService.createFile(ctx.root.id, 'only-b.jpg');
+    // foreign member readable before revocation → counts include it, samples never leak it
+    const other = await createUserWithRoot('payload-foreign');
+    const foreign = await fileNodeService.createFile(other.root.id, 'foreign.jpg');
+    await grantTestPermissionByNodeId({
+      userId: ctx.user.id,
+      fileNodeId: foreign.id,
+      permission: 'read',
+    });
+    await request(app)
+      .post(`/api/collections/${ctx.aId}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ nodeIds: [...sharedIds, uniqueA.id, foreign.id] });
+    await request(app)
+      .post(`/api/collections/${ctx.bId}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ nodeIds: [...sharedIds, uniqueB.id, foreign.id] });
+    await collectionsStore.upsertMergeSuggestion(ctx.aId, ctx.bId, 900);
+
+    // revoke → the foreign member becomes unreadable (revoked placeholder row)
+    await dbRun('DELETE FROM permissions_user_files WHERE file_node_id = ?', [foreign.id]);
+
+    const res = await request(app)
+      .get('/api/collections/merge-suggestions')
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(res.status).toBe(200);
+    const row = res.body.suggestions[0];
+
+    // documented shape, snake_case throughout
+    expect(row).toMatchObject({
+      suggestion_id: expect.any(Number),
+      a_id: ctx.aId,
+      a_name: 'Europe',
+      b_id: ctx.bId,
+      b_name: '2026 trip',
+      overlap_count: 11,
+      merged_count: 13,
+      score: 900,
+      dismiss_count: 0,
+      recommendation: null,
+    });
+    expect(typeof row.created_at).toBe('string');
+    Object.keys(row).forEach((key) => {
+      expect(key).toMatch(/^[a-z0-9_]+$/);
+    });
+
+    // R2 sample extension: capped, node-id-asc, readable rows only
+    const sharedAsc = [...sharedIds].sort((a, b) => a - b);
+    expect(row.overlap_sample).toHaveLength(8);
+    expect(row.overlap_sample).toEqual(
+      sharedAsc.slice(0, 8).map((id) => ({ a_node_id: id, b_node_id: id }))
+    );
+    expect(row.overlap_sample.some((pair) => pair.a_node_id === foreign.id)).toBe(false);
+    expect(row.a_unique_sample).toEqual([{ node_id: uniqueA.id, name: 'only-a.jpg' }]);
+    expect(row.b_unique_sample).toEqual([{ node_id: uniqueB.id, name: 'only-b.jpg' }]);
+  });
+
+  it('survivor keeps its own name and name_locked; the loser name is never adopted', async () => {
+    const ctx = await setupMergePair('lock');
+    // renaming through the API locks the survivor's name
+    await request(app)
+      .put(`/api/collections/${ctx.aId}`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ name: 'Renamed survivor' });
+
+    const res = await request(app)
+      .post(`/api/collections/${ctx.aId}/merge/${ctx.bId}`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.survivor.name).toBe('Renamed survivor');
+    expect(res.body.survivor.name).not.toContain('2026 trip');
+
+    const survivor = await collectionsStore.getCollection(ctx.aId);
+    expect(survivor.name).toBe('Renamed survivor');
+    expect(survivor.nameLocked).toBe(true);
+  });
+
+  it('drops the loser grants without migrating them (no survivor view for the grantee)', async () => {
+    const ctx = await setupMergePair('grants');
+    const viewer = await createUserWithRoot('grants-viewer');
+    const grant = await request(app)
+      .post(`/api/collections/${ctx.bId}/grants`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ userId: viewer.user.id, role: 'viewer' });
+    expect(grant.status).toBe(201);
+
+    const before = await request(app)
+      .get(`/api/collections/${ctx.bId}`)
+      .set('Authorization', `Bearer ${viewer.token}`);
+    expect(before.status).toBe(200);
+
+    const merge = await request(app)
+      .post(`/api/collections/${ctx.aId}/merge/${ctx.bId}`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(merge.status).toBe(200);
+
+    // exposure expansion is always an explicit act: the grant does NOT migrate
+    const survivorAsViewer = await request(app)
+      .get(`/api/collections/${ctx.aId}`)
+      .set('Authorization', `Bearer ${viewer.token}`);
+    expect(survivorAsViewer.status).toBe(404);
+    expect(survivorAsViewer.body.errorCode).toBe(codes().collections.notFound);
+  });
+
+  it('undo of a merge recreates the loser with its name_locked state and moves members back', async () => {
+    const ctx = await setupMergePair('undo');
+    const shared = await fileNodeService.createFile(ctx.root.id, 'undo-shared.jpg');
+    const onlyB = await fileNodeService.createFile(ctx.root.id, 'undo-only-b.jpg');
+    await request(app)
+      .post(`/api/collections/${ctx.aId}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ nodeIds: [shared.id] });
+    await request(app)
+      .post(`/api/collections/${ctx.bId}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ nodeIds: [shared.id, onlyB.id] });
+    await request(app)
+      .put(`/api/collections/${ctx.bId}`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ name: 'Locked loser' });
+
+    const merge = await request(app)
+      .post(`/api/collections/${ctx.aId}/merge/${ctx.bId}`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(merge.status).toBe(200);
+    const gone = await request(app)
+      .get(`/api/collections/${ctx.bId}`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(gone.status).toBe(404);
+
+    const undo = await request(app)
+      .post(`/api/actions/${merge.body.undo.action_id}/undo`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({});
+    expect(undo.status).toBe(200);
+
+    const rows = await collectionsStore.listForUser(ctx.user.id, { status: 'all' });
+    const restored = rows.find((row) => row.name === 'Locked loser');
+    expect(restored).toBeTruthy();
+    expect(restored.id).not.toBe(ctx.bId); // recreate rides a fresh row id
+    expect(restored.origin).toBe('user');
+
+    const loserItems = await request(app)
+      .get(`/api/collections/${restored.id}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(loserItems.status).toBe(200);
+    const loserNodes = loserItems.body.items.map((i) => i.node_id).sort((a, b) => a - b);
+    expect(loserNodes).toEqual([shared.id, onlyB.id].sort((a, b) => a - b));
+
+    // the survivor KEEPS its own overlapping row (move-back never strips it)
+    const survivorItems = await request(app)
+      .get(`/api/collections/${ctx.aId}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(survivorItems.body.items.map((i) => i.node_id)).toEqual([shared.id]);
+  });
+
+  it('refuses merge undo when the loser name was re-taken (409, journal row stays applied)', async () => {
+    const ctx = await setupMergePair('undo-refusal');
+    const merge = await request(app)
+      .post(`/api/collections/${ctx.aId}/merge/${ctx.bId}`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(merge.status).toBe(200);
+
+    // the absorbed name is free after the cascade — a new collection may take it
+    const squatter = await createCollectionViaApi(ctx.token, { name: '2026 trip' });
+    expect(squatter.status).toBe(201);
+
+    const undo = await request(app)
+      .post(`/api/actions/${merge.body.undo.action_id}/undo`)
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({});
+    expect(undo.status).toBe(409);
+    expect(undo.body.errorCode).toBe(codes().actions.fingerprintMismatch);
+
+    // refused ⇒ not undone: exactly one '2026 trip' row (the squatter) survives
+    const rows = await collectionsStore.listForUser(ctx.user.id, { status: 'active' });
+    expect(rows.filter((row) => row.name === '2026 trip')).toHaveLength(1);
+    expect(rows.find((row) => row.name === 'Europe')).toBeTruthy();
+  });
 });
 
 // ---------------------------------------------------------------------------

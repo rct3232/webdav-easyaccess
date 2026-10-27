@@ -276,9 +276,10 @@ describe('useCollections', () => {
     expect(mockOnUndoable).toHaveBeenCalledWith(payload, expect.any(String));
   });
 
-  it('dismiss/reject do not produce undo affordances', async () => {
+  it('dismiss/reject refresh the pending set on success and never yield undo affordances', async () => {
     const { result } = renderHook(() => useCollections(baseProps()));
     await waitFor(() => expect(result.current.loading).toBe(false));
+    const loadCallsBefore = explorerGateway.loadCollections.mock.calls.length;
 
     await act(async () => {
       await result.current.dismissMergeSuggestion(1, 2);
@@ -286,7 +287,37 @@ describe('useCollections', () => {
     });
 
     expect(mockOnUndoable).not.toHaveBeenCalled();
-    expect(explorerGateway.dismissMerge).toHaveBeenCalledWith(1, 2);
-    expect(explorerGateway.rejectMerge).toHaveBeenCalledWith(1, 2);
+    expect(mockShowError).not.toHaveBeenCalled();
+    // mutation seams receive the onError envelope channel (absorbMutation contract)
+    expect(explorerGateway.dismissMerge).toHaveBeenCalledWith(
+      1,
+      2,
+      expect.objectContaining({ onError: expect.any(Function) })
+    );
+    expect(explorerGateway.rejectMerge).toHaveBeenCalledWith(
+      1,
+      2,
+      expect.objectContaining({ onError: expect.any(Function) })
+    );
+    // success refreshes: the resolved card drops out of the re-read set
+    expect(explorerGateway.loadCollections.mock.calls.length).toBeGreaterThan(loadCallsBefore);
+  });
+
+  it('absorbed dismiss failure surfaces the mapped error with no undo affordance', async () => {
+    const envelope = { errorCode: 'serverErrors.collections.suggestionNotFound' };
+    explorerGateway.dismissMerge.mockImplementation((id, otherId, options = {}) => {
+      options.onError?.(envelope);
+      return Promise.resolve(null);
+    });
+    const { result } = renderHook(() => useCollections(baseProps()));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      const out = await result.current.dismissMergeSuggestion(1, 2);
+      expect(out).toBeNull();
+    });
+
+    expect(mockShowError).toHaveBeenCalled();
+    expect(mockOnUndoable).not.toHaveBeenCalled();
   });
 });

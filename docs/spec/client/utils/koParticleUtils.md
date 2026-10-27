@@ -37,7 +37,8 @@
 
 ### 2.4 Verification Scenarios
 
-- [ ] `hasKoreanFinalConsonant('유럽')` false; `('trip')` false; `('사진')` true.
+- [ ] `hasKoreanFinalConsonant('사진')`/`('여행')`/`('유럽')` true; `('바다')` false;
+      `('trip')` false.
 - [ ] `koObjectParticle` yields 을/를 per the batchim rule; `koTopicParticle` yields 은/는;
       `koWithParticle` yields 과/와.
 - [ ] Boundary: `''`, `undefined`, emoji and digit tails resolve to the no-batchim variants.

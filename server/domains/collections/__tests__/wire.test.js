@@ -97,3 +97,79 @@ describe('wire.serializeCollection', () => {
     expect(payload.preview_items).toEqual([]);
   });
 });
+
+describe('wire.serializeSuggestion', () => {
+  const row = {
+    id: 88,
+    aId: 17,
+    bId: 23,
+    score: 812,
+    state: 'pending',
+    dismissCount: 0,
+    arbiterVerdict: null,
+    arbiterReason: null,
+    createdAt: '2026-09-16T03:00:00Z',
+  };
+
+  it('maps the suggestion row to the full snake_case card contract', () => {
+    const payload = wire.serializeSuggestion(row, {
+      aName: 'Europe',
+      bName: '2025-trip',
+      overlapCount: 41,
+      mergedCount: 58,
+      recommendation: null,
+    });
+    expect(payload).toMatchObject({
+      suggestion_id: 88,
+      a_id: 17,
+      a_name: 'Europe',
+      b_id: 23,
+      b_name: '2025-trip',
+      overlap_count: 41,
+      merged_count: 58,
+      score: 812,
+      dismiss_count: 0,
+      created_at: '2026-09-16T03:00:00Z',
+      recommendation: null,
+    });
+    Object.keys(payload).forEach((key) => {
+      expect(key).toMatch(/^[a-z0-9_]+$/);
+    });
+  });
+
+  it('carries the compare-overlay sample fields (empty arrays when no samples given)', () => {
+    const bare = wire.serializeSuggestion(row, {
+      aName: 'A',
+      bName: 'B',
+      overlapCount: 0,
+      mergedCount: 0,
+    });
+    expect(bare.overlap_sample).toEqual([]);
+    expect(bare.a_unique_sample).toEqual([]);
+    expect(bare.b_unique_sample).toEqual([]);
+
+    const withSamples = wire.serializeSuggestion(row, {
+      aName: 'A',
+      bName: 'B',
+      overlapCount: 1,
+      mergedCount: 2,
+      overlapSample: [{ a_node_id: 101, b_node_id: 101 }],
+      aUniqueSample: [{ node_id: 110, name: 'beach.jpg' }],
+      bUniqueSample: [{ node_id: 220, name: 'seville.jpg' }],
+    });
+    expect(withSamples.overlap_sample).toEqual([{ a_node_id: 101, b_node_id: 101 }]);
+    expect(withSamples.a_unique_sample).toEqual([{ node_id: 110, name: 'beach.jpg' }]);
+    expect(withSamples.b_unique_sample).toEqual([{ node_id: 220, name: 'seville.jpg' }]);
+  });
+
+  it('passes the arbiter recommendation through untouched (advisory prefill)', () => {
+    const payload = wire.serializeSuggestion(row, {
+      aName: 'A',
+      bName: 'B',
+      overlapCount: 2,
+      mergedCount: 3,
+      recommendation: { verdict: 'merge', reason: 'same theme twice' },
+    });
+    expect(payload.recommendation).toEqual({ verdict: 'merge', reason: 'same theme twice' });
+  });
+});

@@ -261,8 +261,10 @@ const FileGridItem = React.memo(
       prevProps.file.hasReadPermission === nextProps.file.hasReadPermission &&
       prevProps.file.isSearchServerRow === nextProps.file.isSearchServerRow &&
       prevProps.file.size === nextProps.file.size &&
-      // Membership chips ride the host-prepared slice — compared BY IDENTITY
-      // (the map keeps a stable array per node until its membership changes).
+      // Membership chips ride the host-prepared slice — compared BY IDENTITY:
+      // stable across renders while no membership re-read lands; a re-read
+      // rebuilds the map wholesale (member-adapter remap class), so exactly
+      // the notify cycles re-render the badged rows.
       prevProps.memberships === nextProps.memberships
     );
   }

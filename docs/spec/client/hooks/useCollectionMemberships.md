@@ -28,9 +28,9 @@
 
 ### 2.3 Return Value / State
 
-| Key                 | Type                                | Meaning                                                                                                                                                                                    |
-| ------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| membershipsByNodeId | `{ [nodeId]: Array<{ id, name }> }` | Containing-collection slice per node. Nodes with no membership are ABSENT (lookup yields `undefined`). Arrays are stable while a node's membership and the collections list are unchanged. |
+| Key                 | Type                                | Meaning                                                                                                                                                                                                                                                                                                                  |
+| ------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| membershipsByNodeId | `{ [nodeId]: Array<{ id, name }> }` | Containing-collection slice per node. Nodes with no membership are ABSENT (lookup yields `undefined`). Array identity is stable between re-reads; each re-read cycle (notifier, id-set change, collections-list change) rebuilds the map wholesale (member-adapter remap class) — no cross-run array reuse is attempted. |
 
 ### 2.4 Responsibilities
 

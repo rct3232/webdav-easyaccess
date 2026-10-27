@@ -59,7 +59,7 @@ Both keys exist in `en.json` AND `ko.json` (mirror rule, `docs/spec/client/i18n.
 
 - The map arrives as prop `membershipsByNodeId` (`{ [nodeId]: [{ id, name }] }`) from `useCollectionMemberships` through `FileManagerView` → `FileGrid`/`FileList`/`FileDetail`; each list renderer slices per row and passes `memberships` to the item.
 - Listing payloads never carry membership (file-listing contracts frozen — `routes/collections.md`); the badges render from the separate batched read only.
-- Memoization: `FileListItem`/`FileGridItem` custom comparators compare the `memberships` PROP BY IDENTITY (the host map keeps a stable array per node until its membership or the collection list changes). `FileDetailRow` keeps the default shallow `React.memo` compare — the prop identity comparison falls out of the shallow check; no custom comparator is added (stale drag-closure rule).
+- Memoization: `FileListItem`/`FileGridItem` custom comparators compare the `memberships` PROP BY IDENTITY (the host map holds the same array while no re-read lands; every membership re-read — notifier event, navigation, collections-list change — rebuilds the map wholesale, the member-adapter remap class, so exactly those cycles re-render the badged rows). `FileDetailRow` keeps the default shallow `React.memo` compare — the prop identity comparison falls out of the shallow check; no custom comparator is added (stale drag-closure rule).
 
 ### 2.7 Verification Scenarios
 

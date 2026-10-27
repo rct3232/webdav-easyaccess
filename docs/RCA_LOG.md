@@ -1601,3 +1601,32 @@ test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
 - **Verification**: dialog suite 18/18, useCollections 19/19, shell
   `collection-properties` block 2/2 green; full client gate in the unit
   report.
+
+---
+
+## 2026-10-27 — T3.6: full client gate hit the recorded host-contention flake class (first parallel attempt)
+
+- **Summary**: the first full client `npm run test:ci` on the T3.6 branch ran with
+  react-scripts' default CI worker count on the shared 6-core host while two sibling
+  task worktrees were also active: `Test Suites: 9 failed / 178 passed / 187 total`,
+  `Tests: 45 failed / 2159 passed / 2204 total`. Every failed case failed as
+  `Exceeded timeout` (65×5 s, 8×15 s/20 s class) — Setup, SetupAiStep, MigrationGuard,
+  MigrationDialog, MetadataMigrationDialog, MyPage, useFormState, useCollections and
+  the legacy FileManager shell cases (download/rename/preview/upload/like/zone-thumb-
+  nail). ZERO failures belonged to the branch's new tests (the two new suites, the
+  appended item/view blocks, the shell membership block, the gateway listing pin and
+  the admin IO-silence pin all completed green inside the contended run).
+- **Diagnosis**: matches the previously recorded class ("SetupAiStep failed only under
+  full-suite parallel load and passed isolated"; T3.5/T3.1 entries). Both suspect
+  branch-adjacent suites — `FileManager.test.js` and `useCollections.test.js` — passed
+  78/78 in a targeted serial re-run on the same tree; no branch module under
+  `useCollections` changed (the new hook is a separate file). jsdom timers starve past
+  the budget when sibling jest workers saturate the host.
+- **Classification**: **environment/timing flake** (host contention), not Case A/B/C —
+  no source, test-logic, or spec defect found; no production-code change made.
+- **Action**: the gate was re-run serially (`--maxWorkers=1`, never raised) against the
+  final committed tree — the branch's standing discipline on this host.
+- **Verification**: `Test Suites: 187 passed / 187`, `Tests: 2205 passed / 2205`
+  (exit 0) at maxWorkers=1 with coverage; wave-1 tip baseline was 185/2158 (+2 suites/
+  +47 tests from this branch). Server collections route suite green 85/85 including the
+  new membership-stability zero-definition-evaluation pin (single-case run 1/1).

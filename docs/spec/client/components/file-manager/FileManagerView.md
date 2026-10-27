@@ -153,7 +153,8 @@ Addendum to §2.2 grouping rules (docs/features/collections-platform.md §4.6 re
   (numeric `nodeId` selection; the row menu is the shell's `MemberRowControls` with
   `collection:null`).
 - **Otherwise unchanged:** any composition flag absent ⇒ pixel-identical rendering to today; both addenda are additive region swaps.
-- Prop placement: `searchResults` and `collectionsModel` arrive as additional grouped sub-objects (same §2.2 grouping discipline — the view never receives gateways or raw API payloads).
+- **Files-surface membership badges + bulk add (`membershipModel`):** the shell passes the grouped `membershipModel = { membershipsByNodeId, onBulkAddToCollection }` (`useCollectionMemberships.md`, `CollectionMembershipBadges.md` §2.6). The view (i) threads `membershipsByNodeId` into the FILES-surface renderers — the three browse sites and `zoneRendererProps` (search zones render through the same components; snapshot rows get badges from the same map) — and (ii) binds `FileManagerControls.onBulkAddToCollection`: the members surface keeps `collectionsModel.onBulkAddToCollection`; every non-member, non-share surface falls back to `membershipModel.onBulkAddToCollection` (the shell withholds it for admin/share-link sessions ⇒ the button is absent, not disabled). `CollectionsListView` never receives the map — member/liked rows carry no membership badges.
+- Prop placement: `searchResults`, `collectionsModel` and `membershipModel` arrive as additional grouped sub-objects (same §2.2 grouping discipline — the view never receives gateways or raw API payloads).
 
 ### 3.1 Verification (appends §2.6)
 

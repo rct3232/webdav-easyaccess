@@ -177,6 +177,24 @@ describe('explorerGateway', () => {
     expect(getUserPermissions).not.toHaveBeenCalled();
   });
 
+  it('listing enrichment NEVER calls the membership seam and rows carry no membership fields (file-listing contract frozen)', async () => {
+    const collectionsRepository = require('../collectionsRepository');
+    listFiles.mockResolvedValueOnce([
+      { nodeId: 10, display_path: '/docs/report.txt', isHidden: false, hasAdminPermission: true },
+    ]);
+
+    const result = await listDirectory({
+      nodeId: 5,
+      options: { user: { id: '1', is_admin: false } },
+    });
+
+    expect(collectionsRepository.getMemberships).not.toHaveBeenCalled();
+    expect(result).toHaveLength(1);
+    expect(result[0].collectionIds).toBeUndefined();
+    expect(result[0].memberships).toBeUndefined();
+    expect(result[0].collection_ids).toBeUndefined();
+  });
+
   it('returns raw share listings without hidden or permission enrichment', async () => {
     listFiles.mockResolvedValueOnce([
       { nodeId: 20, display_path: '/shared/.hidden.txt', isHidden: true },

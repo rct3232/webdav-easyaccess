@@ -9,6 +9,9 @@ import { getFileIcon, getThumbnail } from '../../utils/fileIconUtils';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
 import HighlightedName from './HighlightedName';
 import MemberStateBadges from './MemberStateBadges';
+import CollectionMembershipBadges, {
+  hasCollectionMembershipBadges,
+} from './CollectionMembershipBadges';
 
 /**
  * 정적 스타일 - 컴포넌트 외부에 정의하여 매 렌더링마다 재생성 방지
@@ -94,7 +97,7 @@ const processingOverlayStyles = {
  * React.memo로 감싸서 불필요한 리렌더링 방지
  */
 const FileListItem = React.memo(
-  ({ file, isProcessing, processingType, showMoreButton, onMoreClick }) => {
+  ({ file, isProcessing, processingType, showMoreButton, onMoreClick, memberships = null }) => {
     const { t } = useTranslation();
     const thumbnail = getThumbnail(file);
     // P-4 member-row slots (CollectionsListView §2.5): the member wire carries
@@ -151,6 +154,18 @@ const FileListItem = React.memo(
             >
               <EditOffIcon style={{ fontSize: 16 }} />
             </Box>
+          )}
+          {/* Collection-membership badges (CollectionMembershipBadges.md):
+              leading-column overlay; stacks below the read-only EditOff
+              overlay (top 2 → 20) when both render. File rows without the
+              prepared slice stay zero-DOM. */}
+          {hasCollectionMembershipBadges(memberships) && (
+            <CollectionMembershipBadges
+              nodeId={file.nodeId}
+              entries={memberships}
+              variant="list"
+              overlayTop={isReadOnlySearchRow ? 20 : 2}
+            />
           )}
         </Box>
         <Box sx={contentStyles} ref={containerRef}>
@@ -273,7 +288,12 @@ const FileListItem = React.memo(
       prevProps.file.hasWritePermission === nextProps.file.hasWritePermission &&
       prevProps.file.hasReadPermission === nextProps.file.hasReadPermission &&
       prevProps.file.isSearchServerRow === nextProps.file.isSearchServerRow &&
-      prevProps.file.size === nextProps.file.size
+      prevProps.file.size === nextProps.file.size &&
+      // Membership chips ride the host-prepared slice — compared BY IDENTITY:
+      // stable across renders while no membership re-read lands; a re-read
+      // rebuilds the map wholesale (member-adapter remap class), so exactly
+      // the notify cycles re-render the badged rows.
+      prevProps.memberships === nextProps.memberships
     );
   }
 );

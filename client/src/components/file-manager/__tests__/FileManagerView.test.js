@@ -1649,3 +1649,133 @@ describe('FileManagerView', () => {
     });
   });
 });
+
+describe('FileManagerView — membershipModel (files-surface badges + bulk add)', () => {
+  beforeEach(() => {
+    // Same gateway/mock settling as the sibling `FileManagerView` suite —
+    // CRA resetMocks strips the seam implementations between cases.
+    jest.clearAllMocks();
+    folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
+    folderTreeGateway.listFolderChildren.mockResolvedValue([]);
+    getRecentFiles.mockResolvedValue([]);
+    onRecentFilesChange.mockReturnValue(() => {});
+    explorerGateway.loadCollections.mockResolvedValue({ collections: [] });
+    explorerGateway.subscribeToCollections.mockImplementation(() => jest.fn());
+  });
+
+  const filesProps = (overrides = {}) => {
+    const base = createProps();
+    return createProps({
+      shellContext: { ...base.shellContext, isMobile: false },
+      selectionState: {
+        ...base.selectionState,
+        selectionModel: {
+          selectionMode: true,
+          selectedFiles: new Set(['/docs/a.txt']),
+          handleFileCheck: jest.fn(),
+        },
+      },
+      ...overrides,
+    });
+  };
+
+  it('renders bulk-collection-add on the files surface and forwards the selection keys', () => {
+    const onBulkAdd = jest.fn();
+    renderWithProviders(
+      <FileManagerView
+        {...filesProps({
+          membershipModel: { membershipsByNodeId: {}, onBulkAddToCollection: onBulkAdd },
+        })}
+      />
+    );
+    const button = screen.getByTestId('bulk-collection-add');
+    fireEvent.click(button);
+    expect(onBulkAdd).toHaveBeenCalledWith(['/docs/a.txt']);
+  });
+
+  it('threads membershipsByNodeId into the LIST renderer (badge DOM on the row)', () => {
+    renderWithProviders(
+      <FileManagerView
+        {...filesProps({
+          membershipModel: {
+            membershipsByNodeId: { 1: [{ id: 17, name: 'Beach' }] },
+            onBulkAddToCollection: jest.fn(),
+          },
+        })}
+      />
+    );
+    expect(screen.getByTestId('membership-badge-1-17')).toBeInTheDocument();
+  });
+
+  it('absent membershipModel ⇒ no files-surface button and zero badge DOM (withhold + regression)', () => {
+    renderWithProviders(<FileManagerView {...filesProps({})} />);
+    expect(screen.queryByTestId('bulk-collection-add')).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/^membership-badge/)).not.toBeInTheDocument();
+  });
+
+  it('members surface keeps its own handler even when membershipModel is present', async () => {
+    const memberModel = {
+      mode: 'members',
+      items: [
+        {
+          nodeId: 90210,
+          path: '',
+          name: 'poster.pdf',
+          basename: 'poster.pdf',
+          type: 'file',
+          mime: 'application/pdf',
+          lastmod: '2026-09-01T00:00:00Z',
+          membership: 'stored',
+          published: true,
+          state: 'normal',
+          liked: false,
+          reason: null,
+          shared_excluded: false,
+          isCollectionMember: true,
+          hasWritePermission: false,
+          rowTestId: 'member-row-90210',
+          moreButtonTestId: 'member-menu-button',
+        },
+      ],
+      digest: null,
+      publishPendingCount: null,
+      onMemberAction: jest.fn(),
+      onPublishBatch: jest.fn(),
+      onBulkMemberExclude: jest.fn(),
+      onBulkAddToCollection: jest.fn(),
+      onMemberThumbnailsLoaded: jest.fn(),
+    };
+    const onFilesBulkAdd = jest.fn();
+    const base = createProps();
+    renderWithProviders(
+      <FileManagerView
+        {...createProps({
+          shellContext: { ...base.shellContext, isMobile: false },
+          explorerSession: {
+            ...base.explorerSession,
+            controlsState: {
+              ...base.explorerSession.controlsState,
+              currentPath: '/__collections__/collection/5',
+              memberViewMode: 'list',
+            },
+          },
+          selectionState: {
+            ...base.selectionState,
+            selectionModel: {
+              selectionMode: true,
+              selectedFiles: new Set([90210]),
+              handleFileCheck: jest.fn(),
+            },
+          },
+          collectionsModel: memberModel,
+          membershipModel: { membershipsByNodeId: {}, onBulkAddToCollection: onFilesBulkAdd },
+        })}
+      />
+    );
+    expect(await screen.findByTestId('bulk-member-exclude')).toBeInTheDocument();
+    const button = screen.getByTestId('bulk-collection-add');
+    fireEvent.click(button);
+    expect(memberModel.onBulkAddToCollection).toHaveBeenCalledWith([90210]);
+    expect(onFilesBulkAdd).not.toHaveBeenCalled();
+  });
+});

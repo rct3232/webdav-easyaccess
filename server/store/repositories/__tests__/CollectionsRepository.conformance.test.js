@@ -879,6 +879,11 @@ describe('CollectionsRepository conformance', () => {
       // Plain set-rule upsert (no arbiter payload) persists NULL verdicts.
       const plain = await inTx(async (tx) => repo.upsertMergeSuggestion(tx, aId, cId, 1000));
       expect(plain).toMatchObject({ arbiterVerdict: null, arbiterReason: null, score: 1000 });
+
+      // Terminal cleanup: the unscoped pending reads in the neighbouring state
+      // machine case stay order-independent.
+      await inTx(async (tx) => repo.setSuggestionState(tx, promoted.id, 'merged'));
+      await inTx(async (tx) => repo.setSuggestionState(tx, plain.id, 'merged'));
     });
 
     it('merge suggestions normalize the pair and guard the state machine', async () => {

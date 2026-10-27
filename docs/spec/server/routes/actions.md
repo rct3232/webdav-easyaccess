@@ -99,7 +99,14 @@ every collection-domain writer captures the
 label; member-op rows carry the collection name so the dashboard feed renders them
 without re-resolution (`store/collectionsStore.md` §2.1 capture table);
 `undo_available` = `status='applied'` (payload not yet NULLed); `is_tip` = highest
-`chain_seq` among `status='applied'` rows for the same `subject`. The ≤24h **toast**
+`chain_seq` among `status='applied'` rows for the same `subject` — computed SERVER-SIDE
+over the subject's FULL chain across every actor, never from the feed's requester-visible
+subset: granted editors write journaled member ops onto the owner's `collection:<id>`
+subject, so a feed can legitimately omit the chain tip while the subject's true tip
+exists in another actor's rows. The per-row check is `countLaterChanges(domain, subject,
+chainSeq) === 0` (store §2.4) — the same per-subject applied-chain guard the undo
+executor applies, so the displayed flag and the undo outcome never disagree. The ≤24h
+**toast**
 window is a client surface rule — this API does not shorten availability at 24h.
 Retention: rows survive 30d; at expiry `payload` is NULLed and `status` flips to
 `expired` — expired rows stay visible in the feed until their 30d listing horizon passes.
@@ -158,7 +165,9 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
 - Cascade undo is re-posted with `confirmCascade: true` (409 + `params` first).
 - Feed is capped at 200 rows newest-first without a cursor.
 - `is_tip` is computed per-subject among `applied` rows only — a row after
-  an already-undone successor is still a tip (no undo-of-undo).
+  an already-undone successor is still a tip (no undo-of-undo). The computation
+  reads the subject's whole applied chain (every actor), independent of which
+  rows the requester's feed may show.
 - System-origin rows are journaled with `actor='system'` and scoped to the
   affected owner at commit time; this router trusts that scoping for feed visibility.
 
@@ -182,6 +191,11 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
       rows undone (`cascade_undone` lists them)
 - [ ] Subject mutated out from under the inverse → 409 `fingerprintMismatch`, row stays
       `applied`
+- [ ] Two-actor `is_tip`: an applied row another actor wrote onto the requester-owned
+      subject keeps the requester's older row `is_tip:false` (and the other actor's own
+      feed shows that row as the tip); undo of the older row answers 409
+      `cascadeConfirmRequired` with `laterChanges` counting the invisible-actor rows —
+      the displayed flag and the guard always agree
 - [ ] Command row with item list, one item changed → 200 with
       `items_undone: 11, items_skipped: 1` (mixed-result report path)
 - [ ] Expired row (payload NULLed) → 409 `actions.expired`

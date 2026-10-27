@@ -65,6 +65,13 @@ const PORT_BASES = {
 const BAND_STEP = 20;
 const MAX_BANDS = 25; // offsets 0..480
 
+// Ports browsers refuse to navigate to (Chromium/WebKit "restricted" list).
+// Auto-allocation never hands these out: offset 40 would map the
+// scratchRetrievalMobile base (5020) onto SIP port 5060 and webkit silently
+// refuses navigation (RCA 2026-10-27). A pinned band may still use them but
+// gets a loud warning.
+const BROWSER_RESTRICTED_PORTS = new Set([5060, 5061]);
+
 const PORT_ENV_OVERRIDES = {
   client: 'E2E_CLIENT_PORT',
   api: 'E2E_API_PORT',
@@ -334,6 +341,17 @@ function ensureBand(rootDir) {
   for (const offset of candidates) {
     if (offset === persisted) continue;
     const ports = portsForOffset(offset);
+    const restricted = Object.values(ports).filter((p) => BROWSER_RESTRICTED_PORTS.has(p));
+    if (restricted.length > 0) {
+      if (forced === offset) {
+        process.stdout.write(
+          `[e2e-band] Warning: pinned band ${offset} maps ${restricted.join(', ')} — browsers refuse ` +
+            `navigation to these ports; override the slot via its E2E_*_PORT or pick another band.\n`
+        );
+      } else {
+        continue;
+      }
+    }
     if (!bandPortsFree(ports)) continue;
     if (!claimBandLock(offset, rootDir)) continue;
     writeBandJson(rootDir, offset);

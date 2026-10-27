@@ -1677,9 +1677,9 @@ from the FileGrid\* JSX bodies with the original suites kept UNCHANGED as regres
   so per-event typing buys nothing; no push channel exists in the stack (§9) ⇒ subscribers re-read;
   polling stays a refresh-policy concern.
 - MergeProposalCard: KO count-particle grammar is solved by a client-side PARTICLE PICKER, EN copy
-  phrased without particles; the compare overlay REQUIRES an `overlap_sample` (+ side-unique
-  samples) extension of the suggestion payload at its own docs step (the route ships counts only)
-  — until shipped, the strip/overlay render skeleton rows.
+  phrased without particles; the compare overlay's `overlap_sample` (+ side-unique samples) payload
+  extension SHIPPED at the T3.1 docs step (owner ruling R2, 2026-10-27) — the card renders REAL
+  sample rows (`routes/collections.md` GET /merge-suggestions); the skeleton-rows stopgap is retired.
 - CollectionPropertiesDialog: NO Versions tab — collections are not versioned and the tab's
   ABSENCE is the invariant (nothing fills the slot); `Member of` chips and the per-file `AI Info`
   tab belong to `FilePropertiesDialog` (member chips T3.6 / AI tab P1), not this dialog.

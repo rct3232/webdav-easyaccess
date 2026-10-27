@@ -366,7 +366,12 @@ references with 400 (see above).
       "overlap_count": 41,
       "merged_count": 58,
       "score": 812,
-      "created_at": "2025-09-16T03:00:00Z"
+      "dismiss_count": 0,
+      "created_at": "2025-09-16T03:00:00Z",
+      "recommendation": null,
+      "overlap_sample": [{ "a_node_id": 101, "b_node_id": 101 }],
+      "a_unique_sample": [{ "node_id": 110, "name": "beach.jpg" }],
+      "b_unique_sample": [{ "node_id": 220, "name": "seville.jpg" }]
     }
   ]
 }
@@ -375,12 +380,30 @@ references with 400 (see above).
 `score` is the schema's scaled integer (×1000, `score BIGINT`) — the client does
 not re-float it. Row order = `score` desc.
 
+Sample fields feed the card's thumbnail strip and compare overlay
+([MergeProposalCard.md](../../client/components/file-manager/MergeProposalCard.md)
+§2.4) — the counts above stay the display truth, the samples are capped views of
+it: `overlap_sample` lists shared-member pairs (`{ a_node_id, b_node_id }`, each
+side's row for the same node), ordered by node id asc, cap 8; `a_unique_sample` /
+`b_unique_sample` list members present only on that side as `{ node_id, name }`,
+ordered by node id asc, cap 4 each. Samples carry ONLY readable member rows — a
+`revoked` member contributes neither id nor name to the payload (member-state
+rule in [collectionsService.md](../../server/services/collectionsService.md)).
+`recommendation` is the arbiter prefill (`{ verdict, reason }` or `null`; written
+only by the evolution pass, advisory).
+
 - **POST /:id/merge/:other:** Owner of both, both `active`, `:id` != `:other` (400
   `collections.mergeSameCollection`). The card IS the confirmation — no extra dialog.
-  `:id` survives: kept name unless the survivor must adopt the other's
-  `name_locked` state (survivor name kept as-is), stored members and likes-agnostic
-  membership of `:other` are moved to the survivor, `:other` is deleted (FK cascade),
-  matching suggestion row (if any) → `state='merged'`. 200:
+  `:id` survives: the survivor keeps its own name and its own `name_locked` state
+  as-is — the loser's name is NEVER adopted and no lock state transfers; stored
+  members and likes-agnostic membership of `:other` are moved to the survivor,
+  `:other` is deleted (FK cascade — its grants are dropped, never migrated),
+  matching suggestion row (if any) → `state='merged'`. `undo.action_id` undoes the
+  merge via the `merge-collections` journal inverse: the loser is recreated with
+  its recorded name/`name_locked`/origin/publish_mode/definition/pin state, its
+  stored members (with `added_by`/`published`/source/reason) and exclusions move
+  back, and rows the survivor already owned are left on the survivor untouched.
+  200:
 
 ```json
 {
@@ -432,26 +455,26 @@ suggestion row (a suggestion state transition is opportunistic).
 
 ### 2.4.1 Error Codes (SERVER_ERROR_CODES style)
 
-| HTTP | errorCode                                        | Trigger                                                                                                                                                                                                                                              |
-| ---- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 400  | `serverErrors.collections.nameRequired`          | Empty/missing name on create.                                                                                                                                                                                                                        |
-| 400  | `serverErrors.collections.invalidName`           | `validateFileName` failure (incl. `.wea-` prefix).                                                                                                                                                                                                   |
-| 400  | `serverErrors.collections.invalidSort`           | Unknown `sort` value.                                                                                                                                                                                                                                |
-| 400  | `serverErrors.collections.invalidInclude`        | Unknown token in `include`.                                                                                                                                                                                                                          |
-| 400  | `serverErrors.collections.invalidPublishMode`    | Bad `publishMode`.                                                                                                                                                                                                                                   |
-| 400  | `serverErrors.collections.invalidRole`           | Grant role outside `viewer\|editor`.                                                                                                                                                                                                                 |
-| 400  | `serverErrors.collections.emptyNodeIds`          | Missing/empty/over-cap `nodeIds` (item routes and the `{ name, semantic }` create arm).                                                                                                                                                              |
-| 400  | `serverErrors.collections.previewTargetRequired` | 0 or 2 of `seedNodeId`/`definition`.                                                                                                                                                                                                                 |
-| 400  | `serverErrors.collections.mergeSameCollection`   | `:id == :other`.                                                                                                                                                                                                                                     |
+| HTTP | errorCode                                        | Trigger                                                                                                                                                                                                                                                                                                                                                             |
+| ---- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400  | `serverErrors.collections.nameRequired`          | Empty/missing name on create.                                                                                                                                                                                                                                                                                                                                       |
+| 400  | `serverErrors.collections.invalidName`           | `validateFileName` failure (incl. `.wea-` prefix).                                                                                                                                                                                                                                                                                                                  |
+| 400  | `serverErrors.collections.invalidSort`           | Unknown `sort` value.                                                                                                                                                                                                                                                                                                                                               |
+| 400  | `serverErrors.collections.invalidInclude`        | Unknown token in `include`.                                                                                                                                                                                                                                                                                                                                         |
+| 400  | `serverErrors.collections.invalidPublishMode`    | Bad `publishMode`.                                                                                                                                                                                                                                                                                                                                                  |
+| 400  | `serverErrors.collections.invalidRole`           | Grant role outside `viewer\|editor`.                                                                                                                                                                                                                                                                                                                                |
+| 400  | `serverErrors.collections.emptyNodeIds`          | Missing/empty/over-cap `nodeIds` (item routes and the `{ name, semantic }` create arm).                                                                                                                                                                                                                                                                             |
+| 400  | `serverErrors.collections.previewTargetRequired` | 0 or 2 of `seedNodeId`/`definition`.                                                                                                                                                                                                                                                                                                                                |
+| 400  | `serverErrors.collections.mergeSameCollection`   | `:id == :other`.                                                                                                                                                                                                                                                                                                                                                    |
 | 400  | `serverErrors.collections.invalidDefinition`     | Malformed `definition` payload (unknown kind / predicate type / bad atom); a self-centroid (`centroid_ref: null`) definition on the free-standing `POST /preview` (no owning collection); malformed `semantic` create payload on the `{ name, semantic }` arm (missing/non-string `resultRef`, non-array or non-empty-at-P1 `predicates`, missing `nodeIds` array). |
-| 403  | `serverErrors.collections.forbidden`             | Non-owner mutation; viewer writes; editor removing what they did not add. ALSO the admin-operator gate: EVERY endpoint for an ADMIN requester (`requireNonAdmin`) and `POST /:id/grants` with an ADMIN grantee (service ban).                        |
-| 404  | `serverErrors.collections.notFound`              | Unknown id, or no access at all (read = 404 masquerade — ungranted reads do not disclose existence).                                                                                                                                                 |
-| 404  | `serverErrors.collections.granteeNotFound`       | Unknown user on grant.                                                                                                                                                                                                                               |
-| 404  | `serverErrors.collections.grantNotFound`         | Revoke of a non-existing row; `/grants/me` caller holding no grant row (incl. owner).                                                                                                                                                                |
-| 404  | `serverErrors.collections.suggestionNotFound`    | Dismiss/reject without a pending row.                                                                                                                                                                                                                |
-| 409  | `serverErrors.collections.alreadyArchived`       | Archive of an archived collection.                                                                                                                                                                                                                   |
-| 409  | `serverErrors.collections.notArchived`           | Restore/delete of an active collection.                                                                                                                                                                                                              |
-| 409  | `serverErrors.ai.notConfigured`                  | Seed preview or a `seed_vector`/`centroid` definition preview without the `embed` role.                                                                                                                                             |
+| 403  | `serverErrors.collections.forbidden`             | Non-owner mutation; viewer writes; editor removing what they did not add. ALSO the admin-operator gate: EVERY endpoint for an ADMIN requester (`requireNonAdmin`) and `POST /:id/grants` with an ADMIN grantee (service ban).                                                                                                                                       |
+| 404  | `serverErrors.collections.notFound`              | Unknown id, or no access at all (read = 404 masquerade — ungranted reads do not disclose existence).                                                                                                                                                                                                                                                                |
+| 404  | `serverErrors.collections.granteeNotFound`       | Unknown user on grant.                                                                                                                                                                                                                                                                                                                                              |
+| 404  | `serverErrors.collections.grantNotFound`         | Revoke of a non-existing row; `/grants/me` caller holding no grant row (incl. owner).                                                                                                                                                                                                                                                                               |
+| 404  | `serverErrors.collections.suggestionNotFound`    | Dismiss/reject without a pending row.                                                                                                                                                                                                                                                                                                                               |
+| 409  | `serverErrors.collections.alreadyArchived`       | Archive of an archived collection.                                                                                                                                                                                                                                                                                                                                  |
+| 409  | `serverErrors.collections.notArchived`           | Restore/delete of an active collection.                                                                                                                                                                                                                                                                                                                             |
+| 409  | `serverErrors.ai.notConfigured`                  | Seed preview or a `seed_vector`/`centroid` definition preview without the `embed` role.                                                                                                                                                                                                                                                                             |
 
 All errors follow the shared error envelope (`errorCode` + optional `params`,
 [shared-contracts.md](../../../shared-contracts.md)); client locale mirror is mandatory.
@@ -538,6 +561,15 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
       before the pass and leaks no pass output
 - [ ] Merge: both owned → 200, survivor absorbs, loser gone, suggestion → `merged`,
       undo action id returned; `:id == :other` → 400
+- [ ] Merge survivor: keeps its own name and `name_locked` untouched (loser name never
+      adopted); loser grants are dropped, never migrated (grantee sees no survivor view)
+- [ ] Merge undo (`merge-collections` inverse): loser recreated with name/`name_locked`/
+      origin/publish_mode/pin state, its members+exclusions move back, survivor-owned
+      overlap rows untouched; precondition failure (survivor gone, id reused, name
+      re-taken) → refusal, row stays `applied`
+- [ ] `GET /merge-suggestions` rows carry `overlap_sample` (≤8, node id asc) and
+      `a_unique_sample`/`b_unique_sample` (≤4, `{ node_id, name }`, node id asc) built
+      from readable member rows only; `revoked` members appear in no sample
 - [ ] Dismiss then reject on the same pair: dismiss is reversible by the pass, reject is
       terminal (`rejected` row never re-suggested); each dismiss increments
       `dismiss_count` and resets `dismissed_at`

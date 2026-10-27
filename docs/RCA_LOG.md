@@ -1630,24 +1630,26 @@ test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
   (exit 0) at maxWorkers=1 with coverage; wave-1 tip baseline was 185/2158 (+2 suites/
   +47 tests from this branch). Server collections route suite green 85/85 including the
   new membership-stability zero-definition-evaluation pin (single-case run 1/1).
+
 ---
+
 ## 2026-10-27 — T3.4: Setup-suite contention flake class recurred on the client gate
 
 - **Summary**: the first full `client npm run test:ci` on the T3.4 tree reported 6
-failed suites (22 tests) — Setup/SetupAiStep/Register/usePreviewLoader/ShareLinkLoader/
-useDropToUpload — all `Exceeded timeout of 5000 ms for a test`, durations 40–97 s under
-parallel load. None of the six imports the changed modules (`useSearchResults` is the
-only client file touched).
+  failed suites (22 tests) — Setup/SetupAiStep/Register/usePreviewLoader/ShareLinkLoader/
+  useDropToUpload — all `Exceeded timeout of 5000 ms for a test`, durations 40–97 s under
+  parallel load. None of the six imports the changed modules (`useSearchResults` is the
+  only client file touched).
 - **Diagnosis**: same class as the T3.5 entry above — two sibling agent worktrees ran
-full jest legs on the shared 6-core host during the run. Evidence: (1) with my changes
-stashed, the Setup suites passed on base at LOW host load (14 s / full-suite parallel
-re-run also failed there); (2) with my changes applied, the same suites passed in
-isolation once the host calmed (SetupAiStep 13.8 s, Setup 18.4 s, 25/25); (3) the full
-client gate then passed 185/185 suites, 2163/2163 tests on the same tree.
+  full jest legs on the shared 6-core host during the run. Evidence: (1) with my changes
+  stashed, the Setup suites passed on base at LOW host load (14 s / full-suite parallel
+  re-run also failed there); (2) with my changes applied, the same suites passed in
+  isolation once the host calmed (SetupAiStep 13.8 s, Setup 18.4 s, 25/25); (3) the full
+  client gate then passed 185/185 suites, 2163/2163 tests on the same tree.
 - **Classification**: **environment/timing flake** (host contention) — not Case A/B/C;
-no source, test-logic, or spec defect; no production-code change.
+  no source, test-logic, or spec defect; no production-code change.
 - **Action**: none beyond re-running (no timeout increases, no worker-count raises —
-standing host rule).
+  standing host rule).
 - **Verification**: full client `test:ci` green: 185 suites / 2163 tests.
 
 ## 2026-10-27 — T3.1c: conformance-suite global-read collision from the new arbiter verdict case

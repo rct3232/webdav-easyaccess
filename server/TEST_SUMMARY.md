@@ -6,10 +6,10 @@ Summary of the test implementation for the Express.js server application. All te
 
 ## Test Statistics
 
-- **Total Test Suites**: 99 (sqlite `test:ci`, as of 2026-09-10)
-- **Total Tests**: 1849 (1844 passed, 5 skipped)
-- **Pass Rate**: 100% (1844 passed, 0 failed) ✅
-- **Real-PostgreSQL adapter leg** (`test:ci:pg:adapters`): 207 tests (latest recorded run, 2026-09-09)
+- **Total Test Suites**: 189 (sqlite `test:ci`, as of 2026-10-27 — P3 exit gate at `ai-feature` tip `ea480625`, per the orchestrator's jest-chain report)
+- **Total Tests**: 3305
+- **Pass Rate**: 100% ✅
+- **Real-PostgreSQL adapter leg** (`test:ci:pg:adapters`): 207 tests (latest RECORDED run, 2026-09-09 — stale; the P3-exit re-pin of the PG leg counts is owned by the orchestrator's jest chain, see `PLAN.md` §30)
 - **Execution Time**: Reported per run by `npm run test`
 
 > New/extended suites since the 2026-09-04 snapshot: `infrastructure/__tests__/trashSoftDeleteSchema.test.js` (new; registered on the PG adapter leg), extended `failSafeService` (pending_upload scan/repair) and `gcService` (retention categories: garbage/version/guarded/pending-live) suites. 2026-09-10: trash-schema DDL folded into `001_initial_normalized_schema.sql` (single-file chain) — removed 5 tests (4 converter table-rebuild tests in `sqliteSchemaInit`, the pre-fold sqlite in-place migration scenario in `trashSoftDeleteSchema`).
@@ -137,9 +137,30 @@ Overall project coverage (sqlite `test:ci` with `--coverage`, measured 2026-09-0
 
 Per-module figures are intentionally not reproduced here (they move per run). Measure the current layout with `cd server && npm run test:coverage`; core modules (models, middleware, auth, errorHandler) historically maintain the highest coverage.
 
+## E2E (Playwright) — cross-reference
+
+Playwright ownership, case IDs, scratch slots, port bands and the enforced skip
+budgets are canonical in [docs/E2E_COVERAGE_PLAN.md](../docs/E2E_COVERAGE_PLAN.md);
+run procedures live in
+[docs/TEST_GIT_GUIDE.md](../docs/TEST_GIT_GUIDE.md). This file tracks the Jest
+tiers only.
+
+- P3 exit-gate runs (2026-10-27, port band 40, workers=1):
+  `s3-collections-desktop` 22 passed / 3 skipped / 0 failed,
+  `s3-collections-mobile` 24 passed / 1 skipped / 0 failed (serial, ~2 min each),
+  `s3-retrieval-desktop` 11 / 0 / 0, `s3-retrieval-mobile` 11 / 0 / 0 (the mobile
+  slot needed the documented per-port override `E2E_SCRATCH_RETRIEVAL_MOBILE_PORT=5062`
+  — WebKit refuses the band-40 default 5060, see `docs/RCA_LOG.md` 2026-10-27),
+  `s3-ai-desktop` 1 / 0 / 0 (pre-seeded `WEA_MODEL_DIR` weights resolved from the
+  default `/tmp/opencode/delta-base/models`).
+- The jest tiers above are the orchestrator's exit-gate ownership: the server
+  sqlite leg is re-pinned (189 suites / 3305 tests); the client and
+  real-PostgreSQL leg snapshots in this file PREDATE the P3 waves and will be
+  re-pinned with the orchestrator's final reported counts.
+
 ## Conclusion
 
-- 1844 tests across 99 suites, 100% pass rate (5 skipped, as of 2026-09-10, sqlite `test:ci`); real-PostgreSQL adapter leg `test:ci:pg:adapters`: 207 tests (latest recorded run, 2026-09-09)
+- 3305 tests across 189 suites, 100% pass rate (as of 2026-10-27, sqlite `test:ci`, per the orchestrator's P3 exit-gate jest chain at `ai-feature` tip `ea480625`); real-PostgreSQL adapter leg `test:ci:pg:adapters`: 207 tests recorded 2026-09-09 (stale — the exit-gate PG re-pin is owned by the orchestrator's jest chain)
 - Tests are colocated with source: domain routes/services/stores/policy under `domains/<x>/`, shared layer under `service/` and `store/`, plus `infrastructure/`, `middleware/`, `models/`, `utils/`
 - Route integration tests cover main API endpoints via Supertest
 - L2 repository conformance suites (store + permission repositories, executor) run against real sqlite and, on the adapter leg, real PostgreSQL

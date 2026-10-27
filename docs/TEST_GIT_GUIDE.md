@@ -604,6 +604,20 @@ npm test -- --onlyChanged
 npm test
 ```
 
+### Q: WebKit mobile specs never load — the page stays `about:blank` on one scratch slot
+
+**Root cause**: some band offsets map a scratch slot onto a browser-restricted port
+(5060/5061 = SIP). WebKit refuses the navigation with
+`Not allowed to use restricted network port 5060` — the server is healthy (curl and the
+APIRequestContext reach it), only the browser silently blocks it. At offset 40 this hits
+exactly the retrieval-mobile slot (`5020+40 = 5060`).
+
+**Fix**: drive the documented per-port escape hatch for that run, e.g.
+`E2E_PORT_OFFSET=40 E2E_SCRATCH_RETRIEVAL_MOBILE_PORT=5062 …` (per-port overrides win over
+the persisted band; the compose project and every other port stay in-band). The durable fix
+is to keep the band allocator off browser-restricted ports — tracked in `docs/RCA_LOG.md`
+(2026-10-27, P3 exit gate).
+
 ## References
 
 - [Jest Best Practices](https://jestjs.io/docs/best-practices)
@@ -612,6 +626,6 @@ npm test
 
 ---
 
-**Last updated**: 2026-10-26
+**Last updated**: 2026-10-27
 **Project**: WebDAV EasyAccess  
 **Test frameworks**: Jest, React Testing Library, Playwright

@@ -173,7 +173,7 @@ Rules:
 
 | Group      | Release command                   | Retry policy                        | Expected skip | Release ownership             |
 | ---------- | --------------------------------- | ----------------------------------- | ------------- | ----------------------------- |
-| Default S3 | `npm run test:e2e:release`        | `--retries=0 --fail-on-flaky-tests` | 6             | Required generic gate         |
+| Default S3 | `npm run test:e2e:release`        | `--retries=0 --fail-on-flaky-tests` | 7             | Required generic gate         |
 | WebDAV     | `npm run test:e2e:release:webdav` | `--retries=0 --fail-on-flaky-tests` | 0             | Required WebDAV-specific gate |
 
 The two release commands are the only accepted release evidence. A combined

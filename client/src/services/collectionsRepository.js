@@ -179,6 +179,21 @@ export const previewExistingCollection = async (id) => {
   }
 };
 
+/**
+ * One-shot upload-queue-drain hint for the silent-evolution `upload` trigger
+ * (`POST /collections/evolution/hint`). The server-side per-user debounce is
+ * authoritative — the hint is latency sugar only (useFileOperations.md §3).
+ * Fire-and-forget contract: failures are absorbed to `null`, the mutation is
+ * silent (no collections-change fan-out), and the promise never rejects.
+ * @returns {Promise<Object|null>} `{ scheduled }` ∥ null on failure
+ */
+export const notifyEvolutionHint = async () => {
+  return absorbMutation('/collections/evolution/hint', {
+    data: { uploadComplete: true },
+    options: { silent: true },
+  });
+};
+
 // -- mutations ---------------------------------------------------------------
 
 /**

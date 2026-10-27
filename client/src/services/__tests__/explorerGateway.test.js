@@ -61,6 +61,7 @@ jest.mock('../collectionsRepository', () => {
     'getMergeSuggestions',
     'grantCollection',
     'mergeCollections',
+    'notifyEvolutionHint',
     'previewCollection',
     'previewExistingCollection',
     'publishItems',

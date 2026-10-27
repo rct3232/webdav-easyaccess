@@ -1726,3 +1726,20 @@ test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
   base ports should move off the 5020 SIP adjacency; until then every band-40 checkout hits
   this on webkit retrieval runs.
 - **Verification**: `s3-retrieval-mobile` 11/11 green with the override (band 40 elsewhere).
+
+## 2026-10-27 — P3 exit gate: E2E-S3-COLLECTION-024 resolved the virtual `/__collections__` route through the real-path API
+
+- **Summary**: with the picker click fixed, the first-ever 024 desktop run advanced through the
+  owner dialog, the grant, the publish-mode radio and the recipient re-login, then died at the
+  recipient collections view: `gotoFilesPath(page, request, '/__collections__')` →
+  `POST /api/files/resolve-path` → 404 `serverErrors.files.notFound` (crud.js path walker).
+- **Diagnosis**: `resolve-path` resolves REAL filesystem paths only (the helper's own doc
+  states `/` is not resolvable); the collections virtual root is a CLIENT route segment, never
+  a node. Every existing collections case reaches the list via `page.goto('/files/__collections__')`
+  — the 024 recipient legs used the API-resolving helper instead. No spec clause promises
+  virtual-route resolution server-side.
+- **Classification**: **Case B (test error)** — helper misuse in the test; the 404 is the
+  contracted behavior of `resolve-path`.
+- **Action**: the three recipient/re-grant legs now use the `page.goto` client-route idiom
+  (assertions unchanged — the client still performs the visit reads that Ruling B keys on).
+- **Verification**: final `s3-collections-desktop` green run at the exit gate (port band 40).

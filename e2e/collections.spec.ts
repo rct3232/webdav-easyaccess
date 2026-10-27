@@ -1642,7 +1642,7 @@ test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the rec
   // 2) RECIPIENT UI — switch sessions (clear + re-login as the grantee).
   await page.evaluate(() => window.localStorage.clear());
   await loginWithCredentials(page, recipientCreds.username, recipientCreds.password);
-  await gotoFilesPath(page, request, '/__collections__');
+  await page.goto('/files/__collections__');
   const card = collectionCard(page, name);
   await expect(card).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId(`card-shared-chip-${collectionId}`)).toBeVisible();
@@ -1655,7 +1655,7 @@ test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the rec
   // Leaving is Path-1 self-revocation: the grantee card menu carries
   // `Revoke permission` ONLY — the owner Sharing entry is absent by
   // construction (granted rows omit it; the dialog would omit the tab).
-  await gotoFilesPath(page, request, '/__collections__');
+  await page.goto('/files/__collections__');
   await openCardMenu(page, name, 'revoke-permission');
   // (openCardMenu already clicked the option — instant, no confirm dialog)
   await expect(card).toHaveCount(0);
@@ -1669,7 +1669,7 @@ test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the rec
     data: { userId: recipientUser.id, role: 'viewer' },
   });
   expect(regrantRes.ok()).toBeTruthy();
-  await gotoFilesPath(page, request, '/__collections__');
+  await page.goto('/files/__collections__');
   await expect(collectionCard(page, name)).toBeVisible({ timeout: 30_000 });
   const toggle = page.getByTestId('collections-toggle');
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') {

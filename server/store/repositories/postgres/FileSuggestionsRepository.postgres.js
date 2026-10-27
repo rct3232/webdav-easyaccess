@@ -15,10 +15,11 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
 
     async insert({ userId, nodeId, kind, reason, expiresAt }) {
       try {
+        // executor.run() injects `RETURNING id` for INSERTs (the pgExecutor
+        // single-PK idiom) and reports the generated id as `lastId`.
         const result = await executor.run(
           `INSERT INTO file_suggestions (user_id, node_id, kind, reason, state, created_at, expires_at)
-           VALUES ($1, $2, $3, $4::jsonb, 'pending', NOW(), $5::timestamptz)
-           RETURNING id`,
+           VALUES ($1, $2, $3, $4::jsonb, 'pending', NOW(), $5::timestamptz)`,
           [
             Number(userId),
             Number(nodeId),
@@ -27,8 +28,7 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
             expiresAt ?? null,
           ]
         );
-        const id = result.rows && result.rows[0] ? Number(result.rows[0].id) : undefined;
-        return { id };
+        return { id: Number(result.lastId) };
       } catch (error) {
         throw mapDatabaseError(error);
       }

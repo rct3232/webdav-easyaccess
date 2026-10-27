@@ -1219,6 +1219,54 @@ async function preview(userId, target = {}) {
   return runDefinitionPreview(userId, target.definition);
 }
 
+// ---------------------------------------------------------------------------
+// View-weighted soft boost (§2.3 — ordering only)
+// ---------------------------------------------------------------------------
+
+const VIEW_WEIGHT_ALPHA_DEFAULT = 0.1;
+
+/** α is a T2 dbOnly hot constant: read per call; invalid/absent → shipped default. */
+function viewWeightAlpha() {
+  try {
+    const { getSharedResolver } = require('../../infrastructure/configResolver');
+    const raw = getSharedResolver().getConfigSync('AI_VIEW_WEIGHT_ALPHA');
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : VIEW_WEIGHT_ALPHA_DEFAULT;
+  } catch {
+    return VIEW_WEIGHT_ALPHA_DEFAULT;
+  }
+}
+
+/**
+ * "views" = the per-user `node_activity` viewing signals (open + preview
+ * lifetime counts; `open` has no writer yet — deliberately unrecorded — while
+ * `preview` is recorded at the file-side commit points). Rows without an
+ * accumulator are 0 views.
+ */
+async function loadViewCounts(userId, nodeIds) {
+  const views = new Map();
+  if (nodeIds.length === 0) return views;
+  const rows = await usageStore.listNodeActivity(
+    userId,
+    nodeIds.map((nodeId) => Number(nodeId))
+  );
+  for (const row of rows || []) {
+    views.set(
+      Number(row.nodeId),
+      (Number(row.counts?.open) || 0) + (Number(row.counts?.preview) || 0)
+    );
+  }
+  return views;
+}
+
+/**
+ * Boosted ORDERING score (§2.3): `cosine × (1 + α·log10(1 + views))`.
+ * Admission/removal ALWAYS use the un-boosted cosine.
+ */
+function viewBoostedScore(score, views, alpha) {
+  return score * (1 + alpha * Math.log10(1 + views));
+}
+
 /**
  * The ONE seed-candidate computation shared by preview and creation (§2.7):
  * the seed's pooled embedding vs the requester-visible corpus. Pooled cosine
@@ -1264,8 +1312,22 @@ async function evaluateSeedPreview(userId, seedNodeId) {
   ranked.sort((a, b) => (a.score !== b.score ? b.score - a.score : a.nodeId - b.nodeId));
   const ids = ranked.slice(0, SEED_NEIGHBORS_K).map((row) => row.nodeId);
 
+  // §2.3 view-weighted soft boost — ORDERING ONLY: the creation batch (`ids`)
+  // and `count` stay on the raw cosine; the preview sample re-ranks the top-K
+  // set so frequently-viewed files surface first. Zero views / α=0 reduce the
+  // multiplier to 1.0, preserving the raw cosine order.
+  const alpha = viewWeightAlpha();
+  const views = await loadViewCounts(userId, ids);
+  const sampleRanked = ranked
+    .slice(0, SEED_NEIGHBORS_K)
+    .map((row) => ({
+      nodeId: row.nodeId,
+      boosted: viewBoostedScore(row.score, views.get(row.nodeId) || 0, alpha),
+    }))
+    .sort((a, b) => (a.boosted !== b.boosted ? b.boosted - a.boosted : a.nodeId - b.nodeId));
+
   const sample = [];
-  for (const nodeId of ids.slice(0, PREVIEW_SAMPLE_CAP)) {
+  for (const { nodeId } of sampleRanked.slice(0, PREVIEW_SAMPLE_CAP)) {
     const node = await fileNodesStore.getNode(nodeId);
     sample.push({ nodeId, name: node ? node.name : null });
   }

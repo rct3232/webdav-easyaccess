@@ -26,6 +26,7 @@ const DEFAULT_SORT = 'activity';
  *   include: string, refresh: () => Promise<void>,
  *   renameCollection, setPinned, setPublishMode, archiveCollection,
  *   restoreCollection, deleteCollectionPermanent, revokeOwnGrant,
+ *   loadGrants, grantCollection, revokeGrant,
  *   suggestions: Array<Object>, mergePair, dismissMergeSuggestion, rejectMergeSuggestion,
  * }}
  */
@@ -254,6 +255,46 @@ export const useCollections = ({ showError, gateway, onUndoable, include } = {})
     [io, showError, refresh, t]
   );
 
+  /**
+   * Owner-only grants read for the CollectionPropertiesDialog host
+   * (useCollections.md §2.3): the repository already absorbs failure to
+   * `{ grants: [] }`, so this is a plain array passthrough — no error toast,
+   * no undo channel.
+   */
+  const loadGrants = useCallback(
+    async (id) => {
+      const res = await io.getGrants(id);
+      return res?.grants ?? [];
+    },
+    [io]
+  );
+
+  /**
+   * `POST /:id/grants` (viewer|editor). Success → refresh + undo toast
+   * (grant-undo = revoke, exposure REDUCTION — silent allowed); the host
+   * appends the serialized `grant` row from the response.
+   */
+  const grantCollection = useCallback(
+    (id, payload) =>
+      runMutation((options) => io.grantCollection(id, payload, options), {
+        textKey: 'collections.undoGrantAdded',
+      }),
+    [io, runMutation]
+  );
+
+  /**
+   * Owner-side `DELETE /:id/grants?userId=` — instant (§4.7); the host drops
+   * the row by the response `grantee_id`. Revoke-undo = re-grant (exposure
+   * EXPANSION) — legal only behind the explicit undo click (§12.1).
+   */
+  const revokeGrant = useCallback(
+    (id, granteeId) =>
+      runMutation((options) => io.revokeGrant(id, granteeId, options), {
+        textKey: 'collections.undoGrantRevoked',
+      }),
+    [io, runMutation]
+  );
+
   return {
     collections,
     loading,
@@ -268,6 +309,9 @@ export const useCollections = ({ showError, gateway, onUndoable, include } = {})
     restoreCollection,
     deleteCollectionPermanent,
     revokeOwnGrant,
+    loadGrants,
+    grantCollection,
+    revokeGrant,
     suggestions,
     mergePair,
     dismissMergeSuggestion,

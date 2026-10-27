@@ -1390,6 +1390,114 @@ test('E2E-S3-COLLECTION-022: Later defers the pair into a DB-dormant card remova
   await expect(collectionCard(page, nameA)).toBeVisible();
 });
 
+test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the recipient views the received card and its members, exits via Revoke permission, and the owner re-grant re-dots the collection', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(
+    isMobileProject(testInfo),
+    'E2E-S3-COLLECTION-024 is a desktop-only leg (mobile sharing parity stays deferred with the card-menu surfaces)'
+  );
+
+  // Second regular user (grantee) on the scratch instance — provisioned via
+  // the OPERATOR admin API (identity pivot, PLAN §14).
+  const recipientCreds: ScratchUserCreds = {
+    username: 't32b-recipient',
+    password: 'T32bRecipient!123',
+    email: 't32b-recipient@e2etest.com',
+  };
+  await ensureScratchRegularUser(request, operatorToken, recipientCreds);
+
+  // Owner world: home-based workspace, collection over owner-owned members,
+  // one PUBLISHED member (ask-mode parking itself is 012's contract).
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
+  const fileA = await seedFile(request, token, base, testInfo, 'col024-a');
+  const name = buildName(testInfo, 'col024');
+  const collectionId = await createCollectionApi(request, token, name);
+  await addItemsApi(request, token, collectionId, [fileA.nodeId]);
+  const publishRes = await request.put(`/api/collections/${collectionId}/items/publish`, {
+    headers: auth(token),
+    data: { nodeIds: [fileA.nodeId], published: true },
+  });
+  expect(publishRes.ok()).toBeTruthy();
+
+  // Grantee numeric id from the owner-visible approved list.
+  const usersRes = await request.get('/api/users/approved', { headers: auth(token) });
+  expect(usersRes.ok()).toBeTruthy();
+  const recipientUser = (await usersRes.json()).find(
+    (candidate: { username: string }) => candidate.username === recipientCreds.username
+  );
+  expect(recipientUser).toBeTruthy();
+
+  // 1) OWNER UI — the `sharing` card-menu dispatch opens the dialog on the
+  //    Sharing tab (CollectionPropertiesDialog.md §2.3).
+  await page.goto('/files/__collections__');
+  await openCardMenu(page, name, 'sharing');
+  await expect(page.getByTestId('collection-props-tab-sharing')).toHaveAttribute(
+    'aria-selected',
+    'true'
+  );
+  await expect(page.getByTestId('collection-publish-mode-exposure-note')).toBeVisible();
+
+  // Add grant via the UserSelectionMenu picker (default role viewer).
+  await expect(page.getByTestId('collection-grant-role-viewer')).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+  await page.getByTestId('collection-grant-add').click();
+  await page.getByRole('menu').getByText(recipientCreds.username).click();
+  const grantRow = page.getByTestId(`collection-grant-row-${recipientUser.id}`);
+  await expect(grantRow).toBeVisible({ timeout: 15_000 });
+  await expect(grantRow).toContainText('Viewer'); // localized chip, never the raw enum
+  await expect(page.getByText(/Collection shared/i)).toBeVisible();
+  // The undo toast is NOT clicked: the lifecycle leg below is the intended
+  // re-grant path (revoke-undo = re-grant only behind an explicit click).
+
+  // publish_mode ask→auto PUT through the radio (exposure copy visible above).
+  await page.getByTestId('collection-publish-mode-auto').click();
+  await expect(page.getByText(/Publish mode updated/i)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Close' }).last().click();
+
+  // 2) RECIPIENT UI — switch sessions (clear + re-login as the grantee).
+  await page.evaluate(() => window.localStorage.clear());
+  await loginWithCredentials(page, recipientCreds.username, recipientCreds.password);
+  await gotoFilesPath(page, request, '/__collections__');
+  const card = collectionCard(page, name);
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId(`card-shared-chip-${collectionId}`)).toBeVisible();
+
+  // Members view as a grantee: the published owner-owned member renders
+  // (cross-leak rule §4.7 — foreign rows are never delivered server-side).
+  await openCollectionCard(page, name, false);
+  await expect(page.getByTestId(`member-row-${fileA.nodeId}`)).toBeVisible({ timeout: 30_000 });
+
+  // Leaving is Path-1 self-revocation: the grantee card menu carries
+  // `Revoke permission` ONLY — the owner Sharing entry is absent by
+  // construction (granted rows omit it; the dialog would omit the tab).
+  await gotoFilesPath(page, request, '/__collections__');
+  await openCardMenu(page, name, 'revoke-permission');
+  // (openCardMenu already clicked the option — instant, no confirm dialog)
+  await expect(card).toHaveCount(0);
+  await expect(page.getByTestId(`collection-new-dot-${collectionId}`)).toHaveCount(0);
+
+  // 3) RE-GRANT (owner API) re-dots: both revoke TXs deleted the grantee's
+  //    digest cursor, so a fresh grant renders the new-dot again (Ruling B,
+  //    AI_FEATURE_PLAN §12.2 — the read-IS-the-visit open above stamped it).
+  const regrantRes = await request.post(`/api/collections/${collectionId}/grants`, {
+    headers: auth(token),
+    data: { userId: recipientUser.id, role: 'viewer' },
+  });
+  expect(regrantRes.ok()).toBeTruthy();
+  await gotoFilesPath(page, request, '/__collections__');
+  await expect(collectionCard(page, name)).toBeVisible({ timeout: 30_000 });
+  const toggle = page.getByTestId('collections-toggle');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await toggle.click();
+  }
+  await expect(page.getByTestId(`collection-new-dot-${collectionId}`)).toBeVisible();
+});
+
 // -- Collections MOBILE-ONLY interplay (the former standalone twin
 // collections.mobile.spec.ts, absorbed into this dual-platform file at the
 // format convergence): these cases exercise surfaces that exist ONLY on the

@@ -1751,6 +1751,153 @@ describe('FileManager', () => {
     }, 15000);
 
     /**
+     * T3.2b — collection-properties host wiring (FileManager.md §7): the
+     * reserved `sharing` dispatch opens the owner-only CollectionPropertiesDialog
+     * on the LIVE fetch row; grants/publish-mode IO rides the hook's gateway
+     * seams and the dialog list updates from the mutation RESPONSE rows.
+     */
+    describe('collection-properties sharing dialog host', () => {
+      it('sharing dispatch opens the dialog, loads grants, PUTs publish_mode and runs grant/revoke from responses', async () => {
+        let cardState = { ...ownCard };
+        let grants = [
+          {
+            grantee_id: 9,
+            username: 'bob',
+            role: 'viewer',
+            granted_by: 1,
+            created_at: '2026-09-02T00:00:00Z',
+          },
+        ];
+        const putBodies = [];
+        const postBodies = [];
+        const deleteUrls = [];
+        server.use(
+          http.get('/api/collections', () => HttpResponse.json({ collections: [cardState] })),
+          http.get('/api/collections/merge-suggestions', () =>
+            HttpResponse.json({ suggestions: [] })
+          ),
+          http.get('/api/collections/1/grants', () => HttpResponse.json({ grants })),
+          http.post('/api/collections/1/preview', () =>
+            HttpResponse.json({
+              count: 2,
+              sample: [{ node_id: 5, name: 'a.txt' }],
+              sample_truncated: false,
+            })
+          ),
+          http.get('/api/users/approved', () =>
+            HttpResponse.json([
+              { id: 9, username: 'bob', email: 'bob@e.test' },
+              { id: 11, username: 'dave', email: 'dave@e.test' },
+            ])
+          ),
+          http.put('/api/collections/1', async ({ request }) => {
+            const body = await request.json();
+            putBodies.push(body);
+            if (body.publishMode) cardState = { ...cardState, publish_mode: body.publishMode };
+            return HttpResponse.json({ collection: cardState, undo: { action_id: 101 } });
+          }),
+          http.post('/api/collections/1/grants', async ({ request }) => {
+            const body = await request.json();
+            postBodies.push(body);
+            const grant = {
+              grantee_id: Number(body.userId),
+              username: 'dave',
+              role: body.role,
+              granted_by: 1,
+              created_at: '2026-09-06T00:00:00Z',
+            };
+            grants = [...grants.filter((row) => row.grantee_id !== grant.grantee_id), grant];
+            return HttpResponse.json({ grant, undo: { action_id: 202 } }, { status: 201 });
+          }),
+          http.delete('/api/collections/1/grants', ({ request }) => {
+            deleteUrls.push(new URL(request.url).searchParams.get('userId'));
+            const revokedId = Number(new URL(request.url).searchParams.get('userId'));
+            grants = grants.filter((row) => row.grantee_id !== revokedId);
+            return HttpResponse.json({
+              grantee_id: revokedId,
+              revoked: true,
+              undo: { action_id: 203 },
+            });
+          })
+        );
+
+        await renderWithProvidersAct(<FileManagerWithRoutes />, {
+          initialEntries: ['/files/__collections__'],
+        });
+
+        // 1) dispatch seam: card menu Sharing opens the dialog on the sharing tab
+        fireEvent.click(await screen.findByTestId('card-menu-button-1'));
+        fireEvent.click(screen.getByTestId('card-menu-option-sharing'));
+        expect(await screen.findByTestId('collection-props-tab-sharing')).toHaveAttribute(
+          'aria-selected',
+          'true'
+        );
+
+        // grants land from the owner-only read
+        expect(await screen.findByTestId('collection-grant-row-9')).toHaveTextContent('bob');
+
+        // 2) publish_mode PUT through onPatch → undo toast, live row reflects it
+        fireEvent.click(screen.getByRole('radio', { name: 'Auto' }));
+        await waitFor(() => expect(putBodies.at(-1)).toMatchObject({ publishMode: 'auto' }));
+        expect(await screen.findByText('Publish mode updated')).toBeInTheDocument();
+
+        // 3) add grant: editor toggle → picker skips the already-granted bob
+        fireEvent.click(screen.getByTestId('collection-grant-role-editor'));
+        fireEvent.click(screen.getByTestId('collection-grant-add'));
+        const menu = await screen.findByRole('menu');
+        expect(within(menu).getByText('dave')).toBeInTheDocument();
+        expect(within(menu).queryByText('bob')).not.toBeInTheDocument();
+        fireEvent.click(within(menu).getByText('dave'));
+
+        await waitFor(() =>
+          expect(postBodies).toEqual([expect.objectContaining({ userId: 11, role: 'editor' })])
+        );
+        // list updates from the POST response row (grantee_id 11)
+        expect(await screen.findByTestId('collection-grant-row-11')).toHaveTextContent('dave');
+        expect(await screen.findByText('Collection shared')).toBeInTheDocument();
+
+        // 4) revoke is instant (no confirm) and the row drops from the response
+        fireEvent.click(screen.getByTestId('collection-grant-revoke-11'));
+        await waitFor(() => expect(deleteUrls).toContain('11'));
+        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+        await waitFor(() =>
+          expect(screen.queryByTestId('collection-grant-row-11')).not.toBeInTheDocument()
+        );
+        expect(await screen.findByText('Sharing revoked')).toBeInTheDocument();
+
+        // 5) closing returns to the card grid (single host instance)
+        fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+        await waitFor(() =>
+          expect(screen.queryByTestId('collection-props-tab-sharing')).not.toBeInTheDocument()
+        );
+        expect(screen.getByTestId('collections-list-view')).toBeInTheDocument();
+      }, 30000);
+
+      it('received card dispatches no sharing dialog (granted rows: revoke-only menu)', async () => {
+        const viewerCard = {
+          ...ownCard,
+          collection_id: 4,
+          name: 'Given',
+          granted_role: 'viewer',
+        };
+        server.use(
+          http.get('/api/collections', () => HttpResponse.json({ collections: [viewerCard] })),
+          http.get('/api/collections/merge-suggestions', () =>
+            HttpResponse.json({ suggestions: [] })
+          )
+        );
+
+        await renderWithProvidersAct(<FileManagerWithRoutes />, {
+          initialEntries: ['/files/__collections__'],
+        });
+
+        fireEvent.click(await screen.findByTestId('card-menu-button-4'));
+        expect(screen.getByTestId('card-menu-option-revoke-permission')).toBeInTheDocument();
+        expect(screen.queryByTestId('card-menu-option-sharing')).not.toBeInTheDocument();
+      }, 15000);
+    });
+
+    /**
      * P-3 — card grid parity shell wiring: synthetic-key selection, double-open
      * routing, surface-aware select-all, and the bulk cluster looping the
      * existing single-collection calls.

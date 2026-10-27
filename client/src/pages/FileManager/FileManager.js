@@ -32,7 +32,8 @@ import MemberRowControls from '../../components/file-manager/MemberRowControls';
 import MergeProposalCard from '../../components/file-manager/MergeProposalCard';
 import AddToCollectionMenu from '../../components/file-manager/AddToCollectionMenu';
 import SearchSaveDialog from '../../components/file-manager/SearchSaveDialog';
-import { ConfirmDialog, RenameDialog } from '../../components/dialogs';
+import { ConfirmDialog, RenameDialog, CollectionPropertiesDialog } from '../../components/dialogs';
+import { getApprovedUsers } from '../../services/userService';
 import { useFileManagerDialogs } from './hooks/useFileManagerDialogs';
 import { useTrashOperations } from './hooks/useTrashOperations';
 import { useContentAreaDragDrop } from './hooks/useContentAreaDragDrop';
@@ -706,6 +707,127 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   const [collectionRenameValue, setCollectionRenameValue] = useState('');
   const [collectionRenameError, setCollectionRenameError] = useState('');
 
+  // CollectionPropertiesDialog host (FileManager.md §7): the card menu
+  // `sharing` dispatch opens the owner-only dialog; ALL IO stays host-side
+  // (the dialog is a pure view). The dialog renders the LIVE fetch row so
+  // rename/publish-mode writes reflect without a re-dispatch.
+  const [collectionPropsTarget, setCollectionPropsTarget] = useState(null);
+  const [collectionGrants, setCollectionGrants] = useState(null);
+  const [collectionShareableUsers, setCollectionShareableUsers] = useState([]);
+  const [collectionPreview, setCollectionPreview] = useState(null);
+  const [collectionSeedName, setCollectionSeedName] = useState(null);
+  const collectionPropsCollection = useMemo(() => {
+    if (!collectionPropsTarget) return null;
+    return (
+      collectionsApi.collections.find(
+        (collection) => collection.collection_id === collectionPropsTarget.collection_id
+      ) ?? collectionPropsTarget
+    );
+  }, [collectionPropsTarget, collectionsApi.collections]);
+  const collectionPropsId = collectionPropsCollection?.collection_id ?? null;
+  // Owner predicate: the wire never invents `granted_role:'owner'` (§12.1 P-4).
+  const collectionPropsOwner =
+    collectionPropsCollection != null && collectionPropsCollection.granted_role == null;
+  const collectionPropsSeedRef = collectionPropsCollection?.definition?.seed_ref ?? null;
+
+  // Open reads (all owner-only endpoints): grants, add-grantee candidates,
+  // member-sample preview and the seed-reference name (batched metadata seam).
+  useEffect(() => {
+    if (collectionPropsId == null || !collectionPropsOwner) {
+      setCollectionGrants(null);
+      setCollectionPreview(null);
+      return undefined;
+    }
+    let cancelled = false;
+    setCollectionGrants(null);
+    setCollectionShareableUsers([]);
+    setCollectionPreview(null);
+    setCollectionSeedName(null);
+    collectionsApi.loadGrants(collectionPropsId).then((rows) => {
+      if (!cancelled) setCollectionGrants(Array.isArray(rows) ? rows : []);
+    });
+    getApprovedUsers()
+      .then((data) => {
+        if (!cancelled) setCollectionShareableUsers(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        // empty candidate list — non-fatal (preview-failure precedent)
+        if (!cancelled) setCollectionShareableUsers([]);
+      });
+    explorerGateway
+      .previewExistingCollection(collectionPropsId)
+      .then((payload) => {
+        // the repository absorbs failure to null — the dialog's `false`
+        // placeholder state distinguishes a failed read from a live load
+        if (!cancelled) setCollectionPreview(payload || false);
+      })
+      .catch(() => {
+        if (!cancelled) setCollectionPreview(false);
+      });
+    if (collectionPropsSeedRef != null) {
+      explorerGateway.loadNodesMetadata([collectionPropsSeedRef]).then((rows) => {
+        if (cancelled) return;
+        const row = (rows ?? []).find(
+          (candidate) =>
+            String(candidate.node_id ?? candidate.nodeId) === String(collectionPropsSeedRef)
+        );
+        setCollectionSeedName(row?.name ?? row?.basename ?? null);
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+    // The hook return object is recreated every render; reads re-run only on
+    // target/owner/seed identity changes (collectionsApi is closure-current).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collectionPropsId, collectionPropsOwner, collectionPropsSeedRef]);
+
+  const closeCollectionProps = useCallback(() => setCollectionPropsTarget(null), []);
+
+  /** `onPatch` mapping: dialog writes → existing CRUD seams (undo toasts ride). */
+  const handleCollectionPropsPatch = useCallback(
+    (patch) => {
+      if (collectionPropsId == null || !patch) return;
+      if (typeof patch.name === 'string' && patch.name !== '') {
+        collectionsApi.renameCollection(collectionPropsId, patch.name);
+      }
+      if (typeof patch.pinned === 'boolean') {
+        collectionsApi.setPinned(collectionPropsId, patch.pinned);
+      }
+      if (typeof patch.publishMode === 'string') {
+        collectionsApi.setPublishMode(collectionPropsId, patch.publishMode);
+      }
+    },
+    [collectionPropsId, collectionsApi]
+  );
+
+  /** Grant list updates from the POST response row (PK replace by grantee_id). */
+  const handleCollectionGrant = useCallback(
+    async (userId, role) => {
+      if (collectionPropsId == null) return;
+      const payload = await collectionsApi.grantCollection(collectionPropsId, { userId, role });
+      if (!payload || !payload.grant) return;
+      setCollectionGrants((prev) => [
+        ...(prev ?? []).filter((row) => row.grantee_id !== payload.grant.grantee_id),
+        payload.grant,
+      ]);
+    },
+    [collectionPropsId, collectionsApi]
+  );
+
+  /** Revoke is instant; the row drops from the DELETE response grantee_id. */
+  const handleCollectionRevoke = useCallback(
+    async (granteeId) => {
+      if (collectionPropsId == null) return;
+      const payload = await collectionsApi.revokeGrant(collectionPropsId, granteeId);
+      if (!payload) return;
+      setCollectionGrants((prev) =>
+        (prev ?? []).filter((row) => row.grantee_id !== payload.grantee_id)
+      );
+    },
+    [collectionPropsId, collectionsApi]
+  );
+
   const handleCardAction = useCallback(
     async (action, collection) => {
       const collectionId = collection?.collection_id;
@@ -735,8 +857,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           collectionsApi.restoreCollection(collectionId);
           break;
         case 'sharing':
-          // CollectionPropertiesDialog (Sharing tab) lands with T3.x — dispatch
-          // seam reserved; the menu entry is contractual (CollectionsListView §2.4).
+          // T3.2b (FileManager.md §7): open the host-owned CollectionPropertiesDialog
+          // on the Sharing tab (owner rows only — the card menu never offers this
+          // entry for received rows).
+          setCollectionPropsTarget(collection);
           break;
         case 'delete-permanent': {
           const ok = await collectionsApi.deleteCollectionPermanent(collectionId);
@@ -2391,6 +2515,20 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             loading={false}
             onConfirm={handleCollectionRenameConfirm}
             fullScreen={isMobile}
+          />
+          <CollectionPropertiesDialog
+            open={collectionPropsTarget != null}
+            onClose={closeCollectionProps}
+            collection={collectionPropsCollection}
+            initialTab="sharing"
+            aiFlags={{ embed: llmConfigured, chat: false }}
+            onPatch={handleCollectionPropsPatch}
+            grants={collectionGrants}
+            shareableUsers={collectionShareableUsers}
+            preview={collectionPreview}
+            seedName={collectionSeedName}
+            onGrant={handleCollectionGrant}
+            onRevoke={handleCollectionRevoke}
           />
           <ConfirmDialog
             open={Boolean(cascadeConfirm?.open)}

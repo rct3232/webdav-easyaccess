@@ -320,4 +320,102 @@ describe('useCollections', () => {
     expect(mockShowError).toHaveBeenCalled();
     expect(mockOnUndoable).not.toHaveBeenCalled();
   });
+
+  describe('sharing seams (CollectionPropertiesDialog host — useCollections.md §2.3)', () => {
+    it('loadGrants returns the grants array and never touches the toast/error channels', async () => {
+      explorerGateway.getGrants.mockResolvedValue({ grants: [{ grantee_id: 9, role: 'viewer' }] });
+      const { result } = renderHook(() => useCollections(baseProps()));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      let out;
+      await act(async () => {
+        out = await result.current.loadGrants(7);
+      });
+
+      expect(explorerGateway.getGrants).toHaveBeenCalledWith(7);
+      expect(out).toEqual([{ grantee_id: 9, role: 'viewer' }]);
+      expect(mockOnUndoable).not.toHaveBeenCalled();
+      expect(mockShowError).not.toHaveBeenCalled();
+    });
+
+    it('loadGrants failure-absorbed ({grants:[]}) resolves to the empty array (read parity)', async () => {
+      explorerGateway.getGrants.mockResolvedValue({ grants: [] });
+      const { result } = renderHook(() => useCollections(baseProps()));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      let out;
+      await act(async () => {
+        out = await result.current.loadGrants(7);
+      });
+      expect(out).toEqual([]);
+    });
+
+    it('grantCollection success refreshes and forwards the undo toast with the grant label', async () => {
+      const payload = {
+        grant: { grantee_id: 9, username: 'bob', role: 'viewer', created_at: '2026-09-02T00:00:00Z' },
+        undo: { action_id: 996 },
+      };
+      explorerGateway.grantCollection.mockResolvedValue(payload);
+      const { result } = renderHook(() => useCollections(baseProps()));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      const loadCallsBefore = explorerGateway.loadCollections.mock.calls.length;
+
+      let out;
+      await act(async () => {
+        out = await result.current.grantCollection(7, { userId: 9, role: 'viewer' });
+      });
+
+      expect(explorerGateway.grantCollection).toHaveBeenCalledWith(
+        7,
+        { userId: 9, role: 'viewer' },
+        expect.objectContaining({ onError: expect.any(Function) })
+      );
+      expect(out).toEqual(payload);
+      expect(mockOnUndoable).toHaveBeenCalledWith(payload, 'collections.undoGrantAdded');
+      expect(explorerGateway.loadCollections.mock.calls.length).toBeGreaterThan(loadCallsBefore);
+      expect(mockShowError).not.toHaveBeenCalled();
+    });
+
+    it('revokeGrant success refreshes and forwards the revoke-undo toast (explicit-click re-grant path)', async () => {
+      const payload = { grantee_id: 9, revoked: true, undo: { action_id: 997 } };
+      explorerGateway.revokeGrant.mockResolvedValue(payload);
+      const { result } = renderHook(() => useCollections(baseProps()));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      let out;
+      await act(async () => {
+        out = await result.current.revokeGrant(7, 9);
+      });
+
+      expect(explorerGateway.revokeGrant).toHaveBeenCalledWith(
+        7,
+        9,
+        expect.objectContaining({ onError: expect.any(Function) })
+      );
+      expect(out).toEqual(payload);
+      expect(mockOnUndoable).toHaveBeenCalledWith(payload, 'collections.undoGrantRevoked');
+    });
+
+    it('absorbed grant/revoke failures map to showError with NO undo affordance', async () => {
+      const { result } = renderHook(() => useCollections(baseProps()));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      explorerGateway.grantCollection.mockImplementation((id, payload, options = {}) => {
+        options.onError?.({ errorCode: 'serverErrors.collections.granteeNotFound', params: {} });
+        return Promise.resolve(null);
+      });
+      explorerGateway.revokeGrant.mockImplementation((id, userId, options = {}) => {
+        options.onError?.({ errorCode: 'serverErrors.collections.grantNotFound', params: {} });
+        return Promise.resolve(null);
+      });
+
+      await act(async () => {
+        expect(await result.current.grantCollection(7, { userId: 404, role: 'viewer' })).toBeNull();
+        expect(await result.current.revokeGrant(7, 404)).toBeNull();
+      });
+
+      expect(mockShowError).toHaveBeenCalledTimes(2);
+      expect(mockOnUndoable).not.toHaveBeenCalled();
+    });
+  });
 });

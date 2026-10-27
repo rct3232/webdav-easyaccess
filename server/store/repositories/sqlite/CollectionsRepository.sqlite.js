@@ -387,16 +387,17 @@ module.exports = function createSqliteCollectionsRepository(executor) {
       return mapCollectionRow(rows[0]);
     },
 
-    async insertCollection(tx, { ownerId, name, origin, publishMode, definition }) {
+    async insertCollection(tx, { ownerId, name, origin, publishMode, definition, nameLocked }) {
       const result = await tx.run(
-        `INSERT INTO collections (owner_id, name, origin, publish_mode, definition)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO collections (owner_id, name, origin, publish_mode, definition, name_locked)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         [
           Number(ownerId),
           String(name),
           String(origin),
           publishMode ?? 'ask',
           definition === null || definition === undefined ? null : JSON.stringify(definition),
+          Boolean(nameLocked),
         ]
       );
       return { id: Number(result.lastId) };

@@ -25,6 +25,9 @@
  * @property {(ownerId) => Promise<Array>} listArchived
  * @property {(ownerId, name) => Promise<boolean>} existsActiveName
  * @property {(tx, input) => Promise<{ id: number }>} insertCollection
+ *   input `{ ownerId, name, origin, publishMode?, definition?, nameLocked? }` —
+ *   `nameLocked` defaults false; carried so the merge-collections undo can
+ *   recreate a locked-name loser verbatim (actions-service executor).
  * @property {(tx, collectionId, name, lockName?) => Promise<{ changes }>} renameCollection
  * @property {(tx, collectionId, pinned, pinnedBy) => Promise<{ changes }>} updatePin
  * @property {(tx, collectionId) => Promise<{ changes }>} setAutoPin

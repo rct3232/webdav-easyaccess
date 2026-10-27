@@ -398,10 +398,10 @@ module.exports = function createPostgresCollectionsRepository(executor) {
       return mapCollectionRow(rows[0]);
     },
 
-    async insertCollection(tx, { ownerId, name, origin, publishMode, definition }) {
+    async insertCollection(tx, { ownerId, name, origin, publishMode, definition, nameLocked }) {
       const result = await tx.run(
-        `INSERT INTO collections (owner_id, name, origin, publish_mode, definition)
-         VALUES ($1, $2, $3, $4, $5::jsonb)
+        `INSERT INTO collections (owner_id, name, origin, publish_mode, definition, name_locked)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6)
          RETURNING id`,
         [
           Number(ownerId),
@@ -409,6 +409,7 @@ module.exports = function createPostgresCollectionsRepository(executor) {
           String(origin),
           publishMode ?? 'ask',
           definition === null || definition === undefined ? null : definition,
+          Boolean(nameLocked),
         ]
       );
       const id = result.rows && result.rows[0] ? Number(result.rows[0].id) : undefined;

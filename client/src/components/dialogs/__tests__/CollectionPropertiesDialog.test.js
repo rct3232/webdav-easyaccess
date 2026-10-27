@@ -49,8 +49,20 @@ const GRANTEE_ROW = {
 };
 
 const GRANTS = [
-  { grantee_id: 9, username: 'bob', role: 'viewer', granted_by: 1, created_at: '2026-09-02T00:00:00Z' },
-  { grantee_id: 10, username: 'carol', role: 'editor', granted_by: 1, created_at: '2026-09-03T00:00:00Z' },
+  {
+    grantee_id: 9,
+    username: 'bob',
+    role: 'viewer',
+    granted_by: 1,
+    created_at: '2026-09-02T00:00:00Z',
+  },
+  {
+    grantee_id: 10,
+    username: 'carol',
+    role: 'editor',
+    granted_by: 1,
+    created_at: '2026-09-03T00:00:00Z',
+  },
 ];
 
 // users/approved parity rows: the server read already excludes the requester
@@ -101,8 +113,14 @@ describe('CollectionPropertiesDialog', () => {
       expect(screen.queryByText('Versions')).not.toBeInTheDocument();
 
       const dialog = screen.getByRole('dialog');
-      const order = [...dialog.querySelectorAll('.MuiDialogTitle-root, .MuiTabs-root, .MuiDialogContent-root, .MuiDialogActions-root')].map(
-        (node) => node.className.split(' ').find((c) => /Mui(DialogTitle|Tabs|DialogContent|DialogActions)-root/)
+      const order = [
+        ...dialog.querySelectorAll(
+          '.MuiDialogTitle-root, .MuiTabs-root, .MuiDialogContent-root, .MuiDialogActions-root'
+        ),
+      ].map((node) =>
+        node.className
+          .split(' ')
+          .find((c) => /Mui(DialogTitle|Tabs|DialogContent|DialogActions)-root/.test(c))
       );
       expect(order).toEqual([
         'MuiDialogTitle-root',
@@ -111,7 +129,9 @@ describe('CollectionPropertiesDialog', () => {
         'MuiDialogActions-root',
       ]);
       expect(
-        within(dialog.querySelector('.MuiDialogActions-root')).getByRole('button', { name: 'Close' })
+        within(dialog.querySelector('.MuiDialogActions-root')).getByRole('button', {
+          name: 'Close',
+        })
       ).toBeInTheDocument();
 
       utils.unmount();
@@ -123,7 +143,10 @@ describe('CollectionPropertiesDialog', () => {
       expect(screen.getByTestId('collection-props-tab-info')).toBeInTheDocument();
       expect(screen.queryByTestId('collection-props-tab-ai')).not.toBeInTheDocument();
       expect(screen.queryByTestId('collection-props-tab-sharing')).not.toBeInTheDocument();
-      expect(screen.getByText('Roadtrip photos')).toBeInTheDocument();
+      // the name renders in the inline-rename field (an input VALUE, not text)
+      expect(screen.getByTestId('collection-name-field').querySelector('input')).toHaveValue(
+        'Roadtrip photos'
+      );
 
       utils.unmount();
     });
@@ -208,7 +231,10 @@ describe('CollectionPropertiesDialog', () => {
 
       expect(screen.queryByTestId('collection-props-tab-sharing')).not.toBeInTheDocument();
       // unavailable tab ⇒ Info fallback
-      expect(screen.getByTestId('collection-props-tab-info')).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByTestId('collection-props-tab-info')).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
 
       utils.unmount();
     });
@@ -254,7 +280,10 @@ describe('CollectionPropertiesDialog', () => {
       expect(screen.getByTestId('collection-preview-loading')).toBeInTheDocument();
       loading.utils.unmount();
 
-      const sample = Array.from({ length: 12 }, (_, i) => ({ node_id: 100 + i, name: `f${i}.txt` }));
+      const sample = Array.from({ length: 12 }, (_, i) => ({
+        node_id: 100 + i,
+        name: `f${i}.txt`,
+      }));
       const loaded = openDialog({ preview: { count: 14, sample, sample_truncated: true } });
       expect(screen.getByTestId('collection-preview-sample-100')).toHaveTextContent('f0.txt');
       expect(screen.getByTestId('collection-preview-more')).toHaveTextContent('2');
@@ -328,7 +357,10 @@ describe('CollectionPropertiesDialog', () => {
     it('add flow: viewer-default role toggle; the picker lists only ungranted, non-admin candidates and a selection dispatches onGrant(userId, role) then closes', async () => {
       const { props, utils } = openSharing({ grants: GRANTS, shareableUsers: SHAREABLE_USERS });
 
-      expect(screen.getByTestId('collection-grant-role-viewer')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('collection-grant-role-viewer')).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      );
 
       fireEvent.click(screen.getByTestId('collection-grant-add'));
       const menu = await screen.findByRole('menu');
@@ -350,7 +382,10 @@ describe('CollectionPropertiesDialog', () => {
       const { props, utils } = openSharing({ grants: [], shareableUsers: SHAREABLE_USERS });
 
       fireEvent.click(screen.getByTestId('collection-grant-role-editor'));
-      expect(screen.getByTestId('collection-grant-role-editor')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('collection-grant-role-editor')).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      );
 
       fireEvent.click(screen.getByTestId('collection-grant-add'));
       const menu = await screen.findByRole('menu');

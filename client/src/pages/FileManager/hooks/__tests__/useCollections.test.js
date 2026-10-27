@@ -352,7 +352,12 @@ describe('useCollections', () => {
 
     it('grantCollection success refreshes and forwards the undo toast with the grant label', async () => {
       const payload = {
-        grant: { grantee_id: 9, username: 'bob', role: 'viewer', created_at: '2026-09-02T00:00:00Z' },
+        grant: {
+          grantee_id: 9,
+          username: 'bob',
+          role: 'viewer',
+          created_at: '2026-09-02T00:00:00Z',
+        },
         undo: { action_id: 996 },
       };
       explorerGateway.grantCollection.mockResolvedValue(payload);

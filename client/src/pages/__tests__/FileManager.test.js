@@ -1778,7 +1778,11 @@ describe('FileManager', () => {
           ),
           http.get('/api/collections/1/grants', () => HttpResponse.json({ grants })),
           http.post('/api/collections/1/preview', () =>
-            HttpResponse.json({ count: 2, sample: [{ node_id: 5, name: 'a.txt' }], sample_truncated: false })
+            HttpResponse.json({
+              count: 2,
+              sample: [{ node_id: 5, name: 'a.txt' }],
+              sample_truncated: false,
+            })
           ),
           http.get('/api/users/approved', () =>
             HttpResponse.json([
@@ -1809,7 +1813,11 @@ describe('FileManager', () => {
             deleteUrls.push(new URL(request.url).searchParams.get('userId'));
             const revokedId = Number(new URL(request.url).searchParams.get('userId'));
             grants = grants.filter((row) => row.grantee_id !== revokedId);
-            return HttpResponse.json({ grantee_id: revokedId, revoked: true, undo: { action_id: 203 } });
+            return HttpResponse.json({
+              grantee_id: revokedId,
+              revoked: true,
+              undo: { action_id: 203 },
+            });
           })
         );
 

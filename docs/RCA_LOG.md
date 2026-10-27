@@ -1439,3 +1439,24 @@ failed, reason: socket hang up`. The migration's per-node isolation correctly re
   ~25-31 and produced timeout-only failures in scratch UI cases; it was not used as a code
   gate because the worker count is the requested resource control and no fixed cap was
   introduced.
+
+## 2026-10-27 — Upload-drain hint seam: named import from a default-export-only gateway broke the upload completion path
+
+- **Summary**: the first full client gate after the `uploadComplete` hint landed failed 2
+  `FileManager.test.js` upload-flow cases (10 s timeouts waiting for the completion UI);
+  `SetupAiStep` failed only under full-suite parallel load and passed isolated.
+- **Diagnosis**: `useFileOperations` imported `notifyEvolutionHint` as a NAMED import from
+  `services/explorerGateway`, but the gateway exposes its seams ONLY through the default
+  export object — the named binding was `undefined`, so the drain call threw synchronously
+  inside `executeExplorerUpload`'s terminal block, jumped to the outer upload catch, and the
+  completion progress never rendered. The hook suite's mock was written in the named-export
+  shape, masking the mismatch (mock-masked binding bug). The wrapper's
+  `Promise.resolve(...).catch` only absorbed async rejections, not the synchronous throw.
+- **Classification**: **Case A** (source error — wrong module-binding form; the spec's
+  "hint emission/failure never changes existing outcomes" guarantee was violated under any
+  throwing seam).
+- **Action**: switched the hook to the default import (`explorerGateway.notifyEvolutionHint`),
+  made the wrapper swallow synchronous throws as well, mirrored the real module shape in the
+  hook-test mock (`__esModule` + `default`), and added a sync-throw absorption test.
+- **Verification**: `FileManager.test.js` + `useFileOperations.test.js` 73/73 green
+  (upload-flow cases included); full client gate re-run after the fix.

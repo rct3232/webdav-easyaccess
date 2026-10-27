@@ -4,7 +4,7 @@ import { downloadFile, downloadMultipleFiles, renameFile } from '../../../servic
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { markProcessing, clearProcessing } from '../../../utils/processingUtils';
 import { notifyRecentFilesChange } from '../../../services/recentFilesNotifier';
-import { notifyEvolutionHint } from '../../../services/explorerGateway';
+import explorerGateway from '../../../services/explorerGateway';
 
 /**
  * Common file operations hook
@@ -234,11 +234,15 @@ export const useFileOperations = ({
   /**
    * Fire-and-forget upload-queue-drain hint (useFileOperations.md §3): one
    * `uploadComplete` signal per drained upload batch. The repository absorbs
-   * every failure and the wrapper additionally swallows a rejecting seam, so
-   * the caller's completion outcome is never affected.
+   * every failure and the wrapper additionally swallows a rejecting or
+   * throwing seam, so the caller's completion outcome is never affected.
    */
   const notifyUploadQueueDrained = useCallback(() => {
-    Promise.resolve(notifyEvolutionHint()).catch(() => {});
+    try {
+      Promise.resolve(explorerGateway.notifyEvolutionHint()).catch(() => {});
+    } catch {
+      // Absorbed: the hint must never surface an error into the upload flow.
+    }
   }, []);
 
   return {

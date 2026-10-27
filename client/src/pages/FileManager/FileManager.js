@@ -1528,15 +1528,19 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   // (operator rule: zero /api/collections IO). Listing payloads stay frozen:
   // the chips consume this SEPARATE read as a dedicated prop chain.
   const membershipNodeIds = useMemo(() => {
+    // Zone rows arrive in the hook's CONVERTED explorer shape (`nodeId`);
+    // `node_id` stays a defensive fallback for raw snapshot carriers.
     const ids = [];
     for (const row of files) {
       if (row?.nodeId != null) ids.push(row.nodeId);
     }
     for (const row of searchApi.zoneBRows ?? []) {
-      if (row?.node_id != null) ids.push(row.node_id);
+      const id = row?.nodeId ?? row?.node_id;
+      if (id != null) ids.push(id);
     }
     for (const row of searchApi.zoneCRows ?? []) {
-      if (row?.node_id != null) ids.push(row.node_id);
+      const id = row?.nodeId ?? row?.node_id;
+      if (id != null) ids.push(id);
     }
     return ids;
   }, [files, searchApi.zoneBRows, searchApi.zoneCRows]);
@@ -1559,8 +1563,12 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       if (keySet.size === 0) return;
       const rowsByKey = new Map();
       for (const row of files) rowsByKey.set(String(getEntryKey(row)), row);
-      for (const row of searchApi.zoneBRows ?? []) rowsByKey.set(String(row.node_id), row);
-      for (const row of searchApi.zoneCRows ?? []) rowsByKey.set(String(row.node_id), row);
+      for (const row of searchApi.zoneBRows ?? []) {
+        rowsByKey.set(String(row.nodeId ?? row.node_id), row);
+      }
+      for (const row of searchApi.zoneCRows ?? []) {
+        rowsByKey.set(String(row.nodeId ?? row.node_id), row);
+      }
       const targetNodes = [];
       for (const key of keySet) {
         const row = rowsByKey.get(String(key));

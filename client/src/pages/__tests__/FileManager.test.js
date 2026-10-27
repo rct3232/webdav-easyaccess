@@ -3158,6 +3158,58 @@ describe('FileManager — files-surface membership chips + bulk add (CollectionM
     expect(screen.getByText(/test\.txt/i)).toBeInTheDocument();
   }, 15000);
 
+  it('badges cover search-zone snapshot rows (the batched read spans the files surfaces)', async () => {
+    const forNodesIdSets = [];
+    server.use(
+      http.get('/api/collections', () => HttpResponse.json({ collections: [BEACH, WORK] })),
+      http.get('/api/collections/merge-suggestions', () => HttpResponse.json({ suggestions: [] })),
+      http.post('/api/collections/for-nodes', async ({ request }) => {
+        const body = await request.json();
+        forNodesIdSets.push(body.nodeIds);
+        return HttpResponse.json({
+          memberships: body.nodeIds
+            .filter((nodeId) => nodeId === 55)
+            .map((nodeId) => ({ node_id: nodeId, collection_ids: [17] })),
+        });
+      }),
+      http.post('/api/search', () =>
+        HttpResponse.json({
+          name_matches: [{ node_id: 55, name: 'zone-file.pdf' }],
+          counts: { name: 1, semantic: 0, total: 1, name_truncated: false },
+          result_ref: 'sr1.abc',
+          semantic_available: false,
+          semantic_unavailable_reason: 'serverErrors.ai.notConfigured',
+        })
+      ),
+      http.post('/api/files/metadata', async ({ request }) => {
+        const body = await request.json();
+        return HttpResponse.json(
+          (body.nodeIds || []).map((nodeId) => ({
+            nodeId,
+            name: 'zone-file.pdf',
+            type: 'file',
+            size: 5,
+            lastmod: null,
+            mime: 'application/pdf',
+            hasReadPermission: true,
+            hasWritePermission: true,
+          }))
+        );
+      })
+    );
+
+    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+    await settleListing();
+
+    const searchbox = screen.getByRole('searchbox');
+    fireEvent.change(searchbox, { target: { value: 'zone' } });
+    fireEvent.keyDown(searchbox, { key: 'Enter' });
+
+    expect(await screen.findByTestId('server-search-row-55')).toBeInTheDocument();
+    expect(await screen.findByTestId('membership-badge-55-17')).toBeInTheDocument();
+    expect(forNodesIdSets.some((ids) => ids.includes(55))).toBe(true);
+  }, 20000);
+
   it('toolbar bulk add on the files surface opens the menu with all-target checkmarks and posts the add', async () => {
     let addItemBody = null;
     server.use(

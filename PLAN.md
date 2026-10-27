@@ -2542,6 +2542,6 @@ full-matrix re-pin, and the §30.6 defer-audit residuals below.
 | L3  | `E2E_EXPECTED_SKIPS` 6→7 full matrix re-pin          | **Known deferred release evidence.** `E2E_COVERAGE_PLAN.md:229` pins 249/7/256; `:252` defers the full default-gate re-pin to the release run; `package.json:24` uses 7; `skip-budget.js:11-12` comment still says default 6.                                                                                                                         | P4-release event: run `npm run test:e2e:release` (+ WebDAV) on the merged tip, record actual 249/7/256, fix the skip-budget comment.                                                                              | Release run green + evidence line.                             |
 
 **Remediation order.** (1) A + L1/L2 doc corrections (test/docs; independent); (2) C owner
-decision + docs; (3) L3 release run; (4) B/D/E owner decisions or P4 scope notes. A and L2 are
-pre-dev-merge residuals; B/C/D/E/L1/L3 remain P4 carry-forward. None of these rows changes the
+decision + docs; (3) L3 release run; (4) B/D/E owner decisions or P4 scope notes. A, C (docs
+clarification), and L2 are pre-dev-merge residuals; B/D/E/L1/L3 remain P4 carry-forward. None of these rows changes the
 P3 feature verdict — they are the honest tail of the phase.

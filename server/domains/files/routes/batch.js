@@ -107,6 +107,9 @@ router.get(
       total: job.total,
       results: job.results,
       errorMessage: job.errorMessage,
+      // Undo-toast pointer (batchOperationService.md §5.4): { action_id } on the
+      // terminal result of a journaled move/copy batch, null otherwise.
+      undo: job.undo ? { action_id: job.undo.actionId } : null,
     });
   })
 );

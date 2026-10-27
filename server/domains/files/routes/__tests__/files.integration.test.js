@@ -1797,8 +1797,12 @@ describe('P3-BJ: batch command journal, cancellation & undo', () => {
     return res.body.nodeId;
   }
 
-  async function makeFile(parentNodeId, name) {
-    const res = await uploadFile(user, parentNodeId, name, `bj-${name}`);
+  async function makeFile(parentNodeId, name, uploader = user) {
+    const res = await request(app)
+      .post('/api/files/upload')
+      .set('Authorization', `Bearer ${uploader.token}`)
+      .field('parentNodeId', String(parentNodeId))
+      .attach('file', Buffer.from(`bj-${name}`), name);
     expect(res.status).toBe(200);
     return res.body.nodeId;
   }
@@ -1845,7 +1849,7 @@ describe('P3-BJ: batch command journal, cancellation & undo', () => {
     const row = await batchJournalRow(job.jobId);
     expect(row).not.toBeNull();
     expect(row.action).toBe('move');
-    expect(row.actor).toBe(String(user.id));
+    expect(row.actor).toBe(String(user.user.id));
     expect(row.status).toBe('applied');
     expect(row.subject_label).toBeNull();
     expect(row.chain_seq).toBe(1);
@@ -2029,7 +2033,7 @@ describe('P3-BJ: batch command journal, cancellation & undo', () => {
   });
 
   it('zero-succeeded job writes no journal row and exposes no undo pointer', async () => {
-    const victimFile = await makeFile(otherUser.homeNodeId, `p3bj-z1-x.txt`);
+    const victimFile = await makeFile(otherUser.homeNodeId, `p3bj-z1-x.txt`, otherUser);
 
     const job = await runBatchJob(user.token, '/api/files/batch-move', {
       moves: [{ sourceNodeId: victimFile, destinationParentNodeId: dirB }],
@@ -2043,10 +2047,11 @@ describe('P3-BJ: batch command journal, cancellation & undo', () => {
 
   it('job cancelled before the worker starts settles cancelled with all items skipped and no journal row', async () => {
     const f1 = await makeFile(dirA, `p3bj-x1-x.txt`);
-    const opStore = require('@server/domains/files/stores/operationProgress');
+    const opStore =
+      require('@server/domains/files/stores/operationProgress').createOperationProgressStore();
     const { scheduleBulkWorker } = require('@server/domains/files/services/batchOperationService');
 
-    const { jobId } = opStore.createJob(user.id, 'move', {
+    const { jobId } = opStore.createJob(user.user.id, 'move', {
       moves: [{ sourceNodeId: f1, destinationParentNodeId: dirB }],
     });
     opStore.setJobCancelled(jobId);
@@ -2121,7 +2126,7 @@ describe('P3-BJ: batch command journal, cancellation & undo', () => {
     const synthetic = await journal.commitChange(
       'batch',
       `batch:${job.jobId}`,
-      { actor: String(user.id), action: 'move' },
+      { actor: String(user.user.id), action: 'move' },
       {
         inverse: { op: 'undo-batch', operation: 'move', jobId: job.jobId },
         items: [

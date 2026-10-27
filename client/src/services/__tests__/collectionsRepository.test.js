@@ -27,6 +27,7 @@ import {
   getActions,
   getFileSuggestions,
   acceptFileSuggestions,
+  dismissFileSuggestion,
   notifyEvolutionHint,
 } from '../collectionsRepository';
 
@@ -421,6 +422,16 @@ describe('getActions / getFileSuggestions / acceptFileSuggestions (T0.10)', () =
       params: {},
     });
     expect(notifyCollectionsChange).not.toHaveBeenCalled();
+  });
+
+  it('dismissFileSuggestion POSTs the camelCase body, returns the state row, absorbs failure to null', async () => {
+    post.mockResolvedValueOnce({ data: { id: 9, state: 'dismissed' } });
+
+    await expect(dismissFileSuggestion(9)).resolves.toEqual({ id: 9, state: 'dismissed' });
+    expect(post).toHaveBeenCalledWith('/dashboard/suggestions/dismiss', { suggestionId: 9 });
+
+    post.mockRejectedValueOnce(transportError(404, 'serverErrors.dashboard.suggestionNotFound'));
+    await expect(dismissFileSuggestion(99)).resolves.toBeNull();
   });
 });
 

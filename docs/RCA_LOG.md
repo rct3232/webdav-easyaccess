@@ -1460,3 +1460,52 @@ failed, reason: socket hang up`. The migration's per-node isolation correctly re
   hook-test mock (`__esModule` + `default`), and added a sync-throw absorption test.
 - **Verification**: `FileManager.test.js` + `useFileOperations.test.js` 73/73 green
   (upload-flow cases included); full client gate re-run after the fix.
+
+## 2026-10-27 — Merge undo was never executable: the undo executor had no `merge-collections` case
+
+- **Summary**: the T3.1 §2.4 conformance-audit pin `undo of a merge recreates the
+loser … moves members back` failed RED: `POST /api/actions/:id/undo` on a merge
+  row returned **409** (`fingerprintMismatch`) instead of 200, while `POST
+/:id/merge/:other` hands out `undo.action_id` and the card flow (MergeProposalCard.md
+  §2.6) promises an undo toast. Any user Undo press after a merge was broken.
+- **Diagnosis**: `collectionsStore.mergeCollections` journals the inverse with
+  `op: 'merge-collections'`, but `actions/service.js` `applyInverseTx` enumerated
+  only the single-row ops set; the merge inverse fell through to `default`
+  (`{ applied: false, reason: 'changed' }`), which the single-inverse command path
+  turns into the fingerprint refusal. No test ever undid a merge, so the gap was
+  invisible (test-coverage hole, not a flake).
+- **Classification**: **Case A** (source error — collectionsService.md §2.9 states
+  "undo restores loser row + moves members back"; the implementation violated the
+  spec). Fixed under the orchestrator's pre-authorization for §2.4-audit-found
+  server defects (T3.1 task ruling), docs-first.
+- **Action**: implemented the `merge-collections` inverse executor (preconditions:
+  survivor exists, loser id not reused, owner name free; recreate the loser row
+  with `name_locked`/origin/publish_mode/definition/pin fidelity; re-insert its
+  items with `added_by`/`published`/source/reason and exclusions; delete from the
+  survivor ONLY the moved rows absent from the recorded `dropped` sets; touch the
+  survivor). The merge inverse now records `nameLocked` + item source/reason, and
+  `insertCollection` accepts `nameLocked` (interface JSDoc + both twins + new
+  conformance pin). Refusal semantics preserved: a re-taken loser name still
+  409s and the row stays `applied` (pinned).
+- **Verification**: targeted merge block 10/10 green; full server `npm run
+test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
+
+## 2026-10-27 — useCollections dismiss/reject seams ignored the spec's success-refresh
+
+- **Summary**: after `Later`/`Keep separate`, the resolved card stayed on screen
+  until an unrelated notifier event: the seams called `io.dismissMerge/rejectMerge`
+  bare — no `options` (so an absorbed failure surfaced nothing), no refresh, no
+  `showError`. useCollections.md §2.3 requires "success → refresh" for the merge
+  group with the undo forward reserved to `mergePair`.
+- **Diagnosis**: the seams were written as fire-and-forget stubs when the route
+  landed; the existing hook test pinned that shape (asserting calls WITHOUT the
+  options argument), so the gap read as intended behavior (test asserted
+  internals of the seam, masking the missing refresh).
+- **Classification**: **Case A** for the source (spec clause §2.3 merge-group row),
+  with a **Case B** side-cleanup: the stale pin replaced by observable-outcome
+  pins (refresh ran, no `onUndoable`, error envelope shown on absorption).
+- **Action**: both seams ride `runMutation` with `withUndo: false`; `runMutation`
+  gained the flag (non-journaled mutations refresh and map errors but never emit
+  an undo affordance). Docs unchanged (already correct).
+- **Verification**: `useCollections.test.js` 14/14 green; merge-slot shell tests
+  dispatch→refresh→card-drop chains green.

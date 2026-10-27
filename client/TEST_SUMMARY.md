@@ -6,7 +6,7 @@ Summary of the test implementation for the React client application. All tests f
 
 ## Test Statistics
 
-- **Total Test Suites**: 157 (as of 2026-09-09)
+- **Total Test Suites**: 157 (as of 2026-09-09 — STALE: the client leg of the P3 exit-gate jest chain is owned by the orchestrator; this snapshot predates the T3.x client waves and will be re-pinned with those final counts)
 - **Total Tests**: 1421
 - **Pass Rate**: 100% (1421 passed, 0 failed) ✅
 - **Execution Time**: Reported per run by `npm run test`
@@ -171,6 +171,27 @@ Tests that exercise full user flows (pages) with React Testing Library. API is m
 ### Key Modules & Overall Project Coverage
 
 The per-module and overall coverage percentages previously published in this file were captured from pre-reorganization runs and reference modules that no longer exist (e.g. `folderUtils.js`) or paths that have since moved. They are intentionally not reproduced here. Measure the current layout with `cd client && npm run test:coverage`; core business logic (utils, hooks) historically maintains the highest coverage.
+
+## E2E (Playwright) — cross-reference
+
+Playwright ownership, case IDs, scratch slots, port bands and the enforced skip
+budgets are canonical in [docs/E2E_COVERAGE_PLAN.md](../docs/E2E_COVERAGE_PLAN.md);
+run procedures live in
+[docs/TEST_GIT_GUIDE.md](../docs/TEST_GIT_GUIDE.md). This file tracks the Jest
+tiers only.
+
+- P3 exit-gate runs (2026-10-27, port band 40, workers=1):
+  `s3-collections-desktop` 22 passed / 3 skipped / 0 failed,
+  `s3-collections-mobile` 24 passed / 1 skipped / 0 failed (serial, ~2 min each),
+  `s3-retrieval-desktop` 11 / 0 / 0, `s3-retrieval-mobile` 11 / 0 / 0 (the mobile
+  slot needed the documented per-port override `E2E_SCRATCH_RETRIEVAL_MOBILE_PORT=5062`
+  — WebKit refuses the band-40 default 5060, see `docs/RCA_LOG.md` 2026-10-27),
+  `s3-ai-desktop` 1 / 0 / 0 (pre-seeded `WEA_MODEL_DIR` weights resolved from the
+  default `/tmp/opencode/delta-base/models`).
+- The jest tiers above are the orchestrator's exit-gate ownership: the server
+  sqlite leg is re-pinned (189 suites / 3305 tests); the client and
+  real-PostgreSQL leg snapshots in this file PREDATE the P3 waves and will be
+  re-pinned with the orchestrator's final reported counts.
 
 ## Conclusion
 

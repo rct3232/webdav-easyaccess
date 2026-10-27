@@ -1669,3 +1669,77 @@ test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
   (terminal cleanup), keeping the file order-independent.
 - **Verification**: conformance suite green 36/36 (sqlite leg); the same file runs under
   `test:ci:pg:adapters` for the PG twin leg at the T3.1c gate.
+
+## 2026-10-27 — P3 exit gate: E2E-S3-COLLECTION-021 pinned a dead loser id after merge undo
+
+- **Summary**: first-ever run of the T3.1 merge-card case failed on BOTH platforms at the last
+  line — `GET /api/collections/<loserId>/items` answered 404 (`restored.ok()` false), while the
+  preceding name-poll had already proven the undo (`status active`, `item_count 2`).
+- **Diagnosis**: `routes/collections.md` merge-undo contract says the loser is RECREATED
+  ("loser recreated with name/`name_locked`/origin/publish_mode/pin state") and lists "id
+  reused" as an undo REFUSAL precondition — the inverse `insertCollection` therefore lands a
+  NEW row id and the old `bId` stays deleted. The scratch server access log confirms the 404
+  for `/api/collections/17/items` on both projects; 23 same-shape GETs answered 200.
+- **Classification**: **Case B (test error)** — the test asserted collection-identity
+  persistence that no spec clause grants; the product behaved exactly as contracted.
+- **Action**: the case now resolves the restored row by NAME (the undo-poll row) and asserts
+  `GET /:restoredId/items` returns the members-back set `[shared, onlyB]` — strictly stronger
+  than the previous `ok()` smoke while staying on the observable contract.
+- **Verification**: re-run of `s3-collections-desktop` + `s3-collections-mobile` at the exit
+  gate (port band 40).
+
+## 2026-10-27 — P3 exit gate: E2E-S3-COLLECTION-024 grantee picker click hit a strict-mode violation
+
+- **Summary**: first-ever run of the T3.2b sharing case failed on the desktop leg at the
+  UserSelectionMenu pick: `getByRole('menu').getByText('t32b-recipient')` resolved to TWO
+  elements — the username span AND the e-mail paragraph (`t32b-recipient@e2etest.com` is a
+  superstring, and Playwright text matching is substring-by-default).
+- **Diagnosis**: the picker row renders primary=username + secondary=email (UserSelectionMenu
+  as-built); the case text locator did not pin exactness. All preceding legs (owner dialog,
+  grant row, publish-mode radio) had passed in the same run.
+- **Classification**: **Case B (test error)** — an ambiguous selector in the test, not a
+  product behavior change; no spec clause couples the e-mail row to the pick action.
+- **Action**: the pick is now `getByText(username, { exact: true })` — exactly the username
+  span matches; the e-mail paragraph does not.
+- **Verification**: re-run of `s3-collections-desktop` at the exit gate (port band 40) lands
+  the full grant→recipient→leave→re-grant chain green.
+
+## 2026-10-27 — P3 exit gate: WebKit refuses port 5060 — the band-40 retrieval-mobile slot collides with a browser restricted port
+
+- **Summary**: `s3-retrieval-mobile` failed identically in ALL three exit-gate runs (combined,
+  rerun, standalone idle-host): the very first `page.goto('/login')` resolves with the frame
+  still `about:blank` and no `input[name="username"]` ever appears; 60 s timeout.
+- **Diagnosis**: at `E2E_PORT_OFFSET=40` the scratch slot `5020+40 = 5060` is the SIP port,
+  which sits on WebKit/Chromium's RESTRICTED-PORTS list. Repro: the scratch server on :5060
+  serves `GET /login → 200 text/html` via curl, while a scripted WebKit context logs
+  `Not allowed to use restricted network port 5060` and never commits the navigation. No
+  product request ever reaches the server. Every other band-40 slot is clear of the list —
+  this is a band-allocation collision specific to offset 40 (5060/5061), NOT a product or
+  spec defect and not load-related (idle host reproduced it).
+- **Classification**: **Case B (harness error)** — the test INFRASTRUCTURE (fixed slot +
+  browser policy) mis-selected the band slot; suite code and product are correct.
+- **Action**: the exit-gate run drives the documented per-port escape hatch
+  (`E2E_SCRATCH_RETRIEVAL_MOBILE_PORT=5062`, which beats the persisted band per
+  TEST_GIT_GUIDE; the compose project and every other port stay band 40). CARRIED TO THE
+  ORCHESTRATOR: the band allocator (`scripts/lib/e2e-band.cjs`) should exclude the
+  browser-restricted ports (5060/5061 among them) from slot allocation, or the retrieval
+  base ports should move off the 5020 SIP adjacency; until then every band-40 checkout hits
+  this on webkit retrieval runs.
+- **Verification**: `s3-retrieval-mobile` 11/11 green with the override (band 40 elsewhere).
+
+## 2026-10-27 — P3 exit gate: E2E-S3-COLLECTION-024 resolved the virtual `/__collections__` route through the real-path API
+
+- **Summary**: with the picker click fixed, the first-ever 024 desktop run advanced through the
+  owner dialog, the grant, the publish-mode radio and the recipient re-login, then died at the
+  recipient collections view: `gotoFilesPath(page, request, '/__collections__')` →
+  `POST /api/files/resolve-path` → 404 `serverErrors.files.notFound` (crud.js path walker).
+- **Diagnosis**: `resolve-path` resolves REAL filesystem paths only (the helper's own doc
+  states `/` is not resolvable); the collections virtual root is a CLIENT route segment, never
+  a node. Every existing collections case reaches the list via `page.goto('/files/__collections__')`
+  — the 024 recipient legs used the API-resolving helper instead. No spec clause promises
+  virtual-route resolution server-side.
+- **Classification**: **Case B (test error)** — helper misuse in the test; the 404 is the
+  contracted behavior of `resolve-path`.
+- **Action**: the three recipient/re-grant legs now use the `page.goto` client-route idiom
+  (assertions unchanged — the client still performs the visit reads that Ruling B keys on).
+- **Verification**: final `s3-collections-desktop` green run at the exit gate (port band 40).

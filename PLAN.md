@@ -2261,6 +2261,24 @@ cluster fixed in `a4a83b83`). E2E (band 20, S3): `s3-collections-desktop` **17 p
 mobile-only skips / 0 fail**, `s3-ai-desktop` **1/1**; per-band stack torn down. P2 is CLOSED on
 `ai-feature`; the single `ai-feature`→`dev` merge remains a later event after ALL §7 phases.
 
+**P2 residue closed (2026-10-27, owner-directed):** the exit-gate audit left two specified
+but unimplemented items; both landed on `ai-feature` per their binding specs.
+(1) **`uploadComplete` client hint** (D6 latency sugar; `useFileOperations.md §3`) —
+`collectionsRepository.notifyEvolutionHint` (absorbed, silent POST `/evolution/hint`) +
+gateway re-export; `useFileOperations.notifyUploadQueueDrained` fired exactly once per
+drained upload batch (no-permission/cancel-all/terminal/batch-error paths; empty batch never
+fires). One RCA: the seam was first bound as a named import from the default-export-only
+gateway — synchronous throw aborted the upload completion path (2 FileManager upload-flow
+failures at the first full gate); fixed to the default binding with full absorption, RCA
+2026-10-27.
+(2) **`AI_VIEW_WEIGHT_ALPHA` reader** (§2.3 ordering-only soft boost) — per-call α read
+(shipped-default fallback), views = per-user `node_activity` open+preview lifetime counts,
+`cosine × (1 + α·log10(1 + views))` re-ranks the SEED-PREVIEW sample over the top-K set;
+`ids`/`count`/batch stay raw (admission un-boosted); the definition-preview arm keeps its
+node_id asc sample (no cosine ordering exists there).
+Gates: server `test:ci` **179 suites / 3,096 tests (28 skipped)**, client `test:ci`
+**183 suites / 2,120 tests**, eslint/prettier clean; no repository/SQL change ⇒ PG leg N/A.
+
 **T2.1–T2.5 closed (2026-10-26):** every §7 P2 task is implemented and merged — definition
 engine/pooled vectors, silent-evolution passes (reconcile/create/split/merge-candidates/auto-pin),
 archive/purge + activity ordering, materialized digest, and the vector preview contract. Final

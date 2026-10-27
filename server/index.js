@@ -503,6 +503,8 @@ async function runBoot() {
             startEvolutionScheduler,
             runAdminReportsRetention,
             startAdminReportsRetentionScheduler,
+            runFileSuggestionsExpiry,
+            startFileSuggestionsExpiryScheduler,
           } = require('./infrastructure/maintenanceScheduler');
           const { getUsageService } = require('./infrastructure/usageService');
           const composition = getComposition();
@@ -524,6 +526,16 @@ async function runBoot() {
               console.error('Admin-reports retention on startup failed:', err.message)
             );
           startAdminReportsRetentionScheduler();
+          runFileSuggestionsExpiry()
+            .then((r) => {
+              if (r && r.expired > 0) {
+                console.log(`✓ File-suggestions expiry pruned ${r.expired} row(s)`);
+              }
+            })
+            .catch((err) =>
+              console.error('File-suggestions expiry on startup failed:', err.message)
+            );
+          startFileSuggestionsExpiryScheduler();
           if (computeSetupStatus(process.env).setup_complete) {
             const { startAiWorker } = require('./domains/ai/jobService');
             startAiWorker()

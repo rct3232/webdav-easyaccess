@@ -1460,3 +1460,43 @@ failed, reason: socket hang up`. The migration's per-node isolation correctly re
   hook-test mock (`__esModule` + `default`), and added a sync-throw absorption test.
 - **Verification**: `FileManager.test.js` + `useFileOperations.test.js` 73/73 green
   (upload-flow cases included); full client gate re-run after the fix.
+
+## 2026-10-27 — T3.2a: the literal `isVisibleToGrantee` `|| auto` arm contradicted the route pin (spec ambiguity)
+
+- **Summary**: after routing the member-view publish gate through
+  `shareService.isVisibleToGrantee` (collectionShareService.md §2.3 formula, read
+  literally: `viewRow.published || collection.publishMode === 'auto'`), the existing
+  `collections.test.js` pin `publish gate: ask-mode new members are invisible to
+  grantees; auto flips` failed — a row parked under `ask` became grantee-visible once
+  the owner later switched the collection to `auto`.
+- **Diagnosis**: spec-vs-spec contradiction on the auto/parked edge. routes/collections.md
+  §2.4 is unambiguous for materialized rows ("grantees only ever see `published:true`
+  rows"), and §4.7 mode `auto` publishes ON ADD ("it never applies retroactively");
+  the §2.3 formula's own parenthetical scopes the `|| auto` arm to a VIRTUAL viewRow
+  (a derived member without a stored row, pre-materialization). The literal reading
+  over-extended the arm to materialized parked rows.
+- **Classification**: **Case C** resolved by clause citation — the narrower reading is
+  the only one consistent with BOTH specs (routes §2.4 + §2.3's virtual-row note);
+  no behavior was ever pinned the other way, and the route pin was kept.
+- **Action**: `isVisibleToGrantee` = `published === true || (viewRow.virtual === true ∧
+  publishMode === 'auto')`; collectionShareService.md §2.3 live-resolution bullet
+  amended to state the virtual-row scoping explicitly; share-suite formula test and the
+  `assertMemberConsumable` auto case rewritten to the reconciled rule.
+- **Verification**: collections-domain suites 12 files / 293 tests green; the previously
+  failing route-pin green unchanged.
+
+## 2026-10-27 — T3.2a: undoAction in a domain unit suite needs the actions/service registration loaded
+
+- **Summary**: the new `collectionShareService.test.js` re-grant-undo case failed with
+  `serverErrors.errorHandler.databaseQueryFailed` while a standalone repro of the same
+  sequence passed.
+- **Diagnosis**: the `collection`-domain undo executor registers as a side effect of
+  requiring `domains/actions/service`; the new suite called `actionJournalStore.undoAction`
+  before any import had loaded it, so the executor TX threw
+  `No undo executor registered for domain: collection`, which the transaction wrapper
+  maps to databaseQueryFailed (masked message).
+- **Classification**: **Case B** (test-infrastructure error; the production path always
+  loads the actions domain via the router mount).
+- **Action**: the suite requires `@server/domains/actions/service` at the top level with
+  a comment naming the registration dependency.
+- **Verification**: suite green (34 share-service cases).

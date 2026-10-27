@@ -275,7 +275,9 @@ tuned, via admin counters: `tombstone-suppressed` vs `regenerated-anyway`.
   `dismissed_at + 30d`. Re-raise preserves the count, so subsequent dismissals keep the
   30-day cadence. The API never owns this timing.
 - **Review band 0.55–0.7** (`merge-arbiter`): the card gate is Jaccard ≥ 0.7 — a band pair
-  becomes a suggestion row ONLY through an arbiter verdict (chat configured). Chat
+  becomes a suggestion row ONLY through an arbiter verdict (nightly FULL leg, chat
+  configured — the cheap/upload leg never calls the arbiter: one evaluation per user
+  per day). Chat
   unconfigured, the arbiter paused, budget/breaker degradation, a failed call, an
   invalid/unparsable response or the `sibling` verdict ⇒ the pair writes NOTHING, so no
   card exists for it. `AI_MERGE_ARBITER_ENABLED` (T2/dbOnly, default `true`) pauses
@@ -289,8 +291,8 @@ tuned, via admin counters: `tombstone-suppressed` vs `regenerated-anyway`.
   `recommendation` by [collectionsService](collectionsService.md) §2.9); `sibling` ⇒ no
   card in v1. Pairs with an existing row in ANY state are never re-adjudicated (a
   `dismissed` band row still follows the re-raise cadence and keeps its stored verdict).
-  Budget: the nightly aggregate ≈ ≤1 chat call/user/day — arbiter calls are batched into
-  ONE structured multi-output per user per pass (highest-Jaccard first, cap 8 pairs per
+  Budget: the nightly aggregate ≤ 1 chat call/user/day — arbiter calls are batched
+  into ONE structured multi-output per user per nightly run (highest-Jaccard first, cap 8 per
   call, the remainder waits for the next night), reasoning OFF. A chat failure of any
   class is swallowed: zero rows that night, the rest of the pass unaffected. Verdict-
   promoted rows count in `mergeCandidates.arbiterSuggested`; the per-user `arbiterCalls`

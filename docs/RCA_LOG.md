@@ -1630,24 +1630,26 @@ test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
   (exit 0) at maxWorkers=1 with coverage; wave-1 tip baseline was 185/2158 (+2 suites/
   +47 tests from this branch). Server collections route suite green 85/85 including the
   new membership-stability zero-definition-evaluation pin (single-case run 1/1).
+
 ---
+
 ## 2026-10-27 — T3.4: Setup-suite contention flake class recurred on the client gate
 
 - **Summary**: the first full `client npm run test:ci` on the T3.4 tree reported 6
-failed suites (22 tests) — Setup/SetupAiStep/Register/usePreviewLoader/ShareLinkLoader/
-useDropToUpload — all `Exceeded timeout of 5000 ms for a test`, durations 40–97 s under
-parallel load. None of the six imports the changed modules (`useSearchResults` is the
-only client file touched).
+  failed suites (22 tests) — Setup/SetupAiStep/Register/usePreviewLoader/ShareLinkLoader/
+  useDropToUpload — all `Exceeded timeout of 5000 ms for a test`, durations 40–97 s under
+  parallel load. None of the six imports the changed modules (`useSearchResults` is the
+  only client file touched).
 - **Diagnosis**: same class as the T3.5 entry above — two sibling agent worktrees ran
-full jest legs on the shared 6-core host during the run. Evidence: (1) with my changes
-stashed, the Setup suites passed on base at LOW host load (14 s / full-suite parallel
-re-run also failed there); (2) with my changes applied, the same suites passed in
-isolation once the host calmed (SetupAiStep 13.8 s, Setup 18.4 s, 25/25); (3) the full
-client gate then passed 185/185 suites, 2163/2163 tests on the same tree.
+  full jest legs on the shared 6-core host during the run. Evidence: (1) with my changes
+  stashed, the Setup suites passed on base at LOW host load (14 s / full-suite parallel
+  re-run also failed there); (2) with my changes applied, the same suites passed in
+  isolation once the host calmed (SetupAiStep 13.8 s, Setup 18.4 s, 25/25); (3) the full
+  client gate then passed 185/185 suites, 2163/2163 tests on the same tree.
 - **Classification**: **environment/timing flake** (host contention) — not Case A/B/C;
-no source, test-logic, or spec defect; no production-code change.
+  no source, test-logic, or spec defect; no production-code change.
 - **Action**: none beyond re-running (no timeout increases, no worker-count raises —
-standing host rule).
+  standing host rule).
 - **Verification**: full client `test:ci` green: 185 suites / 2163 tests.
 
 ## 2026-10-27 — T3.1c: conformance-suite global-read collision from the new arbiter verdict case
@@ -1667,3 +1669,60 @@ standing host rule).
   (terminal cleanup), keeping the file order-independent.
 - **Verification**: conformance suite green 36/36 (sqlite leg); the same file runs under
   `test:ci:pg:adapters` for the PG twin leg at the T3.1c gate.
+
+## 2026-10-27 — P3 exit gate: E2E-S3-COLLECTION-021 pinned a dead loser id after merge undo
+
+- **Summary**: first-ever run of the T3.1 merge-card case failed on BOTH platforms at the last
+  line — `GET /api/collections/<loserId>/items` answered 404 (`restored.ok()` false), while the
+  preceding name-poll had already proven the undo (`status active`, `item_count 2`).
+- **Diagnosis**: `routes/collections.md` merge-undo contract says the loser is RECREATED
+  ("loser recreated with name/`name_locked`/origin/publish_mode/pin state") and lists "id
+  reused" as an undo REFUSAL precondition — the inverse `insertCollection` therefore lands a
+  NEW row id and the old `bId` stays deleted. The scratch server access log confirms the 404
+  for `/api/collections/17/items` on both projects; 23 same-shape GETs answered 200.
+- **Classification**: **Case B (test error)** — the test asserted collection-identity
+  persistence that no spec clause grants; the product behaved exactly as contracted.
+- **Action**: the case now resolves the restored row by NAME (the undo-poll row) and asserts
+  `GET /:restoredId/items` returns the members-back set `[shared, onlyB]` — strictly stronger
+  than the previous `ok()` smoke while staying on the observable contract.
+- **Verification**: re-run of `s3-collections-desktop` + `s3-collections-mobile` at the exit
+  gate (port band 40).
+
+## 2026-10-27 — P3 exit gate: E2E-S3-COLLECTION-024 grantee picker click hit a strict-mode violation
+
+- **Summary**: first-ever run of the T3.2b sharing case failed on the desktop leg at the
+  UserSelectionMenu pick: `getByRole('menu').getByText('t32b-recipient')` resolved to TWO
+  elements — the username span AND the e-mail paragraph (`t32b-recipient@e2etest.com` is a
+  superstring, and Playwright text matching is substring-by-default).
+- **Diagnosis**: the picker row renders primary=username + secondary=email (UserSelectionMenu
+  as-built); the case text locator did not pin exactness. All preceding legs (owner dialog,
+  grant row, publish-mode radio) had passed in the same run.
+- **Classification**: **Case B (test error)** — an ambiguous selector in the test, not a
+  product behavior change; no spec clause couples the e-mail row to the pick action.
+- **Action**: the pick is now `getByText(username, { exact: true })` — exactly the username
+  span matches; the e-mail paragraph does not.
+- **Verification**: re-run of `s3-collections-desktop` at the exit gate (port band 40) lands
+  the full grant→recipient→leave→re-grant chain green.
+
+## 2026-10-27 — P3 exit gate: WebKit refuses port 5060 — the band-40 retrieval-mobile slot collides with a browser restricted port
+
+- **Summary**: `s3-retrieval-mobile` failed identically in ALL three exit-gate runs (combined,
+  rerun, standalone idle-host): the very first `page.goto('/login')` resolves with the frame
+  still `about:blank` and no `input[name="username"]` ever appears; 60 s timeout.
+- **Diagnosis**: at `E2E_PORT_OFFSET=40` the scratch slot `5020+40 = 5060` is the SIP port,
+  which sits on WebKit/Chromium's RESTRICTED-PORTS list. Repro: the scratch server on :5060
+  serves `GET /login → 200 text/html` via curl, while a scripted WebKit context logs
+  `Not allowed to use restricted network port 5060` and never commits the navigation. No
+  product request ever reaches the server. Every other band-40 slot is clear of the list —
+  this is a band-allocation collision specific to offset 40 (5060/5061), NOT a product or
+  spec defect and not load-related (idle host reproduced it).
+- **Classification**: **Case B (harness error)** — the test INFRASTRUCTURE (fixed slot +
+  browser policy) mis-selected the band slot; suite code and product are correct.
+- **Action**: the exit-gate run drives the documented per-port escape hatch
+  (`E2E_SCRATCH_RETRIEVAL_MOBILE_PORT=5062`, which beats the persisted band per
+  TEST_GIT_GUIDE; the compose project and every other port stay band 40). CARRIED TO THE
+  ORCHESTRATOR: the band allocator (`scripts/lib/e2e-band.cjs`) should exclude the
+  browser-restricted ports (5060/5061 among them) from slot allocation, or the retrieval
+  base ports should move off the 5020 SIP adjacency; until then every band-40 checkout hits
+  this on webkit retrieval runs.
+- **Verification**: `s3-retrieval-mobile` 11/11 green with the override (band 40 elsewhere).

@@ -1352,17 +1352,30 @@ test('E2E-S3-COLLECTION-021: the merge proposal card cycles the pending set, com
 
   // Undo reverses the merge: the loser is restored with its members.
   await page.getByTestId('undo-toast-action').click();
+  let restoredRow: CollectionRow | undefined;
   await expect
     .poll(
       async () => {
-        const row = await findCollectionByName(request, token, nameB);
-        return row?.status === 'active' ? row.item_count : 0;
+        restoredRow = await findCollectionByName(request, token, nameB);
+        return restoredRow?.status === 'active' ? restoredRow.item_count : 0;
       },
       { timeout: 30_000 }
     )
     .toBe(2);
-  const restored = await request.get(`/api/collections/${bId}/items`, { headers: auth(token) });
+  // `merge-collections` inverse RECREATES the loser (routes/collections.md
+  // §merge undo: "loser recreated with name/`name_locked`/origin/publish_mode/
+  // pin state" + the precondition REFUSES a reused loser id) — the restored
+  // row carries a NEW collection_id, the old `bId` legitimately 404s. Anchor
+  // the members-back proof on the name-resolved row instead of the dead id.
+  const restored = await request.get(`/api/collections/${restoredRow!.collection_id}/items`, {
+    headers: auth(token),
+  });
   expect(restored.ok()).toBeTruthy();
+  const restoredBody = await restored.json();
+  const restoredNodeIds = (restoredBody.items as { node_id: number }[])
+    .map((item) => item.node_id)
+    .sort((x, y) => x - y);
+  expect(restoredNodeIds).toEqual([shared.nodeId, onlyB.nodeId].sort((x, y) => x - y));
 });
 
 test('E2E-S3-COLLECTION-022: Later defers the pair into a DB-dormant card removal, Keep separate suppresses it permanently and the last resolved pair leaves zero layout footprint', async ({
@@ -1610,7 +1623,9 @@ test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the rec
     'true'
   );
   await page.getByTestId('collection-grant-add').click();
-  await page.getByRole('menu').getByText(recipientCreds.username).click();
+  // The picker row carries username (span) AND email (<p>) — the email is a
+  // superstring of the username, so the click must be EXACT (strict mode).
+  await page.getByRole('menu').getByText(recipientCreds.username, { exact: true }).click();
   const grantRow = page.getByTestId(`collection-grant-row-${recipientUser.id}`);
   await expect(grantRow).toBeVisible({ timeout: 15_000 });
   await expect(grantRow).toContainText('Viewer'); // localized chip, never the raw enum

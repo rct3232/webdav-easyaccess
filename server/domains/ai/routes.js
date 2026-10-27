@@ -50,6 +50,10 @@ function serializeSearch(result) {
     ...(result.semanticUnavailableReason !== undefined
       ? { semantic_unavailable_reason: result.semanticUnavailableReason }
       : {}),
+    // §2.4 (routes spec): the NL-parsed shared-grammar atoms — present
+    // EXACTLY when the parse leg applied; absent, the response stays
+    // byte-identical to the parser-free shape.
+    ...(result.predicates !== undefined ? { predicates: result.predicates } : {}),
   };
 }
 
@@ -60,10 +64,13 @@ router.post(
   asyncHandler(async (req, res) => {
     try {
       const result = await searchService.search(req.user.full.id, {
-        // `result_ref` is the ONLY snake_case request field (routes spec
-        // §2.4.2 Decision — opaque replay token, accepted and ignored by MVP).
+        // `result_ref`/`predicates` are the snake_case request fields
+        // (routes spec §2.4.2 Decision — the replay token, accepted and
+        // ignored; the session predicate state is grammar-validated by the
+        // service and discarded silently when malformed).
         query: req.body?.query,
         resultRef: req.body?.result_ref,
+        predicates: req.body?.predicates,
       });
       res.json(serializeSearch(result));
     } catch (e) {

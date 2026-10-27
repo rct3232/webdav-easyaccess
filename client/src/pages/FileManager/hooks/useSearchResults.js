@@ -34,6 +34,7 @@ const EMPTY_SNAPSHOT = {
   zoneCRows: [],
   semanticAvailable: false,
   resultRef: null,
+  predicates: [],
 };
 
 function rowName(row) {
@@ -188,6 +189,11 @@ export const useSearchResults = ({
       zoneCRows,
       semanticAvailable: response.semantic_available === true,
       resultRef: response.result_ref ?? null,
+      // NL-parsed predicate atoms (routes/search.md §2.4): stored verbatim as
+      // field/value session state — the client never interprets them, and the
+      // save flow keeps posting `predicates: []` (the create contract is
+      // unchanged). A parser-free response (no key) stores [].
+      predicates: Array.isArray(response.predicates) ? response.predicates : [],
     };
   }, []);
 

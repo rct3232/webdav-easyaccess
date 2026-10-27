@@ -6,9 +6,9 @@ Summary of the test implementation for the React client application. All tests f
 
 ## Test Statistics
 
-- **Total Test Suites**: 157 (as of 2026-09-09 — STALE: the client leg of the P3 exit-gate jest chain is owned by the orchestrator; this snapshot predates the T3.x client waves and will be re-pinned with those final counts)
-- **Total Tests**: 1421
-- **Pass Rate**: 100% (1421 passed, 0 failed) ✅
+- **Total Test Suites**: 188 (as of 2026-10-27 — P3 exit-gate jest chain, `ai-feature` tip `ea480625`; unchanged by the post-gate E2E/band-guard merges — zero `client/src` files touched)
+- **Total Tests**: 2235
+- **Pass Rate**: 100% (2235 passed, 0 failed) ✅
 - **Execution Time**: Reported per run by `npm run test`
 
 ## Test Breakdown by Category
@@ -195,7 +195,7 @@ tiers only.
 
 ## Conclusion
 
-- 1421 tests across 157 suites, 100% pass rate (as of 2026-09-09)
+- 2235 tests across 188 suites, 100% pass rate (as of 2026-10-27 — P3 exit-gate jest chain, `ai-feature` tip `ea480625`)
 - Tests are colocated with source under `components/`, `hooks/`, `pages/`, `services/`, `utils/`, `contexts/`
 - Coverage and integration goals documented
 - Test infrastructure and MSW setup in place (server created in `src/setupTests.js`)

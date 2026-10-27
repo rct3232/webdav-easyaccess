@@ -2467,3 +2467,58 @@ All three units launched in parallel on base `17068cd7` (wt-t32b/wt-t36/wt-t34, 
 **Wave 3 (T3.1c merge arbiter) launched from tip `211758c4` (wt-t31c, band 120).** P3 exit
 gate follows: E2E batch (021/022/024 runs + 023/025 spec code + runs), ai-desktop regression,
 grep-gates + docsStatePurity, TEST_SUMMARY refresh, ledger closure.
+
+### Wave 3 + P3 exit-gate closure (2026-10-27 — orchestrator)
+
+- **T3.1c merge arbiter `[done]`** — merge `ea480625`. Branch gates server 187/3277(+28 skip),
+  client untouched (recommendation prefill verified already shipped in T3.1), PG adapters
+  **required and run** 31/461(+1 skip) — the verdict rows extend `upsertMergeSuggestion`
+  twins (write-once INSERT only). R1 compliance VERIFIED on the merged tip (Pass-5 emission
+  unchanged at Jaccard ≥0.7 ∧ sizeRatio ≥0.7; band rows never emitted ⇒ the arbiter is the
+  ONLY promotion path for 0.55–0.7). Two stale pre-R1 sentences retired at its docs step.
+  Postures: FULL-nightly-leg-only (≤1 call/user/day budget), advise-never-act (post-verdict
+  members byte-identical, no journal), dismissed rows re-raise WITHOUT chat (verdict
+  preserved). **Owner visibility:** two new fixed product constants — arbiter batch cap
+  8 pairs/call, `arbiter_reason` cap 200 chars (spec'd, smallest defensible bounds). No boot
+  wiring (rides the already-wired evolution scheduler full leg; `AI_MERGE_ARBITER_ENABLED`
+  hot, read at fire time). RCA ×1 (Case B, conformance global-read collision).
+- **E2E exit batch `[done]`** — merge `4eb898b9` (branch `test/p3-exit-e2e`, band 40,
+  workers=1). New dual cases **023** (persisted suggestions accept→undo→dismiss) and **025**
+  (membership badges + bulk add + admin zero-badge/zero-IO negative); coverage rows
+  **021–025 flipped planned→covered** on first-ever green browser runs — NO product defects
+  (4 first-run failures all Case-B: 021 undo assertion amended to the routes/collections.md
+  loser-recreation rule + name-resolved members-back set [stronger, spec-anchored]; 024
+  picker-exact-match + goto client-route idioms; RCA ×3 logged). Results: `s3-collections-
+  desktop` 22 pass/3 static skip, `s3-collections-mobile` 24 pass/1 static skip,
+  `s3-retrieval` dual 11/11 + 11/11, `s3-ai-desktop` 1/1 (47.1 s, EG2 pre-seed resolved from
+  the default `WEA_E2E_MODEL_DIR`). Release budget `E2E_EXPECTED_SKIPS` 6→7 (024 static
+  mobile skip); group counts re-listed 249/7/256 — **full default-gate re-pin deferred to the
+  next release run** (evidence line records it; §30.5 requires the extended suites only).
+  Fidelity notes (report-only): 025 fixture is all-read-only-grant (a single listing cannot
+  mix own-writable and granted rows); 024 tab-absence enforced structurally via the grantee
+  card menu, explicit dialog-tab leg optional later.
+- **Infra defect found+fixed by the orchestrator** — commit `ee4fdcee`: the band allocator
+  auto-skips bands mapping browser-RESTRICTED ports (5060/5061 — band 40 mapped
+  scratchRetrievalMobile onto SIP 5060 and WebKit refused navigation; RCA-logged by the E2E
+  unit), pinned bands keep working with a loud warning. `node --check` + eslint + prettier
+  clean; forced-40 warning path verified on a scratch checkout.
+- **TEST_SUMMARY re-pins (orchestrator-owned figures)**: client 188 suites/2235, server
+  189/3305 (totals incl. skips), PG adapters 31/461+1 — stale placeholders removed.
+
+**P3 EXIT GATE — PASSED (2026-10-27; final tip at closure):** §30.5 checklist against the
+source: all §7 P3 rows closed — T3.1 (+T3.1b = the set-Jaccard candidate variant already
+shipped as the P2 Pass-5 emission, now with the card UI + arbiter promotion leg + real compare
+overlay per R2; +T3.1c arbiter above), T3.2 (a+b), T3.3, T3.4, T3.5, T3.6. Gates on the
+merged tip (server `test:ci` re-run POST-e2e-merge: **187 suites passed + 2 skipped /
+3,277 pass + 28 skip, rc=0**; client **188/2235** — client/src untouched by the post-gate
+merges; `test:ci:pg:adapters` **31/461+1 skip** — no repository/SQL file touched by the
+post-gate merges; grep-gates clean (`CacheAdapter|operationProgress` — only the documentary
+invariant comment in `collections/service.js:11`, Wave-A precedent; tag-purge 0);
+docsStatePurity green (in-suite); eslint/prettier clean). Membership-stability pins green
+(collections route suite 85/85 incl. the §30.4 zero-definition-evaluation pins).
+`ai-feature` now carries the merged P3. The single `ai-feature`→`dev` merge remains a later
+event after ALL §7 phases — **P4 (admin & scale) is the open phase**; carried into P4: T4.1
+admin re-embed launcher (executor exists since C10), T4.3 hermetic AI/media E2E +
+degradation matrix + E2E-AI-002 fake-LLM harness (R3), §4.22 delta-semantics SQL leg of
+parse.nl, Case-C candidates (archived-side merge code, pending-count wording), release
+full-matrix re-pin.

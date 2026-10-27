@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { APIRequestContext, expect, Page, TestInfo, test } from '@playwright/test';
+import { APIRequestContext, expect, Page, Request, TestInfo, test } from '@playwright/test';
 
 import {
   ensureClientBuild,
@@ -17,21 +17,31 @@ import {
   writeScratchEnv,
 } from './helpers/setupScratch';
 import { e2ePorts } from './helpers/ports';
-import { loginWithCredentials } from './helpers/auth';
+import { gotoAsAnonymous, loginWithCredentials } from './helpers/auth';
 import {
   ensureScratchRegularUser,
   loginScratchAdmin,
   type ScratchUserCreds,
 } from './helpers/scratchUser';
-import { buildName, fileItem, flushPrivateWorkspaceCleanups } from './helpers/files';
+import {
+  buildName,
+  createFolderAt,
+  fileItem,
+  flushPrivateWorkspaceCleanups,
+  readTestFileFixture,
+  trackWorkspaceCleanup,
+  uploadFileAt,
+} from './helpers/files';
 import { loginAndOpenUserWorkspace, seedFile } from './helpers/collectionsWorkspace';
-import { getSessionToken, gotoFilesPath, resolveNodeId } from './helpers/resolvePath';
+import { getSessionToken, gotoFilesPath, gotoNodePage, resolveNodeId } from './helpers/resolvePath';
 import { rightClickItem } from './helpers/desktop-interactions';
-import { closeActionSheet, openActionSheet } from './helpers/mobile-interactions';
+import { closeActionSheet, longPressItem, openActionSheet } from './helpers/mobile-interactions';
 import { setCollectionSort } from './helpers/explorer-controls';
+import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
 
 /**
- * E2E-S3-COLLECTION-001..014 + 018..022 — the P0 collections binding lifecycle
+ * E2E-S3-COLLECTION-001..014 + 018..025 — the P0 collections binding lifecycle
+ * plus the P3 proposal/sharing/suggestions/membership surfaces
  * (docs/E2E_COVERAGE_PLAN.md § "Collections platform lifecycle (hermetic)").
  *
  * Chain: create → add members → digest counts → archive → undo → restore →
@@ -55,7 +65,11 @@ import { setCollectionSort } from './helpers/explorer-controls';
  * `WEA_SKIP_AI_WORKER=1`: P0 only — the merge-card cases (021/022) stay
  * LLM-free by seeding the pending suggestion rows directly (the proposal WRITE
  * side is the evolution pass; the card contract under test is the read surface
- * + dispatch).
+ * + dispatch), and the persisted-suggestion case (023) seeds hash-duplicates
+ * through the upload API — the dup generator leg of the dashboard read is
+ * hash-first/LLM-free (`routes/dashboard.md` §2.4); only the near-dup VECTOR
+ * variant needs an embed model, and its ABSENCE is part of what 023 pins
+ * (§4.12 absent-not-disabled).
  *
  * IDENTITY (admin-operator pivot, PLAN §14): every case authenticates as a
  * REGULAR USER provisioned by `beforeAll` (`ensureScratchRegularUser` — admin
@@ -1390,6 +1404,157 @@ test('E2E-S3-COLLECTION-022: Later defers the pair into a DB-dormant card remova
   await expect(collectionCard(page, nameA)).toBeVisible();
 });
 
+// ---------------------------------------------------------------------------
+// Persisted cleanup-suggestion lifecycle (T3.3 — routes/dashboard.md §2.4,
+// SuggestionsChecklist.md §2.3/§2.7, AI_FEATURE_PLAN §4.12/§4.16/§4.17)
+// ---------------------------------------------------------------------------
+
+interface DashboardSuggestionRow {
+  id: number;
+  node_id: number;
+  kind: string;
+  path: string;
+  size_bytes: number;
+  reason: { kind: string; keep_node_id?: number };
+  created_at: string;
+  expires_at: string | null;
+}
+
+interface DashboardBody {
+  duplicates: { group_count: number; duplicate_count: number; reclaimable_bytes: number };
+  near_duplicates?: { group_count: number; duplicate_count: number };
+  suggestions: DashboardSuggestionRow[];
+  trash: { item_count: number; total_bytes: number; retention_days: number };
+}
+
+/** The LAST persisted row state for a node (`file_suggestions` is append-per-
+ * kind: the accept→undo→dismiss transitions ride the same row). */
+async function fileSuggestionStateForNode(nodeId: number): Promise<string | undefined> {
+  const rows = await queryScratchSqlite<{ state: string }>(
+    path.join(scratch, 'webdav.db'),
+    `SELECT state FROM file_suggestions WHERE node_id = ${nodeId} ORDER BY id DESC LIMIT 1`
+  );
+  return rows[0]?.state;
+}
+
+/** MyPage category navigation (009 idiom): permanent sidebar (desktop) vs
+ * drawer (mobile). */
+async function openMyPageStorage(page: Page, isMobile: boolean): Promise<void> {
+  await page.goto('/mypage');
+  if (isMobile) {
+    const drawer = page.locator('.MuiDrawer-paper');
+    await page.locator('button[aria-label="My page"]').click();
+    await expect(drawer).toBeVisible();
+    await drawer.getByRole('button', { name: /^storage$/i }).click();
+    await expect(drawer).not.toBeVisible();
+  } else {
+    await page.getByRole('button', { name: /^storage$/i }).click();
+  }
+}
+
+test('E2E-S3-COLLECTION-023: the persisted cleanup-suggestion checklist accepts the hash-duplicate row with an undo that restores the node and re-lists the row, dismisses silently and stays AI-block free while the embed model is absent', async ({
+  page,
+  request,
+}, testInfo) => {
+  const isMobile = isMobileProject(testInfo);
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
+  // Two byte-identical uploads: the hash-first pass lists the HIGHER node id
+  // under the deterministic keeper rule (`keep_node_id` = smallest id); the
+  // upload write side stamps `content_hash` (`fileService` post-commit hook),
+  // so the rows materialize on the dashboard read itself.
+  const keeper = await seedFile(request, token, base, testInfo, 'sugg-keeper');
+  const dup = await seedFile(request, token, base, testInfo, 'sugg-dup');
+  const dupName = dup.path.split('/').pop() as string;
+
+  const readDashboard = async (): Promise<DashboardBody> => {
+    const res = await request.get('/api/dashboard', { headers: auth(token) });
+    expect(res.ok()).toBeTruthy();
+    return res.json() as Promise<DashboardBody>;
+  };
+
+  // (a) Persisted rows: the read materializes the pending set, rows carry ids,
+  //     the keeper never lists, and the embed-unconfigured payload omits the
+  //     vector section entirely (§4.12 absent-not-disabled).
+  let body = await readDashboard();
+  const seeded = body.suggestions.find((row) => row.node_id === dup.nodeId);
+  expect(seeded).toBeTruthy();
+  expect(seeded!.kind).toBe('exact_dup');
+  expect(seeded!.id).toBeTruthy();
+  expect(seeded!.reason.keep_node_id).toBe(keeper.nodeId);
+  expect(body.suggestions.some((row) => row.node_id === keeper.nodeId)).toBe(false);
+  expect(body.near_duplicates).toBeUndefined();
+  expect(body.suggestions.every((row) => row.kind !== 'near_dup')).toBe(true);
+  const trashBaseline = body.trash.item_count;
+
+  await openMyPageStorage(page, isMobile);
+  await expect(page.getByTestId('collection-dashboard')).toBeVisible();
+
+  // (b) The checklist row: checkbox + per-row dismiss anchored on the
+  //     PERSISTED id; NO accept control before a selection (single-control
+  //     rule, SuggestionsChecklist.md §2.3).
+  const checklistRow = page.locator('#dashboard-suggestions li').filter({ hasText: dupName });
+  await expect(checklistRow).toBeVisible({ timeout: 30_000 });
+  await expect(checklistRow.getByTestId('suggestion-checkbox')).toBeVisible();
+  await expect(page.getByTestId(`suggestion-dismiss-${seeded!.id}`)).toBeVisible();
+  await expect(page.getByTestId('suggestions-accept')).toHaveCount(0);
+
+  // (c) checkbox → accept → trash verify. The trash check runs INSIDE the 8 s
+  //     undo-toast window (bounded API reads, not browser navigation).
+  await checklistRow.getByTestId('suggestion-checkbox').check();
+  await expect(page.getByTestId('suggestions-accept')).toContainText('Accept selected (1)');
+  await page.getByTestId('suggestions-accept').click();
+
+  await expect(page.getByText(/Moved 1 items to Trash/i)).toBeVisible();
+  const toastUndo = page.getByTestId('undo-toast-action');
+  await expect(toastUndo).toBeVisible();
+  await expect
+    .poll(
+      async () => {
+        const after = await readDashboard();
+        return (
+          after.trash.item_count === trashBaseline + 1 &&
+          !after.suggestions.some((row) => row.node_id === dup.nodeId)
+        );
+      },
+      { timeout: 10_000 }
+    )
+    .toBe(true);
+  await expect(checklistRow).toHaveCount(0);
+  await expect.poll(() => fileSuggestionStateForNode(dup.nodeId)).toBe('accepted');
+
+  // (d) undo → the node returns from trash AND the row re-lists (the same
+  //     command flips `pending → accepted` back, one journaled command).
+  await toastUndo.click();
+  await expect(page.getByText(/1 undone/i)).toBeVisible();
+  await expect(checklistRow).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => fileSuggestionStateForNode(dup.nodeId)).toBe('pending');
+  await expect.poll(async () => (await readDashboard()).trash.item_count).toBe(trashBaseline);
+
+  // (e) dismiss removes the row WITHOUT a toast (self-reversing preference,
+  //     no journal row — routes/dashboard.md §2.4 dismiss).
+  body = await readDashboard();
+  const relisted = body.suggestions.find((row) => row.node_id === dup.nodeId);
+  expect(relisted?.id).toBeTruthy();
+  await page.getByTestId(`suggestion-dismiss-${relisted!.id}`).click();
+  await expect(checklistRow).toHaveCount(0);
+  await expect(page.getByTestId('undo-toast-action')).toHaveCount(0);
+  await expect(page.getByText(/items to Trash/i)).toHaveCount(0);
+  await expect.poll(() => fileSuggestionStateForNode(dup.nodeId)).toBe('dismissed');
+  // Never re-listed and never re-inserted for the same node+kind.
+  await expect(async () => {
+    const after = await readDashboard();
+    expect(after.suggestions.some((row) => row.node_id === dup.nodeId)).toBe(false);
+  }).toPass({ timeout: 10_000 });
+
+  // (f) AI-block gate audit (§4.12): embed unconfigured ⇒ no capacity sparkline
+  //     (series seam absent) and no near-dup surfaces on the dashboard.
+  await expect(page.getByTestId('capacity-sparkline')).toHaveCount(0);
+  await expect(page.getByText(/near[- ]duplicate/i)).toHaveCount(0);
+
+  // The trashed→restored pair rides the afterEach workspace purge (perm-delete
+  // of the case folder; the dismissed suggestion row dies with the scratch db).
+});
+
 test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the recipient views the received card and its members, exits via Revoke permission, and the owner re-grant re-dots the collection', async ({
   page,
   request,
@@ -1496,6 +1661,244 @@ test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the rec
     await toggle.click();
   }
   await expect(page.getByTestId(`collection-new-dot-${collectionId}`)).toBeVisible();
+});
+
+// ---------------------------------------------------------------------------
+// Files-surface membership badges + toolbar bulk add (T3.6 —
+// CollectionMembershipBadges.md, useCollectionMemberships.md,
+// BulkActionToolbar.md §3 merged idiom, pages/FileManager.md §7 operator rule)
+// ---------------------------------------------------------------------------
+
+/** Dual-platform multi-select idiom (core-flow.shared `selectTwoFiles`): the
+ * desktop first click enters selection mode and Meta-clicks add rows; mobile
+ * long-presses the first, taps the second, and re-does the sequence when a
+ * WebKit synthetic tap mis-targets (bounded). */
+async function selectTwoForBulk(page: Page, isMobile: boolean, p1: string, p2: string) {
+  if (isMobile) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt > 0) {
+        if (
+          await page
+            .getByTestId('bulk-action-deselect-all')
+            .isVisible()
+            .catch(() => false)
+        ) {
+          await page.getByTestId('bulk-action-deselect-all').click();
+          await expect(page.getByTestId('bulk-action-move')).not.toBeVisible();
+        }
+      }
+      await longPressItem(page, p1);
+      await fileItem(page, p2).click();
+      try {
+        await expect(fileItem(page, p1)).toHaveAttribute('aria-selected', 'true', {
+          timeout: 2500,
+        });
+        await expect(fileItem(page, p2)).toHaveAttribute('aria-selected', 'true', {
+          timeout: 2500,
+        });
+        break;
+      } catch {
+        // Mis-targeted tap; retry the whole sequence.
+      }
+    }
+    await expect(page.getByTestId('bulk-action-move')).toBeVisible();
+  } else {
+    await fileItem(page, p1).click();
+    await fileItem(page, p2).click({ modifiers: ['Meta'] });
+    await expect(page.getByTestId('bulk-action-move')).toBeVisible();
+  }
+}
+
+test('E2E-S3-COLLECTION-025: files-surface rows badge their collections in grid and list with the cap plus overflow, the bulk toolbar add lands checkmarked on read-only granted rows and moves badges without reload, and an admin session stays badge-free and collections-IO-silent', async ({
+  page,
+  request,
+}, testInfo) => {
+  const isMobile = isMobileProject(testInfo);
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
+  const fileA = await seedFile(request, token, base, testInfo, 'chip-a');
+  const fileB = await seedFile(request, token, base, testInfo, 'chip-b');
+
+  const name1 = buildName(testInfo, 'chip-c1');
+  const name2 = buildName(testInfo, 'chip-c2');
+  const name3 = buildName(testInfo, 'chip-c3');
+  const c1 = await createCollectionApi(request, token, name1);
+  const c2 = await createCollectionApi(request, token, name2);
+  const c3 = await createCollectionApi(request, token, name3);
+  // Two seeded memberships: fileA ∈ C1, fileB ∈ C2.
+  await addItemsApi(request, token, c1, [fileA.nodeId]);
+  await addItemsApi(request, token, c2, [fileB.nodeId]);
+
+  // Read-only host subtree: a SECOND regular user owns the granted folder —
+  // the operator seeds the folder + files and grants the ACTOR READ (the
+  // share-internal idiom, PLAN §14 admin-operator pivot). The rows stay
+  // readable-not-writable for the actor: the T3.6 bulk-add gate ("you may
+  // only add what you can read").
+  const hostCreds: ScratchUserCreds = {
+    username: 't36-ro-host',
+    password: 'T36RoHost!123',
+    email: 't36-ro-host@e2etest.com',
+  };
+  await ensureScratchRegularUser(request, operatorToken, hostCreds);
+  const roFolderName = buildName(testInfo, 'chip-ro-host');
+  const hostHomeId = await resolveNodeId(request, operatorToken, `/${hostCreds.username}`);
+  const roFolderId = await createFolderAt(request, operatorToken, hostHomeId, roFolderName);
+  const roFixture = readTestFileFixture(TEST_FILES.smallText);
+  const ro1Name = buildName(testInfo, 'chip-ro-1', '.txt');
+  const ro2Name = buildName(testInfo, 'chip-ro-2', '.txt');
+  const ro1 = {
+    nodeId: await uploadFileAt(
+      request,
+      operatorToken,
+      roFolderId,
+      ro1Name,
+      'text/plain',
+      roFixture
+    ),
+    path: `/${hostCreds.username}/${roFolderName}/${ro1Name}`,
+  };
+  const ro2 = {
+    nodeId: await uploadFileAt(
+      request,
+      operatorToken,
+      roFolderId,
+      ro2Name,
+      'text/plain',
+      roFixture
+    ),
+    path: `/${hostCreds.username}/${roFolderName}/${ro2Name}`,
+  };
+  const meRes = await request.get('/api/auth/me', { headers: auth(token) });
+  expect(meRes.ok()).toBeTruthy();
+  const viewerUserId = (await meRes.json()).id as number;
+  const grantRes = await request.post('/api/permissions/grant', {
+    headers: auth(operatorToken),
+    data: { userId: viewerUserId, nodeId: roFolderId, permission: 'read' },
+  });
+  expect(grantRes.ok()).toBeTruthy();
+  // The granted subtree is case-owned too (registered with the USER token —
+  // the perm-delete fallback runs it through the OPERATOR, dual-token idiom).
+  trackWorkspaceCleanup(token, `/${hostCreds.username}/${roFolderName}`);
+  // Both granted rows already live in C2: the checkmark anchor of the bulk
+  // menu (C2 contains ALL targets) + the badge-on-read-only-row anchor.
+  await addItemsApi(request, token, c2, [ro1.nodeId, ro2.nodeId]);
+
+  // (a) HOME GRID: the batched for-nodes read badges both rows with the
+  //     collection NAMES (aria tooltip `membershipChip`, en bundle).
+  await gotoFilesPath(page, request, `/${base}`);
+  await expect(fileItem(page, fileA.path)).toBeVisible();
+  await page.getByTestId('view-mode-grid').click();
+  const badgeA1 = page.getByTestId(`membership-badge-${fileA.nodeId}-${c1}`);
+  await expect(badgeA1).toBeVisible({ timeout: 30_000 });
+  await expect(badgeA1).toHaveAttribute('aria-label', `Member of ${name1}`);
+  await expect(page.getByTestId(`membership-badge-${fileB.nodeId}-${c2}`)).toBeVisible();
+  await expect(page.locator('[data-testid^="membership-badge-"]')).toHaveCount(2);
+
+  // (b) HOME LIST: the SAME testids through the leading-column overlay.
+  await page.getByTestId('view-mode-list').click();
+  await expect(badgeA1).toBeVisible();
+  await expect(page.getByTestId(`membership-badge-${fileB.nodeId}-${c2}`)).toBeVisible();
+
+  // (c) Context-menu toggle of a SECOND collection on fileA: the single-target
+  //     menu pre-checks the containing collection (membershipIds), the add
+  //     lands the new badge on the spot (no reload — the notifier re-read).
+  await openFileActions(page, fileA.path, isMobile);
+  await page.getByTestId('collection-add').click();
+  await expect(page.getByTestId(`collection-checked-${c1}`)).toBeVisible();
+  await expect(page.getByTestId(`collection-checked-${c2}`)).toHaveCount(0);
+  await page.getByTestId(`collection-option-${c2}`).click();
+  await expect(page.getByText(/Added to collection/i)).toBeVisible();
+  await expect(page.getByTestId(`membership-badge-${fileA.nodeId}-${c2}`)).toBeVisible({
+    timeout: 15_000,
+  });
+  // Let the 8 s undo toast expire before re-opening the row surface (the
+  // bottom Snackbar overlays the mobile action anchor).
+  await expect(page.getByText(/Added to collection/i)).toBeHidden({ timeout: 15_000 });
+
+  // (d) The THIRD membership collapses to the cap: exactly two collection
+  //     plates + the `+1 more` overflow naming the hidden collection.
+  await openFileActions(page, fileA.path, isMobile);
+  await page.getByTestId('collection-add').click();
+  await page.getByTestId(`collection-option-${c3}`).click();
+  await expect(page.getByText(/Added to collection/i)).toBeVisible();
+  const fileABadges = page.locator(`[data-testid^="membership-badge-${fileA.nodeId}-"]`);
+  const overflow = page.getByTestId(`membership-badge-more-${fileA.nodeId}`);
+  await expect(fileABadges).toHaveCount(2);
+  await expect(overflow).toBeVisible({ timeout: 15_000 });
+  const shownIds = await fileABadges.evaluateAll((els) =>
+    els.map((el) => Number(String(el.getAttribute('data-testid')).split('-').pop()))
+  );
+  const missingId = [c1, c2, c3].find((id) => !shownIds.includes(id));
+  const missingName = missingId === c1 ? name1 : missingId === c2 ? name2 : name3;
+  await expect(overflow).toHaveAttribute('aria-label', new RegExp(`\\+1 more — ${missingName}`));
+
+  // (e) The granted (read-only) rows badge too — the batched read is
+  //     permission-agnostic and belongs to the FILES surfaces (shared routes
+  //     included). Then the bulk toolbar add lands on them.
+  await gotoNodePage(page, roFolderId);
+  await expect(fileItem(page, ro1.path)).toBeVisible();
+  await expect(page.getByTestId(`membership-badge-${ro1.nodeId}-${c2}`)).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId(`membership-badge-${ro2.nodeId}-${c2}`)).toBeVisible();
+
+  await selectTwoForBulk(page, isMobile, ro1.path, ro2.path);
+  // The file-write gate still holds (move disabled) while the membership
+  // write stays available for readable rows (T3.6 ruling, §30.1).
+  await expect(page.getByText(/Selection includes read-only files/i)).toBeVisible();
+  await expect(page.getByTestId('bulk-action-move')).toBeDisabled();
+  const bulkAdd = page.getByTestId('bulk-collection-add');
+  await expect(bulkAdd).toBeEnabled();
+  await bulkAdd.click();
+
+  // Checkmark rows = collections containing ALL targets: C2 holds both.
+  await expect(page.getByTestId(`collection-checked-${c2}`)).toBeVisible();
+  await expect(page.getByTestId(`collection-checked-${c1}`)).toHaveCount(0);
+  await expect(page.getByTestId(`collection-checked-${c3}`)).toHaveCount(0);
+  await page.getByTestId(`collection-option-${c1}`).click();
+
+  // One undo toast per command (BulkActionToolbar.md §3) — NOT clicked; the
+  // badge re-read lands WITHOUT any reload (notifier refresh on the batched
+  // membership read).
+  await expect(page.getByText(/Added to collection/i)).toBeVisible();
+  await expect(page.getByTestId(`membership-badge-${ro1.nodeId}-${c1}`)).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId(`membership-badge-${ro2.nodeId}-${c1}`)).toBeVisible();
+  await expect(page.locator(`[data-testid^="membership-badge-${ro1.nodeId}-"]`)).toHaveCount(2);
+
+  // (f) ADMIN NEGATIVE (operator rule, pages/FileManager.md §7): the SAME tree
+  //     under the admin session renders zero badges, zero bulk-add entry and
+  //     issues ZERO /api/collections IO (inert gateway).
+  const collectionsCalls: string[] = [];
+  const monitor = (req: Request) => {
+    const url = new URL(req.url());
+    if (url.pathname.startsWith('/api/collections')) {
+      collectionsCalls.push(`${req.method()} ${url.pathname}`);
+    }
+  };
+  await gotoAsAnonymous(page, '/login');
+  page.on('request', monitor);
+  await loginWithCredentials(page, TEST_USERS.admin.username, ADMIN_PASSWORD);
+  await gotoNodePage(page, await resolveNodeId(request, operatorToken, `/${base}`));
+  await expect(fileItem(page, fileA.path)).toBeVisible();
+  await expect(page.locator('[data-testid^="membership-badge-"]')).toHaveCount(0);
+  if (isMobile) {
+    await longPressItem(page, fileA.path);
+  } else {
+    await fileItem(page, fileA.path).click();
+  }
+  await expect(page.getByTestId('bulk-action-move')).toBeVisible();
+  await expect(page.getByTestId('bulk-collection-add')).toHaveCount(0);
+  // Bounded settle so a late-firing collections read would land in the
+  // counter before the assertion (infrastructure wait, not a latency claim).
+  await page.waitForTimeout(2_000);
+  page.off('request', monitor);
+  expect(collectionsCalls, collectionsCalls.join('\n')).toEqual([]);
+
+  // Restore the regular-user session so the afterEach purge runs collections
+  // CRUD on its own identity (admin sessions are 403-gated there, §14 pivot).
+  await gotoAsAnonymous(page, '/login');
+  await loginWithCredentials(page, USER_CREDS.username, USER_CREDS.password);
 });
 
 // -- Collections MOBILE-ONLY interplay (the former standalone twin

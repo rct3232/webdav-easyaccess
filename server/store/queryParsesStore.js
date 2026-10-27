@@ -32,8 +32,12 @@ async function recordEmbedding(opts) {
   return getRepository().recordEmbedding(opts);
 }
 
+async function recordPredicates(opts) {
+  return getRepository().recordPredicates(opts);
+}
+
 async function incrementHitCount(normalizedQuery) {
   return getRepository().incrementHitCount(normalizedQuery);
 }
 
-module.exports = { get, recordEmbedding, incrementHitCount };
+module.exports = { get, recordEmbedding, recordPredicates, incrementHitCount };

@@ -5,10 +5,10 @@ spec owns the engine behind it.
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role       | The Search Engine layer: two-stage hybrid query — `name_matches` (LLM-free containment SQL, ships P0) + `semantic` (segment-AND vector scoring, P1) — assembly, dedup, per-query dynamic baseline gate, `result_ref` signature emission, `search_hit` usage logging.                                                                                                                                                                                                                                                                                                                                                     |
-| Boundaries | SQL executes against `fileNodesStore` ACL joins (closure/owner logic identical to `fileService` listing) — a node the requester cannot read never enters either section. The conversational layer is a RESERVED boundary: this MVP emits and structurally accepts `result_ref` only; no session state, no predicate parsing (`parse.nl` extends this service later, same two-section response). No LLM call blocks the request EXCEPT the query embed (the only allowed exception to the no-LLM-on-request-paths rule is explicitly user-initiated interactive roles — cache + kill-switch + no-LLM fallback mandatory). |
+| Item       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role       | The Search Engine layer: two-stage hybrid query — `name_matches` (LLM-free containment SQL) + `semantic` (segment-AND vector scoring) — assembly, dedup, per-query dynamic baseline gate, `result_ref` signature emission, `search_hit` usage logging, and the `parse.nl` leg (chat → shared predicate grammar, §2.8) whose parsed predicate set is returned additively on the same two-section response.                                                                                                                                                                                                                                                                                                                                   |
+| Boundaries | SQL executes against `fileNodesStore` ACL joins (closure/owner logic identical to `fileService` listing) — a node the requester cannot read never enters either section. The conversational layer (multi-turn routing, delta semantics, `$ref` interpretation) is a RESERVED boundary: this service emits and structurally accepts `result_ref` and carries request-side predicate STATE (field/value only) as `parse.nl` input; it stores no session and resolves no references. No LLM call blocks the request EXCEPT the query embed and the single `parse.nl` chat call (the allowed exceptions to the no-LLM-on-request-paths rule are explicitly user-initiated interactive roles — cache + kill-switch + no-LLM fallback mandatory). |
 
 ---
 
@@ -17,16 +17,26 @@ spec owns the engine behind it.
 ### 2.1 File Path
 
 - **Source:** `server/domains/ai/searchService.js`
-- **Test file:** `server/domains/ai/__tests__/searchService.test.js` (+ route suite
-  `__tests__/search.test.js`)
+- **Peers:** `server/domains/ai/nlParser.js` (the §2.8 leg: prompt builder, closed schema,
+  shared-grammar validation — pure module, adapter injected)
+- **Test file:** `server/domains/ai/__tests__/searchService.test.js` (+ `nlParser.test.js`
+  - route suite `__tests__/search.test.js`)
 
 ### 2.2 Public contract
 
-`search(userId, { query, resultRef? })` → the domain object serialized by the route
+`search(userId, { query, resultRef?, predicates? })` → the domain object serialized by the route
 (snake_case wire per routes §2.4). Throws `queryRequired` / `queryTooLong` / `fail`;
 AI-absence is DATA, never an error (a section is absent, not the feature). `resultRef` is accepted, stored on the
-signature computation input as `null`, and IGNORED by the MVP (interpretation is the
-future layer's job) — sending it never changes the response.
+signature computation input as `null`, and IGNORED by this service (interpretation is the
+future layer's job) — sending it never changes the response. `predicates` is the optional
+request-side session predicate state (§2.8): an array of shared-grammar atoms
+(path/tag/like/date/size); a non-array value or any non-grammar atom discards the whole state
+(never a 4xx) and the parse runs stateless. Canonicalization through the shared grammar drops
+every foreign key — the state is field/value ONLY by construction (atoms never carry vectors,
+ids or permission data). When the
+parse leg applies, the response carries `predicates` (the parsed canonical atom array, possibly
+empty); when the chat role is unconfigured, its kill switch is off, or any parse step fails, the
+key is ABSENT and the response shape is byte-identical to the parser-free contract.
 
 ### 2.3 Pipeline (per request)
 
@@ -43,8 +53,19 @@ future layer's job) — sending it never changes the response.
    switch) — false ⇒ response omits `semantic`, `semantic_available:false`,
    `semantic_unavailable_reason:"serverErrors.ai.notConfigured"`; done (name section
    intact, 200).
-4. **Query embed :** `llmAdapter.embedQuery(text)` — the ONLY request-path AI call in
-   the system. The `query_parses` cache is OWNED BY THIS LEG (the adapter call is the
+
+3a. **NL parse (`parse.nl`, §2.8):** `roleConfigured('chat')` ∧ `AI_NL_PARSE_ENABLED`
+(kill switch) — false ⇒ the leg never runs and adds ZERO calls; the response then is
+the §2.4/§2.3 shape with no `predicates` key. True ⇒ the cached-or-chat parse (§2.8)
+runs ONCE per submit and yields `{ atoms, vectorQuery }` or a silent fall-back (no
+predicates, unrefined embed text). When the parse supplied a refined vector-query text,
+step 4 embeds THAT text for the whole-query vector (segments keep the original query
+words); the response carries the canonical atom array as `predicates`.
+
+4. **Query embed :** `llmAdapter.embedQuery(text)` — a request-path AI call (one of the
+   two exception-family roles, with `parse.nl`). `text` is the refined vector-query text
+   when step 3a supplied one (normalized, its own cache key — the same cached path),
+   otherwise the normalized query. The `query_parses` cache is OWNED BY THIS LEG (the adapter call is the
    raw provider embed — llmAdapter.md §2.2): get-or-embed keyed by the NORMALIZED
    TEXT — `query_parses.normalized_query` IS the primary key (no separate cache
    table; the `result_ref` signature is derivable from the row, not its key). DDL
@@ -56,7 +77,8 @@ future layer's job) — sending it never changes the response.
      (`hit_count` is not incremented by a write).
    - Cache HIT ⇒ `hit_count` incremented by 1, the stored vector reused, ZERO
      provider calls.
-   - `predicates` is RESERVED for NL-parse output — this stage always stores `[]`.
+   - `predicates` holds the NL-parse state (§2.8) — the embed leg never reads or writes
+     it (fresh inserts bind the `[]` default; overwrites leave the stored value untouched).
    - Space identity resolution is deterministic and provider-call-free: the ACTIVE
      embed registry row id (`llmModelsStore.getActiveByRole('embed')`) when present;
      otherwise the embedded lock identity `repo@revision`
@@ -108,8 +130,11 @@ future layer's job) — sending it never changes the response.
 
 - MVP material: `normalized-predicates` = the normalized query string (the name-only
   fallback signature covers query string + space + sort; structured predicate slots
-  serialize `""` and are reserved-additive for future conversational deltas); `vector-query` = the
-  embedded query text (normalized) or `""` when the semantic leg did not run; `space` =
+  serialize `""` and are reserved-additive for future conversational deltas); `vector-query` =
+  the embedded query text (normalized) or `""` when the semantic leg did not run — when the
+  parse leg (§2.3 step 3a, §2.8) supplied a refined vector-query text, THAT is the embedded
+  text and therefore the signature material (cache-served parses make the refinement
+  replay-stable); `space` =
   `v1|model:{embedModelId}` (the E-space key — a model change MUST change the signature,
   replay in a new space is meaningless). The model component follows the §2.3 step-4
   identity chain (registry row id, else the `repo@revision` lock fallback, else empty);
@@ -129,13 +154,14 @@ future layer's job) — sending it never changes the response.
 
 ### 2.5 Repository / seam additions
 
-| Addition                                                       | Owner spec                                            | Purpose                                     |
-| -------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------- |
-| `FileNodeRepository.searchNodesByName(userId, query, {limit})` | FileNodeRepository twins (+conformance)               | ACL-scoped `lower LIKE` name section        |
-| `FileNodeRepository.sampleVisibleNodeIds(userId, n)`           | same                                                  | baseline corpus sample                      |
-| `FileNodeRepository.listVisibleFileNodeIds(userId)`            | same                                                  | ACL anchoring set (scorer scores inside it) |
-| `vectorStore.neighbors(vec, k, candidates)`                    | [vectorStore](../infrastructure/vectorStore.md) §2.3  | max-over-chunks per-segment scoring         |
-| `query_parses` repository                                      | [queryParsesStore](../store/queryParsesStore.md) §2.2 | signature-keyed embed/parse cache           |
+| Addition                                                       | Owner spec                                                               | Purpose                                                                                |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `FileNodeRepository.searchNodesByName(userId, query, {limit})` | FileNodeRepository twins (+conformance)                                  | ACL-scoped `lower LIKE` name section                                                   |
+| `FileNodeRepository.sampleVisibleNodeIds(userId, n)`           | same                                                                     | baseline corpus sample                                                                 |
+| `FileNodeRepository.listVisibleFileNodeIds(userId)`            | same                                                                     | ACL anchoring set (scorer scores inside it)                                            |
+| `vectorStore.neighbors(vec, k, candidates)`                    | [vectorStore](../infrastructure/vectorStore.md) §2.3                     | max-over-chunks per-segment scoring                                                    |
+| `query_parses` repository                                      | [queryParsesStore](../store/queryParsesStore.md) §2.2                    | signature-keyed embed/parse cache                                                      |
+| shared grammar import (`ATOM_TYPES`, `parseDefinition`)        | [collectionsService](collectionsService.md) §2.3 (`definitionEngine.js`) | closed-grammar validation of `parse.nl` output — the grammar is IMPORTED, never forked |
 
 ### 2.5a The semantic scoring seam (steps 5–6 behind one boundary)
 
@@ -211,11 +237,70 @@ batch-publish copy (the dialog states the ENTIRE initial set is publish-approved
 the feature; routes §2.4.1). `fail` is reserved for engine-internal errors (SQL throw,
 vectorStore invariant break) — provider failure is a DEGRADATION, not a `fail`.
 
+### 2.8 The NL-parse leg (`parse.nl` — chat → shared predicate grammar)
+
+The second request-path exception-family role. One chat call MAX per search submit, run
+alongside the query-embed moment (step 3a). Contract:
+
+- **Gate:** `roleConfigured('chat')` ∧ `AI_NL_PARSE_ENABLED` (kill switch — §3). Either
+  false ⇒ ZERO provider calls (embed-only or chat-less configs never reach `chat`), and
+  the response is the parser-free shape.
+- **Cache first:** the `query_parses.predicates` column (the row keyed by the normalized
+  query text — [queryParsesStore](../store/queryParsesStore.md) §2.3) is the parsed-predicate
+  cache. A cache HIT (valid parse envelope, below) ⇒ ZERO chat calls; the cached atoms and
+  cached refined vector-query text are reused as-is. `recordEmbedding` overwrites only
+  `vector`, so a model-space re-embed keeps the parse; `recordPredicates` writes only
+  `predicates`, so a parse write keeps the vector and `hit_count`.
+- **Parse envelope (cache value):** `{ grammar: "nl1", atoms: [ …canonical grammar
+atoms… ], vectorQuery: string | null }` — stored in `predicates`; `[]`/absent/malformed ⇒
+  a parse MISS. Canonical atoms are the shared-grammar normalized form (below) — the cache
+  write stores what validation returned, never the raw model output. The envelope is not
+  embed-space-validated: parse output is symbols, not vectors; an embed model change does
+  not invalidate a predicate set.
+- **Shared grammar (binding):** atom types and validation are the collections definition
+  engine — `ATOM_TYPES = ['path','tag','like','date','size']` and `parseDefinition` from
+  `server/domains/collections/definitionEngine.js` (collectionsService.md §2.3) imported,
+  NEVER forked or re-declared. Validation = `parseDefinition({ kind: 'predicate',
+all_of: atoms })` (the engine's normalized output is the canonical atom list; a throw is
+  an unconstrained parse). Closed v1 form: a single AND list (`all_of`), no `any_of`, no
+  negation, no vector content; cardinality is fixed in the grammar — at most ONE `path`,
+  THREE `tag`, ONE `like`, ONE `date`, ONE `size` atom (overflow ⇒ unconstrained ⇒ fallback).
+- **Prompt (closed grammar):** the chat call carries the enumerated field list + per-field
+  params/operators + the cardinality table, the utterance, and (optionally) the request-side
+  session predicate state — field/value symbols ONLY. NEVER tag-vocabulary injection (tag
+  atoms bind derived local facets, resolved server-side by string equality), NEVER result-set
+  content, node ids, or permission data (symbols resolve server-side — hallucinated values
+  match nothing, safe-by-construction). Schema-forced JSON
+  (`chat(messages, { schema, maxTokens })`; reasoning OFF — llmAdapter.md §2.7):
+  `{ predicates: [atom…], vector_query: string|null }` — both required, closed object.
+- **Output validation:** the returned JSON is grammar-validated (above) BEFORE anything is
+  stored or returned. `vector_query` is normalized (step-1 normalizer) and capped at the
+  query length limit (200) — an over-long or absent refinement keeps the original text
+  (atoms still apply). ANY failure — provider error (budget/breaker/transport/config classes),
+  non-JSON, schema violation, grammar violation, cache write failure — ⇒ SILENT FALLBACK: no
+  `predicates` key, the whole-query embed uses the original normalized text, the response is
+  byte-identical to the parser-free shape, never an error to the user, never a 5xx. A failed
+  cache WRITE is dropped like in the embed leg (the cache is an optimization, never a
+  correctness dependency).
+- **Session-state rule:** when the request carries predicate state (§2.2), the parse runs
+  LIVE with that context and the result is NOT cached (neither read nor written — the row is
+  keyed by query text alone, so a state-dependent parse must not overwrite the stateless
+  cache entry).
+  A stateless request reads/writes the cache normally.
+- **Additive response field:** `predicates` (the canonical atom array, possibly empty) is
+  present ONLY when the parse applied. Wire atoms keep the shared-grammar canonical field
+  names (`type`, `value`, `prefix`, `withinDays`, `after`, `before`, `min`, `max`).
+- **Contract evolution:** the output may grow §4.22 delta semantics (`add|replace|exclude/
+$ref`) later as ADDITIVE envelope/fields only — no meaning redefinition of the v1
+  single-shot contract above; `grammar` keys the parse-envelope shape for forward
+  discrimination.
+
 ## 3. Configuration (T2 / dbOnly)
 
 | Key                          | Default | Use                                                                                                               |
 | ---------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
 | `AI_SEMANTIC_SEARCH_ENABLED` | `true`  | query-embed kill switch (mandatory part of the request-path LLM exception: cache + kill-switch + no-LLM fallback) |
+| `AI_NL_PARSE_ENABLED`        | `true`  | `parse.nl` kill switch (same exception family — §2.8)                                                             |
 | `SEARCH_NAME_LIMIT`          | `200`   | name-section hard cap                                                                                             |
 | `SEARCH_SEMANTIC_LIMIT`      | `50`    | semantic-section cap                                                                                              |
 | `BASELINE_SAMPLE_DOCS`       | `500`   | dynamic-baseline sample size (read per `score()` call — hot)                                                      |
@@ -226,11 +311,12 @@ vectorStore invariant break) — provider failure is a DEGRADATION, not a `fail`
 
 ## 4. Dependencies
 
-- `llmAdapter` (`embedQuery`, presence/kill-switch state), `vectorStore` seam,
+- `llmAdapter` (`embedQuery`, `chat`, presence/kill-switch state), `vectorStore` seam,
   `fileNodesStore`/FileNodeRepository (ACL joins, name SQL, sampling),
   `query_parses` repository, usage-event writer (usage domain, `docs/features/collections-platform.md` §3.4), `configResolver`
-- NOT used: any chat role on this path (`parse.nl` chains onto this SAME response
-  shape later — additive header tab, no contract break)
+- Chat use on this path is `parse.nl` ONLY (§2.8) — the other chat roles never reach a
+  request thread. No session table, no multi-turn route: the parse rides this SAME
+  two-section response shape (additive `predicates` header field), no contract break.
 
 ## 5. Verification Scenarios
 
@@ -266,3 +352,26 @@ vectorStore invariant break) — provider failure is a DEGRADATION, not a `fail`
 - [ ] `usage_events` `search_hit` rows: exactly one per returned node, none for
       deduplicated-away or truncated rows
 - [ ] Response fields snake_case; scores 0–1 rounded 2-dec; empty query 400, >200 chars 400
+- [ ] Chat unconfigured (embed-only or none) ⇒ ZERO `chat` calls and a response
+      byte-identical to the parser-free shape (no `predicates` key)
+- [ ] `AI_NL_PARSE_ENABLED:false` with chat configured ⇒ identical zero-call degrade
+- [ ] Fake-chat parse of "pdfs from last year over 10mb" ⇒ response `predicates` carries
+      canonical grammar atoms, one chat call, and the parse envelope lands in
+      `query_parses.predicates`
+- [ ] Same query twice ⇒ SECOND submit: chat call count unchanged, embed provider call
+      count unchanged, cached atoms served (cache hit ⇒ zero chat calls)
+- [ ] Unparseable or grammar-violating chat output (non-JSON / unknown atom type /
+      cardinality overflow) ⇒ SILENT fallback: response byte-identical to the
+      chat-unconfigured shape, no `predicates` key, semantic leg still served with the
+      original text, never an error
+- [ ] Chat provider failure (budget/breaker/transport class) ⇒ identical silent fallback
+- [ ] Grammar-constrained output validates through the SHARED definition engine — a cached
+      envelope re-validated on read; a tampered envelope is a MISS and re-parses
+- [ ] Valid parse with refined `vector_query` ⇒ the whole-query embed runs on the refined
+      normalized text (its own cache row), segments keep the original query words, and the
+      `result_ref` `vector-query` slot is the refined text; the name section is unchanged
+- [ ] Request-side `predicates` state: grammar-valid atoms reach the prompt (symbols only);
+      malformed state is discarded (never a 4xx); a state-carrying submit neither reads nor
+      writes the parse cache
+- [ ] Parse write keeps the row's `vector`/`hit_count`; a space-change re-embed keeps the
+      stored parse envelope

@@ -40,6 +40,20 @@ module.exports = function createSqliteQueryParsesRepository(executor) {
       }
     },
 
+    async recordPredicates({ normalizedQuery, predicates }) {
+      try {
+        const result = await executor.run(
+          `INSERT INTO query_parses (normalized_query, predicates)
+           VALUES (?, ?)
+           ON CONFLICT (normalized_query) DO UPDATE SET predicates = excluded.predicates`,
+          [String(normalizedQuery), serializePredicates(predicates)]
+        );
+        return { changes: result.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async incrementHitCount(normalizedQuery) {
       try {
         const result = await executor.run(

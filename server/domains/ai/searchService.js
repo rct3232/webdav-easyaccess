@@ -29,13 +29,19 @@
  * Thrown codes are bare strings translated by the route ERROR_MAP:
  * `queryRequired` / `queryTooLong` / `searchFail` (§2.7). The conversational
  * layer is a RESERVED boundary: this service accepts `resultRef` on the wire
- * (ignored by the engine) and emits only.
+ * (ignored by the engine) and emits only. The `parse.nl` leg (§2.8 — the
+ * second request-path exception role, `./nlParser`) runs ONE chat call MAX
+ * per submit behind the `query_parses.predicates` cache (cache hit ⇒ zero
+ * chat calls); its canonical grammar atoms ride the SAME response additively
+ * (`predicates`), and any parse failure is a SILENT vector+name fallback —
+ * the chat-off response stays byte-identical to the parser-free contract.
  */
 
 const crypto = require('crypto');
 
 const { createSemanticScorer } = require('./semanticScorer');
 const { getVectorStoreOrFallback } = require('./vectorStoreRuntime');
+const { createNlParser, normalizeQueryText, validateSessionState } = require('./nlParser');
 
 const QUERY_MAX_LENGTH = 200;
 const DEFAULT_NAME_LIMIT = 200;
@@ -160,14 +166,11 @@ function createSearchService(opts = {}) {
   /**
    * §2.3 step 1: normalized form (NFKC, ASCII-case fold, whitespace collapse)
    * is the signature/cache key material. The SQL leg keeps the TRIMMED raw query — the
-   * server-side `lower()` folding owns matching semantics.
+   * server-side `lower()` folding owns matching semantics. The parse leg refines the
+   * vector-query text through the SAME normalizer (searchService.md §2.8 — single source).
    */
   function normalizeQuery(rawQuery) {
-    return String(rawQuery ?? '')
-      .normalize('NFKC')
-      .toLowerCase()
-      .replace(/\s+/g, ' ')
-      .trim();
+    return normalizeQueryText(rawQuery);
   }
 
   /**
@@ -203,6 +206,16 @@ function createSearchService(opts = {}) {
   async function semanticSearchEnabled() {
     try {
       const value = await resolveConfigResolver().getConfig('AI_SEMANTIC_SEARCH_ENABLED');
+      return !(value === false || value === 'false' || value === 0 || value === '0');
+    } catch {
+      return true;
+    }
+  }
+
+  /** §2.8 kill switch (`parse.nl`, same exception family): absent/unset ⇒ enabled. */
+  async function nlParseEnabled() {
+    try {
+      const value = await resolveConfigResolver().getConfig('AI_NL_PARSE_ENABLED');
       return !(value === false || value === 'false' || value === 0 || value === '0');
     } catch {
       return true;
@@ -334,12 +347,50 @@ function createSearchService(opts = {}) {
   }
 
   /**
+   * §2.3 step 3a / §2.8: the NL-parse leg. Gate first (`roleConfigured('chat')`
+   * ∧ kill switch — embed-only or chat-less configs never reach `chat`, ZERO
+   * provider calls), then the parse.nl parser behind the `query_parses.predicates`
+   * cache. ANY failure path resolves null — the SILENT vector+name fallback
+   * (the response stays the parser-free shape, never an error to the user).
+   * The request-side session state is canonicalized grammar-first: malformed
+   * state is discarded (parse runs stateless, never a 4xx).
+   */
+  async function runParseLeg(adapter, normalizedQuery, requestPredicates) {
+    let chatReady = false;
+    if (adapter && typeof adapter.roleConfigured === 'function') {
+      try {
+        chatReady = (await adapter.roleConfigured('chat')) === true;
+      } catch {
+        chatReady = false;
+      }
+    }
+    if (!chatReady || !(await nlParseEnabled())) return null;
+
+    const sessionAtoms = validateSessionState(requestPredicates);
+    const parser = createNlParser({
+      adapter,
+      cache: resolveQueryParsesStore(),
+      log,
+    });
+    try {
+      return await parser.parse(normalizedQuery, { sessionAtoms });
+    } catch (err) {
+      // The parser never throws by contract; this guards seam surprises
+      // (fake adapters, injected caches) — same silent fallback posture.
+      log.warn(`[searchService] parse.nl leg degraded: ${err?.message ?? err}`);
+      return null;
+    }
+  }
+
+  /**
    * §2.3 steps 3–6: the semantic leg up to (and including) the scorer seam.
    * Returns `{ ran, cappedSegments, scored, space }` — `ran:false` is the
    * step-3 omit shape; any embed/scorer failure degrades to `scored: []`
    * with the leg still marked as ran (honest empty, never a 5xx).
+   * `embedText` is the whole-query embed input — the refined vector-query text
+   * when step 3a supplied one, else the normalized query (§2.4 signature material).
    */
-  async function runSemanticLeg(userId, normalizedQuery) {
+  async function runSemanticLeg(userId, normalizedQuery, embedText) {
     const adapter = resolveLlmAdapter();
     let configured = false;
     if (adapter && typeof adapter.roleConfigured === 'function') {
@@ -367,7 +418,7 @@ function createSearchService(opts = {}) {
     };
 
     try {
-      const queryVec = await embedCached(normalizedQuery);
+      const queryVec = await embedCached(embedText || normalizedQuery);
       const segmentVecs = [];
       for (const text of segmentTexts) segmentVecs.push(await embedCached(text));
 
@@ -441,9 +492,9 @@ function createSearchService(opts = {}) {
     }
   }
 
-  async function search(userId, { query, resultRef } = {}) {
+  async function search(userId, { query, resultRef, predicates } = {}) {
     // §2.2: `resultRef` is accepted, stored on the signature computation
-    // input as `null`, and IGNORED by the MVP — sending it never changes the
+    // input as `null`, and IGNORED by the service — sending it never changes the
     // response (interpretation is the future conversational layer's job).
     void resultRef;
 
@@ -471,7 +522,10 @@ function createSearchService(opts = {}) {
 
     const nameMatches = capped.map((row) => ({ nodeId: Number(row.id), name: row.name }));
 
-    const leg = await runSemanticLeg(userId, normalizedQuery);
+    // §2.3 step 3a — NL parse (ONE chat call MAX, cached; silent fallback).
+    const parse = await runParseLeg(resolveLlmAdapter(), normalizedQuery, predicates);
+    const embedText = parse && parse.vectorQuery ? parse.vectorQuery : normalizedQuery;
+    const leg = await runSemanticLeg(userId, normalizedQuery, embedText);
 
     let semanticRows = [];
     if (leg.ran) {
@@ -487,7 +541,7 @@ function createSearchService(opts = {}) {
     }
 
     const resultRefValue = leg.ran
-      ? buildResultRef({ normalizedQuery, vectorQuery: normalizedQuery, space: leg.space })
+      ? buildResultRef({ normalizedQuery, vectorQuery: embedText, space: leg.space })
       : buildResultRef({ normalizedQuery });
 
     scheduleSearchHitEvents(userId, [
@@ -498,6 +552,9 @@ function createSearchService(opts = {}) {
     return {
       nameMatches,
       ...(leg.ran ? { semantic: semanticRows } : {}),
+      // §2.8: present EXACTLY when the parse applied (possibly empty atoms);
+      // absent keeps the response byte-identical to the parser-free contract.
+      ...(parse ? { predicates: parse.atoms } : {}),
       resultRef: resultRefValue,
       counts: {
         name: nameMatches.length,

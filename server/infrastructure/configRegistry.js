@@ -175,6 +175,7 @@ const CONFIG_ENTRIES = Object.freeze([
   { key: 'LLM_BREAKER_THRESHOLD', tier: TIER.T2, secret: false, default: 5, dbOnly: true },
   { key: 'LLM_BREAKER_COOLDOWN_S', tier: TIER.T2, secret: false, default: 300, dbOnly: true },
   { key: 'AI_SEMANTIC_SEARCH_ENABLED', tier: TIER.T2, secret: false, default: true, dbOnly: true },
+  { key: 'AI_NL_PARSE_ENABLED', tier: TIER.T2, secret: false, default: true, dbOnly: true },
 
   // ── Search knobs (searchService.md §3; T2 hot/dbOnly) ───────────────────
   // Name-section hard cap (the §2.4 `counts.name_truncated` flag flips when

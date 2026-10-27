@@ -22,6 +22,7 @@ const FileItem = ({
   isSelected,
   selectionMode,
   isMobile,
+  memberships = null,
   dragHandlers,
   dropHandlers,
 }) => {
@@ -100,6 +101,7 @@ const FileItem = ({
         showMoreButton={showMoreButton ?? !selectionMode}
         onMoreClick={onMoreClick}
         isMobile={isMobile}
+        memberships={memberships}
       />
     </Box>
   );

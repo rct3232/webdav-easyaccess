@@ -212,6 +212,7 @@ const FileManagerView = ({
   trashState,
   collectionsModel,
   searchResults,
+  membershipModel,
 }) => {
   const { t } = useTranslation();
   const { shareToken, isShareLinkMode, shareRootPath, shareRootName, shareRootNodeId } =
@@ -477,6 +478,7 @@ const FileManagerView = ({
     onFileCheck: handleFileCheck,
     loading: false,
     onThumbnailsLoaded: handleThumbnailsLoaded,
+    membershipsByNodeId: membershipModel?.membershipsByNodeId ?? null,
   };
   // Zone B/C rows are snapshot entries, not session rows — their lazy-load
   // answers land on the zone-local merge in `useSearchResults` (view stays
@@ -701,7 +703,9 @@ const FileManagerView = ({
               isCollectionsMemberSurface ? collectionsModel.onBulkMemberExclude : undefined
             }
             onBulkAddToCollection={
-              isCollectionsMemberSurface ? collectionsModel.onBulkAddToCollection : undefined
+              isCollectionsMemberSurface
+                ? collectionsModel.onBulkAddToCollection
+                : membershipModel?.onBulkAddToCollection
             }
             viewMode={isCollectionsMemberSurface ? memberSurfaceViewMode : viewMode}
             setViewMode={isCollectionsMemberSurface ? setMemberSurfaceViewMode : setViewMode}
@@ -962,6 +966,7 @@ const FileManagerView = ({
                   hasMore={hasMore}
                   shareToken={isShareLinkMode ? shareToken : undefined}
                   emptyText={isTrashView ? t('fileManager.trashEmpty') : undefined}
+                  membershipsByNodeId={membershipModel?.membershipsByNodeId ?? null}
                 />
               ) : viewMode === VIEW_MODES.GRID ? (
                 <FileGrid
@@ -986,6 +991,7 @@ const FileManagerView = ({
                   hasMore={hasMore}
                   shareToken={isShareLinkMode ? shareToken : undefined}
                   emptyText={isTrashView ? t('fileManager.trashEmpty') : undefined}
+                  membershipsByNodeId={membershipModel?.membershipsByNodeId ?? null}
                 />
               ) : (
                 <FileDetail
@@ -1007,6 +1013,7 @@ const FileManagerView = ({
                   loading={loading}
                   shareToken={isShareLinkMode ? shareToken : undefined}
                   emptyText={isTrashView ? t('fileManager.trashEmpty') : undefined}
+                  membershipsByNodeId={membershipModel?.membershipsByNodeId ?? null}
                 />
               )}
             </Box>

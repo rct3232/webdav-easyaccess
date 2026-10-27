@@ -10,6 +10,9 @@ import { useLongPress } from '../../hooks/useLongPress';
 import { useLongPressSelect } from './hooks/useLongPressSelect';
 import HighlightedName from './HighlightedName';
 import MemberStateBadges from './MemberStateBadges';
+import CollectionMembershipBadges, {
+  hasCollectionMembershipBadges,
+} from './CollectionMembershipBadges';
 
 const FileDetailRow = ({
   file,
@@ -27,6 +30,7 @@ const FileDetailRow = ({
   isSelected,
   selectionMode,
   isMobile,
+  memberships = null,
   dragHandlers,
   dropHandlers,
   maxPixelWidth,
@@ -165,6 +169,17 @@ const FileDetailRow = ({
               the name cell (gap:0.75 spaces them), before the name; plain file
               rows (flags absent) render nothing here. */}
           <MemberStateBadges file={file} variant="detail" />
+          {/* Collection-membership badges (CollectionMembershipBadges.md §2.4):
+              INLINE 16px glyphs after the member-state badges, before the
+              name; the host-prepared slice is absent on member rows ⇒ zero
+              DOM. The default shallow memo compares the slice by identity. */}
+          {hasCollectionMembershipBadges(memberships) && (
+            <CollectionMembershipBadges
+              nodeId={file.nodeId}
+              entries={memberships}
+              variant="detail"
+            />
+          )}
           {(() => {
             const originalName = file.basename;
             const truncatedName = pixelMiddleTruncate(originalName, maxPixelWidth, font);

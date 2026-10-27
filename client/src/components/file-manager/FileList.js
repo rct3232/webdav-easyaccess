@@ -30,6 +30,7 @@ const FileList = ({
   hasMore,
   shareToken,
   emptyText,
+  membershipsByNodeId = null,
 }) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
@@ -101,6 +102,7 @@ const FileList = ({
             isSelected={isSelected}
             selectionMode={selectionMode}
             isMobile={isMobile}
+            memberships={membershipsByNodeId ? (membershipsByNodeId[file.nodeId] ?? null) : null}
             dragHandlers={dragHandlers}
             dropHandlers={dropHandlers}
           />

@@ -25,6 +25,7 @@ import { getPublicSettings } from '../../services/settingsService';
 
 import { useRecentFile } from './hooks/useRecentFile';
 import { useCollections } from './hooks/useCollections';
+import { useCollectionMemberships } from './hooks/useCollectionMemberships';
 import { useSearchResults } from './hooks/useSearchResults';
 import { useUndoToast } from '../../hooks/useUndoToast';
 import { getServerErrorDisplay } from '../../utils/errorUtils';
@@ -662,6 +663,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     () => ({
       loadCollections: async () => ({ collections: [] }),
       getMergeSuggestions: async () => ({ suggestions: [] }),
+      getMemberships: async () => ({ memberships: [] }),
       subscribeToCollections: () => () => {},
     }),
     []
@@ -1518,6 +1520,92 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     user,
   ]);
 
+  // -- Collection-membership chips host (CollectionMembershipBadges.md §2.6) --
+  // Batched `POST /collections/for-nodes` over the FILES-surface rows (session
+  // listing + the current search-zone snapshots — the zones render through the
+  // same row components). Names resolve through the already-fetched
+  // `useCollections` list; admin/share-link sessions ride the inert seam
+  // (operator rule: zero /api/collections IO). Listing payloads stay frozen:
+  // the chips consume this SEPARATE read as a dedicated prop chain.
+  const membershipNodeIds = useMemo(() => {
+    const ids = [];
+    for (const row of files) {
+      if (row?.nodeId != null) ids.push(row.nodeId);
+    }
+    for (const row of searchApi.zoneBRows ?? []) {
+      if (row?.node_id != null) ids.push(row.node_id);
+    }
+    for (const row of searchApi.zoneCRows ?? []) {
+      if (row?.node_id != null) ids.push(row.node_id);
+    }
+    return ids;
+  }, [files, searchApi.zoneBRows, searchApi.zoneCRows]);
+
+  const { membershipsByNodeId } = useCollectionMemberships({
+    nodeIds: membershipNodeIds,
+    collections: collectionsApi.collections,
+    gateway: isShareLinkMode || user?.is_admin ? INERT_COLLECTIONS_GATEWAY : undefined,
+  });
+
+  // Files-surface toolbar bulk add (BulkActionToolbar.md §3 merged into
+  // FileManagerControls): selection keys ARE nodeIds for authenticated rows
+  // (getEntryKey), resolved back to { nodeId, name } targets for the shell's
+  // single AddToCollectionMenu instance. Membership is a collection-side
+  // write — readable rows are addable (the file-write bulk gate does not
+  // apply); the callback itself is withheld for admin/share-link sessions.
+  const handleFilesBulkAddToCollection = useCallback(
+    (keys) => {
+      const keySet = new Set((keys ?? []).filter((key) => key != null));
+      if (keySet.size === 0) return;
+      const rowsByKey = new Map();
+      for (const row of files) rowsByKey.set(String(getEntryKey(row)), row);
+      for (const row of searchApi.zoneBRows ?? []) rowsByKey.set(String(row.node_id), row);
+      for (const row of searchApi.zoneCRows ?? []) rowsByKey.set(String(row.node_id), row);
+      const targetNodes = [];
+      for (const key of keySet) {
+        const row = rowsByKey.get(String(key));
+        if (!row) continue;
+        const nodeId = row.nodeId ?? row.node_id;
+        if (nodeId == null) continue;
+        targetNodes.push({ nodeId, name: row.name ?? row.basename ?? null });
+      }
+      if (targetNodes.length === 0) return;
+      setAddMenu({ targetNodes, position: null });
+    },
+    [files, searchApi.zoneBRows, searchApi.zoneCRows]
+  );
+
+  // AddToCollectionMenu checkmarks (AddToCollectionMenu.md §2.2): collections
+  // containing ALL targets. A target outside the fetched map ⇒ unknown ⇒ no
+  // checkmarks (never guess). Member-surface targets (member rows) are not in
+  // the FILES-surface map — the checkmark stays absent there, as today.
+  const addMenuMembershipIds = useMemo(() => {
+    const targets = addMenu?.targetNodeIds?.length
+      ? addMenu.targetNodeIds
+      : (addMenu?.targetNodes ?? []).map((node) => node?.nodeId);
+    const ids = targets.filter((id) => id != null);
+    if (ids.length === 0) return [];
+    let intersection = null;
+    for (const id of ids) {
+      const entries = membershipsByNodeId[id];
+      if (!Array.isArray(entries)) return [];
+      const current = new Set(entries.map((entry) => entry.id));
+      intersection =
+        intersection === null
+          ? current
+          : new Set([...intersection].filter((collectionId) => current.has(collectionId)));
+    }
+    return intersection ? Array.from(intersection) : [];
+  }, [addMenu, membershipsByNodeId]);
+
+  const membershipModel = useMemo(
+    () =>
+      isShareLinkMode || user?.is_admin
+        ? undefined
+        : { membershipsByNodeId, onBulkAddToCollection: handleFilesBulkAddToCollection },
+    [isShareLinkMode, user, membershipsByNodeId, handleFilesBulkAddToCollection]
+  );
+
   const handleProductPathClick = useCallback(
     async (path, file) => {
       if (!path) return false;
@@ -2337,6 +2425,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         trashState={trashStateProps}
         collectionsModel={collectionsModel}
         searchResults={searchResults}
+        membershipModel={membershipModel}
       />
       {(isCollectionsMemberRoute || isCollectionsLikedRoute) && (
         <MemberRowControls
@@ -2365,6 +2454,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           targetNodes={addMenu?.targetNodes ?? []}
           targetNodeIds={addMenu?.targetNodeIds ?? null}
           collections={writableCollections}
+          membershipIds={addMenuMembershipIds}
           seedItemVisible={false}
           onAdd={handleAddMenuAdd}
           onCreateAndAdd={handleAddMenuCreateAndAdd}

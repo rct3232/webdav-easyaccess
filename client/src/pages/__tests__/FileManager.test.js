@@ -1951,6 +1951,170 @@ describe('FileManager', () => {
         expect(screen.queryByText('a.jpg')).not.toBeInTheDocument();
       }, 15000);
     });
+
+    /**
+     * T3.1 merge-proposal card slot: the shell injects ONE card (never stacked),
+     * the `+N more` chip cycles the score-desc pending set, Merge dispatches with
+     * no extra dialog and raises the undo toast, Later/Keep separate resolve the
+     * pair through dismiss/reject — and an empty set renders NOTHING.
+     * @see docs/spec/client/components/file-manager/MergeProposalCard.md
+     * @see docs/spec/client/pages/FileManager.md (merge slot)
+     */
+    describe('merge proposal card slot', () => {
+      const mergeSuggestion = (overrides = {}) => ({
+        suggestion_id: 88,
+        a_id: 17,
+        a_name: 'Europe',
+        b_id: 23,
+        b_name: '2025 trip',
+        overlap_count: 41,
+        merged_count: 58,
+        score: 812,
+        dismiss_count: 0,
+        created_at: '2026-09-16T03:00:00Z',
+        recommendation: null,
+        overlap_sample: [{ a_node_id: 101, b_node_id: 101 }],
+        a_unique_sample: [{ node_id: 110, name: 'beach.jpg' }],
+        b_unique_sample: [{ node_id: 220, name: 'seville.jpg' }],
+        ...overrides,
+      });
+
+      const mergeSlotHandlers = ({ getPending, calls }) => [
+        http.get('/api/collections', () => HttpResponse.json({ collections: [ownCard] })),
+        http.get('/api/collections/merge-suggestions', () =>
+          HttpResponse.json({ suggestions: getPending() })
+        ),
+        http.post('/api/collections/:id/merge/:other', ({ params }) => {
+          calls.posts.push(`merge/${params.id}/${params.other}`);
+          calls.pending = calls.pending.filter(
+            (row) => !(row.a_id === Number(params.id) && row.b_id === Number(params.other))
+          );
+          return HttpResponse.json({
+            survivor: { collection_id: Number(params.id), name: 'Europe', item_count: 58 },
+            absorbed_id: Number(params.other),
+            undo: { action_id: 501 },
+          });
+        }),
+        http.post('/api/collections/:id/merge-dismiss', async ({ request, params }) => {
+          const body = await request.json();
+          calls.posts.push(`dismiss/${params.id}/${body.otherId}`);
+          calls.pending = calls.pending.filter(
+            (row) => !(row.a_id === Number(params.id) && row.b_id === body.otherId)
+          );
+          return HttpResponse.json({
+            suggestion_id: 88,
+            state: 'dismissed',
+            dismissed_at: '2026-10-27T00:00:00Z',
+            dismiss_count: 1,
+          });
+        }),
+        http.post('/api/collections/:id/merge-reject', async ({ request, params }) => {
+          const body = await request.json();
+          calls.posts.push(`reject/${params.id}/${body.otherId}`);
+          calls.pending = calls.pending.filter(
+            (row) => !(row.a_id === Number(params.id) && row.b_id === body.otherId)
+          );
+          return HttpResponse.json({
+            suggestion_id: 88,
+            state: 'rejected',
+            rejected_at: '2026-10-27T00:00:00Z',
+          });
+        }),
+      ];
+
+      const slotState = (rows = []) => {
+        const calls = { posts: [], pending: rows.map((row) => row) };
+        return {
+          calls,
+          handlers: mergeSlotHandlers({ getPending: () => calls.pending, calls }),
+        };
+      };
+
+      const firstPair = mergeSuggestion();
+      const secondPair = mergeSuggestion({
+        suggestion_id: 89,
+        a_id: 30,
+        a_name: 'Kyoto',
+        b_id: 31,
+        b_name: 'Osaka',
+        score: 640,
+      });
+
+      it('renders ONE card for the whole pending set, cycles with +N more, merges without a dialog and offers undo', async () => {
+        const state = slotState([firstPair, secondPair]);
+        server.use(...state.handlers);
+        await renderWithProvidersAct(<FileManagerWithRoutes />, {
+          initialEntries: ['/files/__collections__'],
+        });
+
+        const card = await screen.findByTestId('merge-proposal-card');
+        // never stacked: one card DOM node for two pending rows
+        expect(screen.getAllByTestId('merge-proposal-card')).toHaveLength(1);
+        // score desc first: Europe|2025 trip pair displayed
+        expect(card).toHaveTextContent('Europe');
+        expect(card).toHaveTextContent('+1 more');
+
+        fireEvent.click(screen.getByTestId('merge-cycle-chip'));
+        await waitFor(() =>
+          expect(screen.getByTestId('merge-proposal-card')).toHaveTextContent('Kyoto')
+        );
+
+        fireEvent.click(screen.getByTestId('merge-accept'));
+        // card IS the confirmation: no dialog ever opens
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        await waitFor(() => expect(state.calls.posts).toEqual(['merge/30/31']));
+        // undo toast rides the mergePair → onUndoable seam
+        expect(await screen.findByText('Collections merged')).toBeInTheDocument();
+
+        // the merged pair left the pending set (server truth re-read): the
+        // remaining card shows the FIRST pair again (cursor clamps) with no chip
+        await waitFor(() => {
+          const next = screen.getByTestId('merge-proposal-card');
+          expect(next).toHaveTextContent('Europe');
+          expect(screen.queryByTestId('merge-cycle-chip')).not.toBeInTheDocument();
+        });
+        // the single card still owns exactly one DOM node; the list renders on
+        expect(screen.getAllByTestId('merge-proposal-card')).toHaveLength(1);
+        expect(screen.getByTestId('collection-card-1')).toBeInTheDocument();
+      }, 15000);
+
+      it('Later dismisses the displayed pair and Keep separate rejects the next one — the slot ends empty', async () => {
+        const state = slotState([firstPair, secondPair]);
+        server.use(...state.handlers);
+        await renderWithProvidersAct(<FileManagerWithRoutes />, {
+          initialEntries: ['/files/__collections__'],
+        });
+
+        const card = await screen.findByTestId('merge-proposal-card');
+        expect(card).toHaveTextContent('Europe');
+        fireEvent.click(screen.getByTestId('merge-later'));
+        await waitFor(() => expect(state.calls.posts).toEqual(['dismiss/17/23']));
+
+        // the cycled set shrank: the surviving row shows with no chip
+        await waitFor(() =>
+          expect(screen.getByTestId('merge-proposal-card')).toHaveTextContent('Kyoto')
+        );
+        expect(screen.queryByTestId('merge-cycle-chip')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('merge-keep-separate'));
+        await waitFor(() => expect(state.calls.posts).toEqual(['dismiss/17/23', 'reject/30/31']));
+        await waitFor(() =>
+          expect(screen.queryByTestId('merge-proposal-card')).not.toBeInTheDocument()
+        );
+        expect(screen.queryByTestId('merge-proposal-card')).not.toBeInTheDocument();
+      }, 15000);
+
+      it('empty pending set renders no card and no layout wrapper (zero footprint)', async () => {
+        const state = slotState([]);
+        server.use(...state.handlers);
+        await renderWithProvidersAct(<FileManagerWithRoutes />, {
+          initialEntries: ['/files/__collections__'],
+        });
+
+        await screen.findByTestId('collection-card-1');
+        expect(screen.queryByTestId('merge-proposal-card')).not.toBeInTheDocument();
+      }, 15000);
+    });
   });
 
   /**

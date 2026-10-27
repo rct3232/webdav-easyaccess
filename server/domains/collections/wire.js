@@ -119,6 +119,11 @@ function serializeSuggestion(row, names) {
     dismiss_count: Number(row.dismissCount ?? 0),
     created_at: row.createdAt ?? null,
     recommendation: names.recommendation ?? null,
+    // Compare-overlay sample fields (routes/collections.md GET /merge-suggestions):
+    // capped views of the authoritative counts, built by the service.
+    overlap_sample: names.overlapSample ?? [],
+    a_unique_sample: names.aUniqueSample ?? [],
+    b_unique_sample: names.bUniqueSample ?? [],
   };
 }
 

@@ -92,6 +92,31 @@ describe('CollectionsRepository conformance', () => {
       expect(typeof loaded.updatedAt).toBe('string');
     });
 
+    it('insertCollection round-trips nameLocked (merge-collections undo recreate input)', async () => {
+      const owner = await uniqueUser();
+      let lockedId;
+      await inTx(async (tx) => {
+        lockedId = (
+          await repo.insertCollection(tx, {
+            ownerId: owner.id,
+            name: 'Locked recreate',
+            origin: 'user',
+            nameLocked: true,
+          })
+        ).id;
+      });
+      const loaded = await repo.getCollection(lockedId);
+      expect(loaded.nameLocked).toBe(true);
+
+      await inTx(async (tx) => {
+        const plainId = (
+          await repo.insertCollection(tx, { ownerId: owner.id, name: 'Plain', origin: 'user' })
+        ).id;
+        const plain = await repo.getCollectionTx(tx, plainId);
+        expect(plain.nameLocked).toBe(false);
+      });
+    });
+
     it('defaults publish_mode to ask and stores explicit modes', async () => {
       const owner = await uniqueUser();
       let askId;

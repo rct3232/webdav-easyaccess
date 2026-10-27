@@ -1407,31 +1407,66 @@ async function listMergeSuggestions(userId) {
       collectionsStore.getCollection(row.bId),
     ]);
     if (!aCollection || !bCollection) continue;
-    const [aMembers, bMembers] = await Promise.all([
-      memberNodeIdSet(userId, aCollection),
-      memberNodeIdSet(userId, bCollection),
+    const [aRows, bRows] = await Promise.all([
+      resolveMemberRows(userId, aCollection),
+      resolveMemberRows(userId, bCollection),
     ]);
-    const overlapCount = countOverlap(aMembers, bMembers);
+    const aIds = new Set(aRows.map((r) => r.nodeId));
+    const bIds = new Set(bRows.map((r) => r.nodeId));
+    const overlapCount = countOverlap(aIds, bIds);
     const recommendation =
       row.arbiterVerdict != null
         ? { verdict: row.arbiterVerdict, reason: row.arbiterReason ?? null }
         : null;
+    const samples = buildSuggestionSamples(aRows, bRows);
     suggestions.push(
       wire.serializeSuggestion(row, {
         aName: aCollection.name,
         bName: bCollection.name,
         overlapCount,
-        mergedCount: aMembers.size + bMembers.size - overlapCount,
+        mergedCount: aIds.size + bIds.size - overlapCount,
         recommendation,
+        ...samples,
       })
     );
   }
   return { suggestions };
 }
 
-async function memberNodeIdSet(userId, collection) {
-  const rows = await resolveMemberRows(userId, collection);
-  return new Set(rows.map((row) => row.nodeId));
+// Compare-overlay samples (routes/collections.md GET /merge-suggestions):
+// capped views of the authoritative counts, built in-memory over the rows
+// resolveMemberRows already returned — ZERO extra reads. Revoked rows are
+// excluded from every sample (their name/thumbnail after access loss is a
+// leak); ordering is node-id asc, so samples are deterministic.
+const MERGE_OVERLAP_SAMPLE_CAP = 8;
+const MERGE_UNIQUE_SAMPLE_CAP = 4;
+
+function buildSuggestionSamples(aRows, bRows) {
+  const aById = new Map(aRows.map((r) => [r.nodeId, r]));
+  const bById = new Map(bRows.map((r) => [r.nodeId, r]));
+  const overlapSample = [];
+  const sharedIds = [...aById.keys()].filter((id) => bById.has(id)).sort((x, y) => x - y);
+  for (const id of sharedIds) {
+    if (overlapSample.length >= MERGE_OVERLAP_SAMPLE_CAP) break;
+    if (aById.get(id).state !== 'normal' || bById.get(id).state !== 'normal') continue;
+    overlapSample.push({ a_node_id: id, b_node_id: id });
+  }
+  const uniqueSample = (byId, otherById, cap) => {
+    const out = [];
+    const onlyIds = [...byId.keys()].filter((id) => !otherById.has(id)).sort((x, y) => x - y);
+    for (const id of onlyIds) {
+      if (out.length >= cap) break;
+      const r = byId.get(id);
+      if (r.state !== 'normal') continue;
+      out.push({ node_id: id, name: r.name });
+    }
+    return out;
+  };
+  return {
+    overlapSample,
+    aUniqueSample: uniqueSample(aById, bById, MERGE_UNIQUE_SAMPLE_CAP),
+    bUniqueSample: uniqueSample(bById, aById, MERGE_UNIQUE_SAMPLE_CAP),
+  };
 }
 
 function countOverlap(a, b) {

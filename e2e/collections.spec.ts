@@ -1,11 +1,14 @@
 import fs from 'node:fs';
+import path from 'node:path';
 
 import { APIRequestContext, expect, Page, TestInfo, test } from '@playwright/test';
 
 import {
   ensureClientBuild,
+  execScratchSqlite,
   killScratch,
   prepareScratchS3,
+  queryScratchSqlite,
   s3ScratchEnv,
   scratchDirFor,
   scratchRuntimeEnv,
@@ -28,7 +31,7 @@ import { closeActionSheet, openActionSheet } from './helpers/mobile-interactions
 import { setCollectionSort } from './helpers/explorer-controls';
 
 /**
- * E2E-S3-COLLECTION-001..014 + 018..020 — the P0 collections binding lifecycle
+ * E2E-S3-COLLECTION-001..014 + 018..022 — the P0 collections binding lifecycle
  * (docs/E2E_COVERAGE_PLAN.md § "Collections platform lifecycle (hermetic)").
  *
  * Chain: create → add members → digest counts → archive → undo → restore →
@@ -49,7 +52,10 @@ import { setCollectionSort } from './helpers/explorer-controls';
  * pool. One scratch server serves the whole (serial) file per project —
  * restart is not a behavior under test here. No AI surfaces are expected
  * (`semantic_available:false`) and the scratch server runs with
- * `WEA_SKIP_AI_WORKER=1`: P0 only.
+ * `WEA_SKIP_AI_WORKER=1`: P0 only — the merge-card cases (021/022) stay
+ * LLM-free by seeding the pending suggestion rows directly (the proposal WRITE
+ * side is the evolution pass; the card contract under test is the read surface
+ * + dispatch).
  *
  * IDENTITY (admin-operator pivot, PLAN §14): every case authenticates as a
  * REGULAR USER provisioned by `beforeAll` (`ensureScratchRegularUser` — admin
@@ -1225,6 +1231,163 @@ test('E2E-S3-COLLECTION-020: The sidebar Archive node routes into the tile-free 
   await expect(tiles).toHaveCount(2);
   await expect(tiles.first()).toHaveAttribute('data-testid', 'collection-tile-liked');
   await expect(tiles.last()).toHaveAttribute('data-testid', 'collection-tile-archive');
+});
+
+// ---------------------------------------------------------------------------
+// Merge-proposal card lifecycle (T3.1 — §4.4 card, R2 real compare overlay)
+// ---------------------------------------------------------------------------
+
+/** Seed a PENDING pair row directly in the scratch sqlite (the proposal WRITE
+ * side rides the evolution pass, which stays outside this suite's P0 scope —
+ * the card contract is the READ surface + dispatch, so the pending set is
+ * provisioned the same deterministic way other cases provision fixtures).
+ * Pair is normalized `a_id < b_id` per `routes/collections.md`. */
+async function seedMergeSuggestion(aId: number, bId: number, score: number): Promise<void> {
+  const low = Math.min(aId, bId);
+  const high = Math.max(aId, bId);
+  await execScratchSqlite(
+    path.join(scratch, 'webdav.db'),
+    `INSERT INTO collection_merge_suggestions (a_id, b_id, score, state)
+     VALUES (${low}, ${high}, ${score}, 'pending')`
+  );
+}
+
+async function suggestionStateOf(aId: number, bId: number): Promise<string | undefined> {
+  const low = Math.min(aId, bId);
+  const high = Math.max(aId, bId);
+  const rows = await queryScratchSqlite<{ state: string }>(
+    path.join(scratch, 'webdav.db'),
+    `SELECT state FROM collection_merge_suggestions WHERE a_id = ${low} AND b_id = ${high}`
+  );
+  return rows[0]?.state;
+}
+
+/** Re-surface a DISMISSED pair for the terminal-reject leg: the cadence writer
+ * is the nightly pass (out of this suite), so the fixture flips the state the
+ * same direct-DB way the seed does. UNIQUE(a,b) keeps INSERT unusable here. */
+async function reopenMergeSuggestion(aId: number, bId: number): Promise<void> {
+  const low = Math.min(aId, bId);
+  const high = Math.max(aId, bId);
+  await execScratchSqlite(
+    path.join(scratch, 'webdav.db'),
+    `UPDATE collection_merge_suggestions
+        SET state = 'pending', dismiss_count = 0, dismissed_at = NULL
+      WHERE a_id = ${low} AND b_id = ${high}`
+  );
+}
+
+test('E2E-S3-COLLECTION-021: the merge proposal card cycles the pending set, compares the real sample rows, executes a merge from the card and the undo toast restores the absorbed collection', async ({
+  page,
+  request,
+}, testInfo) => {
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
+  const shared = await seedFile(request, token, base, testInfo, 'merge-shared');
+  const onlyA = await seedFile(request, token, base, testInfo, 'merge-only-a');
+  const onlyB = await seedFile(request, token, base, testInfo, 'merge-only-b');
+
+  const nameA = buildName(testInfo, 'merge-a');
+  const nameB = buildName(testInfo, 'merge-b');
+  const aId = await createCollectionApi(request, token, nameA);
+  const bId = await createCollectionApi(request, token, nameB);
+  await addItemsApi(request, token, aId, [shared.nodeId, onlyA.nodeId]);
+  await addItemsApi(request, token, bId, [shared.nodeId, onlyB.nodeId]);
+  await seedMergeSuggestion(aId, bId, 900);
+
+  // Second pending pair — the NEVER-STACKED rule: two rows still render ONE
+  // card, and the `+1 more` chip cycles the displayed row (score desc first).
+  const other = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
+  const otherShared = await seedFile(request, other.token, other.base, testInfo, 'merge2-shared');
+  const nameC = buildName(testInfo, 'merge-c');
+  const nameD = buildName(testInfo, 'merge-d');
+  const cId = await createCollectionApi(request, other.token, nameC);
+  const dId = await createCollectionApi(request, other.token, nameD);
+  await addItemsApi(request, other.token, cId, [otherShared.nodeId]);
+  await addItemsApi(request, other.token, dId, [otherShared.nodeId]);
+  await seedMergeSuggestion(cId, dId, 700);
+
+  await page.goto('/files/__collections__');
+  const card = page.getByTestId('merge-proposal-card');
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('merge-proposal-card')).toHaveCount(1);
+  // Highest score first: the A|B pair line names both collections.
+  await expect(card).toContainText(nameA);
+  await expect(card).toContainText(nameB);
+  await expect(card.getByTestId('merge-cycle-chip')).toContainText('+1 more');
+
+  // Expand: the strip opens the two-column compare overlay with REAL sample
+  // rows (shared tile + per-side unique names — zero-fabrication rule).
+  await card.getByTestId('merge-strip').click();
+  const overlay = page.getByTestId('merge-compare-overlay');
+  await expect(overlay).toBeVisible();
+  await expect(overlay.getByTestId(`merge-sample-tile-${shared.nodeId}`)).toBeVisible();
+  await expect(overlay.getByTestId(`merge-unique-a-${onlyA.nodeId}`)).toContainText(
+    onlyA.path.split('/').pop() as string
+  );
+  await expect(overlay.getByTestId(`merge-unique-b-${onlyB.nodeId}`)).toContainText(
+    onlyB.path.split('/').pop() as string
+  );
+  await page.keyboard.press('Escape');
+  await expect(overlay).toHaveCount(0);
+
+  // The card IS the confirmation: Merge dispatches with NO extra dialog.
+  await card.getByTestId('merge-accept').click();
+  await expect(page.getByTestId('undo-toast-action')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  // The merged pair left the pending set; the cycled card shows the next pair.
+  await expect(card).toContainText(nameC);
+
+  // Undo reverses the merge: the loser is restored with its members.
+  await page.getByTestId('undo-toast-action').click();
+  await expect
+    .poll(
+      async () => {
+        const row = await findCollectionByName(request, token, nameB);
+        return row?.status === 'active' ? row.item_count : 0;
+      },
+      { timeout: 30_000 }
+    )
+    .toBe(2);
+  const restored = await request.get(`/api/collections/${bId}/items`, { headers: auth(token) });
+  expect(restored.ok()).toBeTruthy();
+});
+
+test('E2E-S3-COLLECTION-022: Later defers the pair into a DB-dormant card removal, Keep separate suppresses it permanently and the last resolved pair leaves zero layout footprint', async ({
+  page,
+  request,
+}, testInfo) => {
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
+  const file1 = await seedFile(request, token, base, testInfo, 'mergedisp-1');
+  const file2 = await seedFile(request, token, base, testInfo, 'mergedisp-2');
+
+  const nameA = buildName(testInfo, 'merge-x');
+  const nameB = buildName(testInfo, 'merge-y');
+  const aId = await createCollectionApi(request, token, nameA);
+  const bId = await createCollectionApi(request, token, nameB);
+  await addItemsApi(request, token, aId, [file1.nodeId, file2.nodeId]);
+  await addItemsApi(request, token, bId, [file1.nodeId, file2.nodeId]);
+  await seedMergeSuggestion(aId, bId, 800);
+
+  await page.goto('/files/__collections__');
+  const card = page.getByTestId('merge-proposal-card');
+  await expect(card).toBeVisible({ timeout: 30_000 });
+
+  // Later → dismissed (re-raisable by the nightly cadence; the row STAYS).
+  await card.getByTestId('merge-later').click();
+  await expect(card).toHaveCount(0);
+  await expect.poll(() => suggestionStateOf(aId, bId), { timeout: 15_000 }).toBe('dismissed');
+
+  // Keep separate on the re-surfaced pair is terminal.
+  await reopenMergeSuggestion(aId, bId);
+  await page.goto('/files/__collections__');
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await card.getByTestId('merge-keep-separate').click();
+  await expect(card).toHaveCount(0);
+  await expect.poll(() => suggestionStateOf(aId, bId), { timeout: 15_000 }).toBe('rejected');
+
+  // Zero pending ⇒ zero footprint: no card DOM node above the list, and the
+  // collection cards still render (the slot collapsed, it did not shift).
+  await expect(page.getByTestId('merge-proposal-card')).toHaveCount(0);
+  await expect(collectionCard(page, nameA)).toBeVisible();
 });
 
 // -- Collections MOBILE-ONLY interplay (the former standalone twin

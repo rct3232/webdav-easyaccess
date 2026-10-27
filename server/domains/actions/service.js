@@ -172,6 +172,88 @@ function outcomeFromChanges(changes) {
 }
 
 /**
+ * `merge-collections` inverse (collectionsService.md §2.9 UNDO bullet):
+ * recreate the absorbed loser from the recorded full state (name +
+ * name_locked/origin/publish_mode/definition/pin), re-insert every stored item
+ * and exclusion into it and move the MOVED rows off the survivor — rows the
+ * survivor already owned (the commit-time `dropped` sets) stay untouched.
+ * Preconditions mirror the fingerprint discipline: missing survivor, reused
+ * loser id, or a re-taken loser name reports `changed` (the single-inverse
+ * command-unit then REFUSES the whole undo tx).
+ */
+async function applyMergeCollectionsInverseTx(tx, repo, inverse, row) {
+  const survivorId = Number(inverse.survivorId);
+  const loserId = Number(inverse.loserId);
+  const loser = inverse.loser;
+  if (
+    !Number.isInteger(survivorId) ||
+    survivorId <= 0 ||
+    !Number.isInteger(loserId) ||
+    loserId <= 0 ||
+    !loser ||
+    typeof loser.name !== 'string'
+  ) {
+    return { applied: false, reason: 'changed' };
+  }
+
+  const survivor = await repo.getCollectionTx(tx, survivorId);
+  if (!survivor) return { applied: false, reason: 'changed' };
+  if (await repo.getCollectionTx(tx, loserId)) return { applied: false, reason: 'changed' };
+  if (await repo.existsActiveName(survivor.ownerId, loser.name)) {
+    return { applied: false, reason: 'changed' };
+  }
+
+  const dropped = (row && row.payload && row.payload.dropped) || {};
+  const droppedItems = new Set((Array.isArray(dropped.items) ? dropped.items : []).map(Number));
+  const droppedExclusions = new Set(
+    (Array.isArray(dropped.exclusions) ? dropped.exclusions : []).map(Number)
+  );
+  const items = Array.isArray(loser.items) ? loser.items : [];
+  const exclusions = Array.isArray(loser.exclusions) ? loser.exclusions : [];
+
+  const { id: restoredId } = await repo.insertCollection(tx, {
+    ownerId: survivor.ownerId,
+    name: loser.name,
+    origin: loser.origin || 'user',
+    publishMode: loser.publishMode || 'ask',
+    definition: loser.definition ?? null,
+    nameLocked: Boolean(loser.nameLocked),
+  });
+
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i];
+    const nodeId = Number(item.nodeId);
+    if (!Number.isInteger(nodeId) || nodeId <= 0) continue;
+    const addedBy = Number(item.addedBy) > 0 ? Number(item.addedBy) : survivor.ownerId;
+    await repo.insertItem(tx, restoredId, nodeId, addedBy, {
+      published: Boolean(item.published),
+      source: item.source ?? 'manual',
+      reason: item.reason ?? null,
+    });
+    if (!droppedItems.has(nodeId)) {
+      await repo.deleteItem(tx, survivorId, nodeId);
+    }
+  }
+  for (let i = 0; i < exclusions.length; i += 1) {
+    const nodeId = Number(exclusions[i]);
+    if (!Number.isInteger(nodeId) || nodeId <= 0) continue;
+    await repo.insertExclusion(tx, restoredId, nodeId);
+    if (!droppedExclusions.has(nodeId)) {
+      await repo.deleteExclusion(tx, survivorId, nodeId);
+    }
+  }
+  if (loser.pinned) {
+    if (loser.pinnedBy === 'auto') {
+      await repo.setAutoPin(tx, restoredId);
+    } else {
+      await repo.updatePin(tx, restoredId, true, 'user');
+    }
+  }
+  await repo.touchMemberChange(tx, survivorId);
+  return { applied: true };
+}
+
+/**
  * Apply ONE inverse descriptor with tx-bound collections operations.
  * Precondition checks are the fingerprint proxy for the v1 op set: an inverse
  * whose expected "from" state is missing reports `changed` (skipped for
@@ -284,6 +366,8 @@ async function applyInverseTx(tx, inverse, row) {
       );
       return outcomeFromChanges(changes);
     }
+    case 'merge-collections':
+      return applyMergeCollectionsInverseTx(tx, repo, inverse, row);
     default:
       // unknown op (version skew) — cannot be applied, never flips state
       return { applied: false, reason: 'changed' };

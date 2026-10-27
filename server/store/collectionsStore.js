@@ -291,6 +291,7 @@ async function mergeCollections(survivorId, loserId, ctx = {}) {
           loserId: Number(loserId),
           loser: {
             name: loser.name,
+            nameLocked: Boolean(loser.nameLocked),
             origin: loser.origin,
             publishMode: loser.publishMode,
             definition: loser.definition,
@@ -300,6 +301,8 @@ async function mergeCollections(survivorId, loserId, ctx = {}) {
               nodeId: item.nodeId,
               addedBy: item.addedBy,
               published: item.published,
+              source: item.source ?? 'manual',
+              reason: item.reason ?? null,
             })),
             exclusions: loserExclusions,
           },

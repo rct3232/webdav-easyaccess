@@ -1766,6 +1766,68 @@ describe('POST /for-nodes membership chips', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Membership-stability route pins — reads perform ZERO definition evaluation
+// ---------------------------------------------------------------------------
+
+describe('membership-stability route pins (read endpoints never evaluate a definition)', () => {
+  it('GET /, GET /:id/items and POST /for-nodes show a rule match only after the write boundary materializes it', async () => {
+    const ctx = await createUserWithRoot('stability');
+    const travel = await fileNodeService.createDirectory(ctx.root.id, 'travel');
+    const late = await fileNodeService.createFile(travel.id, 'late.jpg');
+
+    const system = await collectionsStore.createCollection(
+      {
+        ownerId: ctx.user.id,
+        name: 'Stability rule',
+        origin: 'system',
+        definition: {
+          kind: 'predicate',
+          any_of: [{ type: 'path', value: `/${ctx.user.username}/travel` }],
+        },
+      },
+      { actor: ctx.user.id }
+    );
+
+    // No evolution pass has run — every read stays membership-free for `late`.
+    const list = await request(app)
+      .get('/api/collections')
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(list.status).toBe(200);
+    const row = list.body.collections.find((c) => c.collection_id === system.id);
+    expect(row.item_count).toBe(0);
+
+    const items = await request(app)
+      .get(`/api/collections/${system.id}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(items.status).toBe(200);
+    expect(items.body.items).toEqual([]);
+
+    const forNodes = await request(app)
+      .post('/api/collections/for-nodes')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ nodeIds: [late.id] });
+    expect(forNodes.status).toBe(200);
+    expect(forNodes.body.memberships).toEqual([{ node_id: late.id, collection_ids: [] }]);
+
+    // The write boundary (evolution reconcile) materializes the membership…
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+
+    // …and only THEN do the same reads reflect it (snapshot contract).
+    const forNodesAfter = await request(app)
+      .post('/api/collections/for-nodes')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ nodeIds: [late.id] });
+    expect(forNodesAfter.body.memberships).toEqual([
+      { node_id: late.id, collection_ids: expect.arrayContaining([system.id]) },
+    ]);
+    const itemsAfter = await request(app)
+      .get(`/api/collections/${system.id}/items`)
+      .set('Authorization', `Bearer ${ctx.token}`);
+    expect(itemsAfter.body.items.map((item) => item.node_id)).toContain(late.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Wire contract: undo pointers and setup-mode guard
 // ---------------------------------------------------------------------------
 

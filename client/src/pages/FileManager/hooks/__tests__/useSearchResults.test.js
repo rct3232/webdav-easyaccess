@@ -986,3 +986,118 @@ describe('useSearchResults entry-click recording', () => {
     });
   });
 });
+
+describe('useSearchResults NL-parsed predicates consumption', () => {
+  const NL_ATOMS = [{ type: 'path', value: 'movies', prefix: '/movies' }, { type: 'like' }];
+  const PARSED_RESPONSE = {
+    ...SEARCH_RESPONSE,
+    result_ref: 'sr1.parsed',
+    predicates: NL_ATOMS,
+  };
+
+  it('stores the response predicates verbatim on the step snapshot', async () => {
+    const gateway = createGateway({ runSearch: jest.fn().mockResolvedValue(PARSED_RESPONSE) });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.chain[0].snapshot.predicates).toEqual(NL_ATOMS);
+    expect(result.current.chain[0].snapshot.resultRef).toBe('sr1.parsed');
+  });
+
+  it('a parser-free response (no predicates key) stores an empty array', async () => {
+    const { result } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.chain[0].snapshot.predicates).toEqual([]);
+  });
+
+  it('each step keeps its own atoms; undoToStep restores the per-step snapshot with ZERO extra searches', async () => {
+    const step2 = {
+      ...SEARCH_RESPONSE,
+      name_matches: [{ node_id: 11, name: 'movie.pdf' }],
+      result_ref: 'sr1.step2',
+      predicates: [{ type: 'size', min: 1048576 }],
+      counts: { name: 1, semantic: 0, total: 1, name_truncated: false },
+    };
+    const gateway = createGateway({
+      runSearch: jest.fn().mockResolvedValueOnce(PARSED_RESPONSE).mockResolvedValueOnce(step2),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    await act(async () => {
+      await result.current.submitSearch('big');
+    });
+    expect(result.current.chain[1].snapshot.predicates).toEqual([{ type: 'size', min: 1048576 }]);
+
+    act(() => {
+      result.current.undoToStep(0);
+    });
+    expect(result.current.chain).toHaveLength(1);
+    expect(result.current.chain[0].snapshot.predicates).toEqual(NL_ATOMS);
+    expect(gateway.runSearch).toHaveBeenCalledTimes(2);
+  });
+
+  it('exitResults clears the atom state with the chain', async () => {
+    const gateway = createGateway({ runSearch: jest.fn().mockResolvedValue(PARSED_RESPONSE) });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    act(() => {
+      result.current.exitResults();
+    });
+
+    expect(result.current.chain).toEqual([]);
+    expect(result.current.zoneCounts).toEqual({ zoneA: 0, zoneB: 0, zoneC: 0 });
+  });
+
+  it('saveFromResults still posts predicates: [] while the snapshot carries atoms', async () => {
+    const created = { collection: { collection_id: 5 }, undo: { action_id: 77 } };
+    const gateway = createGateway({
+      runSearch: jest.fn().mockResolvedValue({
+        name_matches: [],
+        semantic: [
+          { node_id: 91, name: 'zeta.jpg', score: 0.9 },
+          { node_id: 90, name: 'alpha.jpg', score: 0.8 },
+        ],
+        result_ref: 'sr1.savepred',
+        counts: {
+          name: 0,
+          semantic: 2,
+          total: 2,
+          name_truncated: false,
+          semantic_capped_segments: false,
+        },
+        semantic_available: true,
+        predicates: NL_ATOMS,
+      }),
+      createCollection: jest.fn().mockResolvedValue(created),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    await act(async () => {
+      await result.current.saveFromResults();
+    });
+
+    expect(gateway.createCollection).toHaveBeenCalledWith(
+      {
+        name: 'movie',
+        semantic: { resultRef: 'sr1.savepred', predicates: [], nodeIds: [91, 90] },
+      },
+      expect.anything()
+    );
+  });
+});

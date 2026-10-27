@@ -497,3 +497,128 @@ describe('POST /api/search embed-configured wire states', () => {
     expect(res.body.semantic_unavailable_reason).toBe(SERVER_ERROR_CODES.ai.notConfigured);
   });
 });
+
+// ---------------------------------------------------------------------------
+// POST /api/search — the NL-parse leg (parse.nl) on the wire
+// (searchService.md §2.8, routes/search.md §2.4 — fake chat via the adapter
+// seam; the parser E2E case rides the fake-LLM harness.)
+// ---------------------------------------------------------------------------
+
+describe('POST /api/search NL-parse wire states', () => {
+  afterEach(() => {
+    llmRuntime.__setMockAdapter(null);
+  });
+
+  function createRouteNlAdapter({ chatOk = false, chatCalls = [] } = {}) {
+    const adapter = {
+      chatCalls,
+      roleConfigured: async (role) => role === 'embed' || (role === 'chat' && chatOk),
+      embedQuery: async () => ({ vectors: [[1, 0, 0, 0]], dim: 4, modelId: null }),
+    };
+    if (chatOk) {
+      adapter.chat = async (messages, opts) => {
+        chatCalls.push({ messages, opts });
+        return {
+          json: {
+            predicates: [{ type: 'size', min: 1048576 }],
+            vector_query: null,
+          },
+          text: '',
+          usage: null,
+          truncated: false,
+        };
+      };
+    }
+    return adapter;
+  }
+
+  it('chat configured + valid parse ⇒ the 200 carries the additive predicates section', async () => {
+    llmRuntime.__setMockAdapter(createRouteNlAdapter({ chatOk: true }));
+    const ctx = await createUserWithRoot('nlroute');
+    await fileNodeService.createFile(ctx.root.id, 'route-nl-big.pdf');
+
+    const res = await request(app)
+      .post('/api/search')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ query: 'route nl parse over 1mb' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.predicates).toEqual([{ type: 'size', min: 1048576 }]);
+    expect(res.body.counts.name_truncated).toBe(false);
+    expect(res.body.result_ref).toMatch(/^sr1\.[0-9a-f]{16}$/);
+  });
+
+  it('chat-absent vs broken-chat: the 200 BODY IS BYTE-IDENTICAL to the parser-free wire shape', async () => {
+    const ctx = await createUserWithRoot('nlbyte');
+    await fileNodeService.createFile(ctx.root.id, 'route-nl-byte.txt');
+
+    llmRuntime.__setMockAdapter(createRouteNlAdapter({ chatOk: false }));
+    const baseline = await request(app)
+      .post('/api/search')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ query: 'byte identical nl off' });
+    expect(baseline.status).toBe(200);
+    expect('predicates' in baseline.body).toBe(false);
+    expect(Object.keys(baseline.body)).toEqual([
+      'name_matches',
+      'semantic',
+      'result_ref',
+      'counts',
+      'semantic_available',
+    ]);
+
+    // Same query, chat now CONFIGURED but the model output violates the closed grammar:
+    const broken = createRouteNlAdapter({ chatOk: true, chatCalls: [] });
+    broken.chat = async (messages, opts) => {
+      broken.chatCalls.push({ messages, opts });
+      return { json: { predicates: [{ type: 'mime' }] }, text: '', usage: null };
+    };
+    llmRuntime.__setMockAdapter(broken);
+    const degraded = await request(app)
+      .post('/api/search')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ query: 'byte identical nl off' });
+
+    expect(broken.chatCalls).toHaveLength(1);
+    expect(degraded.status).toBe(200);
+    expect(degraded.text).toBe(baseline.text);
+  });
+
+  it('parse cache hit on the wire ⇒ second identical submit adds zero chat calls', async () => {
+    const ctx = await createUserWithRoot('nlhit');
+    await fileNodeService.createFile(ctx.root.id, 'route-nl-hit.txt');
+    const chatCalls = [];
+    llmRuntime.__setMockAdapter(createRouteNlAdapter({ chatOk: true, chatCalls }));
+
+    const first = await request(app)
+      .post('/api/search')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ query: 'zero chat on replay' });
+    expect(first.body.predicates).toEqual([{ type: 'size', min: 1048576 }]);
+    expect(chatCalls).toHaveLength(1);
+
+    const again = await request(app)
+      .post('/api/search')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ query: 'zero chat on replay' });
+
+    expect(again.status).toBe(200);
+    expect(chatCalls).toHaveLength(1);
+    expect(again.body.predicates).toEqual([{ type: 'size', min: 1048576 }]);
+    expect(again.body.result_ref).toBe(first.body.result_ref);
+  });
+
+  it('request predicates: a malformed session state never 4xxes (silently stateless parse)', async () => {
+    llmRuntime.__setMockAdapter(createRouteNlAdapter({ chatOk: true }));
+    const ctx = await createUserWithRoot('nlstate');
+    await fileNodeService.createFile(ctx.root.id, 'route-nl-state.txt');
+
+    const res = await request(app)
+      .post('/api/search')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ query: 'malformed state submit', predicates: 'not-an-array' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.predicates).toEqual([{ type: 'size', min: 1048576 }]);
+  });
+});

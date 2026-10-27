@@ -131,4 +131,73 @@ describe('QueryParsesRepository conformance', () => {
     );
     expect(Number(rows[0].cnt)).toBe(1);
   });
+
+  // --- parse envelope (searchService.md §2.8 — predicates now USED) -----------
+
+  it('recordPredicates writes ONLY predicates: vector/hit_count/created_at survive', async () => {
+    const vector = JSON.stringify({ space: 'v1|model:7', dim: 4, v: [1, 0, 0, 0] });
+    await repo.recordEmbedding({ normalizedQuery: 'parse overwrite', vector });
+    await repo.incrementHitCount('parse overwrite');
+    const before = await readRow('parse overwrite');
+
+    await expect(
+      repo.recordPredicates({
+        normalizedQuery: 'parse overwrite',
+        predicates: { grammar: 'nl1', atoms: [{ type: 'like' }], vectorQuery: null },
+      })
+    ).resolves.toEqual({ changes: 1 });
+
+    const after = await readRow('parse overwrite');
+    expect(after.vector).toBe(vector);
+    expect(Number(after.hit_count)).toBe(Number(before.hit_count));
+    expect(new Date(after.created_at).getTime()).toBe(new Date(before.created_at).getTime());
+  });
+
+  it('recordPredicates on an unknown key inserts a parse-first row with NULL vector', async () => {
+    await repo.recordPredicates({
+      normalizedQuery: 'parse first',
+      predicates: { grammar: 'nl1', atoms: [], vectorQuery: 'refined text' },
+    });
+    const row = await repo.get('parse first');
+    expect(row.vector).toBeNull();
+    expect(row.hitCount).toBe(0);
+    expect(row.predicates).toEqual({
+      grammar: 'nl1',
+      atoms: [],
+      vectorQuery: 'refined text',
+    });
+  });
+
+  it('the parse envelope round-trips VERBATIM as a parsed object on both dialects (boundary is shape-agnostic)', async () => {
+    const envelope = {
+      grammar: 'nl1',
+      atoms: [
+        { type: 'path', value: 'downloads', prefix: '/downloads' },
+        { type: 'size', min: 1048576, max: 52428800 },
+        { type: 'date', withinDays: 30 },
+      ],
+      vectorQuery: 'big downloads from last month',
+    };
+    await repo.recordPredicates({ normalizedQuery: 'envelope roundtrip', predicates: envelope });
+    const row = await repo.get('envelope roundtrip');
+    expect(row.predicates).toEqual(envelope);
+  });
+
+  it('embed and parse writes share the ONE row (two caches, one key)', async () => {
+    await repo.recordPredicates({
+      normalizedQuery: 'shared row',
+      predicates: { grammar: 'nl1', atoms: [{ type: 'tag', value: 'sunset' }], vectorQuery: null },
+    });
+    const vector = JSON.stringify({ space: 'v1|model:7', dim: 4, v: [1, 0, 0, 0] });
+    await repo.recordEmbedding({ normalizedQuery: 'shared row', vector });
+
+    const row = await repo.get('shared row');
+    expect(row.vector).toBe(vector);
+    expect(row.predicates).toMatchObject({ grammar: 'nl1' });
+    const { rows } = await dbQuery(
+      'SELECT COUNT(*) AS cnt FROM query_parses WHERE normalized_query = ?',
+      ['shared row']
+    );
+    expect(Number(rows[0].cnt)).toBe(1);
+  });
 });

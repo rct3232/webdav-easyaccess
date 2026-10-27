@@ -714,3 +714,364 @@ describe('searchService default scorer — vectorStore engine factory', () => {
     expect(result.semantic.map((row) => row.nodeId)).toContain(Number(file.id));
   });
 });
+
+// ---------------------------------------------------------------------------
+// NL-parse leg (parse.nl) — adapter-injected fake chat; parser contract:
+// searchService.md §2.8 (no E2E here — the fake-LLM harness owns it).
+// ---------------------------------------------------------------------------
+
+/** Fake llmAdapter with both exception-family roles; deterministic embed, scripted chat. */
+function createFakeNlAdapter({
+  configuredRoles = ['embed', 'chat'],
+  chatReply = null,
+  chatThrows = null,
+  modelId = 7,
+  dim = 4,
+} = {}) {
+  const embedCalls = [];
+  const chatCalls = [];
+  return {
+    embedCalls,
+    chatCalls,
+    roleConfigured: async (role) => configuredRoles.includes(role),
+    embedQuery: async (text) => {
+      embedCalls.push(text);
+      return { vectors: [[1, 0, 0, 0]], dim, modelId };
+    },
+    chat: async (messages, opts) => {
+      chatCalls.push({ messages, opts });
+      if (chatThrows)
+        throw chatThrows instanceof Error ? chatThrows : new Error(String(chatThrows));
+      const json = typeof chatReply === 'function' ? chatReply(messages) : chatReply;
+      return { json, text: JSON.stringify(json ?? 'not-json'), usage: null, truncated: false };
+    },
+  };
+}
+
+const SIZE_ATOM = { type: 'size', min: 10485760 };
+
+function readPredicatesColumn(normalizedQuery) {
+  return dbQuery('SELECT predicates FROM query_parses WHERE normalized_query = ?', [
+    normalizedQuery,
+  ]).then(({ rows }) => (rows[0] ? JSON.parse(rows[0].predicates) : null));
+}
+
+describe('searchService NL-parse leg — gates (chat-off byte compatibility)', () => {
+  it('chat unconfigured (embed-only) ⇒ ZERO chat calls and the parser-free response', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-gate.txt');
+    const adapter = createFakeNlAdapter({ configuredRoles: ['embed'] });
+    const service = createC1Service({ adapter });
+
+    const result = await service.search(ctx.user.id, { query: 'big files nl-gate-only' });
+
+    expect(adapter.chatCalls).toHaveLength(0);
+    expect(result.predicates).toBeUndefined();
+    expect(Object.keys(result)).not.toContain('predicates');
+  });
+
+  it('chat-off and broken-chat responses are BYTE-IDENTICAL to the parser-free baseline', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-byte.pdf');
+    const embedOnly = createFakeNlAdapter({ configuredRoles: ['embed'] });
+    const first = await createC1Service({ adapter: embedOnly }).search(ctx.user.id, {
+      query: 'byte pin query',
+    });
+
+    const brokenChat = createFakeNlAdapter({
+      configuredRoles: ['embed', 'chat'],
+      chatReply: 'garbage',
+    });
+    const second = await createC1Service({ adapter: brokenChat }).search(ctx.user.id, {
+      query: 'byte pin query',
+    });
+
+    expect(brokenChat.chatCalls).toHaveLength(1);
+    expect(second.predicates).toBeUndefined();
+    expect(JSON.stringify(second)).toBe(JSON.stringify(first));
+  });
+
+  it('AI_NL_PARSE_ENABLED kill switch off ⇒ zero chat calls, embed leg unaffected', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-switch.txt');
+    const adapter = createFakeNlAdapter();
+    const service = createC1Service({
+      adapter,
+      configResolver: {
+        getConfig: async (key) => (key === 'AI_NL_PARSE_ENABLED' ? false : undefined),
+      },
+    });
+
+    const result = await service.search(ctx.user.id, { query: 'switch off query' });
+
+    expect(adapter.chatCalls).toHaveLength(0);
+    expect(result.predicates).toBeUndefined();
+    expect(adapter.embedCalls.length).toBeGreaterThan(0);
+  });
+
+  it('ONE chat call MAX per search submit (segmented query still calls chat once)', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-once.txt');
+    const adapter = createFakeNlAdapter({
+      chatReply: { predicates: [SIZE_ATOM], vector_query: null },
+    });
+    const service = createC1Service({ adapter });
+
+    const result = await service.search(ctx.user.id, { query: 'one two three four' });
+
+    expect(adapter.chatCalls).toHaveLength(1);
+    expect(adapter.chatCalls[0].opts.schema).toBeDefined();
+    expect(adapter.chatCalls[0].opts.maxTokens).toEqual(expect.any(Number));
+    expect(result.predicates).toEqual([SIZE_ATOM]);
+  });
+});
+
+describe('searchService NL-parse leg — output, validation, cache', () => {
+  it('valid parse ⇒ response carries canonical grammar atoms and the nl1 envelope lands in query_parses.predicates', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-write.pdf');
+    const adapter = createFakeNlAdapter({
+      chatReply: {
+        predicates: [
+          { type: 'path', value: 'downloads' },
+          SIZE_ATOM,
+          { type: 'date', withinDays: 365 },
+        ],
+        vector_query: null,
+      },
+    });
+    const service = createC1Service({ adapter });
+
+    const result = await service.search(ctx.user.id, { query: 'downloads pdfs big' });
+
+    expect(result.predicates).toEqual([
+      { type: 'path', value: 'downloads', prefix: '/downloads' },
+      SIZE_ATOM,
+      { type: 'date', withinDays: 365 },
+    ]);
+    const stored = await readPredicatesColumn('downloads pdfs big');
+    expect(stored).toMatchObject({ grammar: 'nl1' });
+    expect(stored.atoms).toEqual(result.predicates);
+    expect(stored.vectorQuery).toBeNull();
+    // The embed vector landed on the SAME row (one row, two caches).
+    const { rows } = await dbQuery(
+      "SELECT vector FROM query_parses WHERE normalized_query = 'downloads pdfs big'"
+    );
+    expect(JSON.parse(rows[0].vector).v).toEqual([1, 0, 0, 0]);
+  });
+
+  it('cache hit ⇒ SECOND submit: zero chat calls, zero embed provider calls, same atoms served', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-hit.pdf');
+    const firstAdapter = createFakeNlAdapter({
+      chatReply: { predicates: [SIZE_ATOM], vector_query: 'huge pdfs' },
+    });
+    await createC1Service({ adapter: firstAdapter }).search(ctx.user.id, { query: 'hit check' });
+
+    const secondAdapter = createFakeNlAdapter({
+      chatReply: { predicates: [{ type: 'like' }], vector_query: null },
+    });
+    const second = await createC1Service({ adapter: secondAdapter }).search(ctx.user.id, {
+      query: 'HIT   check',
+    });
+
+    expect(secondAdapter.chatCalls).toHaveLength(0);
+    expect(secondAdapter.embedCalls).toHaveLength(0);
+    expect(second.predicates).toEqual([SIZE_ATOM]);
+  });
+
+  it('grammar-violating chat output ⇒ SILENT fallback (no key, no cache write, embed on the original text)', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-bad.pdf');
+    const adapter = createFakeNlAdapter({
+      chatReply: { predicates: [{ type: 'mime', value: 'pdf' }], vector_query: null },
+    });
+    const service = createC1Service({ adapter });
+
+    const result = await service.search(ctx.user.id, { query: 'bad grammar query' });
+
+    expect(result.predicates).toBeUndefined();
+    expect(adapter.embedCalls).toEqual(expect.arrayContaining(['bad grammar query']));
+    expect(await readPredicatesColumn('bad grammar query')).toEqual([]);
+  });
+
+  it('chat provider failure (budget/breaker class) ⇒ silent fallback, never a throw', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-fail.pdf');
+    const adapter = createFakeNlAdapter({ chatThrows: 'llm role chat is not configured' });
+    const service = createC1Service({ adapter });
+
+    const result = await service.search(ctx.user.id, { query: 'provider fail query' });
+
+    expect(result.predicates).toBeUndefined();
+    expect(result.semanticAvailable).toBe(true);
+    expect(await readPredicatesColumn('provider fail query')).toEqual([]);
+  });
+
+  it('refined vector_query ⇒ the whole-query embed runs on the refined text, segments keep the original words', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-refine.pdf');
+    const adapter = createFakeNlAdapter({
+      chatReply: { predicates: [], vector_query: '  Mountain Photos  ' },
+    });
+    const service = createC1Service({ adapter });
+
+    const result = await service.search(ctx.user.id, { query: 'mountains over 5mb' });
+
+    expect(adapter.embedCalls).toEqual(['mountain photos', 'mountains', 'over', '5mb']);
+    expect(result.predicates).toEqual([]);
+    // Replay through the PARSE CACHE: chat must not be called again, so the refined text —
+    // and with it the result_ref — is replay-stable.
+    const replayAdapter = createFakeNlAdapter({ chatThrows: 'replay must not call chat' });
+    const replay = await createC1Service({ adapter: replayAdapter }).search(ctx.user.id, {
+      query: 'mountains over 5mb',
+    });
+    expect(replayAdapter.chatCalls).toHaveLength(0);
+    expect(replay.resultRef).toBe(result.resultRef);
+    // The refined text rides the same cached embed path — its OWN normalized-text row:
+    const refined = await readPredicatesColumn('mountain photos');
+    expect(refined).toEqual([]);
+    const { rows } = await dbQuery(
+      "SELECT vector FROM query_parses WHERE normalized_query = 'mountain photos'"
+    );
+    expect(JSON.parse(rows[0].vector).v).toEqual([1, 0, 0, 0]);
+  });
+
+  it('an over-long refinement is dropped while the atoms still apply', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-long.pdf');
+    const adapter = createFakeNlAdapter({
+      chatReply: { predicates: [SIZE_ATOM], vector_query: 'x'.repeat(201) },
+    });
+    const service = createC1Service({ adapter });
+
+    const result = await service.search(ctx.user.id, { query: 'long refine query' });
+
+    expect(result.predicates).toEqual([SIZE_ATOM]);
+    expect(adapter.embedCalls).toEqual(expect.arrayContaining(['long refine query']));
+  });
+
+  it('re-embed on a model-space change keeps the stored parse envelope (parse cache survives the vector cache miss)', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-space.pdf');
+    const firstAdapter = createFakeNlAdapter({
+      chatReply: { predicates: [SIZE_ATOM], vector_query: null },
+    });
+    await createC1Service({ adapter: firstAdapter }).search(ctx.user.id, { query: 'space keep' });
+
+    const shiftAdapter = createFakeNlAdapter({
+      modelId: 9,
+      chatThrows: 'parse cache must not re-call chat',
+    });
+    const shifted = await createC1Service({
+      adapter: shiftAdapter,
+      llmModelsStore: { getActiveByRole: async () => ({ id: 9 }) },
+    }).search(ctx.user.id, { query: 'space keep' });
+
+    // Chat is CONFIGURED on this instance yet the atoms arrive with ZERO chat calls —
+    // they came from the parse cache while the vector cache missed (new space, re-embed).
+    expect(shiftAdapter.chatCalls).toHaveLength(0);
+    expect(shiftAdapter.embedCalls.length).toBeGreaterThan(0);
+    expect(shifted.predicates).toEqual([SIZE_ATOM]);
+    const { rows } = await dbQuery(
+      "SELECT vector FROM query_parses WHERE normalized_query = 'space keep'"
+    );
+    expect(JSON.parse(rows[0].vector).space).toBe('v1|model:9');
+  });
+
+  it('tampered envelope is a MISS: re-parse overwrites it', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-tamper.pdf');
+    await dbQuery(
+      `INSERT INTO query_parses (normalized_query, predicates)
+       VALUES ('tamper row', '{"grammar":"nl1","atoms":[{"type":"mime"}],"vectorQuery":null}')`
+    );
+
+    const adapter = createFakeNlAdapter({ chatReply: { predicates: [SIZE_ATOM] } });
+    const result = await createC1Service({ adapter }).search(ctx.user.id, {
+      query: 'tamper row',
+    });
+
+    expect(adapter.chatCalls).toHaveLength(1);
+    expect(result.predicates).toEqual([SIZE_ATOM]);
+    expect(await readPredicatesColumn('tamper row')).toMatchObject({
+      grammar: 'nl1',
+      atoms: [SIZE_ATOM],
+    });
+  });
+});
+
+describe('searchService NL-parse leg — session predicate state', () => {
+  it('grammar-valid request state reaches the prompt (symbols only) and runs the parse LIVE', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-state.pdf');
+    const adapter = createFakeNlAdapter({
+      chatReply: {
+        predicates: [
+          { type: 'path', value: '/downloads' },
+          { type: 'tag', value: 'pdf' },
+        ],
+        vector_query: null,
+      },
+    });
+    const service = createC1Service({ adapter });
+
+    const result = await service.search(ctx.user.id, {
+      query: 'stateful submit',
+      predicates: [{ type: 'like' }],
+    });
+
+    expect(result.predicates).toEqual([
+      { type: 'path', value: '/downloads', prefix: '/downloads' },
+      { type: 'tag', value: 'pdf' },
+    ]);
+    expect(adapter.chatCalls).toHaveLength(1);
+    const userMessage = adapter.chatCalls[0].messages[adapter.chatCalls[0].messages.length - 1];
+    // Symbols only — the like-atom arrives as field/value text, never as vectors or ids.
+    expect(userMessage.content).toContain('stateful submit');
+    expect(userMessage.content).toContain('like');
+    expect(userMessage.content).not.toContain('nodeId');
+  });
+
+  it('a state-carrying submit neither reads NOR writes the parse cache', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-skip.pdf');
+    const warm = createFakeNlAdapter({ chatReply: { predicates: [SIZE_ATOM] } });
+    await createC1Service({ adapter: warm }).search(ctx.user.id, { query: 'cache skip row' });
+    expect(warm.chatCalls).toHaveLength(1);
+
+    const stateful = createFakeNlAdapter({ chatReply: { predicates: [{ type: 'like' }] } });
+    const second = await createC1Service({ adapter: stateful }).search(ctx.user.id, {
+      query: 'cache skip row',
+      predicates: [{ type: 'tag', value: 'beach' }],
+    });
+
+    expect(stateful.chatCalls).toHaveLength(1);
+    expect(second.predicates).toEqual([{ type: 'like' }]);
+    expect(await readPredicatesColumn('cache skip row')).toMatchObject({ atoms: [SIZE_ATOM] });
+
+    const statelessAgain = createFakeNlAdapter();
+    const third = await createC1Service({ adapter: statelessAgain }).search(ctx.user.id, {
+      query: 'cache skip row',
+    });
+    expect(statelessAgain.chatCalls).toHaveLength(0);
+    expect(third.predicates).toEqual([SIZE_ATOM]);
+  });
+
+  it('malformed request state is discarded silently (never a 4xx path) — parse runs stateless', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'nl-badstate.pdf');
+    const adapter = createFakeNlAdapter({ chatReply: { predicates: [] } });
+    const service = createC1Service({ adapter });
+
+    const result = await service.search(ctx.user.id, {
+      query: 'bad state row',
+      predicates: 'not-an-array',
+    });
+
+    expect(result.predicates).toEqual([]);
+    expect(adapter.chatCalls).toHaveLength(1);
+    const userMessage = adapter.chatCalls[0].messages[adapter.chatCalls[0].messages.length - 1];
+    expect(userMessage.content).toBe('bad state row');
+  });
+});

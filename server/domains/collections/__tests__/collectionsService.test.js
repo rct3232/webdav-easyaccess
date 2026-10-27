@@ -9,6 +9,8 @@ const aiTagStore = require('@server/store/aiTagStore');
 const usageStore = require('@server/store/usageStore');
 const embeddingsStore = require('@server/store/embeddingsStore');
 const llmModelsStore = require('@server/store/llmModelsStore');
+const Settings = require('@server/models/Settings');
+const { getSharedResolver } = require('@server/infrastructure/configResolver');
 const composition = require('@server/service/composition');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
 const { createFileNodeService } = require('@server/service/fileNodeService');
@@ -793,6 +795,136 @@ describe('collectionsService seed preview (§2.7)', () => {
     expect(result.count).toBe(15);
     expect(result.sample).toHaveLength(12);
     expect(result.sample_truncated).toBe(true);
+  });
+});
+
+describe('collectionsService view-weighted soft boost (§2.3 — ordering only)', () => {
+  /**
+   * Seed = beach [1,0,0,0]. Raw cosine order: strong (≈0.999) > mid (≈0.994)
+   * > viewed (0.8). The viewed node carries 9999 viewing signals
+   * (open + preview lifetime counts), so boosted(0.8) = 0.8 × 1.4 = 1.12
+   * outranks strong under the shipped α = 0.1.
+   */
+  async function setupBoostFixture(extraCandidateVector) {
+    collectionsService.__setRuntimeSeamsForTests({ llmAdapter: embedConfiguredAdapter() });
+    const ctx = await setupServiceUser('viewboost');
+    const modelId = await ensureEmbedModel('viewboost');
+    const strong = await fileNodeService.createFile(ctx.root.id, 'strong.jpg');
+    const mid = await fileNodeService.createFile(ctx.root.id, 'mid.jpg');
+    const viewed = await fileNodeService.createFile(ctx.root.id, 'viewed.jpg');
+    await embedNode(ctx.beach.id, modelId, [1, 0, 0, 0]);
+    await embedNode(strong.id, modelId, [1, 0.05, 0, 0]);
+    await embedNode(mid.id, modelId, [0.9, 0.1, 0, 0]);
+    await embedNode(viewed.id, modelId, [0.8, 0.6, 0, 0]);
+    let cold = null;
+    if (extraCandidateVector) {
+      cold = await fileNodeService.createFile(ctx.root.id, 'cold.jpg');
+      await embedNode(cold.id, modelId, extraCandidateVector);
+    }
+    const viewedRows = [
+      {
+        userId: ctx.user.id,
+        nodeId: viewed.id,
+        counts: { open: 5000, download: 0, preview: 4999, search_hit: 0, like: 0 },
+        lastSeenAtMs: Date.now(),
+        score: 9999,
+        updatedAtMs: Date.now(),
+      },
+    ];
+    if (cold) {
+      viewedRows.push({
+        userId: ctx.user.id,
+        nodeId: cold.id,
+        counts: { open: 5000, download: 0, preview: 4999, search_hit: 0, like: 0 },
+        lastSeenAtMs: Date.now(),
+        score: 9999,
+        updatedAtMs: Date.now(),
+      });
+    }
+    await usageStore.upsertNodeActivity(viewedRows);
+    return { ctx, strong, mid, viewed, cold };
+  }
+
+  /** Mirror of the evolution-suite config seam: warm the resolver cache after a write. */
+  async function setConfig(key, value) {
+    await Settings.set(key, String(value));
+    const resolver = getSharedResolver();
+    resolver.invalidateCache(key);
+    await resolver.getConfig(key);
+  }
+
+  afterEach(async () => {
+    collectionsService.__resetRuntimeSeamsForTests();
+    await setConfig('AI_VIEW_WEIGHT_ALPHA', '0.1');
+  });
+
+  it('re-ranks the preview sample by the view-boosted score; the creation batch stays raw', async () => {
+    const { ctx, strong, mid, viewed } = await setupBoostFixture();
+
+    const result = await collectionsService.preview(ctx.user.id, { seedNodeId: ctx.beach.id });
+    expect(result.count).toBe(3);
+    expect(result.sample.map((row) => row.nodeId)).toEqual([viewed.id, strong.id, mid.id]);
+
+    // Admission never sees the boost: the batch is the same top-K candidate set.
+    const { collection } = await collectionsService.createSeedCollection(ctx.user.id, {
+      name: 'Boosted',
+      seedNodeId: ctx.beach.id,
+    });
+    const items = await collectionsStore.listStoredItems(collection.id);
+    expect(items.map((row) => Number(row.nodeId)).sort((a, b) => a - b)).toEqual(
+      [strong.id, mid.id, viewed.id].sort((a, b) => a - b)
+    );
+  });
+
+  it('AI_VIEW_WEIGHT_ALPHA=0 restores the raw cosine sample order (T2 hot read)', async () => {
+    const { ctx, strong, mid, viewed } = await setupBoostFixture();
+    await setConfig('AI_VIEW_WEIGHT_ALPHA', '0');
+
+    const result = await collectionsService.preview(ctx.user.id, { seedNodeId: ctx.beach.id });
+    expect(result.sample.map((row) => row.nodeId)).toEqual([strong.id, mid.id, viewed.id]);
+  });
+
+  it('the top-K cut and the batch never move with views (admission un-boosted)', async () => {
+    // 201 candidates with strictly decreasing cosine; the LOWEST-cosine file
+    // carries 9999 views. A boost leaking into the top-K cut would displace
+    // the raw top file with the viewed low-cosine one.
+    collectionsService.__setRuntimeSeamsForTests({ llmAdapter: embedConfiguredAdapter() });
+    const ctx = await setupServiceUser('viewcut');
+    const modelId = await ensureEmbedModel('viewcut');
+    await embedNode(ctx.beach.id, modelId, [1, 0, 0, 0]);
+    const candidates = [];
+    for (let i = 0; i < 201; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const file = await fileNodeService.createFile(ctx.root.id, `cut-${i}.jpg`);
+      // eslint-disable-next-line no-await-in-loop
+      await embedNode(file.id, modelId, [Math.cos(i * 0.001), Math.sin(i * 0.001), 0, 0]);
+      candidates.push(file);
+    }
+    const lowest = candidates[200]; // raw rank #201 — outside the top-K cut
+    const highest = candidates[0];
+    await usageStore.upsertNodeActivity([
+      {
+        userId: ctx.user.id,
+        nodeId: lowest.id,
+        counts: { open: 5000, download: 0, preview: 4999, search_hit: 0, like: 0 },
+        lastSeenAtMs: Date.now(),
+        score: 9999,
+        updatedAtMs: Date.now(),
+      },
+    ]);
+
+    const result = await collectionsService.preview(ctx.user.id, { seedNodeId: ctx.beach.id });
+    expect(result.count).toBe(200);
+    expect(result.sample.some((row) => row.nodeId === lowest.id)).toBe(false);
+    expect(result.sample.some((row) => row.nodeId === highest.id)).toBe(true);
+
+    const { collection } = await collectionsService.createSeedCollection(ctx.user.id, {
+      name: 'Cut guard',
+      seedNodeId: ctx.beach.id,
+    });
+    const items = await collectionsStore.listStoredItems(collection.id);
+    expect(items.some((row) => Number(row.nodeId) === lowest.id)).toBe(false);
+    expect(items.some((row) => Number(row.nodeId) === highest.id)).toBe(true);
   });
 });
 

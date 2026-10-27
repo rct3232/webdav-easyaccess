@@ -19,19 +19,20 @@
 
 ### 2.2 Props
 
-| Name           | Type     | Required | Default | Description                                                                                                 |
-| -------------- | -------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------- |
-| file           | object   | Y        | -       | File object (path, basename, size, lastmod, type, thumbnailUrl, isHidden)                                   |
-| isSelected     | boolean  | Y        | -       | Selected state (container shows light primary background)                                                   |
-| isDisabled     | boolean  | Y        | -       | Disabled appearance                                                                                         |
-| isProcessing   | boolean  | Y        | -       | Show processing overlay                                                                                     |
-| processingType | string   | N        | -       | Type for renderProcessingIcon                                                                               |
-| isDropTarget   | boolean  | Y        | -       | Drop target highlight                                                                                       |
-| isDragging     | boolean  | Y        | -       | Dragging state (handled by parent)                                                                          |
-| selectionMode  | boolean  | Y        | -       | Selection mode active (affects container styling when isSelected)                                           |
-| showMoreButton | boolean  | Y        | -       | Show More (⋮) button; false when in selection mode                                                          |
-| onMoreClick    | function | Y        | -       | More button click handler; opens FileActionSheet; call stopPropagation so row tap does not toggle selection |
-| isMobile       | boolean  | Y        | -       | Mobile styles                                                                                               |
+| Name           | Type     | Required | Default | Description                                                                                                                |
+| -------------- | -------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
+| file           | object   | Y        | -       | File object (path, basename, size, lastmod, type, thumbnailUrl, isHidden)                                                  |
+| isSelected     | boolean  | Y        | -       | Selected state (container shows light primary background)                                                                  |
+| isDisabled     | boolean  | Y        | -       | Disabled appearance                                                                                                        |
+| isProcessing   | boolean  | Y        | -       | Show processing overlay                                                                                                    |
+| processingType | string   | N        | -       | Type for renderProcessingIcon                                                                                              |
+| isDropTarget   | boolean  | Y        | -       | Drop target highlight                                                                                                      |
+| isDragging     | boolean  | Y        | -       | Dragging state (handled by parent)                                                                                         |
+| selectionMode  | boolean  | Y        | -       | Selection mode active (affects container styling when isSelected)                                                          |
+| showMoreButton | boolean  | Y        | -       | Show More (⋮) button; false when in selection mode                                                                         |
+| onMoreClick    | function | Y        | -       | More button click handler; opens FileActionSheet; call stopPropagation so row tap does not toggle selection                |
+| isMobile       | boolean  | Y        | -       | Mobile styles                                                                                                              |
+| memberships    | array    | N        | null    | Host-prepared containing-collection slice `[{ id, name }]` (`CollectionMembershipBadges.md` §2.6); absent ⇒ zero badge DOM |
 
 ### 2.3 Callback Signatures
 
@@ -41,7 +42,7 @@
 
 ### 2.4 Dependencies
 
-- **imports:** React, useTranslation, MUI Typography/Box/Avatar/CircularProgress/Tooltip, formatFileSize, formatDate, renderProcessingIcon, getDropTargetStyles, getFileIcon, getThumbnail, MemberStateBadges, MemberStateBadges
+- **imports:** React, useTranslation, MUI Typography/Box/Avatar/CircularProgress/Tooltip, formatFileSize, formatDate, renderProcessingIcon, getDropTargetStyles, getFileIcon, getThumbnail, MemberStateBadges, CollectionMembershipBadges
 - **Reference implementation:** `client/src/components/file-manager/FileListItem.js`
 
 ### 2.5 i18n Keys
@@ -64,7 +65,8 @@
   - **`file.highlights`:** range list `[{ start, end, kind }]` rendered inside the existing truncated-name `Typography` (segments keep the middle-ellipsis + full-name `Tooltip` behavior — ranges are computed against the RENDERED truncated string, `searchHighlight.md`); `kind: 'committed'` ranges take the secondary.light color + `data-testid="search-highlight-range"`, `kind: 'live'` ranges the theme `highlight` yellow token + `data-testid="filter-highlight-range"`; absent ⇒ plain name render.
   - **Read-only badge:** `file.isSearchServerRow === true && file.hasWritePermission === false` ⇒ a plain 16px `EditOff` icon overlaid on the leading icon/avatar column corner (same overlay geometry family as `MemberStateBadges` list variant; icon-only, no plate, no dedicated copy key), `data-testid="search-readonly-badge-<nodeId>"`; regular rows render none.
   - **Size suppression:** `file.isSearchServerRow === true && file.size == null` ⇒ size caption omitted until metadata enrichment lands (same rule shape as the member-size-null slot; directories keep the folder label).
-- **Memo comparator:** additionally compares `file.published`, `file.shared_excluded`, `file.highlights`, `file.hasWritePermission` and `file.hasReadPermission` (absent ⇒ `undefined === undefined` — no file-side behavior change) so member state flips and search highlight/permission changes re-render rows whose name/path never change.
+- **Membership badges (`CollectionMembershipBadges.md`):** optional `memberships` prop (host-prepared slice) renders `<CollectionMembershipBadges nodeId={file.nodeId} entries={memberships} variant="list" />` as a flex overlay on the SAME leading icon/avatar column — `position: absolute; top: <overlayTop>; left: 2; z-index: 1` (plain 16px glyphs, no plate). Stacking rule: the search read-only `EditOff` overlay owns `top: 2`; when a row renders BOTH (read-only snapshot row with membership), the membership row gets `overlayTop: 20` (stacks below). Member rows never receive the slice, so the member-state overlay and the membership overlay never coexist. Absent slice ⇒ zero DOM.
+- **Memo comparator:** additionally compares `file.published`, `file.shared_excluded`, `file.highlights`, `file.hasWritePermission` and `file.hasReadPermission` (absent ⇒ `undefined === undefined` — no file-side behavior change) so member state flips and search highlight/permission changes re-render rows whose name/path never change. The `memberships` PROP is compared BY IDENTITY (undefined/null-safe) so membership refreshes re-render exactly the rows whose slice changed.
 
 ### 2.7 Verification Scenarios
 
@@ -77,6 +79,7 @@ Checklist for unit test writing:
 - [x] Processing overlay when isProcessing
 - [ ] Member row (isCollectionMember, size absent): no size caption; `shared_excluded`/`published:false` badges render with the member testids (`member-excluded-badge-*` / `member-publish-pending-badge-*`) as an overlay on the leading icon/avatar column; revoked rows render NEITHER badge; More button carries `file.moreButtonTestId`; state flips (published) re-render the row through the memo comparator. A plain file row renders unchanged.
 - [ ] Search server row: `highlights` render the two-colored ranges (`search-highlight-range` / `filter-highlight-range`) inside the truncated name with the Tooltip intact; `hasWritePermission:false` renders the `search-readonly-badge-<nodeId>` EditOff at the icon corner; null size suppresses the caption; `highlights`/permission field flips re-render the row through the memo comparator. A plain file row renders byte-identical.
+- [ ] `memberships` slice renders the leading-column membership overlay (`membership-badge-<nodeId>-<collectionId>`, cap 2 + `membership-badge-more-<nodeId>`); with the read-only `EditOff` present the overlay stacks below it (`overlayTop 20`); absent slice ⇒ zero DOM; a changed slice identity re-renders through the memo comparator.
 
 ### 2.8 Edge Cases
 

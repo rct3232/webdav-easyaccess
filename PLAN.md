@@ -2291,3 +2291,81 @@ reconcile, create, split, merge candidates, auto-pin reconcile. Final gates: ful
 **179 suites / 3,073 tests pass (28 skipped)**; PG CollectionsRepository 33/33 and
 UsageRepository 10/10 conformance; `docsStatePurity` green; eslint/prettier clean. Archive/purge
 and item activity ordering remain T2.3.
+
+## 30. P3 execution plan — proposals, sharing, subscriptions (owner-adjudicated 2026-10-27)
+
+> Execution ledger overlay for §7 P3. Task rows/definitions stay unchanged; this section records
+> the substrate re-scope (P1/P2 + §10 polish already landed a large share of the P3 server
+> surface), the owner rulings, and the wave order. Per unit: docs-first (AGENTS §2.1) → RED →
+> GREEN → gates → merge into `ai-feature` only; task branches never edit PLAN.md (§24 standing
+> rule — the orchestrator owns these rows). Base: `ai-feature` @ `f91ecf38` (P2 closed).
+
+### 30.1 Substrate re-scope (audit 2026-10-27; orchestrator spot-checked against source)
+
+| Task | Already landed (verified) | Actual residual |
+| ---- | ------------------------- | --------------- |
+| T3.1 | Server complete: DDL `collection_merge_suggestions` incl. `dismiss_count`/`arbiter_verdict`/`arbiter_reason` (001:265–269); repo twins + facade; routes `GET /merge-suggestions` (`routes.js:80`), `POST /:id/merge/:other`, `/:id/merge-dismiss` (:410), `/:id/merge-reject` (:430); evolutionService Pass 5 candidates (Jaccard ≥0.7 ∧ sizeRatio ≥0.7, D4 dismiss/reopen cadence); service serialization already maps additive `recommendation`; client seams (`useCollections.mergePair`/dismiss/reject) | **MergeProposalCard** greenfield (`FileManager.js:1262` still `mergeSlot: null`); server §2.4 conformance audit (payloads, score-desc order, error codes, survivor/name_locked rule, grants-dropped, undo); **arbiter** (T3.4-gated; `arbiterCalls: 0` placeholder); overlap-sample payload extension anchored INTO T3.1 (R2) |
+| T3.2 | Grants CRUD + `DELETE /:id/grants/me` (P-1) + publish pipeline + `publish_mode ask\|off\|auto` (001:190) + cross-leak (`resolveMemberViews`) + live per-read resolution | **`shareService.js` split** (spec-named file `server/domains/collections/shareService.js`; spec's own note assigns the delegation to this task); **`is_tip` per-subject server-side computation** (register (e); `actions/service.js:129–151` comment names T3.2) + `routes/actions.md`/`actionJournalStore.md` docs; audit/close: `assertMemberConsumable`, `publishPendingCount` owner-only, admin-grantee-ban parity (§14); **CollectionPropertiesDialog** greenfield (dispatch seam reserved `FileManager.js:728–731`); viewer chip surface |
+| T3.3 | DDL `file_suggestions` (001:337–348); dashboard computed suggestions + `POST /suggestions/accept` (un-journaled P0 state); near-dup availability gating (C4) | Greenfield: `FileSuggestionsRepository` interface+twins+conformance (PG leg REQUIRED) + facade; **store/route specs written at this docs step** (§7.1); rule-variant generator pass (hash-first exact dups, filename/temp/screenshot/installer patterns); vector variant from C4 near-dup groups — **θ_dup reads the profile (EG2 0.955); the task-row "0.97" is the superseded generic default**; hash-twin members excluded; short-doc cosine exception; accept → **command-unit journal undo**; dismiss (component already renders `row.id && onDismiss` — host does not pass it); expiry retention; dashboard AI-block §4.12 gate audit |
+| T3.4 | `query_parses` cache + `{space,dim,v}` envelope + reserved `predicates` (C1); grammar `ATOM_TYPES = path/tag/like/date/size` (`definitionEngine.js:27`); chat adapter (B2) | Greenfield: `parse.nl` under the request-path exception family (≤1 call batched with query-embed, closed grammar, session predicate state field/value only, parse failure ⇒ silent vector+name fallback); `query_parses.predicates` storage begins; additive two-section response extension; client `applyStep` consumption (minimal) |
+| T3.5 | `action_journal` domain enum already includes `batch` (no writer); `OperationProgressStore.setJobCancelled` exists | Greenfield: batch worker honors `job.cancelled` per item (today write-only); ONE journal command row `domain='batch'`, subject `batch:<jobId>`, item-level inverse list in payload (actionJournalStore.md binding); undo path (fingerprint mismatch ⇒ skip, mixed results allowed); client undo integration (`useBulkOperations` has ZERO undo wiring today); docs step checks the `file`-domain enum row (rename undo per §4.11 matrix) |
+| T3.6 | Server COMPLETE: `POST /for-nodes` (`routes.js:94`), `getForNodes`, `listForNodes` twins, tests; client `getMemberships` seam landed but unconsumed | Client only: membership chips (grid `cornerBadges` slot / list leading overlay idiom, `getMemberships` batched ≤100 per §24 chunking precedent) + files-surface toolbar bulk add-to-collection (`FileManagerControls` supports it; shell passes it only in memberMode); file-listing contracts stay frozen |
+
+### 30.2 Owner rulings (2026-10-27)
+
+- **R1 (merge band)**: the card gate stays **Jaccard ≥ 0.7** in the LLM-free default; 0.55–0.7
+  band pairs become cards ONLY via an arbiter verdict (chat configured). §4.19's "chat off ⇒
+  card still appears" sentence is superseded by this ruling — amend docs-first at the T3.1c/T3.4
+  docs steps (provenance → AI_FEATURE_PLAN §12).
+- **R2 (compare overlay)**: owner ruling 2026-10-27 — the `overlap_sample` payload extension is
+  anchored INTO T3.1: the card ships with the REAL compare overlay, not the skeleton state.
+  Server `GET /merge-suggestions` gains `overlap_sample: [{a_node_id, b_node_id}]` + per-side
+  unique samples (the extension AI_FEATURE_PLAN §12.11 rules as REQUIRED "at its own docs
+  step" — T3.1's docs step is that step); MergeProposalCard.md's "until shipped, skeleton
+  rows" sentence is amended in the same PR (docs-first).
+- **R3 (parser E2E)**: T3.4 is verified in P3 by unit/integration tests with an adapter-injected
+  fake chat; the parser E2E case (E2E-AI-002) rides the T4.3 fake-LLM harness.
+- **θ_dup governance** (recorded, no ruling needed): the vector suggestion variant reads the
+  active profile `thetaDup` (EG2 0.955 measured, Q10); PLAN task-row "0.97" is superseded.
+
+### 30.3 Wave plan (branches from `ai-feature`; merge back to `ai-feature` only)
+
+| Wave | Unit | Branch | Scope | Deps | RED-first targets | Effort |
+| ---- | ---- | ------ | ----- | ---- | ----------------- | ------ |
+| 1 | T3.1 merge card UI + overlap payload (+ server audit) | `feature/t31-merge-card` | MergeProposalCard (68px collapsed one-liner, `+N more` chip cycling, expand → REAL two-column compare overlay, [Merge primary][Keep separate ghost][Later text]), `mergeSlot` wiring, merge → undo toast, zero-pending ⇒ zero layout footprint, en/ko; server: §2.4 conformance audit with pins + `overlap_sample: [{a_node_id, b_node_id}]` + per-side unique samples payload extension (R2) | none | card-is-confirmation (no extra dialog), no-stack single card, Later/Keep-separate dispatches, undo toast on merge, overlay renders real sample rows (zero-fabrication caveat retired), `mergeSameCollection`/`suggestionNotFound` codes | M–L |
+| 1 | T3.2a sharing server core | `feature/t32a-share-service` | `shareService.js` split (spec file path), `is_tip` per-subject computation (register (e)) + actions-feed docs, audit/close `assertMemberConsumable` + `publishPendingCount` owner-only + admin-ban parity, editor membership-write path verification | none | two-actors×one-subject is_tip matrix, route parity after the split, admin grantee 403 | M–L |
+| 1 | T3.3 file_suggestions persisted leg | `feature/t33-file-suggestions` | repo (interface+twins+conformance) + facade + NEW store/route specs + rule-variant generator pass + vector variant (profile θ_dup, hash-twin excluded, short-doc exception) + accept → command-unit journal undo + dismiss + expiry retention + dashboard AI-block gate + client (onDismiss wiring, undo toast, expiry footer) | none | twins conformance incl. PG leg, accept-undo restoration, dismiss state transitions, AI-block absent when embed unconfigured | M–L |
+| 1 | T3.5 batch journal + cancellation | `feature/t35-batch-journal` | worker honors `job.cancelled` per item; ONE journal command row (`batch:<jobId>`, item-level inverses); undo path (fingerprint mismatch ⇒ skip); client `useBulkOperations` → `handleUndoable` + `useUndoToast` consumption; docs: `file`-domain enum row check | none | mid-batch cancel reflects per-item skip, single journal row, mixed-batch undo, 409 cascade path | M |
+| 2 | T3.2b sharing client | `feature/t32b-sharing-ui` | CollectionPropertiesDialog (Sharing tab: grants list/add via UserSelectionMenu/revoke, `publish_mode` radio + exposure-explicit copy, owner-only tab), `sharing` dispatch seam, viewer chip surface, i18n | T3.2a | owner-only tab gating, grant add/revoke flows, publish_mode PUT, viewer sees no tab (absent-not-disabled) | M |
+| 2 | T3.6 membership chips | `feature/t36-membership-chips` | chips in grid/list via batched `getMemberships` (≤100), files-toolbar bulk add wiring, comparator extensions, i18n; file-listing contracts frozen | none | chip accuracy/caps, batched fetch, writable multi-select gating, listing contract pins | S–M |
+| 2 | T3.4 NL parser | `feature/t34-nl-parser` | `parse.nl` (≤1 call batched with query-embed, closed grammar, session predicate state, silent fallback), `query_parses.predicates` storage, additive two-section response, minimal client consumption | B2+C1 (done) | cache hit ⇒ zero chat calls, schema-checked grammar-constrained output, chat-off ⇒ P1-identical response | L |
+| 3 | T3.1c merge arbiter | `feature/t31c-merge-arbiter` | nightly arbiter pass over 0.55–0.7 band pairs (chat-configured only); prompt MUST carry symmetric-difference inputs (names, top tags, sizes, ≤5 member summaries per side + unique-member counts/ratios/samples); verdict → `arbiter_verdict/reason` + `recommendation` prefill; `sibling` ⇒ no card; `arbiterCalls` metric; budgets/kill-switch; advises-never-acts | T3.4 + T3.1 | prompt builder asserts symmetric diff, chat-off ⇒ zero calls + cards unaffected, verdict persisted | M |
+| 3 | Exit gate | orchestrator | full gates + E2E extension + ledger closure | all | §6 gates + docsStatePurity + grep-gates | — |
+
+**Merge order**: Wave 1 = T3.5 → T3.3 → T3.2a → T3.1 (T3.1 is the only Wave-1 unit editing
+`FileManager.js`; T3.5's client leg touches it minimally — sequence its merge first). Wave 2 =
+T3.2b → T3.6 → T3.4 (T3.2b/T3.6 both touch `FileManager.js` — stated order resolves).
+
+### 30.4 Verification gates (§29.3 discipline carried forward)
+
+- Per wave: RED-first suites; full `cd server && npm run test:ci`; client `test:ci` when client
+  seams change; `test:ci:pg:adapters` whenever repositories/schema are touched (T3.3 twins
+  REQUIRED; T3.2a if grant surfaces change); `test:ci:pg:vector` only if a vector path changes.
+- **No DDL change is expected in P3** — `file_suggestions`, `collection_merge_suggestions`
+  (incl. arbiter columns), grants, `publish_mode` all shipped in 001. Any discovered gap is a
+  big-bang-script decision (§17-3), never an ALTER chain.
+- Membership stability pins: `GET /`, `GET /:id/items`, `POST /for-nodes` perform ZERO
+  definition evaluation (T3.6 regression).
+- CI grep-gates unchanged (`CacheAdapter|operationProgress`, tag-purge absence); docsStatePurity
+  green; eslint/prettier clean on touched files; new specs state-only (docsStatePurity covers).
+- E2E: collections dual gains E2E-S3-COLLECTION-021+ (merge card lifecycle incl. undo; sharing
+  grant → recipient view → leave → re-grant re-dot; suggestions accept-undo-dismiss);
+  E2E_COVERAGE_PLAN rows added at each docs step; `ai-desktop` unchanged (parser E2E → T4.3
+  per R3); per-worktree port-band discipline per TEST_GIT_GUIDE.
+
+### 30.5 P3 exit gate
+
+All §7 P3 rows closed (T3.1 includes the T3.1b/1c legs), full server/client `test:ci` +
+`test:ci:pg:adapters` green on the merged tip, extended E2E suites green, grep-gates +
+docsStatePurity clean, this ledger updated. The single `ai-feature`→`dev` merge remains a later
+event after ALL §7 phases (P4 still open).

@@ -4,15 +4,17 @@ Target-contract spec.
 
 ## 1. Overview
 
-| Item       | Description                                                                                   |
-| ---------- | --------------------------------------------------------------------------------------------- |
-| Mount path | `/api/search`                                                                                 |
-| Role       | Server-wide hybrid search: name-containment section + semantic vector section + `result_ref`. |
+| Item       | Description                                                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Mount path | `/api/search`                                                                                                                   |
+| Role       | Server-wide hybrid search: name-containment section + semantic vector section + `result_ref` + additive NL-parsed `predicates`. |
 
 **Layer boundary:** this endpoint is the Search Engine layer only
-(`searchService` + `vectorStore` + `fileNodesStore` ACL joins). The conversational layer
-is a reserved boundary — MVP only emits/accepts the opaque `result_ref`; no
-session state, no predicates beyond name+vector.
+(`searchService` + `vectorStore` + `fileNodesStore` ACL joins + the `parse.nl` leg,
+searchService.md §2.8). The conversational layer is a reserved boundary — this endpoint
+emits/accepts the opaque `result_ref`, accepts request-side predicate STATE as parse context
+(field/value atoms only), and returns the parsed predicate set; it stores no session and
+resolves no references.
 
 ---
 
@@ -32,7 +34,7 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 
 | Method | Path     | Auth  | Description                                                                                                                                |
 | ------ | -------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| POST   | `/`      | Token | Hybrid query: `{ query, result_ref? }` → sections.                                                                                         |
+| POST   | `/`      | Token | Hybrid query: `{ query, result_ref?, predicates? }` → sections (+ additive parsed `predicates`).                                           |
 | POST   | `/click` | Token | Usage-signal list-entry-click recording point for search results: `{ node_id }` → one `usage_events` row `action='open'`, fire-and-forget. |
 
 ### 2.3 Middleware Used
@@ -42,10 +44,13 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 
 ### 2.4 Request/Response Spec
 
-- **POST /:** Body `{ query, result_ref? }`. `query`: trimmed, 1–200 chars (400
-  `search.queryRequired` / `search.queryTooLong`). `result_ref` is optional and **ignored
-  by the MVP server** (conversational reservation: accepted shape, interpretation is
-  the future layer's job); sending it never changes the response.
+- **POST /:** Body `{ query, result_ref?, predicates? }`. `query`: trimmed, 1–200 chars (400
+  `search.queryRequired` / `search.queryTooLong`). `result_ref` is optional and **ignored by
+  the server** (conversational reservation: accepted shape, interpretation is
+  the future layer's job); sending it never changes the response. `predicates` is optional
+  session predicate state (searchService.md §2.2/§2.8): an array of shared-grammar atoms
+  (path/tag/like/date/size, field/value only) used as `parse.nl` context; a non-array or any
+  grammar-invalid entry is discarded silently (never a 4xx) and the parse runs stateless.
   Side effect: logs one `usage_events` row `action='search_hit'` per returned node
   (search is a low-frequency usage-logging endpoint).
 
@@ -78,9 +83,22 @@ versa" is a pure display rule on the returned arrays).
 
 **`result_ref`:** opaque string = the replay **signature** of this execution —
 `hash(normalized predicates ∥ vector query ∥ space ∥ sort)` (the name-only
-fallback signature covers the query string + ACL-space + sort). Always emitted, always
+fallback signature covers the query string + ACL-space + sort; when the parse leg supplied a
+refined vector-query text, the `vector query` slot is the refined text — searchService.md
+§2.4). Always emitted, always
 replayed (never a materialized id list). The client treats
 it as a black box.
+
+**NL-parsed `predicates` (additive, structured-predicate header element):** the parsed
+shared-grammar atom array from the `parse.nl` leg (searchService.md §2.8). The key is
+present EXACTLY when the parse applied (chat configured ∧ kill switch on ∧ schema- AND
+grammar-valid output) — possibly as an empty array (valid parse, no atoms). The chat role
+unconfigured, the kill switch off, or ANY parse failure ⇒ the key is ABSENT and the
+response is byte-identical to the parser-free shapes below. Wire atoms keep the canonical
+grammar field names (`type`, `value`, path's normalized `prefix`, `withinDays`, `after`,
+`before`, `min`, `max`) — field/value symbols only, NEVER vectors or node ids. The name and
+semantic sections are computed independently of the parse (the name section is LLM-free by
+contract).
 
 200 response (embed configured, both sections non-empty):
 
@@ -97,6 +115,29 @@ it as a black box.
     "semantic_capped_segments": false
   },
   "semantic_available": true
+}
+```
+
+200 response with the `parse.nl` leg applied (chat configured — the shape above plus the
+additive `predicates` key; the example query parsed to a size + date atom):
+
+```json
+{
+  "name_matches": [],
+  "semantic": [{ "node_id": 90212, "name": "holiday-beach-video.mp4", "score": 0.74 }],
+  "result_ref": "sr1.12ab34cd56ef7890",
+  "counts": {
+    "name": 0,
+    "semantic": 1,
+    "total": 1,
+    "name_truncated": false,
+    "semantic_capped_segments": false
+  },
+  "semantic_available": true,
+  "predicates": [
+    { "type": "size", "min": 10485760 },
+    { "type": "date", "withinDays": 365 }
+  ]
 }
 ```
 
@@ -142,7 +183,8 @@ Field rules: `score` is a float 0–1 rounded to 2 decimals; `counts.total` =
 post-dedup displayed rows; `semantic_available` is the client's gate for hiding the
 `Save as collection` button (empty or unavailable semantic ⇒ button hidden — a saved
 collection means the semantic part only; name-match results are ALWAYS excluded from
-collection definitions).
+collection definitions); `predicates` follows the presence rule above (absent when the
+parse did not apply — the chat-off degrade is the parser-free shape, byte for byte).
 
 ### 2.4.0 `POST /click` — usage-signal list-entry-click recording point
 
@@ -176,7 +218,11 @@ absent, not the feature).
 
 - The request fields keep the wire names `result_ref` and the §2.4.0 click body `node_id`
   (snake_case, request and response) — the search-domain request-body exceptions to the
-  CODING_STYLE.md Express Patterns camelCase rule.
+  CODING_STYLE.md Express Patterns camelCase rule. The request/response `predicates` fields
+  carry shared-grammar ATOM objects — the atoms' inner keys (`type`, `value`, `prefix`,
+  `withinDays`, `after`, `before`, `min`, `max`) are the definition-engine grammar's canonical
+  field names (the same shape the collections definition contract uses), not per-endpoint
+  field names.
 - Segment cap 3 with an explicit `semantic_capped_segments` flag; the "≤3 segments" limit is a
   scoring bound, not input validation.
 - Read-only search is served by `POST` (not GET) — keeps query strings out of access logs.
@@ -202,6 +248,16 @@ absent, not the feature).
 - [ ] `result_ref` is present on every 200 and is stable for an identical
       query+corpus+sort replay (signature equality), opaque to the client
 - [ ] Request `result_ref` is accepted and ignored (same response shape, fresh signature)
+- [ ] Chat absent (fake adapter with no configured chat role) ⇒ the 200 body is
+      byte-identical to the parser-free shapes (no `predicates` key) and ZERO chat calls
+      reach the adapter
+- [ ] Fake-chat configured parse ⇒ 200 carries `predicates` with canonical grammar atoms;
+      the same query re-submitted serves from the `query_parses` parse cache (chat call
+      count stays 1)
+- [ ] Fake-chat returning non-grammar JSON ⇒ 200 without `predicates`, byte-identical to
+      the chat-absent response for the same corpus (silent fallback, never an error)
+- [ ] Request `predicates` array: grammar-valid atoms accepted; malformed array silently
+      stateless (never a 4xx)
 - [ ] embed role absent → 200, `semantic` key omitted,
       `semantic_unavailable_reason: "serverErrors.ai.notConfigured"`, name section intact
 - [ ] embed configured, zero scored rows → 200, `semantic: []` PRESENT,

@@ -79,6 +79,11 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   `roleConfigured('embed')` false), `embed` (fake embed only), `embed+chat` (fake embed+chat) — and the
   **None and embed columns must pass green with no real adapter present** (the
   "never-a-render-dependency" invariant, verified by construction).
+- **Parser legs (`parse.nl`):** verified hermetically by unit/integration suites with an
+  adapter-injected fake chat (the same seam the fake-embed adapter uses) — RED targets: parse
+  cache hit ⇒ zero chat calls, schema-checked grammar-constrained output, chat-off ⇒
+  byte-identical parser-free response. The parser E2E case (`E2E-S3-AI-002`) rides the
+  fake-LLM harness (T4.3), not a dedicated scratch project.
 - **Provisioning-trigger fixtures (`llmPresets.md` §4):** hermetic legs assert the
   provider-triggered postures — a setup-mode boot fetches ZERO model bytes (network stub);
   every configured boot missing weights — the first one after the wizard included, no

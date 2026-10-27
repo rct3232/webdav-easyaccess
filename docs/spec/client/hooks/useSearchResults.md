@@ -39,7 +39,7 @@
 **Chain model.** A search session is a chain of committed steps:
 
 ```
-ChainStep = { term, op, snapshot: { zoneAIds: Set<nodeId>, zoneBRows: [], zoneCRows: [], semanticAvailable, resultRef }, inputTextAtCommit }
+ChainStep = { term, op, snapshot: { zoneAIds: Set<nodeId>, zoneBRows: [], zoneCRows: [], semanticAvailable, resultRef, predicates: [] }, inputTextAtCommit }
 ```
 
 - `submitSearch(query)` from `browse` starts a NEW chain `[term]` with a fresh snapshot (the previous chain resets).
@@ -48,6 +48,12 @@ ChainStep = { term, op, snapshot: { zoneAIds: Set<nodeId>, zoneBRows: [], zoneCR
 - `zoneCRows` carries the snapshot's semantic rows — exactly the response's `semantic` section (server score order as delivered; entries already in `name_matches` were removed server-side). A response that omits `semantic` (the `semantic_available:false` degrade — `routes/search.md` §2.4) yields an empty Zone C snapshot; an honestly empty leg (`semantic: []` present, `semantic_available:true`) also yields zero rows while `semanticAvailable` stays `true`.
 - `semanticAvailable` of each response is stored per step (`response.semantic_available === true`) — the §2.6 save-gate input for the chip bar's save affordance.
 - `resultRef` of each response is stored opaquely per step (the client never parses it).
+- `predicates` of each response is stored verbatim per step when the key is present (the
+  parsed NL predicate atoms — `routes/search.md` §2.4); a response without the key yields
+  `[]`. The snapshot carries FIELD/VALUE atoms only (the server never sends vectors or ids
+  inside atoms) and the client never interprets them; the save-to-collection payload keeps
+  sending `predicates: []` (the create-contract validation is unchanged — the snapshot
+  predicate state is session state, not definition material).
 - Chip UI = committed chain terms; `inputTextAtCommit` preserves the input text of that step.
 
 **Chain-refiner seam (extension point).** All step derivation runs through ONE function inside the hook:
@@ -56,7 +62,7 @@ ChainStep = { term, op, snapshot: { zoneAIds: Set<nodeId>, zoneBRows: [], zoneCR
 chainRefiner.applyStep(prevSnapshot, response, term) -> snapshot
 ```
 
-Semantic refinement plugs in as a NEW `op` supplying its own `applyStep` — the chip strip, undo/revert, snapshot storage, and zone rendering are op-agnostic and unchanged by it. `resultRef` storage per step is the replay reservation a refining op consumes.
+Semantic refinement plugs in as a NEW `op` supplying its own `applyStep` — the chip strip, undo/revert, snapshot storage, and zone rendering are op-agnostic and unchanged by it. `resultRef` storage per step is the replay reservation a refining op consumes. The `intersect-name` refiner additionally stores the response's `predicates` array verbatim into each snapshot (§2.3) — data consumption through the existing seam only, no new op, no zone rendering (atoms surface at the header-tab seam reserved by the server contract, not here).
 
 **Return value:**
 
@@ -126,6 +132,7 @@ Semantic refinement plugs in as a NEW `op` supplying its own `applyStep` — the
 - [ ] Zone C rows render in the delivered score order under ANY session `sortMode` (no client re-sort); a live term promotes matching Zone C rows without changing their relative order.
 - [ ] A node displayed in Zone A is deduped out of Zone C display while `zoneCounts.zoneC` keeps the full snapshot count.
 - [ ] `semanticAvailable` mirrors the response flag per step: `true` on an available (even honestly empty) leg, `false` when `semantic` is omitted; a refinement step replaces the Zone C snapshot with the fresh response's section.
+- [ ] A response carrying `predicates` stores the atom array verbatim in that step's snapshot (`snapshot.predicates`); a response without the key stores `[]`; `saveFromResults` still posts `predicates: []` regardless of snapshot atoms; `undoToStep` restores the per-step atom arrays with NO server call; `exitResults` clears them with the chain.
 - [ ] `saveFromResults` posts `{ name, semantic: { resultRef, predicates: [], nodeIds } }` through the gateway `createCollection` seam exactly once for an available, non-empty Zone C snapshot (the reconciled wire shape of the `POST /api/collections` `{ name, semantic }` dispatch arm); it bails with `null` and ZERO calls when the section is unavailable, empty, or `resultRef` is missing; an absorbed create failure resolves `null` and surfaces no undo affordance. The confirm dialog is host-owned and precedes every create call (no create fires from the chip click alone).
 
 ### 2.8 Edge Cases

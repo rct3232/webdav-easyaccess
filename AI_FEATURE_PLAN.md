@@ -885,8 +885,11 @@ does work rules can't):
   Output: verdict ∈ {merge, keep_separate, sibling} + one-line reason, written as
   prefilled recommendation + reason row on the §4.4 card (`sibling` → no card in v1,
   §9). It advises, never acts: user still presses Merge; no arbiter call is ever
-  self-executing. Chat off ⇒ band pairs simply get no recommendation (card still appears,
-  no preselection). **Input format is load-bearing (E7 PoC): the prompt MUST include the
+  self-executing. ~~Chat off ⇒ band pairs simply get no recommendation (card still
+  appears, no preselection).~~ **SUPERSEDED by owner ruling R1 (2026-10-27, PLAN §30.2;
+  provenance §12.15): the card gate stays Jaccard ≥ 0.7 in the LLM-free default —
+  chat off ⇒ 0.55–0.7 band pairs get NO card; band pairs become cards ONLY via an
+  arbiter verdict (chat configured).** **Input format is load-bearing (E7 PoC): the prompt MUST include the
   symmetric difference — unique-member counts/ratios and samples from each side — feeding
   only shared-sample + overlap ratio makes every pair look "nearly identical" (measured:
   all-merge bias).**
@@ -1795,3 +1798,45 @@ contract; `001_initial_normalized_schema.sql` gains `collection_items.source`/`r
 path drops corpus evaluation (stable UX and list performance); membership changes only at commit
 boundaries and are journaled/digested as such. Reconcile covers definition-driven collections
 only and never mutates manual `origin='user'` rows.
+
+### 12.15 P3 NL-parse & merge-band rulings (2026-10-27)
+
+**R1 — merge band card gate (owner ruling 2026-10-27, PLAN §30.2; recorded at the parser
+docs step per the ruling's own assignment).** §4.19's `merge-arbiter` sentence "Chat off ⇒
+band pairs simply get no recommendation (card still appears, no preselection)" is RETIRED.
+The card gate stays **Jaccard ≥ 0.7** in the LLM-free default (evolution Pass 5 as shipped);
+0.55–0.7 band pairs become cards **only** via a `merge-arbiter` verdict when the chat role
+is configured (the nightly arbiter pass — `arbiter_verdict`/`arbiter_reason` + recommendation
+prefill — is the band's only card path). No spec text changes beyond the §4.19 supersession
+note; the arbiter pass itself lands with its own unit (T3.1c), which inherits this gate.
+
+**R3 — parser verification posture (owner ruling 2026-10-27).** `parse.nl` is verified in P3
+by unit/integration suites with an adapter-injected fake chat; the parser E2E case
+(`E2E-S3-AI-002`, planned row added to `docs/E2E_COVERAGE_PLAN.md`) rides the T4.3 fake-LLM
+harness.
+
+**Parse.nl v1 contract decisions (single-shot; conversation is NOT a P3 task).**
+
+- **D1 — one row, two caches.** The `query_parses.predicates` column (shipped reserved in 001) begins storing the parse envelope `{ grammar: "nl1", atoms: [...], vectorQuery }`.
+  `recordEmbedding` overwrites only `vector`; the new `recordPredicates` overwrites only
+  `predicates` — a re-embed keeps the parse, a re-parse keeps the vector and `hit_count`.
+  Cache hit ⇒ zero chat calls (the RED target).
+- **D2 — the grammar is the collections definition engine.** Atom validation imports
+  `ATOM_TYPES`/`parseDefinition` from `definitionEngine.js` — a forked grammar is a contract
+  violation. Closed v1: one AND list, cardinalities fixed (path ≤1, tag ≤3, like/date/size
+  ≤1), no negation, no `any_of` (negation/exclusion tokens are §4.22 conversational-delta
+  material and need a grammar decision, not a parser-side invention).
+- **D3 — refined vector-query text is the parse's only effect on retrieval in v1.** When the
+  parse supplies `vector_query`, the whole-query embed runs on that text (own cache row,
+  `result_ref`'s `vector-query` slot); segments, the name section, and row computation stay
+  unchanged. SQL application of predicate atoms belongs to the conversational layer's
+  engine step, not to `parse.nl` itself.
+- **D4 — session predicate state: input-only, field/value level.** The request accepts
+  `predicates` as parse context (symbols only — never vectors, ids, or result content);
+  malformed state is discarded silently; a state-carrying submit neither reads nor writes the
+  parse cache (the row key is query text alone). No session storage exists (SearchSession
+  remains a concept reservation).
+- **D5 — chat-off byte compatibility is a contract pin.** Chat unconfigured, kill switch
+  `AI_NL_PARSE_ENABLED:false`, or ANY parse failure ⇒ the response is byte-identical to the
+  parser-free §2.4 shapes; the parse failure is a silent fallback to vector+name search,
+  never an error to the user.

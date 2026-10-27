@@ -410,4 +410,145 @@ describe('useBulkOperations', () => {
 
     expect(fileService.cancelBulkOperation).toHaveBeenCalledWith('job-to-cancel');
   });
+
+  // ─── Bulk undo-command seam (options.onUndoable — useBulkOperations.md §2.6) ───
+
+  describe('bulk undo-command seam (options.onUndoable)', () => {
+    const undoableMoveResult = {
+      status: 'completed',
+      progress: 2,
+      total: 2,
+      results: [
+        { sourceNodeId: 1, destinationParentNodeId: 99, status: 'succeeded' },
+        { sourceNodeId: 2, destinationParentNodeId: 99, status: 'succeeded' },
+      ],
+      undo: { action_id: 77 },
+    };
+
+    function renderWithUndoable(options = {}) {
+      const onUndoable = jest.fn();
+      const { result } = renderHook(() =>
+        useBulkOperations(
+          new Set([1, 2]),
+          defaultArgs[1],
+          mockOnOperationComplete,
+          mockSetTreeUpdateTrigger,
+          undefined,
+          mockSetSelectedFiles,
+          mockSetSelectionMode,
+          mockGetCurrentNodeId,
+          { ...options, onUndoable }
+        )
+      );
+      return { result, onUndoable };
+    }
+
+    it('routes a journaled MOVE terminal result to onUndoable exactly once with the move label', async () => {
+      fileService.getBulkOperationStatus.mockResolvedValue(undoableMoveResult);
+      const { result, onUndoable } = renderWithUndoable();
+
+      act(() => {
+        result.current.handleBulkMove();
+      });
+      await act(async () => {
+        await result.current.handleFolderPickerSelect(99);
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(onUndoable).toHaveBeenCalledTimes(1);
+      const [payload, labelKey, params, meta] = onUndoable.mock.calls[0];
+      expect(payload).toMatchObject({ undo: { action_id: 77 } });
+      expect(labelKey).toBe('fileManager.bulkMoveToast');
+      expect(params).toEqual({ count: 2 });
+      expect(meta).toEqual({ action: 'move' });
+    });
+
+    it('routes a journaled COPY terminal result with the copy label', async () => {
+      fileService.getBulkOperationStatus.mockResolvedValue(undoableMoveResult);
+      const { result, onUndoable } = renderWithUndoable();
+
+      act(() => {
+        result.current.handleBulkCopy();
+      });
+      await act(async () => {
+        await result.current.handleFolderPickerSelect(99);
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(onUndoable).toHaveBeenCalledTimes(1);
+      expect(onUndoable.mock.calls[0][1]).toBe('fileManager.bulkCopyToast');
+      expect(onUndoable.mock.calls[0][3]).toEqual({ action: 'copy' });
+    });
+
+    it('fires for a cancelled job that still carries the journal pointer', async () => {
+      fileService.getBulkOperationStatus.mockResolvedValue({
+        ...undoableMoveResult,
+        status: 'cancelled',
+      });
+      const { result, onUndoable } = renderWithUndoable();
+
+      act(() => {
+        result.current.handleBulkMove();
+      });
+      await act(async () => {
+        await result.current.handleFolderPickerSelect(99);
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(onUndoable).toHaveBeenCalledTimes(1);
+    });
+
+    it('stays silent when the terminal result carries no undo pointer (delete jobs / undo null)', async () => {
+      fileService.getBulkOperationStatus.mockResolvedValue({
+        ...undoableMoveResult,
+        undo: null,
+      });
+      const { result, onUndoable } = renderWithUndoable();
+
+      act(() => {
+        result.current.handleBulkMove();
+      });
+      await act(async () => {
+        await result.current.handleFolderPickerSelect(99);
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+      // plus the delete channel — never journaled at all
+      fileService.batchDeleteFiles.mockResolvedValue({ jobId: 'job-del' });
+      await act(async () => {
+        await result.current.handleBulkDelete();
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(onUndoable).not.toHaveBeenCalled();
+    });
+
+    it('never throws when the host passes no onUndoable and a journaled job lands', async () => {
+      fileService.getBulkOperationStatus.mockResolvedValue(undoableMoveResult);
+      const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+      act(() => {
+        result.current.handleBulkMove();
+      });
+      await act(async () => {
+        await result.current.handleFolderPickerSelect(99);
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(mockOnOperationComplete).toHaveBeenCalledWith(
+        expect.objectContaining({ opType: 'move' })
+      );
+    });
+  });
 });

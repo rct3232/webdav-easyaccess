@@ -281,4 +281,58 @@ describe('useUndoToast', () => {
     expect(result.current.message.message.type).toBe('error');
     expect(result.current.message.message.action).toBeNull();
   });
+
+  it("per-call refresh replaces the mount-level refresh for that toast's undo", async () => {
+    const mountRefresh = jest.fn();
+    const overrideRefresh = jest.fn();
+    const gateway = { undoAction: jest.fn().mockResolvedValue({ ...OK_UNDO }) };
+    const { result } = setup({ gateway, refresh: mountRefresh });
+
+    act(() =>
+      result.current.undo.showUndoToast({
+        actionId: 42,
+        text: 'Move completed (2 items)',
+        refresh: overrideRefresh,
+      })
+    );
+    await clickUndo(result);
+
+    expect(overrideRefresh).toHaveBeenCalledTimes(1);
+    expect(mountRefresh).not.toHaveBeenCalled();
+  });
+
+  it('per-call refresh survives the 409 cascade-confirm re-post', async () => {
+    const mountRefresh = jest.fn();
+    const overrideRefresh = jest.fn();
+    const gateway = {
+      undoAction: jest
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 409,
+          errorCode: 'serverErrors.actions.cascadeConfirmRequired',
+          params: { laterChanges: 1 },
+        })
+        .mockResolvedValueOnce({ ...OK_UNDO }),
+    };
+    const { result } = setup({ gateway, refresh: mountRefresh });
+
+    act(() =>
+      result.current.undo.showUndoToast({
+        actionId: 5,
+        text: 'Move completed',
+        refresh: overrideRefresh,
+      })
+    );
+    await clickUndo(result);
+    expect(result.current.undo.cascadeConfirm).toMatchObject({ open: true, laterChanges: 1 });
+
+    await act(async () => {
+      await result.current.undo.cascadeConfirm.confirm();
+    });
+
+    expect(gateway.undoAction).toHaveBeenLastCalledWith(5, { confirmCascade: true });
+    expect(overrideRefresh).toHaveBeenCalledTimes(1);
+    expect(mountRefresh).not.toHaveBeenCalled();
+  });
 });

@@ -1768,3 +1768,453 @@ describe('DEF-21: batch worker honors per-principal ACL (no synthetic admin)', (
     expect(Number(after.rows[0].cnt)).toBe(Number(before.rows[0].cnt));
   });
 });
+
+/* ========================================================================
+   P3-BJ: Batch command journal, per-item cancellation and batch undo
+   (docs/spec/server/services/batchOperationService.md §5.2–§5.5)
+   ======================================================================== */
+describe('P3-BJ: batch command journal, cancellation & undo', () => {
+  let user, otherUser, homeNodeId, dirA, dirB, dirC, suffix;
+
+  /** action_journal row for a batch job subject (payload JSON-parsed). */
+  async function batchJournalRow(jobId) {
+    const { rows } = await dbQuery(
+      'SELECT * FROM action_journal WHERE domain = ? AND subject = ?',
+      ['batch', `batch:${jobId}`]
+    );
+    if (rows.length === 0) return null;
+    const row = rows[0];
+    const payload = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+    return { ...row, payload };
+  }
+
+  async function createFolder(parentNodeId, name) {
+    const res = await request(app)
+      .post('/api/folders/create')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ parentNodeId, name });
+    expect(res.status).toBe(200);
+    return res.body.nodeId;
+  }
+
+  async function makeFile(parentNodeId, name) {
+    const res = await uploadFile(user, parentNodeId, name, `bj-${name}`);
+    expect(res.status).toBe(200);
+    return res.body.nodeId;
+  }
+
+  beforeEach(jest.clearAllMocks);
+
+  beforeAll(async () => {
+    currentMockS3 = createS3Mock();
+    wireS3Mock(currentMockS3);
+    await useS3Mode();
+
+    suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    user = await createUserWithHomeNode(`p3bj-home`);
+    otherUser = await createUserWithHomeNode(`p3bj-other`);
+    homeNodeId = user.homeNodeId;
+    dirA = await createFolder(homeNodeId, `p3bj-a-${suffix}`);
+    dirB = await createFolder(homeNodeId, `p3bj-b-${suffix}`);
+    dirC = await createFolder(homeNodeId, `p3bj-c-${suffix}`);
+  });
+
+  it('completed move batch journals ONE command row and exposes undo.action_id on the terminal poll', async () => {
+    const f1 = await makeFile(dirA, `p3bj-j1-x.txt`);
+    const f2 = await makeFile(dirA, `p3bj-j1-y.txt`);
+
+    const job = await runBatchJob(user.token, '/api/files/batch-move', {
+      moves: [
+        { sourceNodeId: f1, destinationParentNodeId: dirB },
+        { sourceNodeId: f2, destinationParentNodeId: dirB },
+      ],
+    });
+    expectJobSucceeded(job);
+
+    // succeeded entries carry the client-contract fields
+    const succeeded = job.results.filter((r) => r.status === 'succeeded');
+    expect(succeeded).toHaveLength(2);
+    expect(succeeded[0]).toMatchObject({ sourceNodeId: f1, destinationParentNodeId: dirB });
+    // internal capture fields never leak into the public results
+    expect(succeeded[0]).not.toHaveProperty('previousParentNodeId');
+
+    // undo pointer on the terminal result
+    expect(job.undo).not.toBeNull();
+    expect(typeof job.undo.action_id).toBe('number');
+
+    const row = await batchJournalRow(job.jobId);
+    expect(row).not.toBeNull();
+    expect(row.action).toBe('move');
+    expect(row.actor).toBe(String(user.id));
+    expect(row.status).toBe('applied');
+    expect(row.subject_label).toBeNull();
+    expect(row.chain_seq).toBe(1);
+    expect(row.payload.inverse).toMatchObject({ op: 'undo-batch', operation: 'move' });
+    expect(row.payload.items).toHaveLength(2);
+    for (const item of row.payload.items) {
+      expect(item.kind).toBe('move');
+      expect(item.fingerprint).toEqual({ parentId: dirB });
+      expect(item.inverse).toMatchObject({ op: 'move-back', parentId: dirA });
+    }
+    expect(row.payload.items.map((i) => i.nodeId).sort()).toEqual([f1, f2].sort());
+
+    // the 30-day feed lists the batch row for its actor
+    const feed = await request(app)
+      .get('/api/actions?domain=batch')
+      .set('Authorization', `Bearer ${user.token}`);
+    expect(feed.status).toBe(200);
+    const feedRow = feed.body.actions.find((a) => a.action_id === row.id);
+    expect(feedRow).toMatchObject({
+      domain: 'batch',
+      subject: `batch:${job.jobId}`,
+      action: 'move',
+      status: 'applied',
+      is_tip: true,
+      undo_available: true,
+    });
+  });
+
+  it('undo moves every item back to its pre-move parent and flips the row to undone', async () => {
+    const f1 = await makeFile(dirA, `p3bj-u1-x.txt`);
+    const f2 = await makeFile(dirA, `p3bj-u1-y.txt`);
+
+    const job = await runBatchJob(user.token, '/api/files/batch-move', {
+      moves: [
+        { sourceNodeId: f1, destinationParentNodeId: dirB },
+        { sourceNodeId: f2, destinationParentNodeId: dirB },
+      ],
+    });
+    expectJobSucceeded(job);
+
+    const undo = await request(app)
+      .post(`/api/actions/${job.undo.action_id}/undo`)
+      .set('Authorization', `Bearer ${user.token}`)
+      .send();
+    expect(undo.status).toBe(200);
+    expect(undo.body).toMatchObject({
+      status: 'undone',
+      items_undone: 2,
+      items_skipped: 0,
+    });
+
+    const { rows } = await dbQuery('SELECT id, parent_id FROM file_nodes WHERE id IN (?, ?)', [
+      f1,
+      f2,
+    ]);
+    expect(rows.map((r) => Number(r.parent_id))).toEqual([dirA, dirA]);
+
+    const row = await batchJournalRow(job.jobId);
+    expect(row.status).toBe('undone');
+    expect(row.undone_at).not.toBeNull();
+
+    // closure rebuild: dirA listing shows both files again, dirB shows neither
+    const listA = await request(app)
+      .get('/api/files/list')
+      .query({ nodeId: dirA })
+      .set('Authorization', `Bearer ${user.token}`);
+    const itemsA = (Array.isArray(listA.body) ? listA.body : listA.body.items).map((i) => i.nodeId);
+    expect(itemsA).toContain(f1);
+    expect(itemsA).toContain(f2);
+    const listB = await request(app)
+      .get('/api/files/list')
+      .query({ nodeId: dirB })
+      .set('Authorization', `Bearer ${user.token}`);
+    const itemsB = (Array.isArray(listB.body) ? listB.body : listB.body.items).map((i) => i.nodeId);
+    expect(itemsB).not.toContain(f1);
+    expect(itemsB).not.toContain(f2);
+  });
+
+  it('undo reports mixed results when one item moved elsewhere after the batch (fingerprint skip)', async () => {
+    const f1 = await makeFile(dirA, `p3bj-m1-x.txt`);
+    const f2 = await makeFile(dirA, `p3bj-m1-y.txt`);
+
+    const moveJob = await runBatchJob(user.token, '/api/files/batch-move', {
+      moves: [
+        { sourceNodeId: f1, destinationParentNodeId: dirB },
+        { sourceNodeId: f2, destinationParentNodeId: dirB },
+      ],
+    });
+    expectJobSucceeded(moveJob);
+
+    // hand-move one file further (dirB → dirC) through the batch channel itself
+    const handJob = await runBatchJob(user.token, '/api/files/batch-move', {
+      moves: [{ sourceNodeId: f1, destinationParentNodeId: dirC }],
+    });
+    expectJobSucceeded(handJob);
+
+    const undo = await request(app)
+      .post(`/api/actions/${moveJob.undo.action_id}/undo`)
+      .set('Authorization', `Bearer ${user.token}`)
+      .send();
+    expect(undo.status).toBe(200);
+    expect(undo.body).toMatchObject({ items_undone: 1, items_skipped: 1 });
+
+    const { rows } = await dbQuery('SELECT id, parent_id FROM file_nodes WHERE id IN (?, ?)', [
+      f1,
+      f2,
+    ]);
+    const parentById = Object.fromEntries(rows.map((r) => [Number(r.id), Number(r.parent_id)]));
+    expect(parentById[f1]).toBe(dirC); // untouched — skipped
+    expect(parentById[f2]).toBe(dirA); // restored
+  });
+
+  it('copy batch journals the created nodes and its undo trashes them', async () => {
+    const f1 = await makeFile(dirA, `p3bj-c1-x.txt`);
+
+    const job = await runBatchJob(user.token, '/api/files/batch-copy', {
+      copies: [{ sourceNodeId: f1, destinationParentNodeId: dirB }],
+    });
+    expectJobSucceeded(job);
+    expect(job.undo).not.toBeNull();
+
+    const row = await batchJournalRow(job.jobId);
+    expect(row.action).toBe('copy');
+    expect(row.payload.items).toHaveLength(1);
+    const [item] = row.payload.items;
+    expect(item.kind).toBe('copy');
+    expect(item.fingerprint).toEqual({ parentId: dirB, name: 'p3bj-c1-x.txt' });
+    expect(item.inverse).toMatchObject({ op: 'trash-node' });
+    const copyId = Number(item.nodeId);
+
+    const undo = await request(app)
+      .post(`/api/actions/${job.undo.action_id}/undo`)
+      .set('Authorization', `Bearer ${user.token}`)
+      .send();
+    expect(undo.status).toBe(200);
+    expect(undo.body).toMatchObject({ items_undone: 1, items_skipped: 0 });
+
+    const { rows } = await dbQuery(
+      'SELECT id, parent_id, deleted_at FROM file_nodes WHERE id IN (?, ?)',
+      [f1, copyId]
+    );
+    const byId = Object.fromEntries(rows.map((r) => [Number(r.id), r]));
+    expect(byId[copyId].deleted_at).not.toBeNull(); // created copy trashed
+    expect(byId[f1].deleted_at).toBeNull(); // source untouched
+    expect(Number(byId[f1].parent_id)).toBe(dirA);
+  });
+
+  it('copy undo skips when the created copy was renamed after the batch', async () => {
+    const f1 = await makeFile(dirA, `p3bj-c2-x.txt`);
+
+    const job = await runBatchJob(user.token, '/api/files/batch-copy', {
+      copies: [{ sourceNodeId: f1, destinationParentNodeId: dirB }],
+    });
+    expectJobSucceeded(job);
+
+    const row = await batchJournalRow(job.jobId);
+    const copyId = Number(row.payload.items[0].nodeId);
+    await request(app)
+      .put('/api/files/rename')
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ nodeId: copyId, newName: 'p3bj-c2-renamed.txt' });
+
+    const undo = await request(app)
+      .post(`/api/actions/${job.undo.action_id}/undo`)
+      .set('Authorization', `Bearer ${user.token}`)
+      .send();
+    expect(undo.status).toBe(200);
+    expect(undo.body).toMatchObject({ items_undone: 0, items_skipped: 1 });
+
+    const { rows } = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [copyId]);
+    expect(rows[0].deleted_at).toBeNull();
+  });
+
+  it('delete batches are never journaled (trash-parity undo matrix) — undo stays null', async () => {
+    const f1 = await makeFile(dirA, `p3bj-d1-x.txt`);
+
+    const job = await runBatchJob(user.token, '/api/files/batch-delete', { nodeIds: [f1] });
+    expectJobSucceeded(job);
+    expect(job.undo).toBeNull();
+    expect(await batchJournalRow(job.jobId)).toBeNull();
+  });
+
+  it('zero-succeeded job writes no journal row and exposes no undo pointer', async () => {
+    const victimFile = await makeFile(otherUser.homeNodeId, `p3bj-z1-x.txt`);
+
+    const job = await runBatchJob(user.token, '/api/files/batch-move', {
+      moves: [{ sourceNodeId: victimFile, destinationParentNodeId: dirB }],
+    });
+    expect(job.status).toBe('completed');
+    const [entry] = job.results;
+    expect(entry).toMatchObject({ status: 'skipped', reason: 'permission_denied' });
+    expect(job.undo).toBeNull();
+    expect(await batchJournalRow(job.jobId)).toBeNull();
+  });
+
+  it('job cancelled before the worker starts settles cancelled with all items skipped and no journal row', async () => {
+    const f1 = await makeFile(dirA, `p3bj-x1-x.txt`);
+    const opStore = require('@server/domains/files/stores/operationProgress');
+    const { scheduleBulkWorker } = require('@server/domains/files/services/batchOperationService');
+
+    const { jobId } = opStore.createJob(user.id, 'move', {
+      moves: [{ sourceNodeId: f1, destinationParentNodeId: dirB }],
+    });
+    opStore.setJobCancelled(jobId);
+
+    const savedSkip = process.env.WEA_SKIP_BULK_WORKER;
+    delete process.env.WEA_SKIP_BULK_WORKER;
+    try {
+      scheduleBulkWorker(jobId);
+      const startedAt = Date.now();
+      for (;;) {
+        const job = opStore.getJob(jobId);
+        if (job && ['completed', 'cancelled', 'failed'].includes(job.status)) break;
+        if (Date.now() - startedAt > 10000) throw new Error('worker did not settle the job');
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    } finally {
+      if (savedSkip !== undefined) process.env.WEA_SKIP_BULK_WORKER = savedSkip;
+    }
+
+    const poll = await request(app)
+      .get(`/api/files/bulk-operation/${jobId}`)
+      .set('Authorization', `Bearer ${user.token}`);
+    expect(poll.status).toBe(200);
+    expect(poll.body.status).toBe('cancelled');
+    expect(poll.body.undo).toBeNull();
+    expect(poll.body.results).toEqual([
+      { sourceNodeId: f1, destinationParentNodeId: dirB, status: 'skipped', reason: 'cancelled' },
+    ]);
+
+    // nothing executed: the file never moved
+    const { rows } = await dbQuery('SELECT parent_id FROM file_nodes WHERE id = ?', [f1]);
+    expect(Number(rows[0].parent_id)).toBe(dirA);
+    expect(await batchJournalRow(jobId)).toBeNull();
+  });
+
+  it('second undo of the same batch → 409 alreadyUndone', async () => {
+    const f1 = await makeFile(dirA, `p3bj-r1-x.txt`);
+
+    const job = await runBatchJob(user.token, '/api/files/batch-move', {
+      moves: [{ sourceNodeId: f1, destinationParentNodeId: dirB }],
+    });
+    expectJobSucceeded(job);
+
+    const first = await request(app)
+      .post(`/api/actions/${job.undo.action_id}/undo`)
+      .set('Authorization', `Bearer ${user.token}`)
+      .send();
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post(`/api/actions/${job.undo.action_id}/undo`)
+      .set('Authorization', `Bearer ${user.token}`)
+      .send();
+    expect(second.status).toBe(409);
+    expect(second.body.errorCode).toBe('serverErrors.actions.alreadyUndone');
+  });
+
+  it('multi-row batch subject: non-tip undo → 409 cascadeConfirmRequired, confirm undoes LIFO with fingerprint skips', async () => {
+    const f1 = await makeFile(dirA, `p3bj-q1-x.txt`);
+    const f2 = await makeFile(dirA, `p3bj-q1-y.txt`);
+
+    const job = await runBatchJob(user.token, '/api/files/batch-move', {
+      moves: [
+        { sourceNodeId: f1, destinationParentNodeId: dirB },
+        { sourceNodeId: f2, destinationParentNodeId: dirB },
+      ],
+    });
+    expectJobSucceeded(job);
+    const row1 = await batchJournalRow(job.jobId);
+
+    const journal = require('@server/store/actionJournalStore');
+    const synthetic = await journal.commitChange(
+      'batch',
+      `batch:${job.jobId}`,
+      { actor: String(user.id), action: 'move' },
+      {
+        inverse: { op: 'undo-batch', operation: 'move', jobId: job.jobId },
+        items: [
+          {
+            nodeId: f1,
+            kind: 'move',
+            fingerprint: { parentId: dirB },
+            inverse: { op: 'move-back', nodeId: f1, parentId: dirA },
+          },
+        ],
+      },
+      async () => null
+    );
+    expect(synthetic.chainSeq).toBe(2);
+
+    const refused = await request(app)
+      .post(`/api/actions/${row1.id}/undo`)
+      .set('Authorization', `Bearer ${user.token}`)
+      .send();
+    expect(refused.status).toBe(409);
+    expect(refused.body.errorCode).toBe('serverErrors.actions.cascadeConfirmRequired');
+    expect(refused.body.params).toEqual({ laterChanges: 1 });
+
+    const confirmed = await request(app)
+      .post(`/api/actions/${row1.id}/undo`)
+      .set('Authorization', `Bearer ${user.token}`)
+      .send({ confirmCascade: true });
+    expect(confirmed.status).toBe(200);
+    // LIFO: synthetic row applies f1 (B→A); real row sees f1 already moved (skip) + f2 restored
+    expect(confirmed.body).toMatchObject({ items_undone: 2, items_skipped: 1 });
+    expect(confirmed.body.cascade_undone).toEqual([synthetic.id]);
+
+    const { rows } = await dbQuery('SELECT id, parent_id FROM file_nodes WHERE id IN (?, ?)', [
+      f1,
+      f2,
+    ]);
+    expect(rows.map((r) => Number(r.parent_id))).toEqual([dirA, dirA]);
+  });
+
+  it('journal-write failure is absorbed: the job still settles with undo null', async () => {
+    const f1 = await makeFile(dirA, `p3bj-f1-x.txt`);
+
+    const journal = require('@server/store/actionJournalStore');
+    const spy = jest
+      .spyOn(journal, 'commitChange')
+      .mockRejectedValueOnce(new Error('forced journal failure'));
+
+    try {
+      const job = await runBatchJob(user.token, '/api/files/batch-move', {
+        moves: [{ sourceNodeId: f1, destinationParentNodeId: dirB }],
+      });
+      expectJobSucceeded(job);
+      expect(job.undo).toBeNull();
+      expect(await batchJournalRow(job.jobId)).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('WebDAV mode: batch undo also moves the remote resource back to the restored path', async () => {
+    await useWebdavMode();
+    const wdSuffix = `p3bj-wd-${suffix}`;
+    try {
+      const dirWdA = await createFolder(homeNodeId, `${wdSuffix}-a`);
+      const dirWdB = await createFolder(homeNodeId, `${wdSuffix}-b`);
+      const f1 = await makeFile(dirWdA, `${wdSuffix}-x.txt`);
+
+      const job = await runBatchJob(user.token, '/api/files/batch-move', {
+        moves: [{ sourceNodeId: f1, destinationParentNodeId: dirWdB }],
+      });
+      expectJobSucceeded(job);
+
+      const homeName = (await dbQuery('SELECT name FROM file_nodes WHERE id = ?', [homeNodeId]))
+        .rows[0].name;
+      const dirAName = (await dbQuery('SELECT name FROM file_nodes WHERE id = ?', [dirWdA])).rows[0]
+        .name;
+      const dirBName = (await dbQuery('SELECT name FROM file_nodes WHERE id = ?', [dirWdB])).rows[0]
+        .name;
+      const batchedPath = `/${homeName}/${dirBName}/${wdSuffix}-x.txt`;
+      const restoredPath = `/${homeName}/${dirAName}/${wdSuffix}-x.txt`;
+
+      jest.clearAllMocks();
+
+      const undo = await request(app)
+        .post(`/api/actions/${job.undo.action_id}/undo`)
+        .set('Authorization', `Bearer ${user.token}`)
+        .send();
+      expect(undo.status).toBe(200);
+      expect(undo.body).toMatchObject({ items_undone: 1, items_skipped: 0 });
+
+      expect(webdavMock.moveFile).toHaveBeenCalledWith(batchedPath, restoredPath, null, false);
+    } finally {
+      await useS3Mode();
+    }
+  });
+});

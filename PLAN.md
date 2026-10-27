@@ -2489,7 +2489,7 @@ grep-gates + docsStatePurity, TEST_SUMMARY refresh, ledger closure.
   (4 first-run failures all Case-B: 021 undo assertion amended to the routes/collections.md
   loser-recreation rule + name-resolved members-back set [stronger, spec-anchored]; 024
   picker-exact-match + goto client-route idioms; RCA ×3 logged). Results: `s3-collections-
-  desktop` 22 pass/3 static skip, `s3-collections-mobile` 24 pass/1 static skip,
+desktop` 22 pass/3 static skip, `s3-collections-mobile` 24 pass/1 static skip,
   `s3-retrieval` dual 11/11 + 11/11, `s3-ai-desktop` 1/1 (47.1 s, EG2 pre-seed resolved from
   the default `WEA_E2E_MODEL_DIR`). Release budget `E2E_EXPECTED_SKIPS` 6→7 (024 static
   mobile skip); group counts re-listed 249/7/256 — **full default-gate re-pin deferred to the

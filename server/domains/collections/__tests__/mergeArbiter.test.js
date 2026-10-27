@@ -25,9 +25,7 @@ function side(overrides = {}) {
     topTags: overrides.topTags ?? ['travel', 'photos'],
     uniqueCount: overrides.uniqueCount ?? 1,
     uniqueRatio: overrides.uniqueRatio ?? 0.2,
-    memberSummaries: overrides.memberSummaries ?? [
-      { node_id: 10, summary: 'shared plaza photo' },
-    ],
+    memberSummaries: overrides.memberSummaries ?? [{ node_id: 10, summary: 'shared plaza photo' }],
     uniqueSamples: overrides.uniqueSamples ?? [],
   };
 }
@@ -89,9 +87,7 @@ describe('mergeArbiter prompt builder (symmetric difference is law)', () => {
     expect(block.a.unique_samples).toEqual([
       { node_id: 14, summary: 'MADRID-ONLY flea market shot' },
     ]);
-    expect(block.b.unique_samples).toEqual([
-      { node_id: 15, summary: 'TOKYO-ONLY street shot' },
-    ]);
+    expect(block.b.unique_samples).toEqual([{ node_id: 15, summary: 'TOKYO-ONLY street shot' }]);
     // snake_case response/wire discipline also holds inside the prompt payload.
     expect(block.a.collection_id).toBe(1);
     expect(block.a.top_tags).toEqual(['travel', 'photos']);

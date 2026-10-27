@@ -78,7 +78,10 @@
  * @property {(ownerId) => Promise<Array>} listTombstones
  * @property {(cutoff) => Promise<{ changes }>} purgeExpiredTombstones
  * @property {(tx, ownerId, defFingerprint) => Promise<{ changes }>} insertTombstone
- * @property {(tx, aId, bId, score) => Promise<Object|null>} upsertMergeSuggestion
+ * @property {(tx, aId, bId, score, arbiter?: { arbiterVerdict?, arbiterReason? }) => Promise<Object|null>} upsertMergeSuggestion
+ *   INSERT ON CONFLICT DO NOTHING; the arbiter columns are written ONLY on the
+ *   INSERT (a verdict-promoted review-band row) — the conflict path returns the
+ *   existing row untouched, verdicts are never overwritten.
  * @property {(collectionIds?, options?) => Promise<Array>} listMergeSuggestions
  *   `{ state = 'pending' }` filter; evolution reads `dismissed` for cadence.
  * @property {(tx, suggestionId, state) => Promise<{ changes }>} setSuggestionState

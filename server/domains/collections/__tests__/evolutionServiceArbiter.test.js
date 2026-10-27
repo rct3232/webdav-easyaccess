@@ -133,10 +133,7 @@ async function makeFiles(rootId, folderName, count) {
 
 async function pairRow(a, b) {
   const rows = await collectionsStore.listMergeSuggestions([a.id, b.id], { state: 'pending' });
-  return rows.find(
-    (row) =>
-      row.aId === Math.min(a.id, b.id) && row.bId === Math.max(a.id, b.id)
-  );
+  return rows.find((row) => row.aId === Math.min(a.id, b.id) && row.bId === Math.max(a.id, b.id));
 }
 
 /**
@@ -247,7 +244,9 @@ describe('evolutionService merge-arbiter (§2.8, owner ruling R1)', () => {
     expect(await collectionsStore.getCollection(a.id)).not.toBeNull();
     expect(await collectionsStore.getCollection(b.id)).not.toBeNull();
     expect((await collectionsStore.listStoredItems(a.id)).map((r) => Number(r.nodeId))).toEqual(
-      [files[0], files[1], files[2], files[3], files[4]].map((f) => Number(f.id)).sort((x, y) => x - y)
+      [files[0], files[1], files[2], files[3], files[4]]
+        .map((f) => Number(f.id))
+        .sort((x, y) => x - y)
     );
   });
 
@@ -273,7 +272,10 @@ describe('evolutionService merge-arbiter (§2.8, owner ruling R1)', () => {
       decisions: [{ pair_id: 0, verdict: 'sibling', reason: 'theme + sibling theme' }],
     };
 
-    const result = await evolutionService.runEvolutionPass({ users: [ctx.user.id], passes: 'full' });
+    const result = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'full',
+    });
 
     expect(mock.calls).toHaveLength(1);
     expect(await collectionsStore.listMergeSuggestions([a.id, b.id])).toHaveLength(0);
@@ -298,7 +300,10 @@ describe('evolutionService merge-arbiter (§2.8, owner ruling R1)', () => {
     mock.configured = true;
     await setConfig('AI_MERGE_ARBITER_ENABLED', 'false');
 
-    const result = await evolutionService.runEvolutionPass({ users: [ctx.user.id], passes: 'full' });
+    const result = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'full',
+    });
 
     expect(mock.calls).toHaveLength(0);
     expect(await collectionsStore.listMergeSuggestions([a.id, b.id])).toHaveLength(0);
@@ -337,7 +342,10 @@ describe('evolutionService merge-arbiter (§2.8, owner ruling R1)', () => {
     mock.configured = true;
     mock.reply = { decisions: [{ pair_id: 0, verdict: 'sibling', reason: 'nope' }] };
 
-    const result = await evolutionService.runEvolutionPass({ users: [ctx.user.id], passes: 'full' });
+    const result = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'full',
+    });
 
     expect(mock.calls).toHaveLength(0);
     const row = await pairRow(a, b);
@@ -383,7 +391,10 @@ describe('evolutionService merge-arbiter (§2.8, owner ruling R1)', () => {
       ],
     };
 
-    const result = await evolutionService.runEvolutionPass({ users: [ctx.user.id], passes: 'full' });
+    const result = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'full',
+    });
 
     expect(mock.calls).toHaveLength(1);
     const payload = JSON.parse(mock.calls[0].messages[1].content);
@@ -406,7 +417,10 @@ describe('evolutionService merge-arbiter (§2.8, owner ruling R1)', () => {
 
     await evolutionService.runEvolutionPass({ users: [ctx.user.id], passes: 'full' });
     mock.reply = { decisions: [{ pair_id: 0, verdict: 'sibling', reason: 'would demote' }] };
-    const second = await evolutionService.runEvolutionPass({ users: [ctx.user.id], passes: 'full' });
+    const second = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'full',
+    });
 
     expect(mock.calls).toHaveLength(1);
     const row = await pairRow(a, b);
@@ -424,7 +438,10 @@ describe('evolutionService merge-arbiter (§2.8, owner ruling R1)', () => {
     const repo = await collectionsStore.setSuggestionState(row.id, 'rejected');
     expect(repo.changes).toBe(1);
 
-    const second = await evolutionService.runEvolutionPass({ users: [ctx.user.id], passes: 'full' });
+    const second = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'full',
+    });
     expect(mock.calls).toHaveLength(1);
     expect(second.perUser[0].arbiterCalls).toBe(0);
     const rows = await collectionsStore.listMergeSuggestions([a.id, b.id], { state: 'pending' });
@@ -455,7 +472,10 @@ describe('evolutionService merge-arbiter (§2.8, owner ruling R1)', () => {
       "UPDATE collection_merge_suggestions SET dismissed_at = datetime('now', '-15 days') WHERE id = ?",
       [row.id]
     );
-    const result = await evolutionService.runEvolutionPass({ users: [ctx.user.id], passes: 'full' });
+    const result = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'full',
+    });
     current = await pairRow(a, b);
     expect(current).toMatchObject({ state: 'pending', arbiterVerdict: 'merge' });
     expect(mock.calls).toHaveLength(1);
@@ -470,7 +490,10 @@ describe('evolutionService merge-arbiter (§2.8, owner ruling R1)', () => {
     err.class = 'budget';
     mock.error = err;
 
-    const result = await evolutionService.runEvolutionPass({ users: [ctx.user.id], passes: 'full' });
+    const result = await evolutionService.runEvolutionPass({
+      users: [ctx.user.id],
+      passes: 'full',
+    });
 
     expect(mock.calls).toHaveLength(1);
     expect(result.perUser[0].error).toBeUndefined();

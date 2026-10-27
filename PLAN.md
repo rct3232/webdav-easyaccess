@@ -2417,3 +2417,54 @@ bands 40/60/80/100. Merged in §30.3 order T3.5 → T3.3 → T3.2a → T3.1.
   no AI_FEATURE_PLAN §12 P3 section exists; lands at the T3.4/T3.1c docs steps per ruling.
 
 **Wave 2 (T3.2b ∥ T3.6 ∥ T3.4) launched from tip `45aeaf2b`; merge order T3.2b → T3.6 → T3.4.**
+
+### Wave 2 execution log (2026-10-27 — orchestrator; tip `211758c4`)
+
+All three units launched in parallel on base `17068cd7` (wt-t32b/wt-t36/wt-t34, bands
+40/60/80), merged in §30.3 order T3.2b → T3.6 → T3.4.
+
+- **T3.2b `[done]`** — merge `6e0a1271`. Branch gates dialog 18/18, hooks 19/19, shell 2/2.
+  Owner-only `CollectionPropertiesDialog` Sharing tab (grants list/add via UserSelectionMenu/
+  revoke, publish_mode radio + exposure copy), the reserved `sharing` dispatch seam wired,
+  viewer chip, 43+2 en/ko keys mirror-pinned, **E2E-S3-COLLECTION-024** spec code
+  (grant→recipient-view→leave→re-grant re-dot, dual-registered, mobile skips). Client +
+  docs/e2e only (15 files). RCA ×2 Case-B + one update-loop fix (deps narrowed to stable
+  identity). NOTE: an orphaned full-client jest run from the unit's session kept saturating
+  the host after completion — killed by the orchestrator (9 workers); the full-client gate
+  then ran on the merged tip itself.
+- **T3.6 `[done]`** — merges `f8bd9687`. Session initially ended mid-flight (pending
+  realignment commits + running gate) — resumed, closed out serially. Branch gates: full
+  client **187/2205 serial**, server collections route suite **85/85 incl. the §30.4
+  zero-definition-evaluation pins** (`GET /`, `GET /:id/items`, `POST /for-nodes`), docs+one
+  server TEST-only file, zero server source. Files-surface membership badges
+  (`useCollectionMemberships`, chunked ≤100, failure-swallow), files toolbar bulk add,
+  admin/share-link render nothing (inert gateway extended). Latent bug found+fixed: search
+  zone B/C rows are CONVERTED explorer entries (`nodeId`) not raw rows — naive id collection
+  would silently skip zone rows (pinned). Ruling taken per citable clauses (Case-C avoided):
+  bulk-add gates on READABLE rows (membership is a collection write), not the write gate —
+  `BulkActionToolbar.md` §3 + §3.2; recorded in `FileManagerControls.md`. **E2E id 025
+  reserved** (planned row). Deferred `(target)` rows kept out of scope: FilePropertiesDialog
+  "Member of" row, member-route checkmarks.
+- **T3.4 `[done]`** — merge `211758c4`. Branch gates: server **185/3251**, client 185/2163,
+  PG adapters **31/460(+1 skip)** (recordPredicates twins). `parse.nl` (≤1 chat call batched
+  with query-embed, closed grammar IMPORTED from `definitionEngine.js` — never forked; strict
+  schema + cardinality; never throws ⇒ silent vector+name fallback), `query_parses.predicates`
+  storage begins, additive snake `predicates` response field, client `applyStep` verbatim
+  storage, kill switch `AI_NL_PARSE_ENABLED` (T2 dbOnly hot). RED targets pinned: cache-hit
+  zero-chat, chat-off byte-identical P1 response (raw-body equality), violation matrix.
+  **Carries R1 docs half**: AI_FEATURE_PLAN §4.19 sentence SUPERSEDED + new **§12.15 P3
+  provenance ledger** (R1/R3 + parse.nl D1–D5) — the Wave-1 deferred provenance lands here.
+  SQL application of the atoms is §4.22's separate engine step — v1 effect is refined text
+  only (D-reading recorded). E2E-S3-AI-002 planned row only (T4.3 per R3).
+- **Conflict resolutions (orchestrator)**: RCA_LOG append-only ×2 (T3.6/T3.4 entries kept
+  alongside T3.2b's); `E2E_COVERAGE_PLAN.md` collections table union (HEAD 001–024 + theirs
+  025) + deferral bullets (bulk-toolbar-add removed — now 025; sharing rides 024);
+  `FileManager.md` host bullets union (properties-host + membership-chip host + bulk-add all
+  kept). `FileManager.js` auto-merged across the three units — verified by the full gates.
+- **Wave-2 exit gates (merged tip `211758c4`)**: server `test:ci` **185 suites / 3252 pass
+  (28 skip)**; client `test:ci` **188 / 2235**; `test:ci:pg:adapters` **31 / 460 (1 skip)** —
+  all rc=0. Wave-2 worktrees/branches removed.
+
+**Wave 3 (T3.1c merge arbiter) launched from tip `211758c4` (wt-t31c, band 120).** P3 exit
+gate follows: E2E batch (021/022/024 runs + 023/025 spec code + runs), ai-desktop regression,
+grep-gates + docsStatePurity, TEST_SUMMARY refresh, ledger closure.

@@ -696,7 +696,7 @@ describe('explorerGateway', () => {
         id: 9,
         state: 'dismissed',
       });
-      expect(repo.dismissFileSuggestion).toHaveBeenCalledWith(9, undefined);
+      expect(repo.dismissFileSuggestion).toHaveBeenCalledWith(9);
     });
   });
 

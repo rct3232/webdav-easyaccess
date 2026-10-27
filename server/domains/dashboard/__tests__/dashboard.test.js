@@ -248,7 +248,7 @@ describe('POST /api/dashboard/suggestions/accept', () => {
       Number((await dbQuery('SELECT COUNT(*) AS count FROM action_journal', [])).rows[0].count)
     ).toBe(journalBefore + 1);
     const { rows: journal } = await dbQuery(
-      "SELECT domain, action FROM action_journal WHERE id = ?",
+      'SELECT domain, action FROM action_journal WHERE id = ?',
       [res.body.undo.action_id]
     );
     expect(journal[0]).toMatchObject({ domain: 'file', action: 'cleanup-accept' });
@@ -266,7 +266,7 @@ describe('POST /api/dashboard/suggestions/dismiss', () => {
     expect(res.status).toBe(401);
   });
 
-  it('flips the requester\'s pending row and drops it from the next GET (never re-inserted)', async () => {
+  it("flips the requester's pending row and drops it from the next GET (never re-inserted)", async () => {
     const { token, homeId } = await storageUser('dism');
     const hash = `rt-dism-${Date.now()}`;
     await addFile(homeId, `keep-${hash}.bin`, { hash });
@@ -480,11 +480,14 @@ describe('GET /api/dashboard — vector near-dup block', () => {
     const keepId = Math.min(Number(a.nodeId), Number(b.nodeId));
     const memberId = Math.max(Number(a.nodeId), Number(b.nodeId));
     expect(nearRows[0]).toEqual({
+      id: expect.any(Number),
       node_id: memberId,
       kind: 'near_dup',
       path: expect.stringContaining('/'),
       size_bytes: memberId === Number(b.nodeId) ? 140 : 100,
-      reason: { kind: 'near_dup', keep_node_id: keepId },
+      reason: { kind: 'near_dup', keep_node_id: keepId, score: expect.any(Number) },
+      created_at: expect.any(String),
+      expires_at: expect.any(String),
     });
     for (const key of Object.keys(res.body)) expect(key).not.toMatch(/[A-Z]/);
   });

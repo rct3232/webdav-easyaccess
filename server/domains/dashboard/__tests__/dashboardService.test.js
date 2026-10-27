@@ -23,7 +23,6 @@ const aiEnrichmentsStore = require('@server/store/aiEnrichmentsStore');
 const llmModelsStore = require('@server/store/llmModelsStore');
 const embeddingsStore = require('@server/store/embeddingsStore');
 const presets = require('@server/infrastructure/adapters/llm/presets');
-const { initVectorStore, resetVectorStore } = require('@server/domains/ai/vectorStoreRuntime');
 
 let fileNodeService;
 let dbCleanup;
@@ -299,9 +298,9 @@ describe('acceptSuggestions — journaled command', () => {
     const { user, homeId } = await storageUser('accept');
     const stranger = await storageUser('accept-stranger');
     const dupHash = `h-${Date.now()}`;
+    await addFile(homeId, `dup-keep-${Date.now()}.bin`, { hash: dupHash }); // keeper (smallest id)
     const one = await addFile(homeId, 'dup-one.bin', { hash: dupHash });
     const two = await addFile(homeId, `dup-two-${Date.now()}.bin`, { hash: `h2-${Date.now()}` });
-    await addFile(homeId, `dup-keep-${Date.now()}.bin`, { hash: dupHash }); // keeper (not accepted)
     const foreign = await addFile(stranger.homeId, 'foreign.bin', {});
     const alreadyGone = await addFile(homeId, 'gone.bin', {});
     await createFileNodesStore().markSubtreeDeleted([Number(alreadyGone.nodeId)]);
@@ -310,17 +309,13 @@ describe('acceptSuggestions — journaled command', () => {
     await dashboardService.getDashboardSummary(user.id);
 
     const journalBefore = await journalRowCount();
-    const result = await dashboardService.acceptSuggestions(
-      user.id,
-      userArg(user),
-      [
-        Number(one.nodeId),
-        Number(two.nodeId),
-        Number(foreign.nodeId),
-        Number(alreadyGone.nodeId),
-        999999999,
-      ]
-    );
+    const result = await dashboardService.acceptSuggestions(user.id, userArg(user), [
+      Number(one.nodeId),
+      Number(two.nodeId),
+      Number(foreign.nodeId),
+      Number(alreadyGone.nodeId),
+      999999999,
+    ]);
 
     expect(result.trashed.sort((a, b) => a - b)).toEqual([Number(one.nodeId), Number(two.nodeId)]);
     expect(result.rejectedNotOwned.sort((a, b) => a - b)).toEqual([
@@ -347,7 +342,9 @@ describe('acceptSuggestions — journaled command', () => {
     expect(row.action).toBe('cleanup-accept');
     expect(String(row.subject)).toMatch(/^file:suggestion-accept:/);
     expect(String(row.actor)).toBe(String(user.id));
-    const payload = JSON.parse(typeof row.payload === 'string' ? row.payload : JSON.stringify(row.payload));
+    const payload = JSON.parse(
+      typeof row.payload === 'string' ? row.payload : JSON.stringify(row.payload)
+    );
     expect(payload.inverse).toEqual({ op: 'restore-from-trash' });
     expect(payload.items).toHaveLength(2);
     for (const item of payload.items) {
@@ -379,7 +376,9 @@ describe('acceptSuggestions — journaled command', () => {
   it('validates the batch BEFORE any work: [], missing, >200 ⇒ emptyNodeIds, zero journal rows', async () => {
     const { user } = await storageUser('validate');
     const journalBefore = await journalRowCount();
-    await expect(dashboardService.acceptSuggestions(user.id, {}, [])).rejects.toThrow('emptyNodeIds');
+    await expect(dashboardService.acceptSuggestions(user.id, {}, [])).rejects.toThrow(
+      'emptyNodeIds'
+    );
     await expect(dashboardService.acceptSuggestions(user.id, {}, undefined)).rejects.toThrow(
       'emptyNodeIds'
     );
@@ -417,7 +416,9 @@ describe('acceptSuggestions — journaled command', () => {
       expect(result.trashed).toEqual([Number(ok.nodeId)]);
       expect(result.skipped).toEqual([Number(bad.nodeId)]);
       const [row] = await journalRows();
-      const payload = JSON.parse(typeof row.payload === 'string' ? row.payload : JSON.stringify(row.payload));
+      const payload = JSON.parse(
+        typeof row.payload === 'string' ? row.payload : JSON.stringify(row.payload)
+      );
       expect(payload.items).toHaveLength(1);
     } finally {
       spy.mockRestore();
@@ -426,7 +427,7 @@ describe('acceptSuggestions — journaled command', () => {
 });
 
 describe('dismissSuggestion', () => {
-  it('flips the requester\'s pending row; unknown/foreign/non-pending ⇒ suggestionNotFound', async () => {
+  it("flips the requester's pending row; unknown/foreign/non-pending ⇒ suggestionNotFound", async () => {
     const { user, homeId } = await storageUser('dismiss-svc');
     const node = await addFile(homeId, 'temp_dismiss.bin', {});
     const { id } = await fileSuggestionsStore.insert({
@@ -506,7 +507,13 @@ describe('getDashboardSummary — vector near-dup feed + persisted variant (near
     const a = await addFile(homeId, 'below-a.txt', { hash: `th-a-${Date.now()}`, size: 100 });
     const b = await addFile(homeId, 'below-b.txt', { hash: `th-b-${Date.now()}`, size: 100 });
     const modelId = await activateEmbedModel();
-    await embeddingsStore.upsert(Number(a.nodeId), { modelId, dim: 4, vector: [1, 0, 0, 0], source: 'fulltext', contentHash: null });
+    await embeddingsStore.upsert(Number(a.nodeId), {
+      modelId,
+      dim: 4,
+      vector: [1, 0, 0, 0],
+      source: 'fulltext',
+      contentHash: null,
+    });
     await embeddingsStore.upsert(Number(b.nodeId), {
       modelId,
       dim: 4,
@@ -532,7 +539,13 @@ describe('getDashboardSummary — vector near-dup feed + persisted variant (near
     const d = await addFile(homeId, 'twin-d.txt', { hash: twinHash, size: 50 });
 
     const modelId = await activateEmbedModel();
-    await embeddingsStore.upsert(Number(a.nodeId), { modelId, dim: 4, vector: [1, 0, 0, 0], source: 'fulltext', contentHash: null });
+    await embeddingsStore.upsert(Number(a.nodeId), {
+      modelId,
+      dim: 4,
+      vector: [1, 0, 0, 0],
+      source: 'fulltext',
+      contentHash: null,
+    });
     await embeddingsStore.upsert(Number(b.nodeId), {
       modelId,
       dim: 4,
@@ -541,8 +554,20 @@ describe('getDashboardSummary — vector near-dup feed + persisted variant (near
       contentHash: null,
     });
     // hash twins with identical vectors: cosine 1.0 — hash-first keeps them OUT
-    await embeddingsStore.upsert(Number(c.nodeId), { modelId, dim: 4, vector: [0, 0, 1, 0], source: 'fulltext', contentHash: null });
-    await embeddingsStore.upsert(Number(d.nodeId), { modelId, dim: 4, vector: [0, 0, 1, 0], source: 'fulltext', contentHash: null });
+    await embeddingsStore.upsert(Number(c.nodeId), {
+      modelId,
+      dim: 4,
+      vector: [0, 0, 1, 0],
+      source: 'fulltext',
+      contentHash: null,
+    });
+    await embeddingsStore.upsert(Number(d.nodeId), {
+      modelId,
+      dim: 4,
+      vector: [0, 0, 1, 0],
+      source: 'fulltext',
+      contentHash: null,
+    });
 
     const summary = await dashboardService.getDashboardSummary(user.id);
 
@@ -583,18 +608,40 @@ describe('getDashboardSummary — vector near-dup feed + persisted variant (near
     const c = await addFile(homeId, 'sd-c.txt', { hash: `sd-c-${Date.now()}`, size: 120 });
     const modelId = await activateEmbedModel();
     const t = THETA + 0.001;
-    await embeddingsStore.upsert(Number(a.nodeId), { modelId, dim: 4, vector: [1, 0, 0, 0], source: 'fulltext', contentHash: null });
-    await embeddingsStore.upsert(Number(b.nodeId), { modelId, dim: 4, vector: nearPairVector(t), source: 'fulltext', contentHash: null });
-    await embeddingsStore.upsert(Number(c.nodeId), { modelId, dim: 4, vector: nearPairVector(t), source: 'fulltext', contentHash: null });
+    await embeddingsStore.upsert(Number(a.nodeId), {
+      modelId,
+      dim: 4,
+      vector: [1, 0, 0, 0],
+      source: 'fulltext',
+      contentHash: null,
+    });
+    await embeddingsStore.upsert(Number(b.nodeId), {
+      modelId,
+      dim: 4,
+      vector: nearPairVector(t),
+      source: 'fulltext',
+      contentHash: null,
+    });
+    await embeddingsStore.upsert(Number(c.nodeId), {
+      modelId,
+      dim: 4,
+      vector: nearPairVector(t),
+      source: 'fulltext',
+      contentHash: null,
+    });
     // keeper a = a two-sentence doc; b = one sentence (excluded); c = no enrichment (listed)
-    await aiEnrichmentsStore.upsert(Number(a.nodeId), { summary: 'First sentence. Second sentence.' });
+    await aiEnrichmentsStore.upsert(Number(a.nodeId), {
+      summary: 'First sentence. Second sentence.',
+    });
     await aiEnrichmentsStore.upsert(Number(b.nodeId), { summary: 'A single short line.' });
 
     const summary = await dashboardService.getDashboardSummary(user.id);
     const nearRows = summary.suggestions.filter((r) => r.kind === 'near_dup');
     expect(nearRows.map((r) => r.nodeId).sort((x, y) => x - y)).toEqual([Number(c.nodeId)]);
     const stored = await allSuggestionRows(user.id);
-    expect(stored.some((r) => r.kind === 'near_dup' && Number(r.node_id) === Number(b.nodeId))).toBe(false);
+    expect(
+      stored.some((r) => r.kind === 'near_dup' && Number(r.node_id) === Number(b.nodeId))
+    ).toBe(false);
   });
 
   it('no active embed model ⇒ no near_duplicates key, NO near_dup row ever materialized, GET 200-shaped', async () => {
@@ -642,11 +689,17 @@ describe('undo (accept command rows)', () => {
     expect(undone.skipped).toEqual([]);
 
     const store = createFileNodesStore();
-    await expect(store.getNode(Number(m1.nodeId))).resolves.toMatchObject({ id: Number(m1.nodeId) });
-    await expect(store.getNode(Number(m2.nodeId))).resolves.toMatchObject({ id: Number(m2.nodeId) });
+    await expect(store.getNode(Number(m1.nodeId))).resolves.toMatchObject({
+      id: Number(m1.nodeId),
+    });
+    await expect(store.getNode(Number(m2.nodeId))).resolves.toMatchObject({
+      id: Number(m2.nodeId),
+    });
 
     const after = await dashboardService.getDashboardSummary(user.id);
-    expect(after.suggestions.map((r) => r.id).sort((x, y) => x - y)).toEqual([...ids].sort((x, y) => x - y));
+    expect(after.suggestions.map((r) => r.id).sort((x, y) => x - y)).toEqual(
+      [...ids].sort((x, y) => x - y)
+    );
   });
 
   it('fingerprint mismatch is a per-item SKIP (hand-restored node), other items still undone', async () => {
@@ -673,7 +726,9 @@ describe('undo (accept command rows)', () => {
     expect(undone.skipped[0].reason).toBe('changed');
 
     const store = createFileNodesStore();
-    await expect(store.getNode(Number(m1.nodeId))).resolves.toMatchObject({ id: Number(m1.nodeId) });
+    await expect(store.getNode(Number(m1.nodeId))).resolves.toMatchObject({
+      id: Number(m1.nodeId),
+    });
     const stored = await allSuggestionRows(user.id);
     // the skipped item's row stays accepted; the applied one is pending again
     const m1State = stored.find((r) => Number(r.node_id) === Number(m1.nodeId)).state;

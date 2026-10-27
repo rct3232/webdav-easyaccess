@@ -463,13 +463,11 @@ describe('CollectionDashboard — suggestions block', () => {
 
   it('wires per-row dismiss through the gateway seam and refreshes silently (no toast)', async () => {
     const gateway = makeGateway({
-      getFileSuggestions: jest
-        .fn()
-        .mockResolvedValue({
-          suggestions: [persistedRow()],
-          duplicates: { group_count: 1, duplicate_count: 2, reclaimable_bytes: 2048 },
-          trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
-        }),
+      getFileSuggestions: jest.fn().mockResolvedValue({
+        suggestions: [persistedRow()],
+        duplicates: { group_count: 1, duplicate_count: 2, reclaimable_bytes: 2048 },
+        trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
+      }),
       dismissFileSuggestion: jest.fn().mockResolvedValue({ id: 901, state: 'dismissed' }),
     });
 
@@ -484,13 +482,11 @@ describe('CollectionDashboard — suggestions block', () => {
 
   it('dismissed failure (absorbed null) keeps the row and skips the refresh', async () => {
     const gateway = makeGateway({
-      getFileSuggestions: jest
-        .fn()
-        .mockResolvedValue({
-          suggestions: [persistedRow()],
-          duplicates: { group_count: 1, duplicate_count: 2, reclaimable_bytes: 2048 },
-          trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
-        }),
+      getFileSuggestions: jest.fn().mockResolvedValue({
+        suggestions: [persistedRow()],
+        duplicates: { group_count: 1, duplicate_count: 2, reclaimable_bytes: 2048 },
+        trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
+      }),
       dismissFileSuggestion: jest.fn().mockResolvedValue(null),
     });
 

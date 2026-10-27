@@ -19,7 +19,6 @@ jest.mock('../configResolver', () => ({
   }),
 }));
 
-const fileSuggestionsStore = require('../../store/fileSuggestionsStore');
 const {
   shouldSkipSuggestionExpiry,
   resolveSuggestionExpiryIntervalMs,
@@ -88,7 +87,9 @@ describe('runFileSuggestionsExpiry (§3.6)', () => {
   it('a held lock ⇒ skipped (no store call)', async () => {
     const store = fakeStore([5]);
     const locks = fakeLockManager(false);
-    await expect(runFileSuggestionsExpiry({ store, now: () => 1234, lockManager: locks })).resolves.toEqual({
+    await expect(
+      runFileSuggestionsExpiry({ store, now: () => 1234, lockManager: locks })
+    ).resolves.toEqual({
       expired: 0,
       skipped: 'locked',
     });
@@ -98,7 +99,11 @@ describe('runFileSuggestionsExpiry (§3.6)', () => {
   it('rejections propagate to the caller (the scheduler logs)', async () => {
     const store = { expireStale: jest.fn(() => Promise.reject(new Error('db down'))) };
     await expect(
-      runFileSuggestionsExpiry({ store, now: () => Date.UTC(2030, 0, 1), lockManager: fakeLockManager() })
+      runFileSuggestionsExpiry({
+        store,
+        now: () => Date.UTC(2030, 0, 1),
+        lockManager: fakeLockManager(),
+      })
     ).rejects.toThrow('db down');
   });
 });
@@ -127,7 +132,11 @@ describe('startFileSuggestionsExpiryScheduler (§3.6)', () => {
       key === 'AI_SUGGESTION_EXPIRY_INTERVAL_MS' ? String(DAY_MS) : undefined;
     const locks = fakeLockManager();
 
-    const timer = startFileSuggestionsExpiryScheduler({ store, lockManager: locks, now: () => 999 });
+    const timer = startFileSuggestionsExpiryScheduler({
+      store,
+      lockManager: locks,
+      now: () => 999,
+    });
     expect(timer).not.toBeNull();
 
     jest.advanceTimersByTime(DAY_MS);

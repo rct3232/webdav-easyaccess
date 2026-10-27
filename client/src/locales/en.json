@@ -891,7 +891,10 @@
     "suggestionsExpiryNote": "Unaccepted suggestions are kept until expiry.",
     "suggestionsReason": {
       "ExactDup": "Exact duplicate",
-      "NearDup": "Near duplicate"
+      "NearDup": "Near duplicate",
+      "TempPattern": "Temporary file",
+      "StaleScreenshot": "Old screenshot",
+      "OldInstaller": "Old installer"
     },
     "suggestionsTrashed": "Moved {{count}} items to Trash",
     "capacityTitle": "Storage over time"
@@ -1066,7 +1069,9 @@
       "alreadyUndone": "This action has already been undone."
     },
     "dashboard": {
-      "emptyNodeIds": "Please select at least one file or folder."
+      "emptyNodeIds": "Please select at least one file or folder.",
+      "invalidSuggestionId": "Please select a valid suggestion to dismiss.",
+      "suggestionNotFound": "This suggestion no longer exists."
     },
     "collections": {
       "nameRequired": "A collection name is required.",

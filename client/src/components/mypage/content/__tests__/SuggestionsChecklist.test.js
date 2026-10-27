@@ -104,7 +104,10 @@ describe('SuggestionsChecklist', () => {
   it('expiry footer gates on expires_at, not on id: retention-off rows (expires_at null) render no footer', () => {
     renderWithProviders(
       <SuggestionsChecklist
-        suggestions={[row({ id: 91, expires_at: null }), row({ id: 92, node_id: 102, expires_at: null })]}
+        suggestions={[
+          row({ id: 91, expires_at: null }),
+          row({ id: 92, node_id: 102, expires_at: null }),
+        ]}
         onAccept={jest.fn()}
         onDismiss={jest.fn()}
       />

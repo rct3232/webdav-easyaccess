@@ -100,7 +100,9 @@ keeper is never listed, all kinds).
 Materialization semantics (`store/fileSuggestionsStore.md` §2.2/§2.4):
 
 - **Dedupe:** insert ONLY when the user has NO existing row of the same `(node_id, kind)` in
-  state `pending`/`accepted`/`dismissed` (`expired` history does not block re-suggestion).
+  state `pending`/`dismissed` (`expired` history does not block re-suggestion). An `accepted`
+  row of a live current candidate `(node_id, kind)` is RE-PENDED (trash-UI restore without
+  the journal undo) instead of duplicated — the original row and id resurface (§2.2).
 - **Expiry stamp:** `expires_at = now + resolveSuggestionRetentionDays()` (`0` ⇒ `null`).
   Re-materialization never rewrites an existing pending row (id and expiry stay stable;
   dismissing/expiring a row is the user's or the retention job's state, not the generator's).

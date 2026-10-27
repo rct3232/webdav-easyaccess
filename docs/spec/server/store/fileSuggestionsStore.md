@@ -55,8 +55,10 @@ Domain row (repository boundary; SQL snake_case → camel — `repository-contra
 - **`state` machine** (the repository enforces every transition in its WHERE clause):
   `pending → accepted` (accept command, journal TX), `pending → dismissed` (dismiss),
   `pending → expired` (retention pass + generator reconcile), `accepted → pending`
-  (undo, journal TX — the suggestion resurfaces after undo). `dismissed`, `expired` and the
-  historical `accepted` rows are terminal (audit trail); dismissed kinds are NEVER
+  (undo, journal TX — the suggestion resurfaces after undo; ALSO the generator's re-pend:
+  an accepted row whose node is a live current candidate again — restored through the trash
+  UI without the journal undo — flips back to `pending` in the materialize pass).
+  `dismissed` and `expired` rows are terminal (audit trail); dismissed kinds are NEVER
   re-inserted for the same node (generator dedupe §2.4).
 - **`reason` JSONB keys are snake_case verbatim** — the wire serializes them unchanged
   (`routes/dashboard.md` §2.4): `{ kind, keep_node_id?, score?, pattern?, age_days? }`.
@@ -71,7 +73,7 @@ Domain row (repository boundary; SQL snake_case → camel — `repository-contra
 | `listPending(userId)`                           | `=> Promise<domainRow[]>`                    | All `state='pending'` rows of the user, `ORDER BY id`. No expiry math here — the consumer applies the `expiresAt` filter and the kind-rank listing order (`routes/dashboard.md` §2.4, `dashboardService.md` §2.2).                                                  |
 | `listKeys(userId)`                              | `=> Promise<Array<{ nodeId, kind, state }>>` | Full per-user history projection for the generator's dedupe/reconcile pass (bounded read, personal scale).                                                                                                                          |
 | `dismiss(userId, id)`                           | `=> Promise<{ changes }>`                    | `UPDATE … SET state='dismissed' WHERE id=? AND user_id=? AND state='pending'` — cross-user and non-pending targets report `changes: 0` (the route maps to 404).                                                                     |
-| `listIdsByNodesTx(tx, userId, nodeIds, state)`  | `=> Promise<Array<{ id, nodeId }>>`          | Caller-owned TX (or the executor itself — facade-dispatch precedent): the row ids for the accept/undo node set under the expected `state` (fingerprint pre-read).                                                                   |
+| `listIdsByNodesTx(tx, userId, nodeIds, state)`  | `=> Promise<Array<{ id, nodeId, kind }>>`    | Caller-owned TX (or the executor itself — facade-dispatch precedent): the row ids for the accept/undo node set under the expected `state` (fingerprint pre-read; `kind` included for candidate-set matching).                                                                   |
 | `flipStatesTx(tx, { ids, fromState, toState })` | `=> Promise<{ changes }>`                    | Caller-owned TX (or the executor): state flip restricted to the id set AND the expected `fromState` (rows flipped by a concurrent command simply do not match — the count reports what actually moved).                             |
 | `expireStale({ now, limit })`                   | `=> Promise<{ changes, ids }>`               | Bounded retention pass: select up to `limit` `pending` ids with `expires_at < now` (NULL never expires), flip them to `expired`. `ids` feeds the run report.                                                                        |
 

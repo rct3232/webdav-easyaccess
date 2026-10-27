@@ -10,9 +10,12 @@
  * soft-delete survival vs hard-delete cascade.
  */
 
-const { createTestDatabase, createUserRootNode, createTestFileNode, dbQuery } = require(
-  '@server/test-utils'
-);
+const {
+  createTestDatabase,
+  createUserRootNode,
+  createTestFileNode,
+  dbQuery,
+} = require('@server/test-utils');
 const storage = require('@server/store/storage');
 const createFileSuggestionsRepository = require('@server/store/repositories/FileSuggestionsRepository');
 
@@ -85,7 +88,9 @@ describe('FileSuggestionsRepository conformance', () => {
     expect(Number.isNaN(Date.parse(row.expiresAt))).toBe(false);
     expect(Date.parse(row.expiresAt)).toBe(Date.parse(iso));
 
-    await expect(repo.insert({ userId: user.id, nodeId: 999999999, kind: 'x' })).rejects.toBeDefined();
+    await expect(
+      repo.insert({ userId: user.id, nodeId: 999999999, kind: 'x' })
+    ).rejects.toBeDefined();
     await expect(
       repo.insert({ userId: 999999999, nodeId: node.nodeId, kind: 'x' })
     ).rejects.toBeDefined();
@@ -209,9 +214,7 @@ describe('FileSuggestionsRepository conformance', () => {
 
     const states = Object.fromEntries(
       (await repo.listKeys(user.id))
-        .filter((k) =>
-          [n1, n2, n3, n4].some((n) => Number(n.nodeId) === k.nodeId)
-        )
+        .filter((k) => [n1, n2, n3, n4].some((n) => Number(n.nodeId) === k.nodeId))
         .map((k) => [k.nodeId, k.state])
     );
     expect([states[Number(n1.nodeId)], states[Number(n2.nodeId)]].sort()).toEqual([
@@ -253,7 +256,7 @@ describe('FileSuggestionsRepository conformance', () => {
     const executor = storage.getExecutor();
     const { rows: before } = await dbQuery('SELECT COUNT(*) AS cnt FROM file_suggestions', []);
     await expect(
-      executor.transaction(async (tx) => {
+      executor.transaction(async () => {
         await repo.insert({ userId: user.id, nodeId: 999999998, kind: 'exact_dup' });
       })
     ).rejects.toBeDefined();

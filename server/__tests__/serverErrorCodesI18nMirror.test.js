@@ -127,17 +127,20 @@ describe('SERVER_ERROR_CODES ↔ client locale mirror (collections + ai domains)
       }
     });
 
-    it.each(['en', 'ko'])('mirrors every SERVER_ERROR_CODES.dashboard key into %s.json', (locale) => {
-      const block = (locale === 'en' ? en : ko).serverErrors[domain];
-      expect(block).toBeDefined();
-      const codeKeys = Object.keys(SERVER_ERROR_CODES[domain]);
-      expect(codeKeys.length).toBeGreaterThan(0);
-      for (const key of codeKeys) {
-        expect(block[key]).toBeDefined();
-        expect(typeof block[key]).toBe('string');
-        expect(block[key].length).toBeGreaterThan(0);
+    it.each(['en', 'ko'])(
+      'mirrors every SERVER_ERROR_CODES.dashboard key into %s.json',
+      (locale) => {
+        const block = (locale === 'en' ? en : ko).serverErrors[domain];
+        expect(block).toBeDefined();
+        const codeKeys = Object.keys(SERVER_ERROR_CODES[domain]);
+        expect(codeKeys.length).toBeGreaterThan(0);
+        for (const key of codeKeys) {
+          expect(block[key]).toBeDefined();
+          expect(typeof block[key]).toBe('string');
+          expect(block[key].length).toBeGreaterThan(0);
+        }
       }
-    });
+    );
 
     it.each(['en', 'ko'])(
       'has no %s dashboard locale key missing from SERVER_ERROR_CODES (vice versa)',

@@ -28,10 +28,26 @@ let blobStub;
 const userArg = (user) => ({ id: user.id, username: user.username, is_admin: user.is_admin });
 
 function makeBlobStub({ webdav = false } = {}) {
+  // Stateful trash-entry registry: an accepted file's blob MOVES into
+  // /.wea-trash/<id> on trashing and moves back on undo — headBlob reflects
+  // the current position so the trash-target guard and the undo probe both
+  // see the truth (the trash.test.js stub idiom).
+  const trashed = new Set();
   return {
     downloadBlob: jest.fn(),
-    headBlob: jest.fn(async (key) => (webdav && String(key).startsWith('/.wea-trash/') ? { exists: true } : null)),
-    moveBlob: jest.fn().mockResolvedValue(undefined),
+    headBlob: jest.fn(async (key) => {
+      const k = String(key);
+      if (k.startsWith('/.wea-trash/')) {
+        return webdav && trashed.has(k) ? { exists: true } : null;
+      }
+      return webdav ? { exists: true } : null;
+    }),
+    moveBlob: jest.fn(async (from, to) => {
+      const f = String(from);
+      const t = String(to);
+      if (f.startsWith('/.wea-trash/')) trashed.delete(f);
+      if (t.startsWith('/.wea-trash/')) trashed.add(t);
+    }),
     deleteBlob: jest.fn().mockResolvedValue(undefined),
     ensureDirectoryExists: jest.fn().mockResolvedValue(undefined),
   };
@@ -82,7 +98,7 @@ afterAll(async () => {
 async function acceptDupPair(tag) {
   const { user, homeId } = await storageUser(tag);
   const hash = `${tag}-${Date.now()}`;
-  await addFile(homeId, `k-${hash}.bin`, { hash });
+  await addFile(homeId, `k-${hash}.bin`, { hash }); // keeper first (smallest node id)
   const member = await addFile(homeId, `m-${hash}.bin`, { hash });
   await dashboardService.getDashboardSummary(user.id);
   const accept = await dashboardService.acceptSuggestions(user.id, userArg(user), [
@@ -100,9 +116,9 @@ describe('restore-from-trash undo', () => {
     const result = await actionJournalStore.undoAction(accept.actionId, {});
     expect(result).toMatchObject({ undone: 1, skipped: [] });
 
-    await expect(
-      createFileNodesStore().getNode(Number(member.nodeId))
-    ).resolves.toMatchObject({ id: Number(member.nodeId) });
+    await expect(createFileNodesStore().getNode(Number(member.nodeId))).resolves.toMatchObject({
+      id: Number(member.nodeId),
+    });
     expect((await suggestionState(user.id, member.nodeId))[0]).toBe('pending');
     expect(blobStub.moveBlob).not.toHaveBeenCalled();
 
@@ -125,9 +141,9 @@ describe('restore-from-trash undo', () => {
         expect.stringContaining('/.wea-trash/'),
         expect.stringContaining('m-')
       );
-      await expect(
-        createFileNodesStore().getNode(Number(member.nodeId))
-      ).resolves.toMatchObject({ id: Number(member.nodeId) });
+      await expect(createFileNodesStore().getNode(Number(member.nodeId))).resolves.toMatchObject({
+        id: Number(member.nodeId),
+      });
       expect((await suggestionState(user.id, member.nodeId))[0]).toBe('pending');
     } finally {
       setMode('s3');

@@ -28,7 +28,10 @@ describe('classifyCleanup — temp patterns (no age requirement)', () => {
   it('matches the temp extension family at any age', () => {
     for (const ext of TEMP_EXTENSIONS) {
       const verdict = classifyCleanup(fileRow(`scratch${ext}`, 0), { now: NOW });
-      expect(verdict).toEqual({ kind: 'temp_pattern', reason: { kind: 'temp_pattern', pattern: 'temp' } });
+      expect(verdict).toEqual({
+        kind: 'temp_pattern',
+        reason: { kind: 'temp_pattern', pattern: 'temp' },
+      });
     }
   });
 
@@ -53,7 +56,10 @@ describe('classifyCleanup — stale screenshots', () => {
       'Screen-Shot-01.jpg',
       'snipaste-capture.png',
     ]) {
-      const verdict = classifyCleanup({ name, createdAt: iso(NOW - (STALE_SCREENSHOT_DAYS + 1) * DAY_MS) }, { now: NOW });
+      const verdict = classifyCleanup(
+        { name, createdAt: iso(NOW - (STALE_SCREENSHOT_DAYS + 1) * DAY_MS) },
+        { now: NOW }
+      );
       expect(verdict.kind).toBe('stale_screenshot');
       expect(verdict.reason.pattern).toBe('screenshot');
     }
@@ -67,7 +73,9 @@ describe('classifyCleanup — stale screenshots', () => {
   });
 
   it('reports age_days rounded down', () => {
-    const verdict = classifyCleanup(fileRow('screenshot-old.png', STALE_SCREENSHOT_DAYS + 3), { now: NOW });
+    const verdict = classifyCleanup(fileRow('screenshot-old.png', STALE_SCREENSHOT_DAYS + 3), {
+      now: NOW,
+    });
     expect(verdict.reason.age_days).toBe(STALE_SCREENSHOT_DAYS + 3);
   });
 });
@@ -75,7 +83,9 @@ describe('classifyCleanup — stale screenshots', () => {
 describe('classifyCleanup — old installers', () => {
   it('matches the installer extension family past OLD_INSTALLER_DAYS', () => {
     for (const ext of INSTALLER_EXTENSIONS) {
-      const verdict = classifyCleanup(fileRow(`setup-tool${ext}`, OLD_INSTALLER_DAYS + 1), { now: NOW });
+      const verdict = classifyCleanup(fileRow(`setup-tool${ext}`, OLD_INSTALLER_DAYS + 1), {
+        now: NOW,
+      });
       expect(verdict.kind).toBe('old_installer');
       expect(verdict.reason.pattern).toBe('installer');
       expect(verdict.reason.age_days).toBe(OLD_INSTALLER_DAYS + 1);
@@ -84,7 +94,9 @@ describe('classifyCleanup — old installers', () => {
 
   it('fresh installers and non-installer executables-in-name contribute nothing', () => {
     expect(classifyCleanup(fileRow('tool.exe', 10), { now: NOW })).toBeNull();
-    expect(classifyCleanup(fileRow('notes.exe.txt', OLD_INSTALLER_DAYS + 10), { now: NOW })).toBeNull();
+    expect(
+      classifyCleanup(fileRow('notes.exe.txt', OLD_INSTALLER_DAYS + 10), { now: NOW })
+    ).toBeNull();
   });
 
   it('temp patterns win over installer/stale families when both match', () => {
@@ -93,7 +105,9 @@ describe('classifyCleanup — old installers', () => {
   });
 
   it('non-numeric/missing createdAt contributes nothing (no age oracle)', () => {
-    expect(classifyCleanup({ name: 'Screenshot_old.png', createdAt: null }, { now: NOW })).toBeNull();
+    expect(
+      classifyCleanup({ name: 'Screenshot_old.png', createdAt: null }, { now: NOW })
+    ).toBeNull();
     expect(classifyCleanup({ name: 'old.dmg', createdAt: 'not-a-date' }, { now: NOW })).toBeNull();
   });
 });

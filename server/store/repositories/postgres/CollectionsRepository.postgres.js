@@ -625,14 +625,18 @@ module.exports = function createPostgresCollectionsRepository(executor) {
       return { changes: result.changes };
     },
 
-    async upsertMergeSuggestion(tx, aId, bId, score) {
+    async upsertMergeSuggestion(tx, aId, bId, score, arbiter = {}) {
       const low = Math.min(Number(aId), Number(bId));
       const high = Math.max(Number(aId), Number(bId));
+      const verdict =
+        arbiter && arbiter.arbiterVerdict != null ? String(arbiter.arbiterVerdict) : null;
+      const reason =
+        arbiter && arbiter.arbiterReason != null ? String(arbiter.arbiterReason) : null;
       await tx.run(
-        `INSERT INTO collection_merge_suggestions (a_id, b_id, score)
-         VALUES ($1, $2, $3)
+        `INSERT INTO collection_merge_suggestions (a_id, b_id, score, arbiter_verdict, arbiter_reason)
+         VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (a_id, b_id) DO NOTHING`,
-        [low, high, Number(score)]
+        [low, high, Number(score), verdict, reason]
       );
       const { rows } = await tx.query(
         'SELECT * FROM collection_merge_suggestions WHERE a_id = $1 AND b_id = $2 LIMIT 1',

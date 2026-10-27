@@ -1649,3 +1649,21 @@ no source, test-logic, or spec defect; no production-code change.
 - **Action**: none beyond re-running (no timeout increases, no worker-count raises —
 standing host rule).
 - **Verification**: full client `test:ci` green: 185 suites / 2163 tests.
+
+## 2026-10-27 — T3.1c: conformance-suite global-read collision from the new arbiter verdict case
+
+- **Summary**: after the merge-arbiter twins extension, the pre-existing
+  `merge suggestions normalize the pair and guard the state machine` conformance case failed —
+  its UNSCOPED `repo.listMergeSuggestions()` reads (exactly one pending row; then none) saw the
+  pending rows created by my newly added `arbiter columns … write-once verdict` case, which runs
+  earlier in the same shared-DB file.
+- **Diagnosis**: the store spec defines `listMergeSuggestions(collectionIds?, {state})` — the
+  neighbour case relies on DB-global pending isolation that no transaction boundary provides;
+  my case inserted pending rows and ended without transitioning them.
+- **Classification**: **Case B (test error)** — the new test violated suite isolation; the twins,
+  the facade and the state machine behaved exactly as contracted (write-once verdict on INSERT,
+  conflict path untouched). No source change was made.
+- **Action**: the arbiter verdict case now transitions BOTH of its rows to `merged` at the end
+  (terminal cleanup), keeping the file order-independent.
+- **Verification**: conformance suite green 36/36 (sqlite leg); the same file runs under
+  `test:ci:pg:adapters` for the PG twin leg at the T3.1c gate.

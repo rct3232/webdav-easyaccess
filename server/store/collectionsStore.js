@@ -712,9 +712,11 @@ async function addTombstone(ownerId, defFingerprint) {
     .transaction((tx) => repo.insertTombstone(tx, ownerId, defFingerprint));
 }
 
-async function upsertMergeSuggestion(aId, bId, score) {
+async function upsertMergeSuggestion(aId, bId, score, arbiter = {}) {
   const repo = getRepository();
-  return storage.getExecutor().transaction((tx) => repo.upsertMergeSuggestion(tx, aId, bId, score));
+  return storage
+    .getExecutor()
+    .transaction((tx) => repo.upsertMergeSuggestion(tx, aId, bId, score, arbiter));
 }
 
 async function listMergeSuggestions(collectionIds, options = {}) {

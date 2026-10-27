@@ -241,6 +241,13 @@ const CONFIG_ENTRIES = Object.freeze([
     default: true,
     dbOnly: true,
   },
+  {
+    key: 'AI_MERGE_ARBITER_ENABLED',
+    tier: TIER.T2,
+    secret: false,
+    default: true,
+    dbOnly: true,
+  },
   { key: 'AI_EVOLUTION_INACTIVE_DAYS', tier: TIER.T2, secret: false, default: 30, dbOnly: true },
   { key: 'AI_EVOLUTION_MIN_AGE_DAYS', tier: TIER.T2, secret: false, default: 14, dbOnly: true },
   { key: 'AI_EVOLUTION_CREATE_RATE_DAYS', tier: TIER.T2, secret: false, default: 7, dbOnly: true },

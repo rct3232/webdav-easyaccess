@@ -831,6 +831,61 @@ describe('CollectionsRepository conformance', () => {
       await expect(repo.isTombstoned(owner.id, fingerprint)).resolves.toBe(false);
     });
 
+    it('merge suggestions write arbiter columns on the INSERT only (write-once verdict)', async () => {
+      const owner = await uniqueUser();
+      let aId;
+      let bId;
+      let cId;
+      await inTx(async (tx) => {
+        aId = (await repo.insertCollection(tx, { ownerId: owner.id, name: 'MV A', origin: 'user' }))
+          .id;
+        bId = (await repo.insertCollection(tx, { ownerId: owner.id, name: 'MV B', origin: 'user' }))
+          .id;
+        cId = (await repo.insertCollection(tx, { ownerId: owner.id, name: 'MV C', origin: 'user' }))
+          .id;
+      });
+
+      // INSERT carries the verdict columns (normalized pair too).
+      const promoted = await inTx(async (tx) =>
+        repo.upsertMergeSuggestion(tx, bId, aId, 620, {
+          arbiterVerdict: 'merge',
+          arbiterReason: 'same theme, twice',
+        })
+      );
+      expect(promoted).toMatchObject({
+        aId: Math.min(Number(aId), Number(bId)),
+        bId: Math.max(Number(aId), Number(bId)),
+        score: 620,
+        state: 'pending',
+        arbiterVerdict: 'merge',
+        arbiterReason: 'same theme, twice',
+      });
+
+      // CONFLICT path: existing row returned UNTOUCHED — score and verdict not
+      // overwritten, absent payload never nulls stored columns.
+      const conflict = await inTx(async (tx) =>
+        repo.upsertMergeSuggestion(tx, aId, bId, 700, {
+          arbiterVerdict: 'sibling',
+          arbiterReason: 'would overwrite',
+        })
+      );
+      expect(conflict.id).toBe(promoted.id);
+      expect(conflict).toMatchObject({
+        score: 620,
+        arbiterVerdict: 'merge',
+        arbiterReason: 'same theme, twice',
+      });
+
+      // Plain set-rule upsert (no arbiter payload) persists NULL verdicts.
+      const plain = await inTx(async (tx) => repo.upsertMergeSuggestion(tx, aId, cId, 1000));
+      expect(plain).toMatchObject({ arbiterVerdict: null, arbiterReason: null, score: 1000 });
+
+      // Terminal cleanup: the unscoped pending reads in the neighbouring state
+      // machine case stay order-independent.
+      await inTx(async (tx) => repo.setSuggestionState(tx, promoted.id, 'merged'));
+      await inTx(async (tx) => repo.setSuggestionState(tx, plain.id, 'merged'));
+    });
+
     it('merge suggestions normalize the pair and guard the state machine', async () => {
       const owner = await uniqueUser();
       let aId;

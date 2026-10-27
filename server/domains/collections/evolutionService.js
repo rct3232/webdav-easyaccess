@@ -21,9 +21,11 @@
  * against the definition's admitted set (adds ← θ_in, removes ← θ_out,
  * hysteresis via the stored member set from collectionsService).
  *
- * As-built scope: create + split + reconcile + merge candidates (cheap+full);
- * the full leg additionally runs the auto-pin reconcile, the archive pass
- * (§2.6) and the purge pass (§2.7). Cheap passes never archive or purge.
+ * As-built scope: create + split + reconcile + merge candidates (cheap+full,
+ * incl. the nightly merge-arbiter adjudication of the 0.55–0.7 review band —
+ * full leg only); the full leg additionally runs the auto-pin reconcile, the
+ * archive pass (§2.6) and the purge pass (§2.7). Cheap passes never archive,
+ * purge or call the arbiter.
  */
 
 /* eslint-disable no-console -- background pass logging, never throws to callers */
@@ -35,12 +37,14 @@ const llmModelsStore = require('../../store/llmModelsStore');
 const fileLikesStore = require('../../store/fileLikesStore');
 const usageStore = require('../../store/usageStore');
 const aiTagStore = require('../../store/aiTagStore');
+const aiEnrichmentsStore = require('../../store/aiEnrichmentsStore');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const permissionStore = require('../../domains/permissions/stores/permissionStore');
 const lockManager = require('../../infrastructure/lockManager');
 const { getPresetByFamilyRole } = require('../../infrastructure/adapters/llm/presets');
 const definitionEngine = require('./definitionEngine');
 const { createNamer } = require('./namingService');
+const { createMergeArbiter, MERGE_ARBITER_MAX_PAIRS } = require('./mergeArbiter');
 
 const DEFAULT_DEBOUNCE_S = 90;
 const USER_LOCK_PREFIX = 'evolution:user:';
@@ -81,9 +85,13 @@ const SPLIT_REASON_PREFIX = 'split:';
 const MERGE_MEMBER_CAP = 500;
 const MERGE_SIZE_RATIO_MIN = 0.7;
 const MERGE_JACCARD_MIN = 0.7;
+/** Review band 0.55–0.7 (§2.8): rows are created ONLY via an arbiter verdict. */
+const MERGE_BAND_JACCARD_MIN = 0.55;
 const MERGE_CENTROID_PREFILTER = 0.7;
 const MERGE_DISMISS_FIRST_MS = 14 * 86400000;
 const MERGE_DISMISS_REPEAT_MS = 30 * 86400000;
+/** ≤5 sampled member summaries per side in the arbiter prompt (§4.19). */
+const MERGE_ARBITER_SAMPLE_CAP = 5;
 
 /**
  * Archive/purge passes (§2.6/§2.7). The gate is EVENT-based with ε=0: a
@@ -305,7 +313,9 @@ async function runUserPass(userId, mode = 'cheap') {
     const reconciled = await reconcileUser(userId);
     const created = await runCreatePass(userId);
     const split = await runSplitPass(userId);
-    const mergeCandidates = await runMergeCandidatePass(userId);
+    const mergeCandidates = await runMergeCandidatePass(userId, {
+      arbiterLeg: mode === 'full',
+    });
     // Full-leg-only passes (§2.3): auto-pin reconcile precedes archive so a
     // pin lost between nightlies is honored before the gate evaluates; cheap
     // passes never archive or purge.
@@ -321,7 +331,7 @@ async function runUserPass(userId, mode = 'cheap') {
       pinned,
       archived,
       purged,
-      arbiterCalls: 0,
+      arbiterCalls: mergeCandidates.arbiterCalls ?? 0,
     };
   } catch (error) {
     console.error(`[evolution] reconcile failed for user ${userId}:`, error.message);
@@ -357,6 +367,8 @@ async function writeNightEvalReport(passes, perUser) {
       if (entry && entry.mergeCandidates) {
         acc.merge_suggested += entry.mergeCandidates.suggested ?? 0;
         acc.merge_reopened += entry.mergeCandidates.reopened ?? 0;
+        acc.arbiter_calls += entry.mergeCandidates.arbiterCalls ?? 0;
+        acc.arbiter_suggested += entry.mergeCandidates.arbiterSuggested ?? 0;
       }
       if (entry && entry.split) {
         acc.split_created += entry.split.created.length;
@@ -385,6 +397,8 @@ async function writeNightEvalReport(passes, perUser) {
       create_suppressed: 0,
       merge_suggested: 0,
       merge_reopened: 0,
+      arbiter_calls: 0,
+      arbiter_suggested: 0,
       split_created: 0,
       split_promoted: 0,
       split_suppressed: 0,
@@ -1521,6 +1535,20 @@ function mergeGeometry(a, b) {
   return { sizeRatio, jaccard };
 }
 
+/**
+ * Review band 0.55–0.7 (§2.8): a Jaccard-only gate — subset geometries
+ * (theme + subset, the `sibling` case) must reach the arbiter. The band
+ * never writes a row on its own; only a verdict does (card gate stays ≥ 0.7).
+ */
+function bandGeometry(a, b) {
+  if (a.size === 0 || b.size === 0) return null;
+  const intersection = countIntersection(a, b);
+  const union = a.size + b.size - intersection;
+  const jaccard = union === 0 ? 0 : intersection / union;
+  if (jaccard < MERGE_BAND_JACCARD_MIN || jaccard >= MERGE_JACCARD_MIN) return null;
+  return { jaccard, intersection };
+}
+
 function countIntersection(a, b) {
   let count = 0;
   const [small, large] = a.size <= b.size ? [a, b] : [b, a];
@@ -1545,19 +1573,43 @@ function dismissedDue(row, now) {
  * prefilter, never grounds for a card. Rejected rows stay terminal because
  * `upsertMergeSuggestion` preserves an existing row/state; dismissed rows are
  * re-raised once due (+14d after the first dismiss, +30d thereafter).
+ * The 0.55–0.7 review band (§2.8) NEVER produces a row by set math alone: on
+ * the nightly FULL leg only, the `merge-arbiter` adjudicates eligible band
+ * pairs and a `merge`/`keep_separate` verdict is what writes the row. A
+ * dismissed band row follows the same re-raise cadence as ≥0.7 rows (chat
+ * eligibility never gates the lifecycle).
  */
-async function runMergeCandidatePass(userId) {
+async function runMergeCandidatePass(userId, { arbiterLeg = false } = {}) {
   if (!readFlag('AI_MERGE_SUGGESTIONS_ENABLED', true)) {
-    return { suggested: 0, reopened: 0, pairs: 0, prefiltered: 0 };
+    return {
+      suggested: 0,
+      reopened: 0,
+      pairs: 0,
+      prefiltered: 0,
+      arbiterCalls: 0,
+      arbiterSuggested: 0,
+    };
   }
   const owned = (await collectionsStore.listForUser(userId, { status: 'active' })).filter(
     (row) => row.ownerId === Number(userId)
   );
-  if (owned.length < 2) return { suggested: 0, reopened: 0, pairs: 0, prefiltered: 0 };
+  if (owned.length < 2) {
+    return {
+      suggested: 0,
+      reopened: 0,
+      pairs: 0,
+      prefiltered: 0,
+      arbiterCalls: 0,
+      arbiterSuggested: 0,
+    };
+  }
 
   const memberSets = new Map();
+  const memberIdsAsc = new Map();
   for (const collection of owned) {
     const rows = await collectionsStore.listStoredItems(collection.id);
+    const ids = rows.map((row) => Number(row.nodeId)).sort((a, b) => a - b);
+    memberIdsAsc.set(collection.id, ids);
     memberSets.set(
       collection.id,
       new Set(rows.slice(0, MERGE_MEMBER_CAP).map((row) => Number(row.nodeId)))
@@ -1579,6 +1631,7 @@ async function runMergeCandidatePass(userId) {
   let suggested = 0;
   let reopened = 0;
   let pairs = 0;
+  const bandPairs = [];
   for (let i = 0; i < owned.length; i += 1) {
     for (let j = i + 1; j < owned.length; j += 1) {
       const a = owned[i];
@@ -1588,7 +1641,11 @@ async function runMergeCandidatePass(userId) {
       const aSet = memberSets.get(a.id);
       const bSet = memberSets.get(b.id);
       const geometry = mergeGeometry(aSet, bSet);
-      if (!geometry) continue;
+      if (!geometry) {
+        const band = bandGeometry(aSet, bSet);
+        if (band) bandPairs.push({ a, b, aSet, bSet, ...band });
+        continue;
+      }
       pairs += 1;
 
       const cosineScore = cosine(
@@ -1609,7 +1666,154 @@ async function runMergeCandidatePass(userId) {
       if (row && row.state === 'pending') suggested += 1;
     }
   }
-  return { suggested, reopened, pairs, prefiltered };
+
+  let arbiterCalls = 0;
+  let arbiterSuggested = 0;
+  if (bandPairs.length > 0) {
+    const existingByPair = await loadSuggestionPairsByState(collectionIds, dismissedByPair);
+    const adjudicable = [];
+    for (const candidate of bandPairs) {
+      const key = pairKey(candidate.a.id, candidate.b.id);
+      const existing = existingByPair.get(key);
+      if (existing) {
+        if (existing.state === 'dismissed' && dismissedDue(existing, now)) {
+          const result = await collectionsStore.reopenMergeSuggestion(existing.id, {
+            score: Math.round(candidate.jaccard * 1000),
+          });
+          if (result.changes > 0) reopened += 1;
+        }
+        continue;
+      }
+      adjudicable.push(candidate);
+    }
+    if (arbiterLeg && adjudicable.length > 0) {
+      const arbiter = await resolveMergeArbiter();
+      if (arbiter) {
+        adjudicable.sort(
+          (x, y) =>
+            y.jaccard - x.jaccard ||
+            Math.min(x.a.id, x.b.id) - Math.min(y.a.id, y.b.id) ||
+            Math.max(x.a.id, x.b.id) - Math.max(y.a.id, y.b.id)
+        );
+        const inputs = [];
+        for (const candidate of adjudicable.slice(0, MERGE_ARBITER_MAX_PAIRS)) {
+          inputs.push(
+            await buildArbiterPairInput(candidate, {
+              aIds: memberIdsAsc.get(candidate.a.id),
+              bIds: memberIdsAsc.get(candidate.b.id),
+            })
+          );
+        }
+        const outcome = await arbiter.arbitrate(inputs);
+        arbiterCalls += outcome.calls;
+        for (const input of inputs) {
+          const decision = outcome.verdicts.get(input.pairKey);
+          if (!decision || decision.verdict === 'sibling') continue;
+          const row = await collectionsStore.upsertMergeSuggestion(
+            input.aId,
+            input.bId,
+            input.score,
+            { arbiterVerdict: decision.verdict, arbiterReason: decision.reason }
+          );
+          if (row && row.state === 'pending' && row.arbiterVerdict === decision.verdict) {
+            arbiterSuggested += 1;
+          }
+        }
+      }
+    }
+  }
+
+  return { suggested, reopened, pairs, prefiltered, arbiterCalls, arbiterSuggested };
+}
+
+/**
+ * Band pairs are adjudicated ONCE: a row in any state (pending, dismissed,
+ * rejected, merged) suppresses re-adjudication. The extra states are read
+ * lazily — only when band pairs exist (chat-off passes keep the previous
+ * read set).
+ */
+async function loadSuggestionPairsByState(collectionIds, dismissedByPair) {
+  const byPair = new Map(dismissedByPair);
+  for (const state of ['pending', 'rejected', 'merged']) {
+    const rows = await collectionsStore.listMergeSuggestions(collectionIds, { state });
+    for (const row of rows || []) {
+      const key = pairKey(row.aId, row.bId);
+      if (!byPair.has(key)) byPair.set(key, row);
+    }
+  }
+  return byPair;
+}
+
+/**
+ * Chat-configured + `AI_MERGE_ARBITER_ENABLED` ⇒ an arbiter bound to the
+ * adapter's chat role (budgets/breaker inherited by construction,
+ * llmAdapter.md §2.5). Anything else ⇒ null — the band simply writes no rows
+ * (the card gate stays the ≥ 0.7 set rule in the LLM-free default).
+ */
+async function resolveMergeArbiter() {
+  if (!readFlag('AI_MERGE_ARBITER_ENABLED', true)) return null;
+  let adapter = null;
+  try {
+    const { getLlmAdapter } = require('../../infrastructure/llmAdapterRuntime');
+    adapter = getLlmAdapter();
+  } catch {
+    return null;
+  }
+  if (!adapter || typeof adapter.chat !== 'function') return null;
+  try {
+    if (typeof adapter.roleConfigured === 'function') {
+      if (!(await adapter.roleConfigured('chat'))) return null;
+    }
+  } catch {
+    return null;
+  }
+  return createMergeArbiter({ adapter });
+}
+
+/** First ≤5 sampled members carrying an `ai_enrichments` summary (features only). */
+async function summariesForSample(nodeIds) {
+  if (nodeIds.length === 0) return [];
+  let rows = [];
+  try {
+    rows = await aiEnrichmentsStore.getByNodeIds(nodeIds);
+  } catch {
+    return [];
+  }
+  return (rows || [])
+    .filter((row) => typeof row.summary === 'string' && row.summary.trim().length > 0)
+    .map((row) => ({ node_id: Number(row.nodeId), summary: row.summary.trim() }));
+}
+
+/**
+ * Prompt input for one band pair — the SYMMETRIC DIFFERENCE is load-bearing:
+ * each side carries its unique-member count/ratio AND samples from its OWN
+ * unique set, never only the intersection (§2.8/§4.19, E7 measured bias).
+ */
+async function buildArbiterPairInput(candidate, { aIds, bIds }) {
+  const { a, b, aSet, bSet, jaccard, intersection } = candidate;
+  const buildSide = async (collection, ids, otherSet) => {
+    const uniqueIds = ids.filter((id) => !otherSet.has(id));
+    return {
+      collectionId: collection.id,
+      name: collection.name,
+      size: ids.length,
+      topTags: await topTagsFor(ids),
+      uniqueCount: uniqueIds.length,
+      uniqueRatio: ids.length > 0 ? Number((uniqueIds.length / ids.length).toFixed(3)) : 0,
+      memberSummaries: await summariesForSample(ids.slice(0, MERGE_ARBITER_SAMPLE_CAP)),
+      uniqueSamples: await summariesForSample(uniqueIds.slice(0, MERGE_ARBITER_SAMPLE_CAP)),
+    };
+  };
+  return {
+    pairKey: pairKey(a.id, b.id),
+    aId: a.id,
+    bId: b.id,
+    score: Math.round(jaccard * 1000),
+    jaccard: Number(jaccard.toFixed(3)),
+    intersectionCount: intersection,
+    a: await buildSide(a, aIds, bSet),
+    b: await buildSide(b, bIds, aSet),
+  };
 }
 
 async function loadActiveCentroids(collectionIds) {

@@ -544,6 +544,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     setSelectedFiles,
     setSelectionMode,
     showError,
+    // Bulk undo seam — defined below (useUndoToast mount); the arrow defers
+    // the reference to event time (render-order safe).
+    onUndoable: (payload, textKey, params, refresh) =>
+      handleUndoable(payload, textKey, params, refresh),
     closeUploadDialog,
     closeBulkDeleteDialog,
     closeRenameDialog,
@@ -673,10 +677,14 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   });
 
   const handleUndoable = useCallback(
-    (payload, textKey, params) => {
+    (payload, textKey, params, refresh) => {
       showUndoToast({
         actionId: payload?.undo?.action_id,
         text: params ? t(textKey, params) : t(textKey),
+        // per-call re-read override — the bulk batch undo refreshes the file
+        // listing surface (useUndoToast.md §2.3); undefined keeps the
+        // mount-level collections refresh for the other seams.
+        refresh,
       });
     },
     [showUndoToast, t]

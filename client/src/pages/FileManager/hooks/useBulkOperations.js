@@ -37,6 +37,7 @@ export const useBulkOperations = (
     markProcessing: markProcessingImpl,
     clearProcessing: clearProcessingImpl,
     shareToken,
+    onUndoable,
   } = options;
 
   const activeIntervalsRef = useRef(new Set());
@@ -580,6 +581,19 @@ export const useBulkOperations = (
               retryDataObj
             );
 
+            // Undo-command seam (useBulkOperations.md §2.6): one toast per
+            // COMMAND, routed through the host's onUndoable when the journaled
+            // batch landed a pointer (move/copy only — the server never
+            // journals delete batches; trash restore owns those).
+            if (job.undo && job.undo.action_id != null && typeof onUndoable === 'function') {
+              onUndoable(
+                job,
+                action === 'move' ? 'fileManager.bulkMoveToast' : 'fileManager.bulkCopyToast',
+                { count: successCount },
+                { action }
+              );
+            }
+
             if (successCount > 0) {
               if (action === 'move') {
                 try {
@@ -627,6 +641,7 @@ export const useBulkOperations = (
       updateProgressWithRetry,
       getActionName,
       updateProgress,
+      onUndoable,
       t,
     ]
   );

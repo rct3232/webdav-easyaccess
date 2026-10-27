@@ -57,9 +57,11 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 (`confirmCascade`). Route param `:id` is the numeric `action_id`.
 
 **Journal domains enum:** `collection | batch | settings | permissions | tags |
-file | sharing`. **Writers = `collection` only** (all silent/merge/settings-adjacent
-acts); `batch`/`settings`/`file`/`sharing`/`tags`/`permissions` are enum-reserved
-with no writer yet. The `permissions` asymmetry applies: grant-undo = revoke is
+file | sharing`. **Writers = `collection`** (all silent/merge/settings-adjacent
+acts) **and `batch`** (the batch worker's move/copy command rows —
+`services/batchOperationService.md` §5.4; their undo pointer also travels on the bulk-job
+terminal poll result, `routes/files.md`). `settings`/`file`/`sharing`/`tags`/`permissions` are
+enum-reserved with no writer yet. The `permissions` asymmetry applies: grant-undo = revoke is
 exposure-reduction and may be silent; revoke-undo = grant is exposure-expansion and is
 explicit-only.
 
@@ -161,6 +163,12 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
   an already-undone successor is still a tip (no undo-of-undo).
 - System-origin rows are journaled with `actor='system'` and scoped to the
   affected owner at commit time; this router trusts that scoping for feed visibility.
+- Batch command rows carry per-job subjects (`batch:<jobId>`): one accepted batch is one
+  row, so its chain is single-row and the row is always its subject's tip — the cascade
+  confirm path exists for the domain but is unreachable in normal operation (the store
+  mechanics stay domain-generic). Their undo applies the item-level inverse list:
+  fingerprint-mismatched items skip, mixed counts surface in the 200 body
+  (`items_undone`/`items_skipped`).
 
 ### 2.5 Related Documents
 
@@ -172,6 +180,10 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
 
 - [ ] Feed returns the requester's collection-domain rows (30d, newest first) with
       `subject_label`, `status`, `chain_seq`, `undone_at`; no `payload` in any response
+- [ ] A journaled batch command row (`domain='batch'`, `subject='batch:<jobId>'`) lists for its
+      actor with `undo_available: true`; its undo applies the item-level inverses
+      (`services/batchOperationService.md` §5.5 — exercised end-to-end in the files batch
+      integration suite)
 - [ ] `domain=file` (enum-valid, zero writers in v1) → 200 empty list; `domain=nope` →
       400 `actions.invalidDomain`
 - [ ] Another user's action id → 404 on GET visibility and on undo

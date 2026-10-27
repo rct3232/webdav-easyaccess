@@ -18,17 +18,17 @@
 
 ### 2.2 Input Parameters
 
-| Name                 | Type     | Required | Description                                 |
-| -------------------- | -------- | -------- | ------------------------------------------- |
-| selectedNodeIds      | Set      | Y        | Selected file nodeIds                       |
-| files                | array    | Y        | File list                                   |
-| onOperationComplete  | function | Y        | Complete callback                           |
-| setTreeUpdateTrigger | function | Y        | Tree refresh                                |
-| setDropMessage       | function | N        | Drop message                                |
-| setSelectedFiles     | function | Y        | Set selection                               |
-| setSelectionMode     | function | Y        | Set selection mode                          |
-| getCurrentNodeId     | function | Y        | Current folder nodeId                       |
-| options              | object   | N        | markProcessing, clearProcessing, shareToken |
+| Name                 | Type     | Required | Description                                             |
+| -------------------- | -------- | -------- | ------------------------------------------------------- |
+| selectedNodeIds      | Set      | Y        | Selected file nodeIds                                   |
+| files                | array    | Y        | File list                                               |
+| onOperationComplete  | function | Y        | Complete callback                                       |
+| setTreeUpdateTrigger | function | Y        | Tree refresh                                            |
+| setDropMessage       | function | N        | Drop message                                            |
+| setSelectedFiles     | function | Y        | Set selection                                           |
+| setSelectionMode     | function | Y        | Set selection mode                                      |
+| getCurrentNodeId     | function | Y        | Current folder nodeId                                   |
+| options              | object   | N        | markProcessing, clearProcessing, shareToken, onUndoable |
 
 ### 2.3 Return Value / State
 
@@ -78,6 +78,8 @@
 - dismissFailedItems before new op
 - For bulk delete/move success paths, a recent-files refresh is triggered via `notifyRecentFilesChange()` (the hook no longer mutates recent entries directly).
 - Bulk move/copy completion is asynchronous from the caller's perspective: `handleFolderPickerSelect()` may resolve before the background job reaches its final status, and completion is communicated through progress state plus `onOperationComplete`.
+- **Undo-command seam (job-backed move/copy only):** when the terminal poll result carries `undo.action_id` (journaled batches — `services/batchOperationService.md` §5.4 on the server), the hook calls `options.onUndoable(job, labelKey, params, meta)` exactly once per COMMAND: `job` is the terminal payload exposing `undo`, `labelKey` is the already-chosen i18n key (`fileManager.bulkMoveToast` / `fileManager.bulkCopyToast`), `params` carry `{ count }` (succeeded items), and `meta` carries `{ action }` for host-side follow-up (copy undo trashes — the host fires the trash notification). The hook never renders the toast and never invents labels (`useUndoToast.md` §2.4); hosts without `onUndoable` simply drop the pointer.
+- Bulk DELETE never routes through the undo seam: delete-to-trash undo belongs to the trash restore surface, and delete-batch jobs carry no journal pointer.
 
 ### 2.7 Error Handling
 
@@ -93,6 +95,9 @@
 - [ ] Job-backed bulk move/copy consumers wait for a visible completion anchor (`progressItems` final state, progress message, or a refreshed listing after `onOperationComplete`) instead of assuming the operation is complete immediately after folder selection
 - [ ] Conflict flow
 - [ ] When a bulk move/delete partially succeeds, the recent-files refresh still runs (`notifyRecentFilesChange`) and does not depend on all items succeeding.
+- [ ] Terminal move/copy poll result with `undo.action_id` ⇒ `options.onUndoable(job, labelKey, { count }, { action })` fires exactly once; a second poll seeing the same terminal state does not re-fire it.
+- [ ] Terminal result WITHOUT `undo.action_id` (delete job, zero-succeeded job, journaled-write failure, legacy `null`) ⇒ `onUndoable` is not called; an absent `onUndoable` option never throws.
+- [ ] A `cancelled` terminal job that succeeded on a prefix still routes its undo pointer (partial batches stay undoable).
 - [ ] The hook remains behavior-compatible while being documented as a lower-level dependency that can sit behind `useExplorerCommands`
 
 ### 2.9 Edge Cases

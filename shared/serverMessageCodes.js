@@ -248,6 +248,8 @@ const SERVER_ERROR_CODES = {
   // Storage dashboard (T0.10, docs/spec/server/routes/dashboard.md §2.4.1).
   dashboard: {
     emptyNodeIds: P('serverErrors.dashboard', 'emptyNodeIds'),
+    invalidSuggestionId: P('serverErrors.dashboard', 'invalidSuggestionId'),
+    suggestionNotFound: P('serverErrors.dashboard', 'suggestionNotFound'),
   },
   utilsAuth: {
     accessTokenRequired: P('serverErrors.utilsAuth', 'accessTokenRequired'),

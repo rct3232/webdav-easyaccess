@@ -9,15 +9,20 @@ const dashboardService = require('./service');
 
 const ERROR_MAP = {
   emptyNodeIds: SERVER_ERROR_CODES.dashboard.emptyNodeIds,
+  invalidSuggestionId: SERVER_ERROR_CODES.dashboard.invalidSuggestionId,
+  suggestionNotFound: SERVER_ERROR_CODES.dashboard.suggestionNotFound,
 };
 
 function serializeSuggestion(row) {
   return {
+    id: row.id,
     node_id: row.nodeId,
     kind: row.kind,
     path: row.path,
     size_bytes: row.sizeBytes,
-    reason: { kind: row.reason.kind, keep_node_id: row.reason.keepNodeId },
+    reason: row.reason,
+    created_at: row.createdAt,
+    expires_at: row.expiresAt,
   };
 }
 
@@ -48,7 +53,8 @@ function serializeSummary(result) {
   };
 }
 
-// GET /api/dashboard — one-shot self-storage hygiene + suggestions read.
+// GET /api/dashboard — one-shot self-storage hygiene + persisted suggestions
+// read (the generator pass materializes pending rows inside the read).
 router.get(
   '/',
   authenticateToken,
@@ -64,8 +70,9 @@ router.get(
   })
 );
 
-// POST /api/dashboard/suggestions/accept — checked rows -> trash (P0: no
-// journal row; trash-restore is the undo path, routes/dashboard.md §2.4).
+// POST /api/dashboard/suggestions/accept — checked rows -> trash as ONE
+// journaled command (routes/dashboard.md §2.4); the response carries the
+// undo pointer, undo executes via POST /api/actions/:id/undo.
 router.post(
   '/suggestions/accept',
   authenticateToken,
@@ -82,7 +89,28 @@ router.post(
         trashed: result.trashed,
         rejected_not_owned: result.rejectedNotOwned,
         skipped: result.skipped,
+        ...(result.actionId != null ? { undo: { action_id: result.actionId } } : {}),
       });
+    } catch (e) {
+      throw mapServiceError(e, ERROR_MAP);
+    }
+  })
+);
+
+// POST /api/dashboard/suggestions/dismiss — per-row dismiss of a persisted
+// suggestion (pending -> dismissed; no toast, no journal row).
+router.post(
+  '/suggestions/dismiss',
+  authenticateToken,
+  requireUser,
+  requireNonAdmin,
+  asyncHandler(async (req, res) => {
+    try {
+      const result = await dashboardService.dismissSuggestion(
+        req.user.full.id,
+        req.body ? req.body.suggestionId : undefined
+      );
+      res.json({ id: result.id, state: result.state });
     } catch (e) {
       throw mapServiceError(e, ERROR_MAP);
     }

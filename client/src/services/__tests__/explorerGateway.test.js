@@ -75,6 +75,7 @@ jest.mock('../collectionsRepository', () => {
     'getActions',
     'getFileSuggestions',
     'acceptFileSuggestions',
+    'dismissFileSuggestion',
   ];
   const mock = {};
   for (const name of fns) mock[name] = jest.fn();
@@ -672,7 +673,7 @@ describe('explorerGateway', () => {
   });
 
   describe('explorerGateway actions-feed + dashboard seams (T0.10)', () => {
-    it('re-exports getActions / getFileSuggestions / acceptFileSuggestions with the repository shapes', async () => {
+    it('re-exports getActions / getFileSuggestions / acceptFileSuggestions / dismissFileSuggestion with the repository shapes', async () => {
       const repo = require('../collectionsRepository');
 
       const feed = { actions: [{ action_id: 1 }] };
@@ -689,6 +690,13 @@ describe('explorerGateway', () => {
         trashed: [7],
       });
       expect(repo.acceptFileSuggestions).toHaveBeenCalledWith([7], { silent: true });
+
+      repo.dismissFileSuggestion.mockResolvedValueOnce({ id: 9, state: 'dismissed' });
+      await expect(explorerGateway.dismissFileSuggestion(9)).resolves.toEqual({
+        id: 9,
+        state: 'dismissed',
+      });
+      expect(repo.dismissFileSuggestion).toHaveBeenCalledWith(9);
     });
   });
 

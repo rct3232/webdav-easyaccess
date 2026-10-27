@@ -412,9 +412,10 @@ export const getActions = async (params = {}) => {
 };
 
 /**
- * One-shot Storage-dashboard read (GET /api/dashboard): duplicates + computed
- * suggestions + trash summary in one payload. The failure fallback keeps the
- * spec'd `{ suggestions: [] }` shape — consumers read the other keys
+ * One-shot Storage-dashboard read (GET /api/dashboard): duplicates + persisted
+ * pending suggestion rows (id/created_at/expires_at — routes/dashboard.md §2.4)
+ * + trash summary in one payload. The failure fallback keeps the spec'd
+ * `{ suggestions: [] }` shape — consumers read the other keys
  * defensively (absent ⇒ block omitted, CollectionDashboard §2.3.1).
  * @returns {Promise<Object>}
  */
@@ -423,12 +424,23 @@ export const getFileSuggestions = async () => {
 };
 
 /**
- * Accept checked suggestion rows → trash (POST /api/dashboard/suggestions/
- * accept, camelCase body). P0: no undo pointer (the command row rides T3.3 —
- * routes/dashboard.md §2.4); the trash-restore UX is the undo path.
+ * Accept checked suggestion rows → trash as ONE journaled command (POST
+ * /api/dashboard/suggestions/accept, camelCase body). The response carries
+ * `undo: { action_id }` for the undo toast (routes/dashboard.md §2.4).
  * @param {number[]} nodeIds
  * @param {{ silent?: boolean, onError?: Function }} [options]
  */
 export const acceptFileSuggestions = async (nodeIds, options) => {
   return absorbMutation('/dashboard/suggestions/accept', { data: { nodeIds }, options });
+};
+
+/**
+ * Dismiss one persisted suggestion (`pending → dismissed`, POST
+ * /api/dashboard/suggestions/dismiss). Absorbed failure returns null and the
+ * row stays (no toast either way — SuggestionsChecklist §2.2).
+ * @param {number} suggestionId
+ * @param {{ silent?: boolean, onError?: Function }} [options]
+ */
+export const dismissFileSuggestion = async (suggestionId, options) => {
+  return absorbMutation('/dashboard/suggestions/dismiss', { data: { suggestionId }, options });
 };

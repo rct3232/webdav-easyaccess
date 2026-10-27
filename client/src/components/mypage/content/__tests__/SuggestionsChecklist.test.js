@@ -101,6 +101,23 @@ describe('SuggestionsChecklist', () => {
     expect(screen.getByText(/kept until expiry/i)).toBeInTheDocument();
   });
 
+  it('expiry footer gates on expires_at, not on id: retention-off rows (expires_at null) render no footer', () => {
+    renderWithProviders(
+      <SuggestionsChecklist
+        suggestions={[
+          row({ id: 91, expires_at: null }),
+          row({ id: 92, node_id: 102, expires_at: null }),
+        ]}
+        onAccept={jest.fn()}
+        onDismiss={jest.fn()}
+      />
+    );
+
+    // dismiss controls DO render (rows carry ids) but the expiry footer does not
+    expect(screen.getByTestId('suggestion-dismiss-91')).toBeInTheDocument();
+    expect(screen.queryByText(/kept until expiry/i)).not.toBeInTheDocument();
+  });
+
   it('loading renders skeleton rows and no interactive controls', () => {
     renderWithProviders(<SuggestionsChecklist suggestions={[]} onAccept={jest.fn()} loading />);
 

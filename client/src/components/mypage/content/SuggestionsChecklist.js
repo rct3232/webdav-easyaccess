@@ -3,8 +3,9 @@
  * the SINGLE `Accept selected (N)` control (Q4 contract, docs/spec/client/
  * components/mypage/content/SuggestionsChecklist.md). The checkbox IS the
  * selection confirmation; accept sends only the checked node ids. Dismiss is
- * per-row and renders ONLY for persisted rows carrying an `id` (P0 computed
- * exact-dup rows have none — §2.7 as-built note).
+ * per-row and renders for persisted rows carrying an `id` when the host passes
+ * `onDismiss` (docs/spec/client/components/mypage/content/
+ * SuggestionsChecklist.md §2.2/§2.7).
  */
 import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -82,7 +83,7 @@ const SuggestionsChecklist = ({ suggestions = [], onAccept, onDismiss, loading =
     );
   }
 
-  const hasPersistedRows = suggestions.some((row) => row.id != null);
+  const hasExpiringRows = suggestions.some((row) => row.expires_at != null);
 
   return (
     <Box>
@@ -136,7 +137,7 @@ const SuggestionsChecklist = ({ suggestions = [], onAccept, onDismiss, loading =
           </Button>
         </Box>
       ) : null}
-      {hasPersistedRows ? (
+      {hasExpiringRows ? (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
           {t('mypage.suggestionsExpiryNote')}
         </Typography>

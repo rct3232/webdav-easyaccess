@@ -109,11 +109,14 @@ describe('GET /api/dashboard', () => {
       duplicates: { group_count: 1, duplicate_count: 2, reclaimable_bytes: 120 },
       suggestions: [
         {
+          id: expect.any(Number),
           node_id: Number(b.nodeId),
           kind: 'exact_dup',
           path: expect.stringContaining('/'),
           size_bytes: 120,
           reason: { kind: 'exact_dup', keep_node_id: Number(a.nodeId) },
+          created_at: expect.any(String),
+          expires_at: expect.any(String),
         },
       ],
       trash: {
@@ -200,11 +203,12 @@ describe('POST /api/dashboard/suggestions/accept', () => {
     }
   });
 
-  it('trashes own accepted rows, rejects foreign/trashed/unknown ids, journals nothing', async () => {
+  it('trashes own accepted rows, rejects foreign/trashed/unknown ids, journals ONE command and returns the undo pointer', async () => {
     const { user, token, homeId } = await storageUser('acc');
     const stranger = await storageUser('acc-stranger');
-    const keep = await addFile(homeId, 'keep-one.bin', { size: 100 });
-    const dup = await addFile(homeId, 'drop-one.bin', { size: 100 });
+    const dupHash = `rt-acc-${Date.now()}`;
+    const keep = await addFile(homeId, 'keep-one.bin', { size: 100, hash: dupHash });
+    const dup = await addFile(homeId, 'drop-one.bin', { size: 100, hash: dupHash });
     const foreign = await addFile(stranger.homeId, 'foreign.bin', {});
     const already = await addFile(homeId, 'already.bin', {});
     await createFileNodesStore().markSubtreeDeleted([Number(already.nodeId)]);
@@ -212,6 +216,9 @@ describe('POST /api/dashboard/suggestions/accept', () => {
     const journalBefore = Number(
       (await dbQuery('SELECT COUNT(*) AS count FROM action_journal', [])).rows[0].count
     );
+
+    // Materialize the pending exact_dup row for `dup`.
+    await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
 
     const res = await request(app)
       .post('/api/dashboard/suggestions/accept')
@@ -225,10 +232,11 @@ describe('POST /api/dashboard/suggestions/accept', () => {
       trashed: [Number(dup.nodeId)],
       rejected_not_owned: [Number(foreign.nodeId), Number(already.nodeId), 999999999],
       skipped: [],
+      undo: { action_id: expect.any(Number) },
     });
 
     const after = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
-    // only the kept member remains → no group, no suggestion
+    // only the kept member remains → no group, no suggestion; the accepted row left the list
     expect(after.body.duplicates.group_count).toBe(0);
     expect(after.body.suggestions).toEqual([]);
 
@@ -238,8 +246,118 @@ describe('POST /api/dashboard/suggestions/accept', () => {
     expect(rows[0].deleted_at).toBeNull();
     expect(
       Number((await dbQuery('SELECT COUNT(*) AS count FROM action_journal', [])).rows[0].count)
-    ).toBe(journalBefore);
+    ).toBe(journalBefore + 1);
+    const { rows: journal } = await dbQuery(
+      'SELECT domain, action FROM action_journal WHERE id = ?',
+      [res.body.undo.action_id]
+    );
+    expect(journal[0]).toMatchObject({ domain: 'file', action: 'cleanup-accept' });
     void user;
+  });
+});
+
+// -- POST /suggestions/dismiss -------------------------------------------------
+
+describe('POST /api/dashboard/suggestions/dismiss', () => {
+  it('rejects unauthenticated dismisses with 401', async () => {
+    const res = await request(app)
+      .post('/api/dashboard/suggestions/dismiss')
+      .send({ suggestionId: 1 });
+    expect(res.status).toBe(401);
+  });
+
+  it("flips the requester's pending row and drops it from the next GET (never re-inserted)", async () => {
+    const { token, homeId } = await storageUser('dism');
+    const hash = `rt-dism-${Date.now()}`;
+    await addFile(homeId, `keep-${hash}.bin`, { hash });
+    const member = await addFile(homeId, `member-${hash}.bin`, { hash });
+    void member;
+
+    const first = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    expect(first.body.suggestions).toHaveLength(1);
+    const row = first.body.suggestions[0];
+
+    const res = await request(app)
+      .post('/api/dashboard/suggestions/dismiss')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ suggestionId: row.id });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ id: row.id, state: 'dismissed' });
+
+    const second = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    expect(second.body.suggestions).toEqual([]);
+    const { rows } = await dbQuery('SELECT state FROM file_suggestions WHERE id = ?', [row.id]);
+    expect(rows[0].state).toBe('dismissed');
+  });
+
+  it('validates suggestionId: missing/non-numeric/≤0 ⇒ 400 invalidSuggestionId', async () => {
+    const { token } = await storageUser('dism-val');
+    for (const body of [{}, { suggestionId: 0 }, { suggestionId: 'x' }, { suggestionId: -3 }]) {
+      const res = await request(app)
+        .post('/api/dashboard/suggestions/dismiss')
+        .set('Authorization', `Bearer ${token}`)
+        .send(body);
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.dashboard.invalidSuggestionId);
+    }
+  });
+
+  it('unknown/foreign/non-pending targets ⇒ 404 suggestionNotFound (no existence leak)', async () => {
+    const { token, homeId } = await storageUser('dism-404');
+    const owner = await storageUser('dism-404b');
+    const hash = `rt-dism404-${Date.now()}`;
+    await addFile(homeId, `k-${hash}.bin`, { hash });
+    const m = await addFile(homeId, `m-${hash}.bin`, { hash });
+    void m;
+
+    const read = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    const id = read.body.suggestions[0].id;
+
+    const foreign = await request(app)
+      .post('/api/dashboard/suggestions/dismiss')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ suggestionId: id });
+    expect(foreign.status).toBe(404);
+    expect(foreign.body.errorCode).toBe(SERVER_ERROR_CODES.dashboard.suggestionNotFound);
+
+    const unknown = await request(app)
+      .post('/api/dashboard/suggestions/dismiss')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ suggestionId: 99999999 });
+    expect(unknown.status).toBe(404);
+    expect(unknown.body.errorCode).toBe(SERVER_ERROR_CODES.dashboard.suggestionNotFound);
+
+    const ok = await request(app)
+      .post('/api/dashboard/suggestions/dismiss')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ suggestionId: id });
+    expect(ok.status).toBe(200);
+    const reDismiss = await request(app)
+      .post('/api/dashboard/suggestions/dismiss')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ suggestionId: id });
+    expect(reDismiss.status).toBe(404);
+  });
+});
+
+// -- §4.12 AI-block gate: embed unconfigured ⇒ no near surface at all -----------
+
+describe('AI-block absence when embed is unconfigured (§4.12)', () => {
+  it('no `near_duplicates` key and NO near_dup row materialized across repeated reads', async () => {
+    const { token, homeId } = await storageUser('nogate');
+    const hash = `rt-nogate-${Date.now()}`;
+    await addFile(homeId, `k-${hash}.bin`, { hash });
+    await addFile(homeId, `m-${hash}.bin`, { hash });
+    await addFile(homeId, 'temp_artifact.bin', {});
+
+    for (let pass = 0; pass < 2; pass += 1) {
+      const res = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect('near_duplicates' in res.body).toBe(false);
+      expect(res.body.suggestions.every((row) => row.kind !== 'near_dup')).toBe(true);
+    }
+    const { rows } = await dbQuery("SELECT kind FROM file_suggestions WHERE kind = 'near_dup'", []);
+    expect(rows).toEqual([]);
   });
 });
 
@@ -289,6 +407,16 @@ describe('admin operator gate (dashboard 403 for admin requesters)', () => {
       (await dbQuery('SELECT COUNT(*) AS count FROM action_journal', [])).rows[0].count
     );
     expect(journalAfter).toBe(journalBefore);
+  });
+
+  it('POST /api/dashboard/suggestions/dismiss → 403 forbidden', async () => {
+    const admin = await adminStorageUser('dismiss');
+    const res = await request(app)
+      .post('/api/dashboard/suggestions/dismiss')
+      .set('Authorization', `Bearer ${admin.token}`)
+      .send({ suggestionId: 1 });
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.collections.forbidden);
   });
 });
 
@@ -352,11 +480,14 @@ describe('GET /api/dashboard — vector near-dup block', () => {
     const keepId = Math.min(Number(a.nodeId), Number(b.nodeId));
     const memberId = Math.max(Number(a.nodeId), Number(b.nodeId));
     expect(nearRows[0]).toEqual({
+      id: expect.any(Number),
       node_id: memberId,
       kind: 'near_dup',
       path: expect.stringContaining('/'),
       size_bytes: memberId === Number(b.nodeId) ? 140 : 100,
-      reason: { kind: 'near_dup', keep_node_id: keepId },
+      reason: { kind: 'near_dup', keep_node_id: keepId, score: expect.any(Number) },
+      created_at: expect.any(String),
+      expires_at: expect.any(String),
     });
     for (const key of Object.keys(res.body)) expect(key).not.toMatch(/[A-Z]/);
   });

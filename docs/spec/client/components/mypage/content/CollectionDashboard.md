@@ -45,7 +45,9 @@ Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surfa
   (+ the `near_duplicates` near-dup line when present), `suggestions` feeds both the
   suggestions-count card and the `SuggestionsChecklist` (exact-dup AND `near_dup` rows — the
   row shape is kind-generic, so near-dup rows render with no component change; the reason
-  label maps `mypage.suggestionsReason.NearDup`),
+  label maps `mypage.suggestionsReason.NearDup`) plus the LLM-free rule kinds
+  (`temp_pattern`/`stale_screenshot`/`old_installer` → `mypage.suggestionsReason.TempPattern`/
+  `StaleScreenshot`/`OldInstaller`),
   `trash` feeds the trash card (size + countdown from `oldest_deleted_at` +
   `retention_days`; `retention_days === 0` renders "no automatic purge"). The journal feed
   uses `getActions({ domain: 'collection' })`; collections status uses `loadCollections` +
@@ -55,8 +57,17 @@ Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surfa
   view; trash card → `onNavigate('/files/__trash__')`.
 - Feed member-op rows render `subject_label` (collection name captured at
   commit time — `store/collectionsStore.md` §2.1).
-- Accept: success shows the report toast WITHOUT an Undo button (`routes/dashboard.md` §2.4);
-  the trash-restore UX is the undo path.
+- Accept: the response carries `undo.action_id` (ONE journaled command — `routes/dashboard.md`
+  §2.4) → `showUndoToast({ actionId, text: 'mypage.suggestionsTrashed', params: { count } })`
+  from the already-mounted `useUndoToast` bundle ("Moved N items to Trash" + Undo; the undo
+  executes through the generic `POST /api/actions/:id/undo`). A response WITHOUT `undo`
+  (absent pointer = nothing was journaled) keeps the plain report toast. Mixed outcomes
+  (`trashed` shorter than the checked list) still toast the moved count; the checklist
+  refreshes through `loadAll`.
+- Dismiss: the host passes `onDismiss={handleDismiss}` into `SuggestionsChecklist` — the
+  gateway seam `dismissFileSuggestion(id)` (absorbed failure ⇒ row stays; success ⇒ silent
+  list refresh, no toast — `SuggestionsChecklist.md` §2.2). Expiry footer rows refresh with
+  the same read.
 - Undo execution: `useUndoToast` mounted inside the dashboard (own `useMessage` bundle +
   rendered snackbar, cascade `ConfirmDialog` from `cascadeConfirm` state — FileManager
   protocol); `onUndo` prop overrides the row handler when the host supplies one.

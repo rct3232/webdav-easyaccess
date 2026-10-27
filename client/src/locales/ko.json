@@ -895,7 +895,10 @@
     "suggestionsExpiryNote": "수용하지 않은 제안은 만료 시까지 보관됩니다.",
     "suggestionsReason": {
       "ExactDup": "완전 중복",
-      "NearDup": "유사 중복"
+      "NearDup": "유사 중복",
+      "TempPattern": "임시 파일",
+      "StaleScreenshot": "오래된 스크린샷",
+      "OldInstaller": "오래된 설치 파일"
     },
     "suggestionsTrashed": "휴지통으로 {{count}}개 항목 이동",
     "capacityTitle": "저장소 추이"
@@ -1070,7 +1073,9 @@
       "alreadyUndone": "이 작업은 이미 되돌려졌습니다."
     },
     "dashboard": {
-      "emptyNodeIds": "최소 하나의 파일 또는 폴더를 선택해 주세요."
+      "emptyNodeIds": "최소 하나의 파일 또는 폴더를 선택해 주세요.",
+      "invalidSuggestionId": "숨길 유효한 제안을 선택해 주세요.",
+      "suggestionNotFound": "이 제안은 더 이상 존재하지 않습니다."
     },
     "collections": {
       "nameRequired": "컬렉션 이름이 필요합니다.",

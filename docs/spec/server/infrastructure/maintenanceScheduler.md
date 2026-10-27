@@ -138,6 +138,26 @@ interval resolution, log-never-throw).
 their §2 contracts verbatim; boot wiring (`server/index.js`) gains the new scheduler calls
 next to the existing ones, after migrationGate/init like the GC scheduler.
 
+### 3.6 File-suggestions expiry (pending rows past `expires_at`)
+
+- `runFileSuggestionsExpiry({ store?, now?, batchSize?, lockManager?, log? })` is the ONE
+  expiry core (the persisted-suggestion retention leg of
+  `docs/features/collections-platform.md` §4.17): resolve `AI_SUGGESTION_EXPIRY_BATCH`
+  (T2/dbOnly, default 1000) at call time; call the store facade
+  (`store/fileSuggestionsStore.md` §2.3 `expireStale({ now, limit })`) in bounded batches
+  until fewer than one batch remains — `pending` rows with `expires_at < now` flip to
+  `expired` (rows survive; `expires_at IS NULL` never expires under retention `0`); return
+  `{ expired, ids? }`-style counts (`{ expired, cutoffMs }`). It holds the
+  `file-suggestions-expiry` lock (`lockManager.acquireLock`, TTL 30 min, `waitMs: 0`);
+  a held lock ⇒ `{ expired: 0, skipped: 'locked' }`. Failures reject to the caller (the
+  scheduler logs); the job writes no `admin_reports` row.
+- `startFileSuggestionsExpiryScheduler({ ...seams })` returns `null` under
+  `WEA_SKIP_SUGGESTION_EXPIRY` or when `AI_SUGGESTION_EXPIRY_INTERVAL_MS` (T2/dbOnly,
+  default 86400000, `0` = disabled) is non-positive; otherwise it re-arms a `setTimeout` at
+  the resolved interval (hot read per arm), logs failures and never throws out of the timer.
+- Boot calls `runFileSuggestionsExpiry()` once (fire-and-forget, same posture as §3.4) and
+  starts the periodic scheduler; both gated by the same skip seam.
+
 ## 4. Verification Scenarios
 
 - [ ] Existing: GC interval 0/unset ⇒ no timer; `WEA_SKIP_GC_SCHEDULER` ⇒ no timer;
@@ -148,6 +168,10 @@ next to the existing ones, after migrationGate/init like the GC scheduler.
       `now − ADMIN_REPORTS_RETENTION_DAYS` rows in `..._BATCH` chunks under the
       `admin-reports-retention` lock, returns `retention_off`/`locked` skips, and
       the scheduler re-arms at `..._INTERVAL_MS` (0 = disabled)
+- [ ] Expiry: `runFileSuggestionsExpiry` flips `pending` rows past `expires_at` in
+      `AI_SUGGESTION_EXPIRY_BATCH` chunks under the `file-suggestions-expiry` lock
+      (`NULL` `expires_at` exempt), returns `locked` skips, and the scheduler re-arms at
+      `AI_SUGGESTION_EXPIRY_INTERVAL_MS` (0 = disabled, `WEA_SKIP_SUGGESTION_EXPIRY` seam)
 - [ ] Rollup order: events rolled BEFORE the 90d roll-off deletes; a forced
       rollup failure aborts the roll-off (journal-expire/tombstone-purge legs skipped too,
       retried next anchor)

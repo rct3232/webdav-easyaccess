@@ -397,11 +397,52 @@ describe('CollectionDashboard — my-collections status', () => {
 });
 
 describe('CollectionDashboard — suggestions block', () => {
-  it('feeds the SuggestionsChecklist and accepts checked rows to trash with a report toast', async () => {
+  const persistedRow = (overrides = {}) => ({
+    id: 901,
+    node_id: 101,
+    kind: 'exact_dup',
+    path: '/testuser/photos/beach copy.jpg',
+    size_bytes: 2048,
+    reason: { kind: 'exact_dup', keep_node_id: 100 },
+    created_at: '2025-10-01T03:00:00Z',
+    expires_at: '2025-10-31T03:00:00Z',
+    ...overrides,
+  });
+
+  it('accept with a journaled command shows the UNDO toast and the action undoes via the gateway', async () => {
     const gateway = makeGateway({
       getFileSuggestions: jest.fn().mockResolvedValue({
         duplicates: { group_count: 1, duplicate_count: 2, reclaimable_bytes: 2048 },
-        suggestions: [suggestionRow({ node_id: 101 }), suggestionRow({ node_id: 102 })],
+        suggestions: [persistedRow(), persistedRow({ id: 902, node_id: 102 })],
+        trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
+      }),
+      acceptFileSuggestions: jest.fn().mockResolvedValue({
+        trashed: [101],
+        rejected_not_owned: [],
+        skipped: [],
+        undo: { action_id: 5501 },
+      }),
+    });
+
+    renderDashboard({ gateway });
+
+    const checkboxes = await screen.findAllByTestId('suggestion-checkbox');
+    await userEvent.click(checkboxes[0]);
+    await userEvent.click(screen.getByTestId('suggestions-accept'));
+
+    await waitFor(() => expect(gateway.acceptFileSuggestions).toHaveBeenCalledWith([101]));
+    expect(await screen.findByText(/moved 1 items to trash/i)).toBeInTheDocument();
+    // journaled command ⇒ Undo button present; clicking it executes the undo seam
+    const undoAction = screen.getByTestId('undo-toast-action');
+    await userEvent.click(undoAction);
+    await waitFor(() => expect(gateway.undoAction).toHaveBeenCalledWith(5501, {}));
+  });
+
+  it('accept WITHOUT an undo pointer stays a plain report toast', async () => {
+    const gateway = makeGateway({
+      getFileSuggestions: jest.fn().mockResolvedValue({
+        duplicates: { group_count: 1, duplicate_count: 2, reclaimable_bytes: 2048 },
+        suggestions: [persistedRow(), persistedRow({ id: 902, node_id: 102 })],
         trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
       }),
       acceptFileSuggestions: jest
@@ -413,18 +454,49 @@ describe('CollectionDashboard — suggestions block', () => {
 
     const checkboxes = await screen.findAllByTestId('suggestion-checkbox');
     await userEvent.click(checkboxes[0]);
+    await userEvent.click(screen.getByTestId('suggestions-accept'));
 
-    const accept = screen.getByTestId('suggestions-accept');
-    expect(accept).toHaveTextContent(/accept selected \(1\)/i);
-
-    await userEvent.click(accept);
-
-    await waitFor(() => expect(gateway.acceptFileSuggestions).toHaveBeenCalledWith([101]));
-    // P0: no journal row yet ⇒ report toast WITHOUT an Undo button (routes/dashboard.md §2.4)
     expect(await screen.findByText(/moved 1 items to trash/i)).toBeInTheDocument();
     expect(screen.queryByTestId('undo-toast-action')).not.toBeInTheDocument();
-    // re-read feeds the cards/checklist back from the server state
     await waitFor(() => expect(gateway.getFileSuggestions).toHaveBeenCalledTimes(2));
+  });
+
+  it('wires per-row dismiss through the gateway seam and refreshes silently (no toast)', async () => {
+    const gateway = makeGateway({
+      getFileSuggestions: jest.fn().mockResolvedValue({
+        suggestions: [persistedRow()],
+        duplicates: { group_count: 1, duplicate_count: 2, reclaimable_bytes: 2048 },
+        trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
+      }),
+      dismissFileSuggestion: jest.fn().mockResolvedValue({ id: 901, state: 'dismissed' }),
+    });
+
+    renderDashboard({ gateway });
+
+    const dismiss = await screen.findByTestId('suggestion-dismiss-901');
+    await userEvent.click(dismiss);
+    await waitFor(() => expect(gateway.dismissFileSuggestion).toHaveBeenCalledWith(901));
+    await waitFor(() => expect(gateway.getFileSuggestions).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('undo-toast-action')).not.toBeInTheDocument();
+  });
+
+  it('dismissed failure (absorbed null) keeps the row and skips the refresh', async () => {
+    const gateway = makeGateway({
+      getFileSuggestions: jest.fn().mockResolvedValue({
+        suggestions: [persistedRow()],
+        duplicates: { group_count: 1, duplicate_count: 2, reclaimable_bytes: 2048 },
+        trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
+      }),
+      dismissFileSuggestion: jest.fn().mockResolvedValue(null),
+    });
+
+    renderDashboard({ gateway });
+
+    const dismiss = await screen.findByTestId('suggestion-dismiss-901');
+    await userEvent.click(dismiss);
+    await waitFor(() => expect(gateway.dismissFileSuggestion).toHaveBeenCalledWith(901));
+    expect(screen.getByTestId('suggestion-dismiss-901')).toBeInTheDocument();
+    expect(gateway.getFileSuggestions).toHaveBeenCalledTimes(1);
   });
 
   it('absent suggestions data hides the block entirely', async () => {

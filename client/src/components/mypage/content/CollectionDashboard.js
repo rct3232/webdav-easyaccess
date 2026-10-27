@@ -30,6 +30,7 @@ import { usePageHeader } from '../../../contexts/PageHeaderContext';
 import { useMessage } from '../../../hooks/useMessage';
 import { useUndoToast } from '../../../hooks/useUndoToast';
 import ConfirmDialog from '../../dialogs/ConfirmDialog';
+import { UndoToast } from '../../feedback';
 import { formatDate, formatFileSize } from '../../../utils/format';
 import explorerGateway from '../../../services/explorerGateway';
 import SuggestionsChecklist from './SuggestionsChecklist';
@@ -146,6 +147,7 @@ const CollectionDashboard = ({ user, onNavigate, onUndo, onMessage, gateway }) =
     cascadeConfirm,
     busy: undoBusy,
     undoNow,
+    showUndoToast,
   } = useUndoToast({
     gateway: resolvedGateway,
     message,
@@ -175,16 +177,38 @@ const CollectionDashboard = ({ user, onNavigate, onUndo, onMessage, gateway }) =
       const payload = await resolvedGateway.acceptFileSuggestions(nodeIds);
       if (payload) {
         const moved = Array.isArray(payload.trashed) ? payload.trashed.length : 0;
-        // P0: the accept command is not journaled yet — report toast WITHOUT
-        // an Undo button (routes/dashboard.md §2.4 decision).
-        message.showSuccess(t('mypage.suggestionsTrashed', { count: moved }));
-        if (onMessage) onMessage('success', t('mypage.suggestionsTrashed', { count: moved }));
+        const actionId = payload.undo ? payload.undo.action_id : null;
+        if (actionId != null) {
+          // Journaled command (routes/dashboard.md §2.4): report toast WITH an
+          // Undo button — the command-unit row restores every trashed node.
+          showUndoToast({
+            actionId,
+            text: 'mypage.suggestionsTrashed',
+            params: { count: moved },
+          });
+        } else {
+          // No undo pointer (nothing journaled): plain report toast.
+          message.showSuccess(t('mypage.suggestionsTrashed', { count: moved }));
+          if (onMessage) onMessage('success', t('mypage.suggestionsTrashed', { count: moved }));
+        }
         loadAll();
       }
       return payload;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [resolvedGateway, loadAll, onMessage]
+    [resolvedGateway, loadAll, onMessage, showUndoToast]
+  );
+
+  const handleDismiss = useCallback(
+    async (suggestionId) => {
+      const payload = await resolvedGateway.dismissFileSuggestion(suggestionId);
+      // Absorbed failure keeps the row (no toast lies); success refreshes the
+      // list silently — dismiss never toasts (SuggestionsChecklist.md §2.2).
+      if (payload) loadAll();
+      return payload;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [resolvedGateway, loadAll]
   );
 
   const handleRevoke = useCallback(
@@ -406,7 +430,11 @@ const CollectionDashboard = ({ user, onNavigate, onUndo, onMessage, gateway }) =
           <Typography variant="h6" sx={{ mb: 1 }}>
             {t('mypage.suggestionsTitle')}
           </Typography>
-          <SuggestionsChecklist suggestions={suggestions} onAccept={handleAccept} />
+          <SuggestionsChecklist
+            suggestions={suggestions}
+            onAccept={handleAccept}
+            onDismiss={handleDismiss}
+          />
         </Box>
       ) : null}
 
@@ -444,13 +472,28 @@ const CollectionDashboard = ({ user, onNavigate, onUndo, onMessage, gateway }) =
         </Box>
       ) : null}
 
-      <Snackbar
-        open={message.message.show}
-        autoHideDuration={4000}
-        onClose={message.clearMessage}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        message={message.message.text}
-      />
+      {message.message.action ? (
+        /* useMessage action slot (undo toasts — FileManagerView precedent): the
+           accept command's report toast carries Undo through UndoToast. */
+        <UndoToast
+          show={message.message.show}
+          text={message.message.text}
+          type={message.message.type}
+          action={{
+            onAction: message.message.action.onClick,
+            disabled: message.message.action.disabled,
+          }}
+          onClose={message.clearMessage}
+        />
+      ) : (
+        <Snackbar
+          open={message.message.show}
+          autoHideDuration={4000}
+          onClose={message.clearMessage}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          message={message.message.text}
+        />
+      )}
       <ConfirmDialog
         open={Boolean(cascadeConfirm?.open)}
         onClose={cascadeConfirm?.cancel}

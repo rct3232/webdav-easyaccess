@@ -266,6 +266,29 @@ const CONFIG_ENTRIES = Object.freeze([
     dbOnly: true,
   },
   { key: 'WEA_SKIP_ADMIN_REPORTS_RETENTION', tier: TIER.T2, secret: false },
+  // ── File-suggestions expiry (dashboardService §2.2, maintenanceScheduler §3.6) ──
+  {
+    key: 'AI_SUGGESTION_RETENTION_DAYS',
+    tier: TIER.T2,
+    secret: false,
+    default: 30,
+    dbOnly: true,
+  },
+  {
+    key: 'AI_SUGGESTION_EXPIRY_INTERVAL_MS',
+    tier: TIER.T2,
+    secret: false,
+    default: 86400000,
+    dbOnly: true,
+  },
+  {
+    key: 'AI_SUGGESTION_EXPIRY_BATCH',
+    tier: TIER.T2,
+    secret: false,
+    default: 1000,
+    dbOnly: true,
+  },
+  { key: 'WEA_SKIP_SUGGESTION_EXPIRY', tier: TIER.T2, secret: false },
   { key: 'WEA_SKIP_ROLLUP_SCHEDULER', tier: TIER.T2, secret: false },
 ]);
 

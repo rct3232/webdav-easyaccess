@@ -334,6 +334,34 @@ describe('configRegistry', () => {
     });
   });
 
+  describe('file-suggestions expiry constants (dashboardService §2.2, maintenanceScheduler §3.6)', () => {
+    it('registers AI_SUGGESTION_RETENTION_DAYS as T2 dbOnly, non-secret, default 30', () => {
+      const entry = getEntry('AI_SUGGESTION_RETENTION_DAYS');
+      expect(entry).toBeDefined();
+      expect(entry.tier).toBe(TIER.T2);
+      expect(entry.dbOnly).toBe(true);
+      expect(entry.secret).toBe(false);
+      expect(entry.default).toBe(30);
+    });
+
+    it('registers the expiry interval and batch knobs as T2 dbOnly defaults', () => {
+      expect(getEntry('AI_SUGGESTION_EXPIRY_INTERVAL_MS')).toMatchObject({
+        tier: TIER.T2,
+        dbOnly: true,
+        default: 86400000,
+      });
+      expect(getEntry('AI_SUGGESTION_EXPIRY_BATCH')).toMatchObject({
+        tier: TIER.T2,
+        dbOnly: true,
+        default: 1000,
+      });
+      expect(getEntry('WEA_SKIP_SUGGESTION_EXPIRY')).toMatchObject({
+        tier: TIER.T2,
+        secret: false,
+      });
+    });
+  });
+
   it('contains every env var read under server/ (inventory check)', () => {
     const keys = CONFIG_ENTRIES.map((entry) => entry.key);
     for (const key of [

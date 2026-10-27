@@ -21,12 +21,12 @@ Target-contract spec (`docs/features/collections-platform.md` §4.16/§4.17 sugg
 
 ### 2.2 Props
 
-| Name        | Type     | Required | Default | Description                                                                                                                                     |
-| ----------- | -------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| suggestions | array    | Y        | -       | `file_suggestions` rows (snake_case: `id`, `node_id`, `kind`, `reason` JSONB, `created_at`, `expires_at`) + host-enriched node `name`/thumbnail |
-| onAccept    | function | Y        | -       | `(nodeIds) => Promise<payload ∥ null>` — checked rows only; trash (not purge); undo toast from command `action_id`                              |
-| onDismiss   | function | Y        | -       | `(suggestionId) => void` — per-row only; dismissed rows leave the list without a toast                                                          |
-| loading     | boolean  | N        | false   | Skeleton rows                                                                                                                                   |
+| Name        | Type     | Required | Default | Description                                                                                                                                                                                        |
+| ----------- | -------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| suggestions | array    | Y        | -       | `file_suggestions` rows (snake_case: `id`, `node_id`, `kind`, `reason` JSONB, `created_at`, `expires_at`) + host-provided `path`/`size_bytes` (the dashboard read supplies them — no second fetch) |
+| onAccept    | function | Y        | -       | `(nodeIds) => Promise<payload ∥ null>` — checked rows only; trash (not purge); undo toast from command `action_id`                                                                                 |
+| onDismiss   | function | Y        | -       | `(suggestionId) => void` — per-row only, rendered for rows carrying an `id`; dismissed rows leave the list without a toast                                                                         |
+| loading     | boolean  | N        | false   | Skeleton rows                                                                                                                                                                                      |
 
 ### 2.3 Contract Rules (checkbox in ALL cases)
 
@@ -52,14 +52,16 @@ Target-contract spec (`docs/features/collections-platform.md` §4.16/§4.17 sugg
 - [ ] Per-row dismiss removes the row without touching other rows or firing a toast.
 - [ ] No accept control exists per row (single-control rule).
 - [ ] `loading=true` renders skeletons; empty list renders `suggestionsEmpty` and no accept button.
+- [ ] The expiry footer appears only when at least one row carries a non-null `expires_at`.
 
 ### 2.7 Edge Cases
 
 - Node trashed by owner between listing and accept: server `items_skipped`/reject lists surface via the accept result toast text (mixed outcome path).
 - `expires_at` past render horizon: row simply absent (server filters) — no client expiry math.
-- **Computed rows:** the checklist rows are COMPUTED exact-dup rows
-  (`routes/dashboard.md` §2.4 — `node_id`, `kind`, `path`, `size_bytes`, `reason` with
-  `keep_node_id`; no `id`, no `expires_at`). Dismiss renders per-row ONLY for rows carrying
-  an `id` — computed rows have no dismiss button (unaccepted rows vanish on reload by
-  construction); the expiry footer renders only when rows carry `expires_at`. Rows equal to
-  the group's `keep_node_id` are never listed.
+- **Persisted rows (the norm):** every checklist row is a `file_suggestions` row carrying an
+  `id`, `created_at` and `expires_at` (`routes/dashboard.md` §2.4 — plus host-provided `path`,
+  `size_bytes` and `reason` with `keep_node_id`). The dismiss control renders only when the row
+  carries an `id` AND the host passes `onDismiss` (the `Storage` dashboard passes it). The
+  expiry footer renders only when at least one listed row carries a non-null `expires_at`
+  (retention `0` ⇒ rows list without `expires_at`, no footer). Rows equal to a group's
+  `keep_node_id` are never listed (server guarantee).

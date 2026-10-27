@@ -37,6 +37,7 @@ import {
   removeCollectionItems,
   restoreCollection,
   acceptFileSuggestions,
+  dismissFileSuggestion,
   getActions,
   getFileSuggestions,
   revokeGrant,
@@ -277,7 +278,7 @@ export { undoAction };
 
 // Actions feed + Storage dashboard seams (T0.10; routes/{actions,dashboard}.md) —
 // repository absorbed-read/mutation shapes pass through verbatim.
-export { getActions, getFileSuggestions, acceptFileSuggestions };
+export { getActions, getFileSuggestions, acceptFileSuggestions, dismissFileSuggestion };
 
 // -- File likes (T0.5; §2.6 file-likes group) — the fileLikesRepository       //
 // absorbed-read fallback ({ liked: [] }), payload ∥ null mutation and         //
@@ -392,6 +393,7 @@ const explorerGateway = {
   getActions,
   getFileSuggestions,
   acceptFileSuggestions,
+  dismissFileSuggestion,
   // File likes (§2.6 file-likes group)
   loadFileLikes,
   loadLikedItems,

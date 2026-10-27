@@ -74,6 +74,7 @@ function createFileOperationsState(overrides = {}) {
   return {
     handleFileDownload: jest.fn().mockResolvedValue(undefined),
     handleFileRename: jest.fn().mockResolvedValue(undefined),
+    notifyUploadQueueDrained: jest.fn(),
     ...overrides,
   };
 }
@@ -284,5 +285,98 @@ describe('useExplorerCommands', () => {
     });
 
     expect(props.refreshNow).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useExplorerCommands upload-queue-drain hint (useFileOperations.md §3)', () => {
+  const runBatch = async (files) => {
+    const props = createProps();
+    const { result } = renderHook(() => useExplorerCommands(props));
+    await act(async () => {
+      await result.current.handleUploadStart(files, 10);
+    });
+    return result;
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    useBulkOperations.mockImplementation(() => createBulkState());
+    useFileOperations.mockImplementation(() => createFileOperationsState());
+    explorerGateway.checkConflicts.mockResolvedValue([]);
+    explorerGateway.uploadToPath.mockResolvedValue({ errors: [] });
+    validateFileName.mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
+  it('emits exactly one hint when a fully successful batch drains', async () => {
+    const fileOperationsState = useFileOperations();
+    useFileOperations.mockImplementation(() => fileOperationsState);
+
+    const file = new File(['x'], 'ok.txt', { type: 'text/plain' });
+    await runBatch([{ file }]);
+
+    expect(fileOperationsState.notifyUploadQueueDrained).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits exactly one hint when every item of the batch fails', async () => {
+    const fileOperationsState = useFileOperations();
+    useFileOperations.mockImplementation(() => fileOperationsState);
+    explorerGateway.uploadToPath.mockImplementation(async ({ onProgress }) => {
+      onProgress({ currentFile: 'bad.txt', status: 'error', error: 'boom', total: 1, current: 1 });
+      return { errors: [{ relativePath: 'bad.txt', error: 'boom' }] };
+    });
+
+    const file = new File(['x'], 'bad.txt', { type: 'text/plain' });
+    await runBatch([{ file }]);
+
+    expect(fileOperationsState.notifyUploadQueueDrained).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits exactly one hint when the whole batch errors out', async () => {
+    const fileOperationsState = useFileOperations();
+    useFileOperations.mockImplementation(() => fileOperationsState);
+    explorerGateway.uploadToPath.mockRejectedValue(new Error('network down'));
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const file = new File(['x'], 'x.txt', { type: 'text/plain' });
+    await runBatch([{ file }]);
+
+    expect(fileOperationsState.notifyUploadQueueDrained).toHaveBeenCalledTimes(1);
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('emits exactly one hint when the batch is cancelled mid-flight', async () => {
+    const fileOperationsState = useFileOperations();
+    useFileOperations.mockImplementation(() => fileOperationsState);
+    const props = createProps();
+    const file = new File(['x'], 'c.txt', { type: 'text/plain' });
+    const { result } = renderHook(() => useExplorerCommands(props));
+    // The batch is marked cancelled while in flight — the abandon path still drains.
+    explorerGateway.uploadToPath.mockImplementation(async () => {
+      const [progressId] = [...result.current.explorerUploadFilesRef.current.keys()];
+      result.current.explorerUploadCancelAllRequestedRef.current.add(progressId);
+      return { errors: [] };
+    });
+
+    await act(async () => {
+      await result.current.handleUploadStart([{ file }], 10);
+    });
+
+    expect(fileOperationsState.notifyUploadQueueDrained).toHaveBeenCalledTimes(1);
+  });
+
+  it('never fires for an empty batch (empty mount)', async () => {
+    const fileOperationsState = useFileOperations();
+    useFileOperations.mockImplementation(() => fileOperationsState);
+
+    await runBatch([]);
+
+    expect(fileOperationsState.notifyUploadQueueDrained).not.toHaveBeenCalled();
+    expect(explorerGateway.uploadToPath).not.toHaveBeenCalled();
   });
 });

@@ -142,20 +142,23 @@ export function useExplorerCommands({
     if (typeof dismissFailedItemsFromBulk === 'function') dismissFailedItemsFromBulk();
   }, [dismissFailedItems, dismissFailedItemsFromBulk]);
 
-  const { handleFileDownload: handleFileDownloadOp, handleFileRename: handleFileRenameOp } =
-    useFileOperations({
-      onProgress: updateProgress,
-      setProcessingMap,
-      onActionComplete: handleOperationComplete,
-      onClose: () => {
-        setActionSheetOpen(false);
-        setActionSheetFile(null);
-      },
-      onConflictResolveStart: () => {
-        setSelectionMode(false);
-        setSelectedFiles(new Set());
-      },
-    });
+  const {
+    handleFileDownload: handleFileDownloadOp,
+    handleFileRename: handleFileRenameOp,
+    notifyUploadQueueDrained,
+  } = useFileOperations({
+    onProgress: updateProgress,
+    setProcessingMap,
+    onActionComplete: handleOperationComplete,
+    onClose: () => {
+      setActionSheetOpen(false);
+      setActionSheetFile(null);
+    },
+    onConflictResolveStart: () => {
+      setSelectionMode(false);
+      setSelectedFiles(new Set());
+    },
+  });
 
   const executeExplorerUpload = useCallback(
     async (filesToUpload, parentNodeId, onConflict = 'error') => {
@@ -194,6 +197,7 @@ export function useExplorerCommands({
           error: t('fileManager.uploadNoPermission'),
           keepOnError: true,
         });
+        notifyUploadQueueDrained();
         return;
       }
 
@@ -279,6 +283,7 @@ export function useExplorerCommands({
         }));
 
         if (explorerUploadCancelAllRequestedRef.current.has(progressId)) {
+          notifyUploadQueueDrained();
           handleOperationComplete({ opType: 'upload', startedNodeId: uploadParentNodeId });
           return;
         }
@@ -321,6 +326,7 @@ export function useExplorerCommands({
           }, 3000);
         }
 
+        notifyUploadQueueDrained();
         handleOperationComplete({ opType: 'upload', startedNodeId: uploadParentNodeId });
         setTreeUpdateTrigger({
           type: 'refresh',
@@ -347,6 +353,7 @@ export function useExplorerCommands({
           keepOnError: true,
           fileItems: [...fileItems],
         });
+        notifyUploadQueueDrained();
         handleOperationComplete({ opType: 'upload', startedNodeId: uploadParentNodeId });
       } finally {
         explorerUploadAbortControllersRef.current.delete(progressId);
@@ -361,6 +368,7 @@ export function useExplorerCommands({
       user,
       updateProgress,
       handleOperationComplete,
+      notifyUploadQueueDrained,
       setTreeUpdateTrigger,
       t,
     ]

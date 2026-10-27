@@ -95,5 +95,5 @@ Addendum per docs/features/collections-platform.md §4.9 (silent-evolution `uplo
 
 Verification (appends §2.8):
 
-- [ ] (target) Exactly one `uploadComplete` emission per drain cycle, including all-failed and cancelled drains; zero while any item is still in flight.
-- [ ] (target) Hint emission/failure never changes existing progress/message/onClose outcomes (§2.7 scenarios unaffected).
+- [ ] Exactly one `uploadComplete` emission per drain cycle, including all-failed and cancelled drains; zero while any item is still in flight.
+- [ ] Hint emission/failure never changes existing progress/message/onClose outcomes (§2.7 scenarios unaffected).

@@ -8,6 +8,7 @@ import { useFileOperations } from '../useFileOperations';
 
 import * as fileService from '../../../../services/fileService';
 import { notifyRecentFilesChange } from '../../../../services/recentFilesNotifier';
+import { notifyEvolutionHint } from '../../../../services/explorerGateway';
 
 jest.mock('react-i18next', () => {
   const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
@@ -23,6 +24,10 @@ jest.mock('../../../../services/recentFilesNotifier', () => {
   const { createRecentFilesNotifierMock } = require('../../../../testing/mocks/serviceMocks');
   return createRecentFilesNotifierMock();
 });
+
+jest.mock('../../../../services/explorerGateway', () => ({
+  notifyEvolutionHint: jest.fn(),
+}));
 
 const mockOnProgress = jest.fn();
 const mockOnClose = jest.fn();
@@ -218,6 +223,33 @@ describe('useFileOperations', () => {
       opType: 'rename',
       startedNodeId: 5,
     });
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('exposes notifyUploadQueueDrained and fires the hint seam fire-and-forget', () => {
+    const { result } = renderHook(() => useFileOperations({}));
+
+    expect(typeof result.current.notifyUploadQueueDrained).toBe('function');
+    let returned;
+    act(() => {
+      returned = result.current.notifyUploadQueueDrained();
+    });
+
+    expect(returned).toBeUndefined();
+    expect(notifyEvolutionHint).toHaveBeenCalledTimes(1);
+  });
+
+  it('absorbs a rejecting hint seam without surfacing the failure', () => {
+    notifyEvolutionHint.mockReturnValue(Promise.reject(new Error('transport down')));
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const { result } = renderHook(() => useFileOperations({}));
+
+    expect(() =>
+      act(() => {
+        result.current.notifyUploadQueueDrained();
+      })
+    ).not.toThrow();
 
     consoleErrorSpy.mockRestore();
   });

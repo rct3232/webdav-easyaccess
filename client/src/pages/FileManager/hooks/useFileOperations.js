@@ -4,6 +4,7 @@ import { downloadFile, downloadMultipleFiles, renameFile } from '../../../servic
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { markProcessing, clearProcessing } from '../../../utils/processingUtils';
 import { notifyRecentFilesChange } from '../../../services/recentFilesNotifier';
+import { notifyEvolutionHint } from '../../../services/explorerGateway';
 
 /**
  * Common file operations hook
@@ -230,8 +231,19 @@ export const useFileOperations = ({
     [onProgress, setProcessingMap, onProcessingStart, onProcessingEnd, onActionComplete, onClose, t]
   );
 
+  /**
+   * Fire-and-forget upload-queue-drain hint (useFileOperations.md §3): one
+   * `uploadComplete` signal per drained upload batch. The repository absorbs
+   * every failure and the wrapper additionally swallows a rejecting seam, so
+   * the caller's completion outcome is never affected.
+   */
+  const notifyUploadQueueDrained = useCallback(() => {
+    Promise.resolve(notifyEvolutionHint()).catch(() => {});
+  }, []);
+
   return {
     handleFileDownload,
     handleFileRename,
+    notifyUploadQueueDrained,
   };
 };

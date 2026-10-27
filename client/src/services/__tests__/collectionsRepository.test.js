@@ -27,6 +27,7 @@ import {
   getActions,
   getFileSuggestions,
   acceptFileSuggestions,
+  notifyEvolutionHint,
 } from '../collectionsRepository';
 
 jest.mock('../apiClient', () => ({
@@ -447,6 +448,27 @@ describe('publishItems (P-4 URL fix)', () => {
       errorCode: 'serverErrors.collections.forbidden',
       params: {},
     });
+    expect(notifyCollectionsChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('notifyEvolutionHint (useFileOperations.md §3 upload-drain hint)', () => {
+  it('POSTs the one-shot uploadComplete hint to the evolution route and returns the payload', async () => {
+    post.mockResolvedValueOnce({ data: { scheduled: true } });
+
+    await expect(notifyEvolutionHint()).resolves.toEqual({ scheduled: true });
+
+    expect(post).toHaveBeenCalledWith('/collections/evolution/hint', {
+      uploadComplete: true,
+    });
+    // silent: the hint is a signal, not a collections mutation — no refresh fan-out.
+    expect(notifyCollectionsChange).not.toHaveBeenCalled();
+  });
+
+  it('absorbs failures to null, never notifies, and never rejects (fire-and-forget contract)', async () => {
+    post.mockRejectedValueOnce(new Error('transport down'));
+
+    await expect(notifyEvolutionHint()).resolves.toBeNull();
     expect(notifyCollectionsChange).not.toHaveBeenCalled();
   });
 });

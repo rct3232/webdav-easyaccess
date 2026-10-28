@@ -2751,8 +2751,93 @@ regressions (targeted reruns below).
 - **Specs:** `docs/spec/client/hooks/useSearchResults.md` (§2.3 `cancelSearch`, §2.5/§2.6
   user-cancel ≠ failure, verification rows), `docs/spec/client/components/file-manager/FloatingSearchBar.md`
   (§2.6/§2.7/§2.8 pending cancel + hidden ✕ + Escape), `docs/features/client-ui.md` (feature state).
-- **Tests:** client 188 suites / **2260** tests, rc=0 (new: 7 hook cancel cases, 4 bar cases,
+- **Tests:** client 188 suites / **2261** tests, rc=0 (new: 8 hook cancel cases, 4 bar cases,
   3 button cases); `docsStatePurity` green (removed the `T4.1` task marker accidentally added to
   `SystemSettingsContent.md` in `7593e6fc`); prettier/eslint clean on touched files.
 - **Not covered:** no new E2E case (the interaction is client-unit covered; a full-matrix re-pin
   remains the pending release event).
+
+## 32. P4 plan — bulk-job polling resilience + search error surface (2026-10-28)
+
+Scope: the two remaining client-resilience gaps exposed by the release-matrix traces. Plan only;
+no task below is executed yet.
+
+**Evidence.** (a) `useBulkOperations` polls with `setInterval(400)` and a bare
+`catch { console.error }` (`useBulkOperations.js:303`, twin at `:628`); the terminal branch is the
+single owner of `clearProcessing`, `onOperationComplete` → listing refresh, recent/trash
+notifications and the progress terminal state — so a status endpoint that keeps failing (404
+after a restart — the job store is the in-memory `bulkJobStore`, TTL 1 h) leaves the row and the
+progress item stuck with no user-visible signal. (b) Search failure is a 5 s snackbar only
+(`useSearchResults.md` §2.6), so a transport failure leaves no persistent trace once it hides.
+
+**Policy decisions (provisional unless the owner overrides).**
+
+| Key                       | Value                                                                                                                                                  | Rationale                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `POLL_MAX_FAILURES` (`N`) | 5 consecutive                                                                                                                                          | ~11 s of backoff before declaring the status unreadable                 |
+| Backoff                   | 400 → 800 → 1600 → 3200 → 5000 ms (cap)                                                                                                                | keeps the first seconds responsive, stops hammering a struggling server |
+| Per-request timeout       | 10 s (status GET only)                                                                                                                                 | the 300 s transport default would freeze the item for minutes           |
+| `404`                     | job-expired terminal-unknown, no retry                                                                                                                 | the mutation may already be applied; refresh is the only safe answer    |
+| Stalled item              | `status:'error'`, `stalled:true`, `keepOnError:true`, action `refreshListing`                                                                          | no auto-remove; one explicit user action                                |
+| Refresh                   | `onOperationComplete` (host `refreshNow`) runs FIRST on any terminal/expired/stalled outcome, each remaining side effect isolated in its own try/catch | the listing must not depend on notifications/progress                   |
+| Cancel                    | POST cancel → one forced status fetch (10 s) → terminal handler or stalled+refresh                                                                     | cancel is not an escape hatch if it cannot observe the result           |
+| Search error              | persistent inline row (retry + dismiss) + existing 5 s toast                                                                                           | durable trace at the chip-bar slot                                      |
+
+**Task graph** (each task lists objective / inputs / outputs / verification / deps).
+
+- **T4.5 — Specs first (docs).** Write the polling-failure contract into
+  `docs/spec/client/hooks/useBulkOperations.md` (new §: scheduling, backoff, N, 404, terminal
+  ordering, stalled item shape, cancel force-check) and `docs/spec/client/components/file-manager/FileOperationProgress.md`
+  (stalled row + action) plus the search error contract in `useSearchResults.md` §2.6 and
+  `SearchQueryChipBar.md` §2.x/the new row's spec; update `docs/features/client-ui.md`.
+  Verify: `docsStatePurity`, review. Deps: none.
+- **T4.6 — `bulkJobPoller` module + unit tests (TDD).** Extract the duplicated delete/move/copy
+  loop into framework-free `client/src/pages/FileManager/hooks/bulkJobPoller.js`: self-scheduling
+  `setTimeout` (no `setInterval`), in-flight guard, backoff/N, 404-expiry, `dispose()` abort,
+  exactly-once terminal callback. Inputs: T4.5 policy, current hook. Verify: new
+  `bulkJobPoller.test.js` with fake timers (success, N failures → one stalled, 404 → expired
+  immediately, no overlapping fetch, dispose mid-flight, terminal-once). Deps: T4.5. Parallel
+  with T4.7.
+- **T4.7 — Progress drawer stalled state.** Render the `refreshListing` action for
+  `stalled:true` items (host callback from `FileManager` → `loadFiles`), keep dismiss/close,
+  i18n `fileManager.bulkStatusUnavailable` / `fileManager.refreshListing`. Verify: unit tests on
+  the drawer + a hook-level test that a stalled item carries the flag. Deps: T4.5. Parallel with
+  T4.6.
+- **T4.8 — Delete path migration + refresh-first terminal handling.** Replace the delete loop;
+  on terminal/expired/stalled call `onOperationComplete` before notifications, each side effect
+  isolated. Verify: existing bulk/delete client tests + new stalled/expired cases; manual
+  trace check. Deps: T4.6, T4.7.
+- **T4.9 — Move/copy path migration.** Same for move/copy, preserving the undo pointer
+  (exactly once) and the skipped-by-conflict/permission buckets. Deps: T4.8.
+- **T4.10 — Cancel force-check.** `handleCancelBulkOperation`: cancel POST → one forced status
+  fetch → single terminal handler, or stalled + refresh. Guard against double terminal
+  handling. Verify: unit test (cancel → status completed → refresh once; cancel → status fails
+  → stalled + refresh). Deps: T4.8.
+- **T4.11 — Search persistent error row + pending Enter feedback.** `useSearchResults` exposes
+  `error { code, query }` (set on absorbed failure, cleared on success/cancel/dismiss/exit);
+  render the row under the chip bar with Retry (re-submits the failed query) and Dismiss; keep
+  the snackbar. Pending Enter: keep single-flight and add a one-shot "검색 중 — 취소는 버튼/Esc"
+  hint (decision D4 below). Verify: hook + component tests; retrieval E2E unchanged. Deps: T4.5.
+- **T4.12 — E2E fault injection + inventory re-pin.** Two `page.route` cases: (1) abort
+  `**/api/files/bulk-operation/**` during a real delete in `trash.spec.ts` (scratch) → stalled
+  row + refresh action → unroute + click → row gone; (2) abort `**/api/search` in
+  `retrieval.spec.ts` → persistent row → unroute + Retry → results. Add coverage-plan rows and
+  re-pin `E2E_EXPECTED_SKIPS`/inventory + `TEST_SUMMARY` after the first real run. Deps: T4.8–T4.11.
+- **T4.13 — Gates.** Client `test:ci`, server `test:ci` (no server change expected unless T4.6b
+  lands), `docsStatePurity`, prettier/eslint, targeted E2E (new cases + retrieval/trash/BULK-010),
+  then the release matrix on a host with CPU headroom (§31.8). Deps: all.
+- **T4.6b (optional hardening) — `Cache-Control: no-store`** on `GET /api/files/bulk-operation/:jobId`
+  (mutable polling endpoint; Express still emits validators today, observed 304s in traces).
+  Server unit test asserts the header. Independent; can ship with T4.6.
+
+**Open decisions.**
+
+- **D1** `N`/backoff numbers above — accept or tune.
+- **D2** stalled action = refresh **and dismiss** the item vs refresh **and keep** it until the
+  user closes it (recommended: refresh + keep, explicit close).
+- **D3** 404 handling: refresh + warning toast vs refresh + stalled progress row (recommended:
+  both the refresh and the warning row; no toast).
+- **D4** pending Enter: inert + one-shot inline hint (recommended, keeps single-flight) vs
+  "cancel the in-flight search and submit the new text".
+- **D5** E2E placement/IDs and the inventory re-pin (+2 instances per added case under the
+  desktop/mobile project pair).

@@ -18,7 +18,8 @@ Detailed implementation contracts live in:
 When the app boots with incomplete configuration (e.g. a fresh install with no `.env`), it
 enters **setup mode** and serves a first-run **setup wizard UI** at `/setup`. The operator
 configures the metadata backend, file-storage backend and credentials, the admin account,
-an optional JWT secret, and optional SMTP/CORS/port settings through the browser. The wizard persists
+an optional JWT secret, optional SMTP/CORS/port settings, and optionally the chat/vision/asr
+AI backends through the browser. The wizard persists
 the result by **upserting non-T0 values into the metadata DB `settings` table** (row key = raw
 env var name); of the T0 keys only an optional `JWT_SECRET` is written to `.env`. It then
 instructs a server restart — after restart the app is fully configured and the wizard is no
@@ -41,8 +42,8 @@ Key properties:
   see `docs/SETUP.md`.
 - **Restart handling:** a "Restart required" screen only. No self re-exec;
   the operator restarts the process.
-- **Scope:** the wizard serves **non-T0 only** — file storage, email, server/CORS, and the
-  admin password. The one T0 exception is the **optional**
+- **Scope:** the wizard serves **non-T0 only** — file storage, email, server/CORS, the
+  admin password, and the optional AI backends. The one T0 exception is the **optional**
   `JWT_SECRET`, written to `.env` only when the operator supplies one (see the Admin-account
   bullet below). The metadata-backend step (sqlite/PostgreSQL radio) is removed; PostgreSQL
   connectivity is boot-verified and monitored by the backend-health card.
@@ -57,7 +58,7 @@ Key properties:
 flowchart LR
     A["Boot with no .env"] --> B["Setup mode (loopback-only bind, server stays up)"]
     B --> C["Login redirects to /setup"]
-    C --> D["Wizard steps 1–5"]
+    C --> D["Wizard steps 1–6"]
     D --> E["POST /api/setup/apply"]
     E --> F["Merge-write .env (0600)"]
     F --> G["Restart required screen"]
@@ -70,6 +71,35 @@ flowchart LR
   missing `S3_*` keys (`server/infrastructure/adapters/blobstore/index.js:7-13`, called from
   `server/index.js:164-172`). The boot guard wraps that block in try/catch and logs a warning
   instead (see Restart contract and setup-mode behavior below).
+
+---
+
+## Wizard steps
+
+Six screens: five input steps followed by the restart-required screen (client contract:
+`docs/spec/client/pages/Setup.md` §2.5).
+
+1. **File storage** — s3 (bucket/region/access key/secret/endpoint) or webdav
+   (url/username/password), each with a connection test (`POST /api/setup/test`). The
+   metadata backend is not a step: it is `.env`-owned and presence-selected at boot, and the
+   wizard never writes `WEA_DB_*`.
+2. **Admin password + optional JWT** — username fixed to `admin`; the JWT secret may be left
+   blank (`.env` untouched, boot-time ephemeral secret applies).
+3. **Optional** — port, CORS origins, SMTP.
+4. **AI (optional, skippable)** — configure chat/vision/asr only: preset picker → role
+   checkboxes → per-role base-url/key/model → per-role test (`POST /api/setup/test` target
+   `llm`, presets from `GET /api/setup/llm-presets`). The embed role has no wizard surface —
+   the built-in engine ships configured and the step shows only its readiness card in the
+   waiting state. Entered values are written as DB `settings` rows (`LLM_*`, T2 hot), never
+   `.env`, so they apply without a restart. A fully skipped step sends no `llm` block
+   (None-state product); AI presence is never a completeness factor. Setup mode itself makes
+   zero download attempts — built-in embed provisioning runs on the first configured boot
+   after the restart (`docs/spec/server/infrastructure/llmPresets.md` §2.3).
+5. **Apply** — writes the `.env` T0 subset (only a supplied `JWT_SECRET`) and every non-T0
+   value, including the optional `llm` rows, to the connected metadata DB `settings` table;
+   updates the admin password; returns `restart_required: true`.
+6. **Restart required** — shown on `200 { restart_required: true }`; no self re-exec. The
+   `llm` rows are live immediately; only the boot-frozen blocks need the restart.
 
 ---
 

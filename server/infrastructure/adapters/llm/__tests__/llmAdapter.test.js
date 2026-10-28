@@ -321,6 +321,10 @@ describe('per-call config resolution + signature-keyed client cache', () => {
   it('unconfigured role ⇒ roleConfigured false and getRoleClient null', async () => {
     const { adapter } = buildAdapter();
     await expect(adapter.roleConfigured('chat')).resolves.toBe(false);
+    await expect(adapter.getRoleReadiness('chat')).resolves.toEqual({
+      configured: false,
+      reason: 'not_configured',
+    });
     await expect(adapter.getRoleClient('chat')).resolves.toBeNull();
   });
 
@@ -386,6 +390,10 @@ describe('per-call config resolution + signature-keyed client cache', () => {
 
     // Remote override active: role configured, remote client.
     await expect(adapter.roleConfigured('embed')).resolves.toBe(true);
+    await expect(adapter.getRoleReadiness('embed')).resolves.toEqual({
+      configured: true,
+      reason: null,
+    });
     const remoteClient = await adapter.getRoleClient('embed');
     expect(remoteClient.spec.engine).toBe('remote');
 
@@ -396,6 +404,13 @@ describe('per-call config resolution + signature-keyed client cache', () => {
     // Weights absent ⇒ in-place provisioning run, role reports preparing and
     // is NOT configured while it runs (consumers park — never claim-and-fail).
     await expect(adapter.roleConfigured('embed')).resolves.toBe(false);
+    // The fake in-place run resolves immediately; the post-run readiness is
+    // the honest failure reason (the transient `preparing` window is covered
+    // by searchService's readiness-reason test).
+    await expect(adapter.getRoleReadiness('embed')).resolves.toEqual({
+      configured: false,
+      reason: 'provisioning_failed',
+    });
     expect(provisioner.params).toHaveLength(1);
     expect(provisioner.params[0]).toMatchObject({ mode: 'in-place', remoteOverrideActive: false });
     expect(healthReports.some((h) => h.key === 'ai.embed' && h.patch.preparing)).toBe(true);
@@ -408,6 +423,10 @@ describe('per-call config resolution + signature-keyed client cache', () => {
   it('embedded role with weights present is configured without any remote triple', async () => {
     const { adapter } = buildAdapter();
     await expect(adapter.roleConfigured('embed')).resolves.toBe(true);
+    await expect(adapter.getRoleReadiness('embed')).resolves.toEqual({
+      configured: true,
+      reason: null,
+    });
     const client = await adapter.getRoleClient('embed');
     expect(client.spec.engine).toBe('embedded');
   });

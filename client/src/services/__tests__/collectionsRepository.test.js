@@ -268,8 +268,7 @@ describe('runSearch + recordSearchClick', () => {
       name_matches: [{ node_id: 11, name: 'Fun-MOVIE-notes.pdf' }],
       result_ref: 'sr1.9f3c2a7e41b0d8c5',
       counts: { name: 1, semantic: 0, total: 1, name_truncated: false },
-      semantic_available: false,
-      semantic_unavailable_reason: 'serverErrors.ai.notConfigured',
+      semantic_unavailable_reason: 'not_configured',
     };
     post.mockResolvedValueOnce({ data: payload });
 
@@ -279,12 +278,14 @@ describe('runSearch + recordSearchClick', () => {
     expect(result).toEqual(payload);
   });
 
-  it('runSearch treats semantic_available:false as success (not null)', async () => {
-    post.mockResolvedValueOnce({ data: { name_matches: [], semantic_available: false } });
+  it('runSearch treats an omitted semantic key as success (not null)', async () => {
+    post.mockResolvedValueOnce({
+      data: { name_matches: [], semantic_unavailable_reason: 'not_configured' },
+    });
 
     const result = await runSearch({ query: 'anything' });
 
-    expect(result).toEqual({ name_matches: [], semantic_available: false });
+    expect(result).toEqual({ name_matches: [], semantic_unavailable_reason: 'not_configured' });
   });
 
   it('runSearch absorbs transport/5xx failures into null and surfaces the envelope', async () => {

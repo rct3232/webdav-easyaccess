@@ -44,7 +44,7 @@ import { skipWhenUnavailable } from './helpers/skipPolicy';
  * perm-delete cleanup fallback).
  *
  * WIRE SHAPE asserted at this stage (searchService.md §2.5a): the embed leg
- * RAN — `semantic_available:true`, the `semantic` key PRESENT,
+ * RAN — the `semantic` key PRESENT,
  * `result_ref` shaped `sr1.<16 hex>` — and the run is proven REAL through the
  * scratch sqlite: the `query_parses` cache row carries a 768-dim vector
  * envelope and grows its `hit_count` on the identical replay. The
@@ -227,7 +227,6 @@ test('E2E-S3-AI-001: a semantic search returns an uploaded document no name matc
   // return it, while the embed leg runs on the real engine.
   const first = await runSearch(request, userToken, SEMANTIC_PHRASE);
 
-  expect(first.semantic_available).toBe(true);
   expect(Array.isArray(first.semantic)).toBe(true);
   expect(first.semantic_unavailable_reason).toBeUndefined();
   expect(first.result_ref).toMatch(/^sr1\.[0-9a-f]{16}$/);
@@ -258,7 +257,7 @@ test('E2E-S3-AI-001: a semantic search returns an uploaded document no name matc
   // provider embeds, and the row's hit_count grows by exactly one.
   const second = await runSearch(request, userToken, `  ${SEMANTIC_PHRASE.toUpperCase()}  `);
   expect(second.result_ref).toBe(first.result_ref);
-  expect(second.semantic_available).toBe(true);
+  expect(Array.isArray(second.semantic)).toBe(true);
 
   const hitsDb = new DatabaseSync(path.join(scratch, 'webdav.db'), { readOnly: true });
   try {

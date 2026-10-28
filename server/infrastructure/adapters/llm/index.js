@@ -659,14 +659,25 @@ function createLlmAdapter(deps = {}) {
     return { resolved, entry: clients.get(role) };
   }
 
-  async function roleConfigured(role) {
+  /**
+   * Readiness of a role for a consumer that needs a reason, not just a boolean
+   * (search's semantic leg is the first): `{ configured, reason }` where the
+   * reason is `null` when configured and one of `not_configured`, `preparing`,
+   * `provisioning_failed`, `probe_failed`, or `non_conforming` otherwise.
+   * Provider-call-free: remote embed reuses the cached conformance verdict;
+   * embedded checks the in-place provisioning flag + local weights.
+   */
+  async function getRoleReadiness(role) {
     if (role === 'embed') {
       const resolved = await resolveRoleConfig('embed');
       if (resolved.engine === 'remote') {
-        // §2.4 activation gate: the conformance verdict decides, never the
-        // presence of the config triple alone.
         const verdict = await conformanceVerdict(resolved);
-        if (!verdict.pass) return false;
+        if (!verdict.pass) {
+          return {
+            configured: false,
+            reason: verdict.reason === 'nonConformingEndpoint' ? 'non_conforming' : 'probe_failed',
+          };
+        }
         try {
           // Prime the client cache/readiness bookkeeping; a dialect factory
           // failure is a call-path config error, not an activation verdict.
@@ -674,17 +685,39 @@ function createLlmAdapter(deps = {}) {
         } catch (err) {
           /* role stays gate-configured; the call path degrades honestly */
         }
-        return true;
+        return { configured: true, reason: null };
       }
+      if (resolved.engine === 'embedded') {
+        // observeRole owns the override-clear in-place provisioning trigger;
+        // without this call the readiness probe would report a failure reason
+        // but never start the run.
+        try {
+          await observeRole('embed');
+        } catch {
+          /* role stays gate-configured; the call path degrades honestly */
+        }
+        if (provisioning) return { configured: false, reason: 'preparing' };
+        if (!(await embeddedPresent())) {
+          return { configured: false, reason: 'provisioning_failed' };
+        }
+        return { configured: true, reason: null };
+      }
+      return { configured: false, reason: 'not_configured' };
     }
 
     const { resolved } = await observeRole(role);
-    if (resolved.engine === 'remote') return true;
+    if (resolved.engine === 'remote') return { configured: true, reason: null };
     if (resolved.engine === 'embedded') {
-      if (provisioning) return false; // §2.3: in-place run ⇒ NOT configured (park)
-      return embeddedPresent();
+      if (provisioning) return { configured: false, reason: 'preparing' };
+      const present = await embeddedPresent();
+      return { configured: present, reason: present ? null : 'provisioning_failed' };
     }
-    return false;
+    return { configured: false, reason: 'not_configured' };
+  }
+
+  async function roleConfigured(role) {
+    const readiness = await getRoleReadiness(role);
+    return readiness.configured === true;
   }
 
   async function getRoleClient(role) {
@@ -930,6 +963,7 @@ function createLlmAdapter(deps = {}) {
 
   return {
     roleConfigured,
+    getRoleReadiness,
     getRoleClient,
     probeRole: probeRoleNow,
     probeConfiguredRoles,

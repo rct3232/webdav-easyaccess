@@ -50,9 +50,9 @@ key is ABSENT and the response shape is byte-identical to the parser-free contra
    `counts.name_truncated`. Highlight ranges are CLIENT-side; the server never returns
    markup offsets.
 3. **Semantic gate:** `roleConfigured('embed')` ∧ `AI_SEMANTIC_SEARCH_ENABLED` (kill
-   switch) — false ⇒ response omits `semantic`, `semantic_available:false`,
-   `semantic_unavailable_reason:"serverErrors.ai.notConfigured"`; done (name section
-   intact, 200).
+   switch) — false ⇒ response omits `semantic` and sets `semantic_unavailable_reason`
+   to the role-readiness token (`not_configured | preparing | provisioning_failed |
+probe_failed | non_conforming | disabled`); done (name section intact, 200).
 
 3a. **NL parse (`parse.nl`, §2.8):** `roleConfigured('chat')` ∧ `AI_NL_PARSE_ENABLED`
 (kill switch) — false ⇒ the leg never runs and adds ZERO calls; the response then is
@@ -90,8 +90,9 @@ words); the response carries the canonical atom array as `predicates`.
      scoring outcome. On ANY provider failure/timeout/mid-switch error ⇒ degrade
      honestly: empty semantic section
 
-- `semantic_available:true` retained (config IS present) but `counts.semantic:0` —
-  never a 5xx (a mid-switch config failure degrades honestly, never surfaces as error).
+- `semantic: []` retained (the key's presence is the availability signal) but
+  `counts.semantic:0` — never a 5xx (a mid-switch config failure degrades honestly,
+  never surfaces as error).
   A failed cache READ is treated as a MISS and a failed cache WRITE is dropped — the
   cache is an optimization, never a correctness dependency (the provider embed still
   serves the leg).
@@ -212,13 +213,14 @@ semanticScorer({ userId, queryVec, segmentVecs, sampleFn })
 The PRODUCTION scorer is the default when no seam is injected — the service
 constructs it with its own stores and `configResolver`. An explicitly injected
 non-function disables scoring: the semantic section is then returned HONESTLY
-EMPTY (`semantic_available:true`, `counts.semantic:0`) whenever the §2.3
-step-3 gate passed. Scores are never fabricated anywhere on this path.
+EMPTY (`semantic: []`, `counts.semantic:0`) whenever the §2.3 step-3 gate passed.
+Scores are never fabricated anywhere on this path.
 
 ### 2.6 Save-to-collection boundary
 
-`semantic_available:false` OR empty `semantic` ⇒ the `Save as collection` button is HIDDEN
-(client consumes the flag). Saved collections capture the SEMANTIC portion only —
+The `semantic` key being ABSENT OR the array being empty ⇒ the `Save as collection`
+button is HIDDEN (the client derives availability from the key's presence). Saved
+collections capture the SEMANTIC portion only —
 name-match results are structurally excluded from definitions; the saved definition is the
 flattened semantic snapshot via
 `collectionsService.createSearchCollection`, whose confirm dialog carries the
@@ -232,10 +234,10 @@ batch-publish copy (the dialog states the ENTIRE initial set is publish-approved
 | `queryTooLong`  | `search.queryTooLong`  | 400  |
 | `searchFail`    | `search.fail`          | 500  |
 
-`aiNotConfigured` is NOT thrown here — it appears only as the
-`semantic_unavailable_reason` string constant on a 200 (a section is absent, not
-the feature; routes §2.4.1). `fail` is reserved for engine-internal errors (SQL throw,
-vectorStore invariant break) — provider failure is a DEGRADATION, not a `fail`.
+`semantic_unavailable_reason` is NOT a thrown error code — it is a readiness token on a
+200 (a section is absent, not the feature; routes §2.4.1). `fail` is reserved for
+engine-internal errors (SQL throw, vectorStore invariant break) — provider failure is a
+DEGRADATION, not a `fail`.
 
 ### 2.8 The NL-parse leg (`parse.nl` — chat → shared predicate grammar)
 
@@ -331,8 +333,8 @@ $ref`) later as ADDITIVE envelope/fields only — no meaning redefinition of the
 - [ ] Segment-AND: 3-word composite → score = MIN across segments; 4 words → first 3 +
       `semantic_capped_segments:true`; 1 word → plain segment score
 - [ ] Dynamic baseline: query embedding a nonsense string (random chars) returns an
-      honestly EMPTY `semantic` section, `semantic_available` still true; a real query
-      returns rows above `spread + δ_base`
+      honestly EMPTY `semantic` section (key present, `[]`); a real query returns rows
+      above `spread + δ_base`
 - [ ] embed unconfigured → 200, `semantic` key ABSENT, `semantic_unavailable_reason` set,
       name section intact; kill switch off ⇒ identical shape
 - [ ] Fake-adapter timeout ⇒ name section + `counts.total` unaffected, semantic empty,
@@ -343,12 +345,12 @@ $ref`) later as ADDITIVE envelope/fields only — no meaning redefinition of the
 - [ ] Same query twice: second call served from `query_parses` signature cache (fake
       adapter call count = 1), and the cache row's `hit_count` grew by exactly 1
 - [ ] embed configured with no scoring seam ⇒ 200, `semantic` key PRESENT but empty
-      (`[]`), `semantic_available:true`, `semantic_capped_segments` present — the
-      absent-vs-honestly-empty distinction is observable on the wire
+      (`[]`), `semantic_capped_segments` present — the absent-vs-honestly-empty
+      distinction is observable on the wire
 - [ ] Cache-row envelope from a different space (model change) ⇒ MISS: re-embed,
       `vector` overwritten, provider called again
-- [ ] Provider failure with the role configured ⇒ `semantic` present-but-empty,
-      `semantic_available:true`, name section + `counts.total` unchanged, NO 5xx
+- [ ] Provider failure with the role configured ⇒ `semantic` present-but-empty, name
+      section + `counts.total` unchanged, NO 5xx
 - [ ] `usage_events` `search_hit` rows: exactly one per returned node, none for
       deduplicated-away or truncated rows
 - [ ] Response fields snake_case; scores 0–1 rounded 2-dec; empty query 400, >200 chars 400

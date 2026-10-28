@@ -46,7 +46,7 @@ import { TEST_FILES } from './fixtures/test-data';
  *
  * Contract sources: docs/spec/server/routes/search.md (POST /api/search P0 name
  * branch — `name_matches[{node_id,name}]`, `semantic` ABSENT with
- * `semantic_available:false`; POST /search/click {node_id} → 204),
+ * `semantic_unavailable_reason`; POST /search/click {node_id} → 204),
  * docs/spec/client/hooks/useSearchResults.md (mode machine browse/pending/results,
  * the committed `intersect-name` chain with per-step snapshots, live typing NEVER
  * hides rows — promotion + live color only, enrichment chunks ≤100, every exit
@@ -478,7 +478,7 @@ test.beforeAll(async ({ request }, testInfo) => {
   await waitForScratchHealth(spawned, port);
   operatorToken = await loginScratchAdmin(request, ADMIN_PASSWORD);
   // This suite verifies the HONEST-DEGRADE stack: the semantic section
-  // ABSENT (`semantic_available:false` + `semantic_unavailable_reason`).
+  // ABSENT (`semantic` key omitted + `semantic_unavailable_reason`).
   // The embed engine is a built-in DEFAULT provider, so in a checkout whose
   // shared model dir holds provisioned weights a plain scratch boot would
   // run the semantic leg and the section-absent premises below would not

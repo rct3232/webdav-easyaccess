@@ -313,7 +313,7 @@ export const revokeOwnGrant = async (id, options) => {
 
 /**
  * §4.6 server-wide search. The snake_case response is returned verbatim;
- * `null` only on transport/5xx-style failure — `semantic_available:false` is
+ * `null` only on transport/5xx-style failure — an omitted `semantic` key is
  * a SUCCESS payload (degradation reported as data, routes/search.md §2.4).
  * Exception to the no-options read rule: `options.onError` receives the
  * absorbed error envelope exactly once (side channel, no rejection) so the

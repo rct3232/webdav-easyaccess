@@ -2545,3 +2545,19 @@ full-matrix re-pin, and the §30.6 defer-audit residuals below.
 decision + docs; (3) L3 release run; (4) B/D/E owner decisions or P4 scope notes. A, C (docs
 clarification), and L2 are pre-dev-merge residuals; B/D/E/L1/L3 remain P4 carry-forward. None of these rows changes the
 P3 feature verdict — they are the honest tail of the phase.
+
+### 30.7 Search semantic-availability wire (2026-10-28)
+
+- **Contract:** `POST /api/search` no longer emits `semantic_available`. The `semantic`
+  key's PRESENCE is the availability signal (`absent` = leg not run; `[]` = ran honestly
+  empty; non-empty = scored rows). `semantic_unavailable_reason` is now a readiness token
+  (`not_configured | preparing | provisioning_failed | probe_failed | non_conforming |
+disabled`) sourced from the new `llmAdapter.getRoleReadiness('embed')`; it is not an i18n
+  error key.
+- **Client:** `useSearchResults` derives the per-step `semanticAvailable` from
+  `Array.isArray(response.semantic)`; the save gate stays "section present AND non-empty".
+- **Docs:** routes/search, searchService, client hook/service/chip specs, `api.md`,
+  `shared-contracts.md`, and E2E coverage updated in the same change.
+- **Gates:** server `test:ci` 189 suites / 3309 tests (28 skip); client 188 / 2235;
+  `docsStatePurity` 3/3; `playwright test --list` 256 tests. No repository/SQL change ⇒ PG
+  leg N/A.

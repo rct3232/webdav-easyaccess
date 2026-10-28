@@ -534,7 +534,6 @@ describe('explorerGateway', () => {
         name_matches: [],
         result_ref: 'sr1.x',
         counts: {},
-        semantic_available: false,
       };
       runSearch.mockResolvedValueOnce(payload);
       await expect(explorerGateway.runSearch({ query: 'movie' })).resolves.toBe(payload);

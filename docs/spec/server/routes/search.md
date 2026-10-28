@@ -113,8 +113,7 @@ contract).
     "total": 2,
     "name_truncated": false,
     "semantic_capped_segments": false
-  },
-  "semantic_available": true
+  }
 }
 ```
 
@@ -133,7 +132,6 @@ additive `predicates` key; the example query parsed to a size + date atom):
     "name_truncated": false,
     "semantic_capped_segments": false
   },
-  "semantic_available": true,
   "predicates": [
     { "type": "size", "min": 10485760 },
     { "type": "date", "withinDays": 365 }
@@ -143,8 +141,8 @@ additive `predicates` key; the example query parsed to a size + date atom):
 
 200 response when the embed leg ran but scored NOTHING (provider failure degrade,
 baseline-gated empty, or the scoring seam not wired): the `semantic` key is PRESENT
-with an EMPTY array and `semantic_available` stays `true` — absence and honest
-emptiness are distinct wire states:
+with an EMPTY array — the key's PRESENCE distinguishes honest emptiness from the
+gate-off omission:
 
 ```json
 {
@@ -157,8 +155,7 @@ emptiness are distinct wire states:
     "total": 0,
     "name_truncated": false,
     "semantic_capped_segments": false
-  },
-  "semantic_available": true
+  }
 }
 ```
 
@@ -174,17 +171,17 @@ HTTP error:
   "name_matches": [{ "node_id": 90210, "name": "fun-movie-notes.pdf" }],
   "result_ref": "sr1.44de0c9a3f7b1028",
   "counts": { "name": 1, "semantic": 0, "total": 1, "name_truncated": false },
-  "semantic_available": false,
-  "semantic_unavailable_reason": "serverErrors.ai.notConfigured"
+  "semantic_unavailable_reason": "preparing"
 }
 ```
 
 Field rules: `score` is a float 0–1 rounded to 2 decimals; `counts.total` =
-post-dedup displayed rows; `semantic_available` is the client's gate for hiding the
-`Save as collection` button (empty or unavailable semantic ⇒ button hidden — a saved
-collection means the semantic part only; name-match results are ALWAYS excluded from
-collection definitions); `predicates` follows the presence rule above (absent when the
-parse did not apply — the chat-off degrade is the parser-free shape, byte for byte).
+post-dedup displayed rows; the `semantic` key's presence is the availability signal and
+a non-empty `semantic` array is the client's gate for the `Save as collection` button
+(absent or empty ⇒ button hidden — a saved collection means the semantic part only;
+name-match results are ALWAYS excluded from collection definitions); `predicates` follows
+the presence rule above (absent when the parse did not apply — the chat-off degrade is
+the parser-free shape, byte for byte).
 
 ### 2.4.0 `POST /click` — usage-signal list-entry-click recording point
 
@@ -209,10 +206,10 @@ parse did not apply — the chat-off degrade is the parser-free shape, byte for 
 | 400  | `serverErrors.search.clickTargetRequired` | `POST /click` without a positive-integer `node_id`. |
 | 500  | `serverErrors.search.fail`                | Unexpected engine failure (envelope param).         |
 
-`serverErrors.ai.notConfigured` is returned **only** as
-`semantic_unavailable_reason` (200) on this endpoint — the query itself succeeded, so no
-4xx is raised (the code exists to report AI absence, and here only a section is
-absent, not the feature).
+`semantic_unavailable_reason` is a readiness token, not an i18n error key:
+`not_configured`, `preparing`, `provisioning_failed`, `probe_failed`, `non_conforming`, or
+`disabled` (200) — the query itself succeeded, so no 4xx is raised. A section is absent,
+not the feature.
 
 ### 2.4.2 Contract clarifications
 
@@ -259,10 +256,10 @@ absent, not the feature).
 - [ ] Request `predicates` array: grammar-valid atoms accepted; malformed array silently
       stateless (never a 4xx)
 - [ ] embed role absent → 200, `semantic` key omitted,
-      `semantic_unavailable_reason: "serverErrors.ai.notConfigured"`, name section intact
-- [ ] embed configured, zero scored rows → 200, `semantic: []` PRESENT,
-      `semantic_available:true` — the honest-empty shape is never conflated with the
-      omit shape, and `semantic_capped_segments` is present in both leg-ran responses
+      `semantic_unavailable_reason` one of the readiness tokens, name section intact
+- [ ] embed configured, zero scored rows → 200, `semantic: []` PRESENT — the honest-empty
+      shape is never conflated with the omit shape, and `semantic_capped_segments` is
+      present in both leg-ran responses
 - [ ] Dynamic baseline: nonsense/low-similarity query returns an honestly EMPTY semantic
       section (not a majority-class dump)
 - [ ] Segment-AND: a composite query scores MIN across ≤3 segments; a 4-word query sets

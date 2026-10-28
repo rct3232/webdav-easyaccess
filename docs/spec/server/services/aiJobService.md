@@ -69,11 +69,18 @@ Enqueue decision table (per node, at hook time):
 | media, capability absent                               | `embed` immediately (V0 `metadata_only` path — name/mime/path/date string, the zero-LLM floor for media) |
 | directory nodes                                        | none                                                                                                     |
 
-- **Idempotency:** `aiJobsStore.enqueue(nodeId, kind, generation, contentHash)` → ON
-  CONFLICT `(node_id, kind, generation)` DO NOTHING returns `null` — crash retries,
-  copies and restores NEVER re-pay. Content re-read at execution time via
+- **Idempotency & content-change re-embed:** `aiJobsStore.enqueue` inserts `pending`; on
+  the `(node_id, kind, generation)` conflict it is a no-op returning `null` when the
+  stamped and incoming hashes are identical or either is absent — crash retries,
+  byte-identical copies/restores and duplicate hook fires NEVER re-pay. When BOTH hashes
+  are non-null and DIFFER, the same row is RESET to a fresh attempt (`pending`,
+  `attempt=0`, retry/start/finish/last_error cleared, new hash), so an overwrite/restore
+  of changed content always produces claimable work without a generation bump (aiJobsStore
+  §2.3/§2.4). A reset applies to any prior status; the superseded execution's late
+  `markDone` is a `{changes:0}` no-op. Content re-read at execution time via
   `blobStorageService.downloadBlob` (works on both backends; the upload buffer is not
-  retained).
+  retained). The `caption`/`asr` completion chains use the SAME call shape and therefore
+  share this rule with the commit-seam hook (same per-kind generation).
 - **content_hash skip:** `embed` executor first runs the dedupe check
   (`embeddingsStore.get(node)`; same active `modelId` ∧ same `contentHash` ⇒
   `markSkipped`, no provider call — embeddingsStore §2.4; a model version is deterministic, so the `(content_hash, modelId)` pair suffices as the skip key).
@@ -345,6 +352,14 @@ recoverable). The only user-facing code in this domain is thrown by llmAdapter c
       directory nodes enqueue nothing; enqueue never throws into the committed caller
 - [ ] Double-fire the hook (crash-retry simulation) → second `enqueue` returns `null`,
       one row; job executes the provider call exactly once
+- [ ] Content-change re-embed: upload a node, run its `embed` job to `done`, then
+      overwrite/restore with DIFFERENT bytes → the same `(node,kind,1)` row becomes
+      `pending` (`attempt=0`, stamps cleared, new hash) and the worker re-runs it; an
+      overwrite/restore with IDENTICAL bytes leaves the `done` row untouched and enqueues
+      nothing
+- [ ] Restore + media chain: restoring an older version whose hash differs from the current
+      embed row re-arms the `embed` job; a `caption`/`asr` job's chained `embed` enqueue
+      uses the same generation and the same content-aware reset (no duplicate row)
 - [ ] embed dedupe-skip: same model + same content_hash → `markSkipped`, zero provider
       calls (fake-adapter call counter), pooled row untouched
 - [ ] Restart survival: kill loop mid-claim → `recoverStaleRunning` re-arms the row →

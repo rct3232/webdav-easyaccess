@@ -9,7 +9,7 @@
  * `probe`/`media_kind` are written — there is no audio_desc/genre/mood field.
  */
 
-const { createTestDatabase, createTestFileNode } = require('@server/test-utils');
+const { createTestDatabase, createTestFileNode, dbRun } = require('@server/test-utils');
 const aiJobsStore = require('@server/store/aiJobsStore');
 const aiEnrichmentsStore = require('@server/store/aiEnrichmentsStore');
 const llmModelsStore = require('@server/store/llmModelsStore');
@@ -92,6 +92,43 @@ describe('asr pipeline', () => {
 
     expect(await embedJobs(node.nodeId)).toHaveLength(1);
     expect((await asrJobs(node.nodeId))[0]).toMatchObject({ status: 'done' });
+  });
+
+  it('chained embed resets an existing done embed row when the content hash changed (same generation)', async () => {
+    await dbRun('DELETE FROM ai_jobs');
+    const node = await createTestFileNode({ name: `asr-reembed-${Date.now()}.wav` });
+    const asrModelId = await makeModel();
+
+    const oldEmbed = await aiJobsStore.enqueue(node.nodeId, 'embed', 1, 'hash-old');
+    const oldClaim = await aiJobsStore.claimNext();
+    expect(oldClaim.id).toBe(Number(oldEmbed.id));
+    await aiJobsStore.markDone(oldClaim.id);
+
+    await aiJobsStore.enqueue(node.nodeId, 'asr', 1, 'hash-new');
+    const done = await pipeline.runPendingAsrJobs({
+      adapter: {
+        roleConfigured: jest.fn(async () => true),
+        asrTranscribe: jest.fn(async () => ({ text: 'new transcript' })),
+      },
+      readNode: async () => ({ name: node.name, mimeType: 'audio/wav', type: 'file' }),
+      readBlob: async () => Buffer.from('wav-bytes'),
+      probe: async () => audioProbe,
+      asrModelId: async () => asrModelId,
+      capabilityEnabled: () => true,
+    });
+    expect(done).toBe(1);
+
+    const embeds = await embedJobs(node.nodeId);
+    expect(embeds).toHaveLength(1);
+    expect(embeds[0]).toMatchObject({
+      id: Number(oldEmbed.id),
+      generation: 1,
+      status: 'pending',
+      attempt: 0,
+      contentHash: 'hash-new',
+      startedAt: null,
+      finishedAt: null,
+    });
   });
 
   it('a `none` answer writes NO transcript but still chains the metadata_only embed', async () => {

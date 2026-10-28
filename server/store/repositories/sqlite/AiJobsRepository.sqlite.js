@@ -26,7 +26,17 @@ module.exports = function createSqliteAiJobsRepository(executor) {
         const result = await executor.run(
           `INSERT INTO ai_jobs (node_id, kind, generation, content_hash)
            VALUES (?, ?, ?, ?)
-           ON CONFLICT (node_id, kind, generation) DO NOTHING
+           ON CONFLICT (node_id, kind, generation) DO UPDATE
+             SET status = 'pending',
+                 attempt = 0,
+                 next_retry_at = NULL,
+                 started_at = NULL,
+                 finished_at = NULL,
+                 last_error = NULL,
+                 content_hash = excluded.content_hash
+             WHERE ai_jobs.content_hash IS NOT NULL
+               AND excluded.content_hash IS NOT NULL
+               AND ai_jobs.content_hash <> excluded.content_hash
            RETURNING id`,
           [Number(nodeId), String(kind), Number(generation), contentHash ?? null]
         );

@@ -85,6 +85,31 @@ describe('aiJobsStore facade', () => {
     expect(failed.every((entry) => entry.status === 'failed')).toBe(true);
   });
 
+  it('content-change re-embed surfaces through the facade: differing hash resets, identical hash is a null dedupe', async () => {
+    const node = await uniqueNode();
+    const first = await aiJobsStore.enqueue(node.nodeId, 'embed', 1, 'hash-v1');
+    expect(first).not.toBeNull();
+    const claimed = await aiJobsStore.claimNext();
+    await aiJobsStore.markDone(claimed.id);
+
+    await expect(aiJobsStore.enqueue(node.nodeId, 'embed', 1, 'hash-v1')).resolves.toBeNull();
+    await expect(aiJobsStore.enqueue(node.nodeId, 'embed', 1, 'hash-v2')).resolves.toEqual({
+      id: Number(first.id),
+    });
+
+    const job = await aiJobsStore.getById(first.id);
+    expect(job).toMatchObject({
+      status: 'pending',
+      attempt: 0,
+      contentHash: 'hash-v2',
+      startedAt: null,
+      finishedAt: null,
+    });
+    const reclaimed = await aiJobsStore.claimNext();
+    expect(reclaimed.id).toBe(Number(first.id));
+    await aiJobsStore.markDone(reclaimed.id);
+  });
+
   it('markSkipped and markFailed honor the guarded-flip contract through the facade', async () => {
     const node = await uniqueNode();
     await aiJobsStore.enqueue(node.nodeId, 'caption', 1);

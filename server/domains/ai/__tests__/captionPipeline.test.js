@@ -9,7 +9,7 @@
  * mediaSampling.test.js.
  */
 
-const { createTestDatabase, createTestFileNode } = require('@server/test-utils');
+const { createTestDatabase, createTestFileNode, dbRun } = require('@server/test-utils');
 const aiJobsStore = require('@server/store/aiJobsStore');
 const aiEnrichmentsStore = require('@server/store/aiEnrichmentsStore');
 const llmModelsStore = require('@server/store/llmModelsStore');
@@ -90,6 +90,45 @@ describe('caption pipeline', () => {
 
     const jobs = await captionJobs(node.nodeId);
     expect(jobs[0]).toMatchObject({ status: 'done' });
+  });
+
+  it('chained embed resets an existing done embed row when the content hash changed (same generation)', async () => {
+    await dbRun('DELETE FROM ai_jobs');
+    const node = await createTestFileNode({ name: `caption-reembed-${Date.now()}.jpg` });
+    const visionModelId = await makeModel('vision');
+
+    // The old content was already embedded under (node, embed, generation 1).
+    const oldEmbed = await aiJobsStore.enqueue(node.nodeId, 'embed', 1, 'hash-old');
+    const oldClaim = await aiJobsStore.claimNext();
+    expect(oldClaim.id).toBe(Number(oldEmbed.id));
+    await aiJobsStore.markDone(oldClaim.id);
+
+    const adapter = {
+      roleConfigured: jest.fn(async () => true),
+      visionCaption: jest.fn(async () => ({ text: '새 장면 설명' })),
+    };
+    await aiJobsStore.enqueue(node.nodeId, 'caption', 1, 'hash-new');
+    const done = await pipeline.runPendingCaptionJobs({
+      adapter,
+      readNode: async () => ({ name: node.name, mimeType: 'image/jpeg', type: 'file' }),
+      readBlob: async () => Buffer.from('image-bytes'),
+      sampleFrames: jest.fn(),
+      visionModelId: async () => visionModelId,
+      capabilityEnabled: () => true,
+    });
+    expect(done).toBe(1);
+
+    const embeds = await embedJobs(node.nodeId);
+    expect(embeds).toHaveLength(1);
+    expect(embeds[0]).toMatchObject({
+      id: Number(oldEmbed.id),
+      generation: 1,
+      status: 'pending',
+      attempt: 0,
+      contentHash: 'hash-new',
+      startedAt: null,
+      finishedAt: null,
+    });
   });
 
   it('video: samples ≤4 transient frames and hands exactly those buffers to the VLM', async () => {

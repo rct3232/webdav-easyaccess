@@ -10,8 +10,9 @@
  * v1 values are KIND-PREFIXED (`ext:jpg`, `mime:image`, `month:2026-09`,
  * `path:photos`) so derived tags can never collide with LLM tags
  * materialized into the same table later, and predicate atoms are
- * self-describing. Tags are computed today via the backfill seam below;
- * the §4.1 commit-point wiring (upload/copy/restore) is P1 (register (b)).
+ * self-describing. Tags are computed by the backfill seam and by the
+ * §4.1 commit-point wiring (`syncNodeDerivedTagsForNode` from the composed
+ * node-content hook: upload/overwrite/copy/restore).
  */
 
 const aiTagStore = require('../../store/aiTagStore');
@@ -76,11 +77,47 @@ function computeDerivedTags(input = {}) {
   return [...tags].sort();
 }
 
-/** Per-node write seam — the call shape the §4.1 commit points will use (P1). */
+/** Per-node write seam — the call shape the §4.1 commit points use. */
 async function syncNodeDerivedTags(input = {}) {
   const { nodeId, ...metadata } = input;
   const tags = computeDerivedTags(metadata);
   return aiTagStore.replaceRawTags(nodeId, tags);
+}
+
+/**
+ * Commit-seam wrapper: resolve one committed node's metadata + ancestor path
+ * and apply `syncNodeDerivedTags` (derivedTagsService.md §2.4). Directories are
+ * skipped (v1 tags describe files). The path segments are the directories
+ * BELOW the user's root — the ancestor chain is root-first (depth DESC), so
+ * the first entry (root username) and the last entry (the node itself) are
+ * dropped before taking the top two.
+ *
+ * Best-effort caller contract: the composed node-content hook wraps this in a
+ * try/catch and never fails the committed user operation.
+ *
+ * @param {number|string} nodeId
+ * @param {{ fileNodesStore?: Object }} [deps]
+ * @returns {Promise<{ inserted: number }>}
+ */
+async function syncNodeDerivedTagsForNode(nodeId, deps = {}) {
+  const store = deps.fileNodesStore || createFileNodesStore();
+  const node = await store.getNode(nodeId);
+  if (!node || node.type !== 'file') return { inserted: 0 };
+
+  const chain = await store.getAncestorChain(nodeId);
+  const pathSegments = [];
+  for (const entry of chain.slice(1, -1).slice(0, PATH_SEGMENT_LIMIT)) {
+    const ancestor = await store.getNode(entry.ancestorId);
+    if (ancestor) pathSegments.push(String(ancestor.name));
+  }
+
+  return syncNodeDerivedTags({
+    nodeId,
+    name: node.name,
+    createdAt: node.createdAt,
+    mimeType: node.mimeType ?? null,
+    pathSegments,
+  });
 }
 
 /** Ancestor folder names below the user's root, top-down (root name excluded). */
@@ -132,5 +169,6 @@ module.exports = {
   foldTag,
   computeDerivedTags,
   syncNodeDerivedTags,
+  syncNodeDerivedTagsForNode,
   backfillDerivedTagsForUser,
 };

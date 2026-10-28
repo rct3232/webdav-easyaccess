@@ -58,12 +58,15 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 
 **Journal domains enum:** `collection | batch | settings | permissions | tags |
 file | sharing`. **Writers = `collection`** (all silent/merge/settings-adjacent
-acts) **and `batch`** (the batch worker's move/copy command rows —
+acts), **`batch`** (the batch worker's move/copy command rows —
 `services/batchOperationService.md` §5.4; their undo pointer also travels on the bulk-job
-terminal poll result, `routes/files.md`). `settings`/`file`/`sharing`/`tags`/`permissions` are
-enum-reserved with no writer yet. The `permissions` asymmetry applies: grant-undo = revoke is
-exposure-reduction and may be silent; revoke-undo = grant is exposure-expansion and is
-explicit-only.
+terminal poll result, `routes/files.md`), **and `file`** (the dashboard cleanup-suggestion
+accept command — one `action='cleanup-accept'` row per accepted batch,
+`subject='file:suggestion-accept:<userId>:<timestamp>'`, item-level
+`{ op: 'restore-from-trash' }` inverses — `routes/dashboard.md` §2.4). `settings`/`sharing`/
+`tags`/`permissions` are enum-reserved with no writer yet. The `permissions` asymmetry applies:
+grant-undo = revoke is exposure-reduction and may be silent; revoke-undo = grant is
+exposure-expansion and is explicit-only.
 
 - **GET /:** Query `domain?` (must be one of the enum values; 400
   `actions.invalidDomain`). Window is fixed: rows `created_at >= now − 30d`, newest
@@ -178,6 +181,13 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
   mechanics stay domain-generic). Their undo applies the item-level inverse list:
   fingerprint-mismatched items skip, mixed counts surface in the 200 body
   (`items_undone`/`items_skipped`).
+- `file`-domain rows are the dashboard cleanup-accept command family
+  (`routes/dashboard.md` §2.4.2): one row per accept with a per-command timestamped subject,
+  so the row is normally its subject's tip (the cascade path exists but is unreachable in
+  normal operation). Their item-level inverse restores still-matching trashed nodes through the
+  trash core and flips the captured suggestion rows `accepted → pending`; per-item
+  fingerprint skips surface as `items_skipped`. Single-node rename-family subjects
+  (`file:<nodeId>`) have no writer yet.
 
 ### 2.5 Related Documents
 
@@ -193,8 +203,11 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
       actor with `undo_available: true`; its undo applies the item-level inverses
       (`services/batchOperationService.md` §5.5 — exercised end-to-end in the files batch
       integration suite)
-- [ ] `domain=file` (enum-valid, zero writers in v1) → 200 empty list; `domain=nope` →
-      400 `actions.invalidDomain`
+- [ ] `domain=file` lists the requester's cleanup-accept command rows
+      (`action='cleanup-accept'`, `subject='file:suggestion-accept:<userId>:<timestamp>'`);
+      undo restores the still-matching trashed nodes and flips their suggestion rows
+      `accepted → pending` (per-item skips allowed); a requester with no accepts gets 200
+      empty; `domain=nope` → 400 `actions.invalidDomain`
 - [ ] Another user's action id → 404 on GET visibility and on undo
 - [ ] Tip undo → 200, row `status='undone'` + `undone_at`, effect reversed; second undo
       → 409 `actions.alreadyUndone`

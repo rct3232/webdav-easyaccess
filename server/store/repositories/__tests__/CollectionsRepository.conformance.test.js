@@ -281,6 +281,45 @@ describe('CollectionsRepository conformance', () => {
       });
     });
 
+    it('activity sort falls back to created_at for NULL last_member_change_at (dialect-neutral)', async () => {
+      // Regression (C7): a raw `last_member_change_at DESC` leaves NULLs LAST
+      // on SQLite and FIRST on PostgreSQL. The COALESCE fallback keeps the
+      // intended chain — a never-touched row ranks by its created_at.
+      const owner = await uniqueUser();
+      const stamp = Date.now();
+      const ids = {};
+      await inTx(async (tx) => {
+        for (const prefix of ['Null-', 'Stale-', 'Fresh-']) {
+          ids[prefix] = (
+            await repo.insertCollection(tx, {
+              ownerId: owner.id,
+              name: `${prefix}${stamp}`,
+              origin: 'user',
+            })
+          ).id;
+        }
+      });
+      const setStamps = async (collectionId, memberChangeAt, createdAt) => {
+        await dbQuery(
+          `UPDATE collections
+           SET last_member_change_at = ?, created_at = ?, activity_score = 0
+           WHERE id = ?`,
+          [memberChangeAt, createdAt, collectionId]
+        );
+      };
+      // Effective DESC keys: Fresh 2026-02-01 > Null (falls back) 2026-01-01 > Stale 2025-06-01
+      await setStamps(ids['Null-'], null, '2026-01-01 00:00:00');
+      await setStamps(ids['Stale-'], '2025-06-01 00:00:00', '2025-01-01 00:00:00');
+      await setStamps(ids['Fresh-'], '2026-02-01 00:00:00', '2026-02-01 00:00:00');
+
+      const list = await repo.listForUser(owner.id, { sort: 'activity' });
+      expect(list.map((row) => Number(row.id))).toEqual([
+        Number(ids['Fresh-']),
+        Number(ids['Null-']),
+        Number(ids['Stale-']),
+      ]);
+    });
+
     it('listForUser excludes archived rows by default; status:all and listArchived return them', async () => {
       // Contract pin (collectionsStore.md §2.1, RCA 2026-09-23): the default
       // status filter is 'active'; archived rows join only via status:'all' or
@@ -611,6 +650,48 @@ describe('CollectionsRepository conformance', () => {
         { nodeId: Number(n1.nodeId), collectionId: Number(id) },
       ]);
       await expect(repo.listForNodes(other.id, [Number(n1.nodeId)])).resolves.toEqual([]);
+    });
+
+    it('listForNodes gates grantee rows on published; the owner sees every row', async () => {
+      // Decision 2 (2026-10-28): an unpublished materialized row never leaks a
+      // listing chip to a grantee; the owner sees its own rows in every state.
+      const owner = await uniqueUser();
+      const grantee = await uniqueUser();
+      const stamp = Date.now();
+      let id;
+      await inTx(async (tx) => {
+        id = (
+          await repo.insertCollection(tx, {
+            ownerId: owner.id,
+            name: `ForNodes publish ${stamp}`,
+            origin: 'system',
+          })
+        ).id;
+      });
+      const unpublished = await uniqueNode(`col-fnp-parked-${stamp}.txt`);
+      const published = await uniqueNode(`col-fnp-open-${stamp}.txt`);
+      await inTx(async (tx) => {
+        await repo.insertItem(tx, id, unpublished.nodeId, owner.id, {
+          published: false,
+          source: 'system',
+        });
+        await repo.insertItem(tx, id, published.nodeId, owner.id, {
+          published: true,
+          source: 'system',
+        });
+        await repo.upsertGrant(tx, id, grantee.id, 'viewer', owner.id);
+      });
+
+      const requested = [Number(unpublished.nodeId), Number(published.nodeId)];
+      await expect(repo.listForNodes(owner.id, requested)).resolves.toEqual(
+        expect.arrayContaining([
+          { nodeId: Number(unpublished.nodeId), collectionId: Number(id) },
+          { nodeId: Number(published.nodeId), collectionId: Number(id) },
+        ])
+      );
+      await expect(repo.listForNodes(grantee.id, requested)).resolves.toEqual([
+        { nodeId: Number(published.nodeId), collectionId: Number(id) },
+      ]);
     });
 
     it('touchMemberChange bumps last_member_change_at', async () => {

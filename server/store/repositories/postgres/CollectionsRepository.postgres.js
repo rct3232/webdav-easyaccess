@@ -23,7 +23,10 @@ module.exports = function createPostgresCollectionsRepository(executor) {
     // `c.id DESC` is the deterministic tie-breaker (RCA 2026-09-23): same-
     // transaction created/updated timestamps tie, and a plan-dependent row
     // order is not a contract — newest-first is the §3.1 gravity.
-    activity: 'c.activity_score DESC, c.last_member_change_at DESC, c.created_at DESC, c.id DESC',
+    // COALESCE keeps the NULL member-change fallback DIALECT-NEUTRAL: SQLite
+    // sorts NULL last on DESC while PostgreSQL sorts it first.
+    activity:
+      'c.activity_score DESC, COALESCE(c.last_member_change_at, c.created_at) DESC, c.created_at DESC, c.id DESC',
     name: 'c.name',
     created: 'c.created_at DESC, c.id DESC',
     updated: 'c.updated_at DESC, c.id DESC',
@@ -181,6 +184,8 @@ module.exports = function createPostgresCollectionsRepository(executor) {
     async listForNodes(userId, nodeIds) {
       if (!nodeIds || nodeIds.length === 0) return [];
       try {
+        // Decision 2 (collectionsStore.md §2.3): the owner sees every
+        // materialized row; a GRANTED collection only exposes published rows.
         const params = [Number(userId), Number(userId), Number(userId)];
         const nodeIdPlaceholders = nodeIds
           .map(Number)
@@ -192,8 +197,9 @@ module.exports = function createPostgresCollectionsRepository(executor) {
            JOIN collections c ON c.id = ci.collection_id
            LEFT JOIN collection_visibility v ON v.collection_id = c.id AND v.user_id = $1
            WHERE (c.owner_id = $2
-                    OR EXISTS (SELECT 1 FROM collection_grants g
-                                WHERE g.collection_id = c.id AND g.grantee_id = $3))
+                    OR (ci.published = TRUE
+                        AND EXISTS (SELECT 1 FROM collection_grants g
+                                     WHERE g.collection_id = c.id AND g.grantee_id = $3)))
              AND COALESCE(v.hidden, FALSE) = FALSE
              AND c.status = 'active'
              AND ci.node_id IN (${nodeIdPlaceholders})`,

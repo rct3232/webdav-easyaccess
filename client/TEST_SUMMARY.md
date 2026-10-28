@@ -6,9 +6,9 @@ Summary of the test implementation for the React client application. All tests f
 
 ## Test Statistics
 
-- **Total Test Suites**: 188 (as of 2026-10-27 — P3 exit-gate jest chain, `ai-feature` tip `ea480625`; unchanged by the post-gate E2E/band-guard merges — zero `client/src` files touched)
-- **Total Tests**: 2235
-- **Pass Rate**: 100% (2235 passed, 0 failed) ✅
+- **Total Test Suites**: 188 (as of 2026-10-28 — post-P3 remediation on `ai-feature` tip `309eb579`)
+- **Total Tests**: 2245
+- **Pass Rate**: 100% (2245 passed, 0 failed) ✅
 - **Execution Time**: Reported per run by `npm run test`
 
 ## Test Breakdown by Category
@@ -188,14 +188,14 @@ tiers only.
   — WebKit refuses the band-40 default 5060, see `docs/RCA_LOG.md` 2026-10-27),
   `s3-ai-desktop` 1 / 0 / 0 (pre-seeded `WEA_MODEL_DIR` weights resolved from the
   default `/tmp/opencode/delta-base/models`).
-- The jest tiers above are the orchestrator's exit-gate ownership: the server
-  sqlite leg is re-pinned (189 suites / 3305 tests); the client and
-  real-PostgreSQL leg snapshots in this file PREDATE the P3 waves and will be
-  re-pinned with the orchestrator's final reported counts.
+- The jest tiers above are the orchestrator's exit-gate ownership: this client
+  leg is re-pinned at the post-P3 remediation tip `309eb579` (188 suites / 2245
+  tests); the server sqlite and real-PostgreSQL snapshots live in
+  `server/TEST_SUMMARY.md` (194 suites / 3381 tests; PG 31 / 471 + 1 skipped).
 
 ## Conclusion
 
-- 2235 tests across 188 suites, 100% pass rate (as of 2026-10-27 — P3 exit-gate jest chain, `ai-feature` tip `ea480625`)
+- 2245 tests across 188 suites, 100% pass rate (as of 2026-10-28 — post-P3 remediation, `ai-feature` tip `309eb579`)
 - Tests are colocated with source under `components/`, `hooks/`, `pages/`, `services/`, `utils/`, `contexts/`
 - Coverage and integration goals documented
 - Test infrastructure and MSW setup in place (server created in `src/setupTests.js`)

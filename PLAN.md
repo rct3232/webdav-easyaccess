@@ -2594,7 +2594,7 @@ disabled`) sourced from the new `llmAdapter.getRoleReadiness('embed')`; it is no
 | Member of        | `feature/file-properties-member-of` (merged `593bb666`)      | **DONE**: D6 host + chips + navigation + tests                                                                                                         |
 | B keeper quality | `feature/near-dup-keeper-quality` (merged `303bd702`)        | **DONE**: B v1 scorer/exposure/reason-refresh/UI; no DDL                                                                                               |
 | BULK-010         | `test/p3-bulk-010` (merged `2a933ecb`)                       | **DONE**: dual core-flow batch-move undo E2E (2/2 targeted); coverage row covered                                                                      |
-| Shared enums     | `refactor/shared-platform-enums` (merged `48751091`)         | **Phase 1 DONE**; **Phase 2 in flight** on `refactor/shared-enum-consumers` (§31.3).                                                                   |
+| Shared enums     | `refactor/shared-platform-enums` (merged `48751091`)         | **DONE**: Phase 1 constants/docs/tests + Phase 2 consumer migration (`refactor/shared-enum-consumers`, merged `309eb579`, §31.3).                      |
 
 ### 31.2 B v1 decisions (confirmed)
 
@@ -2608,6 +2608,11 @@ disabled`) sourced from the new `llmAdapter.getRoleReadiness('embed')`; it is no
   and factor bars only in the detail).
 
 ### 31.3 Shared enums Phase 2 migration queue
+
+**DONE (merge `309eb579`):** the server consumers now use the shared constants for
+publish/grant/journal/LLM roles and collection origin/status plus merge/file suggestion
+states; the intentional setup `chat|vision|asr` subset and `status:'all'` filter pseudo-value
+stay local. The migration list below is retained as the change record.
 
 Phase 1 shipped the constants only; no server call site consumes them yet. The follow-up
 branch (`refactor/shared-enum-consumers`, queued after the code units merge) replaces the
@@ -2672,6 +2677,27 @@ _schema_migrations WHERE filename='001_initial_normalized_schema.sql';` then re-
   B keeps short-document members keeper-eligible, does not backfill legacy rows, and keeper
   flips churn rows; BULK-010 raises the E2E inventory 256→258 (release matrix re-pin still
   required); tag DDL changed the 001 checksum (local DB reset note in §31.5).
-- **Still open:** shared-enums Phase 2 consumer migration (in flight); final full
-  server/client + PG + E2E release gates on the merged tip; `JOURNAL_DOMAIN.TAGS` parity
-  decision; P4 hysteresis calibration and the remaining P4 carry-forward items.
+- **Still open:** the release-matrix soak on the merged tip; `JOURNAL_DOMAIN.TAGS` parity
+  decision; P4 hysteresis calibration and the remaining P4 carry-forward items. The jest/PG
+  tiers are green on the merged tip (§31.7).
+
+### 31.7 Final integration gates — remediation tip (2026-10-28)
+
+- **Merged tip:** `309eb579` (`ai-feature`). All eleven remediation units plus enums Phase 2
+  are merged; task worktrees are removed.
+- **Jest:** server `test:ci` **192 passed + 2 skipped suites (194 total) / 3353 passed + 28
+  skipped (3381 total)**, rc=0; client `test:ci` **188 / 2245**, rc=0.
+- **PostgreSQL:** `test:ci:pg:adapters` **31 suites / 471 passed + 1 skipped (472)**, rc=0,
+  on a freshly recreated `webdav_test` DB (plain PG :5433) so the 001 checksum is current.
+- **Targeted:** shared-enum Phase 2 24 suites / 531; B server 115 + client 30; collections/
+  conformance/presets 390; undo/dashboard/fileNodes 89; Member of client 177; LLM 136;
+  AI hooks 51; tag DDL sqlite 50 + real PG 18; BULK-010 dual E2E 2/2.
+- **E2E inventory:** `playwright test --list` **258 tests in 18 files**; BULK-010 registered
+  under both s3 projects and its targeted dual run is green. The **full release matrix
+  (`test:e2e:release` + WebDAV, expected 251/7/258) is NOT yet run** — it remains the release
+  event gate, not a claim of this pass.
+- **Docs:** `docsStatePurity` green; prettier clean on touched files; `TEST_SUMMARY` re-pinned
+  to server 194/3381, client 188/2245, PG 31/471+1; E2E coverage inventory updated to 251/7/258
+  (Core 142/3/145).
+- **Not merged to `dev`.** The single `ai-feature`→`dev` merge remains after the release soak
+  and the remaining P4 work.

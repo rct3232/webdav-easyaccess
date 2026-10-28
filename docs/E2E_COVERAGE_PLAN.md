@@ -190,8 +190,8 @@ offset-0 base ports; every slot shifts by the checkout's band offset.
 
 | Group         | Project                       | Spec(s)                                                                                                               | Backend | Scratch slot (offset 0) | Cases | Serial | Expected skip | Release ownership               |
 | ------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------- | ----------------------- | ----- | ------ | ------------- | ------------------------------- |
-| Default, Core | `s3-desktop`                  | `auth`, `core-flow.shared`, `core-flow.desktop`, `share-public`, `share-internal`, `mypage-user`, `trash`, `versions` | S3      | shared API/client       | 70    | mixed  | 3             | Required / optional core subset |
-| Default, Core | `s3-mobile`                   | `auth`, `core-flow.shared`, `core-flow.mobile`, `share-public`, `share-internal`, `mypage-user`, `trash`, `versions`  | S3      | shared API/client       | 67    | mixed  | 0             | Required / optional core subset |
+| Default, Core | `s3-desktop`                  | `auth`, `core-flow.shared`, `core-flow.desktop`, `share-public`, `share-internal`, `mypage-user`, `trash`, `versions` | S3      | shared API/client       | 71    | mixed  | 3             | Required / optional core subset |
+| Default, Core | `s3-mobile`                   | `auth`, `core-flow.shared`, `core-flow.mobile`, `share-public`, `share-internal`, `mypage-user`, `trash`, `versions`  | S3      | shared API/client       | 68    | mixed  | 0             | Required / optional core subset |
 | Default       | `s3-admin-desktop`            | `mypage-admin`                                                                                                        | S3      | shared API/client       | 8     | serial | 0             | Required                        |
 | Default       | `s3-admin-mobile`             | `mypage-admin`                                                                                                        | S3      | shared API/client       | 8     | serial | 0             | Required                        |
 | Default, Core | `s3-regset-desktop`           | `registration-settings`                                                                                               | S3      | `5005`                  | 3     | serial | 0             | Required / optional core subset |
@@ -226,8 +226,8 @@ map is also listed in "Planned Spec Ownership".
 
 | Group      | Command                   | Passed | Expected skip | Total | Release role                   |
 | ---------- | ------------------------- | ------ | ------------- | ----- | ------------------------------ |
-| Default S3 | `npm run test:e2e`        | 249    | 7             | 256   | Required generic gate          |
-| Core       | `npm run test:e2e:core`   | 140    | 3             | 143   | Optional fast pre-merge subset |
+| Default S3 | `npm run test:e2e`        | 251    | 7             | 258   | Required generic gate          |
+| Core       | `npm run test:e2e:core`   | 142    | 3             | 145   | Optional fast pre-merge subset |
 | WebDAV     | `npm run test:e2e:webdav` | 41     | 0             | 41    | Required WebDAV-specific gate  |
 
 Expected static skips:
@@ -249,7 +249,7 @@ to absorb a conditional or resource-driven skip.
 `E2E-S3-MIG-004` runs in both S3 migration platform projects, so it contributes
 2 cases to the default total.
 
-Current release evidence: default **240 passed / 6 skipped** at `dad55bcb` (2026-10-26); WebDAV 41 passed / 0 skipped. P3 adds ten cases + one static skip (`E2E-S3-COLLECTION-021..025`); the collections/retrieval/ai projects were re-greened individually at the P3 exit gate (2026-10-27, port band 40) — the full default-gate re-pin (249 passed / 7 skipped / 256 total) lands with the orchestrator's `ai-feature` release run. Core remains an optional pre-merge subset.
+Current release evidence: default **240 passed / 6 skipped** at `dad55bcb` (2026-10-26); WebDAV 41 passed / 0 skipped. P3 adds ten cases + one static skip (`E2E-S3-COLLECTION-021..025`); the collections/retrieval/ai projects were re-greened individually at the P3 exit gate (2026-10-27, port band 40). The remediation adds `E2E-BULK-010` as two dual-platform cases (no static skip; targeted 2/2 green on s3-desktop + s3-mobile, 2026-10-28), so the inventory is now 251 passed / 7 skipped / 258 total and Core is 142 / 3 / 145. The full default-gate re-pin still lands with the orchestrator's release run; the table above is the expected inventory, not a soak result.
 
 ### WebDAV coverage trade-off
 

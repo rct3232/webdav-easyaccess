@@ -18,7 +18,7 @@ The app is a single-page React application using React Router.
 
 - **Public access**: login/register and share-link access.
 - **Authenticated access**: file browsing and MyPage.
-- **File browsing UI**: list/grid/detail views, sort, search, selection, bulk actions, dialogs, and progress/cancellation for long-running operations.
+- **File browsing UI**: list/grid/detail views, sort, search, selection, bulk actions, dialogs, and progress/cancellation for long-running operations. Bulk jobs whose status cannot be read (5 consecutive read failures or an expired job record) surface a single "status unavailable" progress item and automatically refresh the listing once, so the UI never stays silently stale.
 - **Share links**: `/share/:token` can render a folder browsing experience or a single-file preview/download experience, without requiring authentication.
 - **Responsive design**: supports mobile- and touch-friendly patterns (FAB, action sheet, drawer navigation on MyPage).
 - **Localization**: UI strings are localized (English and Korean).

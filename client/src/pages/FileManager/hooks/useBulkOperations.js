@@ -10,11 +10,22 @@ import {
   cancelBulkOperation,
 } from '../../../services/fileService';
 import { useFileOperationProgress } from './useFileOperationProgress';
+import { createBulkJobPoller } from './bulkJobPoller';
 import { notifyRecentFilesChange } from '../../../services/recentFilesNotifier';
 
 import { notifyTrashChanged } from '../../../services/trashNotifier';
 
-const POLL_INTERVAL_MS = 400;
+// Host side effects must never be able to skip the refresh or each other
+// (useBulkOperations.md §2.6.1 completion ordering).
+function runSafely(label, fn) {
+  try {
+    return fn();
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(`[bulk-operations] ${label} failed:`, error);
+    return undefined;
+  }
+}
 
 export const useBulkOperations = (
   selectedNodeIds,
@@ -40,14 +51,28 @@ export const useBulkOperations = (
     onUndoable,
   } = options;
 
-  const activeIntervalsRef = useRef(new Set());
+  // One poller per job (useBulkOperations.md §2.6.1). `registerPoller` replaces
+  // an existing entry (a retry reuses the progressId) and unmount disposes all.
+  const pollersRef = useRef(new Map());
 
   useEffect(() => {
-    const intervals = activeIntervalsRef.current;
+    const pollers = pollersRef.current;
     return () => {
-      intervals.forEach((intervalId) => clearInterval(intervalId));
-      intervals.clear();
+      pollers.forEach((poller) => poller.dispose());
+      pollers.clear();
     };
+  }, []);
+
+  const registerPoller = useCallback((progressId, poller) => {
+    pollersRef.current.get(progressId)?.dispose();
+    pollersRef.current.set(progressId, poller);
+  }, []);
+
+  const releasePoller = useCallback((progressId, poller) => {
+    if (pollersRef.current.get(progressId) === poller) {
+      pollersRef.current.delete(progressId);
+    }
+    poller.dispose();
   }, []);
 
   const markProcessing = useCallback(
@@ -172,30 +197,143 @@ export const useBulkOperations = (
         retryDataObj
       );
 
-      const poll = async () => {
-        try {
-          const job = await getBulkOperationStatus(jobId);
-          const {
-            status: jobStatus,
-            progress: jobProgress,
-            total: jobTotal,
-            results: jobResults = [],
-          } = job;
-          const succeededNodeIds = jobResults
-            .filter((r) => r.status === 'succeeded')
-            .map((r) => r.nodeId);
-          const failed = jobResults.filter((r) => r.status === 'failed');
-          const skippedNodeIds = jobResults
-            .filter((r) => r.status === 'skipped')
-            .map((r) => r.nodeId);
-          const skippedSet = new Set(skippedNodeIds);
-          const failCount = failed.length;
-          const successCount = succeededNodeIds.length;
-          const failedItems = failed.map((f) => ({
-            fileName: f.basename || String(f.nodeId) || t('common.unknown'),
-            error: f.error || t('common.unknownError'),
-          }));
+      let poller;
+      const handleTerminal = (job) => {
+        if (poller) releasePoller(progressId, poller);
+        const { status: jobStatus, results: jobResults = [] } = job;
+        const succeededNodeIds = jobResults
+          .filter((r) => r.status === 'succeeded')
+          .map((r) => r.nodeId);
+        const failed = jobResults.filter((r) => r.status === 'failed');
+        const skippedNodeIds = jobResults
+          .filter((r) => r.status === 'skipped')
+          .map((r) => r.nodeId);
+        const skippedSet = new Set(skippedNodeIds);
+        const failCount = failed.length;
+        const successCount = succeededNodeIds.length;
+        const failedItems = failed.map((f) => ({
+          fileName: f.basename || String(f.nodeId) || t('common.unknown'),
+          error: f.error || t('common.unknownError'),
+        }));
+        const deletedFolders = [];
+        const deletedNodeIds = [];
+        succeededNodeIds.forEach((nid) => {
+          const file = files.find((f) => f.nodeId === nid);
+          if (file?.type === 'directory') {
+            deletedNodeIds.push(nid);
+            deletedFolders.push(file.display_path || nid);
+          }
+        });
+        const finalStatus =
+          jobStatus === 'cancelled'
+            ? 'warning'
+            : failCount > 0
+              ? 'error'
+              : skippedSet.size > 0
+                ? 'warning'
+                : 'completed';
+        const currentMsg =
+          jobStatus === 'cancelled'
+            ? t('fileManager.bulkCancelledDone', { done: successCount, total: nodeIds.length })
+            : failCount > 0
+              ? t('fileManager.bulkDeleteDonePartial', {
+                  done: successCount,
+                  total: nodeIds.length,
+                  failCount,
+                })
+              : t('fileManager.bulkDeleteDone', { done: successCount, total: nodeIds.length });
 
+        // §2.6.1 completion ordering: the listing refresh runs FIRST; every
+        // other side effect is isolated so it can never skip the refresh.
+        runSafely('refresh', () =>
+          onOperationComplete?.({
+            opType: 'delete',
+            startedNodeId,
+            deletedNodeIds,
+            deletedFolderPaths: deletedFolders,
+          })
+        );
+
+        if (successCount > 0) {
+          runSafely('recent-files', () => notifyRecentFilesChange());
+          // DEF-16 P9: notify the pinned trash icon for every succeeded
+          // delete-to-trash (files AND directories) — the tree refresh below
+          // stays directory-scoped as before.
+          if (succeededNodeIds.length > 0) runSafely('trash', () => notifyTrashChanged());
+          deletedNodeIds.forEach((nodeId) =>
+            runSafely('tree-deleted', () =>
+              setTreeUpdateTrigger({ type: 'deleted', nodeId, timestamp: Date.now() })
+            )
+          );
+          if (deletedNodeIds.length > 0) {
+            setTimeout(() => {
+              runSafely('tree-refresh', () =>
+                setTreeUpdateTrigger({ type: 'refresh', timestamp: Date.now() })
+              );
+            }, 500);
+          }
+        }
+
+        runSafely('clear-processing', () => clearProcessing(nodeIds));
+
+        updateProgressWithRetry(
+          progressId,
+          {
+            type: 'delete',
+            status: finalStatus,
+            progress: successCount,
+            total: nodeIds.length,
+            current: currentMsg,
+            name: t('fileManager.bulkItemCount', {
+              count: nodeIds.length,
+              action: t('actions.delete'),
+            }),
+            error:
+              jobStatus === 'cancelled'
+                ? t('common.cancelledByUser')
+                : failCount > 0
+                  ? t('fileManager.uploadFailCount', { count: failCount })
+                  : skippedSet.size > 0
+                    ? t('fileManager.bulkExcludedByPermission', { count: skippedSet.size })
+                    : undefined,
+            failedItems: failedItems.length > 0 ? failedItems : undefined,
+            keepOnError: failCount > 0 || skippedSet.size > 0 || jobStatus === 'cancelled',
+            skippedNodeIds: skippedSet.size > 0 ? Array.from(skippedSet) : undefined,
+            skippedCount: skippedSet.size > 0 ? skippedSet.size : undefined,
+          },
+          retryDataObj
+        );
+
+        if (failCount === 0 && skippedSet.size === 0 && jobStatus !== 'cancelled') {
+          setTimeout(() => updateProgress({ id: progressId, remove: true }), 3000);
+        }
+      };
+
+      const handleStalled = () => {
+        if (poller) releasePoller(progressId, poller);
+        // §2.6.1: the poll stopped, so the listing is the only reconciliation
+        // path — fire it without asking, before touching the progress item.
+        runSafely('refresh', () => onOperationComplete?.({ opType: 'delete', startedNodeId }));
+        runSafely('clear-processing', () => clearProcessing(nodeIds));
+        updateProgressWithRetry(
+          progressId,
+          {
+            type: 'delete',
+            status: 'error',
+            stalled: true,
+            keepOnError: true,
+            current: undefined,
+            error: t('fileManager.bulkStatusUnavailable'),
+          },
+          retryDataObj
+        );
+      };
+
+      poller = createBulkJobPoller({
+        jobId,
+        fetchStatus: (id, options) => getBulkOperationStatus(id, options),
+        onSnapshot: (job) => {
+          const { status: jobStatus, progress: jobProgress, total: jobTotal } = job;
           updateProgressWithRetry(
             progressId,
             {
@@ -205,108 +343,12 @@ export const useBulkOperations = (
             },
             retryDataObj
           );
-
-          if (jobStatus !== 'pending' && jobStatus !== 'running') {
-            activeIntervalsRef.current.delete(intervalId);
-            clearInterval(intervalId);
-            const deletedFolders = [];
-            const deletedNodeIds = [];
-            succeededNodeIds.forEach((nid) => {
-              const file = files.find((f) => f.nodeId === nid);
-              if (file?.type === 'directory') {
-                deletedNodeIds.push(nid);
-                deletedFolders.push(file.display_path || nid);
-              }
-            });
-            const finalStatus =
-              jobStatus === 'cancelled'
-                ? 'warning'
-                : failCount > 0
-                  ? 'error'
-                  : skippedSet.size > 0
-                    ? 'warning'
-                    : 'completed';
-            const currentMsg =
-              jobStatus === 'cancelled'
-                ? t('fileManager.bulkCancelledDone', { done: successCount, total: nodeIds.length })
-                : failCount > 0
-                  ? t('fileManager.bulkDeleteDonePartial', {
-                      done: successCount,
-                      total: nodeIds.length,
-                      failCount,
-                    })
-                  : t('fileManager.bulkDeleteDone', { done: successCount, total: nodeIds.length });
-            updateProgressWithRetry(
-              progressId,
-              {
-                type: 'delete',
-                status: finalStatus,
-                progress: successCount,
-                total: nodeIds.length,
-                current: currentMsg,
-                name: t('fileManager.bulkItemCount', {
-                  count: nodeIds.length,
-                  action: t('actions.delete'),
-                }),
-                error:
-                  jobStatus === 'cancelled'
-                    ? t('common.cancelledByUser')
-                    : failCount > 0
-                      ? t('fileManager.uploadFailCount', { count: failCount })
-                      : skippedSet.size > 0
-                        ? t('fileManager.bulkExcludedByPermission', { count: skippedSet.size })
-                        : undefined,
-                failedItems: failedItems.length > 0 ? failedItems : undefined,
-                keepOnError: failCount > 0 || skippedSet.size > 0 || jobStatus === 'cancelled',
-                skippedNodeIds: skippedSet.size > 0 ? Array.from(skippedSet) : undefined,
-                skippedCount: skippedSet.size > 0 ? skippedSet.size : undefined,
-              },
-              retryDataObj
-            );
-
-            if (successCount > 0) {
-              try {
-                notifyRecentFilesChange();
-              } catch (err) {
-                console.error('Failed to refresh recent files after bulk delete:', err);
-              }
-              // DEF-16 P9: notify the pinned trash icon for every succeeded
-              // delete-to-trash (files AND directories) — the tree refresh
-              // above stays directory-scoped as before.
-              if (succeededNodeIds.length > 0) {
-                notifyTrashChanged();
-              }
-              deletedNodeIds.forEach((nodeId) => {
-                setTreeUpdateTrigger({ type: 'deleted', nodeId, timestamp: Date.now() });
-              });
-              if (deletedNodeIds.length > 0) {
-                setTimeout(
-                  () => setTreeUpdateTrigger({ type: 'refresh', timestamp: Date.now() }),
-                  500
-                );
-              }
-            }
-            clearProcessing(nodeIds);
-            if (onOperationComplete) {
-              onOperationComplete({
-                opType: 'delete',
-                startedNodeId,
-                deletedNodeIds,
-                deletedFolderPaths: deletedFolders,
-              });
-            }
-            if (failCount === 0 && skippedSet.size === 0 && jobStatus !== 'cancelled') {
-              setTimeout(() => updateProgress({ id: progressId, remove: true }), 3000);
-            }
-          }
-        } catch (err) {
-          console.error('Poll bulk delete status failed:', err);
-        }
-      };
-
-      const intervalId = setInterval(poll, POLL_INTERVAL_MS);
-      activeIntervalsRef.current.add(intervalId);
-      poll();
+        },
+        onTerminal: handleTerminal,
+        onStalled: handleStalled,
+      });
+      registerPoller(progressId, poller);
+      poller.start();
     },
     [
       selectedNodeIds,
@@ -321,6 +363,8 @@ export const useBulkOperations = (
       clearProcessing,
       updateProgressWithRetry,
       updateProgress,
+      registerPoller,
+      releasePoller,
       t,
     ]
   );
@@ -470,38 +514,165 @@ export const useBulkOperations = (
         retryDataObj
       );
 
-      const poll = async () => {
-        try {
-          const job = await getBulkOperationStatus(jobId);
-          const {
-            status: jobStatus,
-            progress: jobProgress,
-            total: jobTotal,
-            results: jobResults = [],
-          } = job;
-          const succeeded = jobResults
-            .filter((r) => r.status === 'succeeded')
-            .map((r) => ({
-              sourceNodeId: r.sourceNodeId,
-              destinationParentNodeId: r.destinationParentNodeId,
-            }));
-          const failed = jobResults.filter((r) => r.status === 'failed');
-          const skippedByConflict = jobResults
-            .filter((r) => r.status === 'skippedByConflict')
-            .map((r) => r.sourceNodeId || r.nodeId);
-          const skippedByPermission = jobResults
-            .filter((r) => r.status === 'skippedByPermission')
-            .map((r) => r.sourceNodeId || r.nodeId);
-          const failCount = failed.length;
-          const successCount = succeeded.length;
-          const hasSkippedByConflict = skippedByConflict.length > 0;
-          const hasSkippedByPermission = skippedByPermission.length > 0;
-          const hasAnySkipped = hasSkippedByConflict || hasSkippedByPermission;
-          const failedItems = failed.map((f) => ({
-            fileName: f.basename || String(f.sourceNodeId || f.nodeId) || t('common.unknown'),
-            error: f.error || t('common.unknownError'),
+      let poller;
+      const handleTerminal = (job) => {
+        if (poller) releasePoller(progressId, poller);
+        const { status: jobStatus, results: jobResults = [] } = job;
+        const succeeded = jobResults
+          .filter((r) => r.status === 'succeeded')
+          .map((r) => ({
+            sourceNodeId: r.sourceNodeId,
+            destinationParentNodeId: r.destinationParentNodeId,
           }));
+        const failed = jobResults.filter((r) => r.status === 'failed');
+        const skippedByConflict = jobResults
+          .filter((r) => r.status === 'skippedByConflict')
+          .map((r) => r.sourceNodeId || r.nodeId);
+        const skippedByPermission = jobResults
+          .filter((r) => r.status === 'skippedByPermission')
+          .map((r) => r.sourceNodeId || r.nodeId);
+        const failCount = failed.length;
+        const successCount = succeeded.length;
+        const hasSkippedByConflict = skippedByConflict.length > 0;
+        const hasSkippedByPermission = skippedByPermission.length > 0;
+        const hasAnySkipped = hasSkippedByConflict || hasSkippedByPermission;
+        const failedItems = failed.map((f) => ({
+          fileName: f.basename || String(f.sourceNodeId || f.nodeId) || t('common.unknown'),
+          error: f.error || t('common.unknownError'),
+        }));
+        let skippedErrorMsg;
+        if (hasAnySkipped) {
+          const parts = [];
+          if (hasSkippedByConflict)
+            parts.push(t('fileManager.bulkSkippedCount', { count: skippedByConflict.length }));
+          if (hasSkippedByPermission)
+            parts.push(
+              t('fileManager.bulkExcludedByPermission', { count: skippedByPermission.length })
+            );
+          skippedErrorMsg = parts.join(', ');
+        }
+        const finalStatus =
+          jobStatus === 'cancelled'
+            ? 'warning'
+            : failCount > 0
+              ? 'error'
+              : hasAnySkipped
+                ? 'warning'
+                : 'completed';
+        const currentMsg =
+          jobStatus === 'cancelled'
+            ? t('fileManager.bulkCancelledDone', { done: successCount, total: nodeIds.length })
+            : failCount > 0
+              ? t('fileManager.bulkActionDonePartial', {
+                  done: successCount,
+                  total: nodeIds.length,
+                  action: actionName,
+                  failCount,
+                })
+              : t('fileManager.bulkActionDone', {
+                  done: successCount,
+                  total: nodeIds.length,
+                  action: actionName,
+                });
 
+        // §2.6.1 completion ordering: refresh first, then the isolated effects.
+        runSafely('refresh', () =>
+          onOperationComplete?.({
+            opType: action,
+            startedNodeId,
+            targetParentNodeId: destinationParentNodeId,
+          })
+        );
+
+        // Undo-command seam (useBulkOperations.md §2.6): one toast per COMMAND,
+        // routed through the host's onUndoable when the journaled batch landed
+        // a pointer (move/copy only — delete batches are never journaled).
+        if (job.undo && job.undo.action_id != null && typeof onUndoable === 'function') {
+          runSafely('undo-pointer', () =>
+            onUndoable(
+              job,
+              action === 'move' ? 'fileManager.bulkMoveToast' : 'fileManager.bulkCopyToast',
+              { count: successCount },
+              { action }
+            )
+          );
+        }
+
+        if (successCount > 0 && action === 'move') {
+          runSafely('recent-files', () => notifyRecentFilesChange());
+        }
+
+        runSafely('clear-processing', () => clearProcessing(nodeIds));
+
+        updateProgressWithRetry(
+          progressId,
+          {
+            type: action,
+            status: finalStatus,
+            progress: successCount,
+            total: nodeIds.length,
+            current: currentMsg,
+            name: t('fileManager.bulkItemCount', { count: nodeIds.length, action: actionName }),
+            error:
+              jobStatus === 'cancelled'
+                ? t('common.cancelledByUser')
+                : failCount > 0
+                  ? t('fileManager.uploadFailCount', { count: failCount })
+                  : skippedErrorMsg,
+            failedItems: failedItems.length > 0 ? failedItems : undefined,
+            keepOnError: failCount > 0 || hasAnySkipped || jobStatus === 'cancelled',
+            skippedNodeIdsByConflict: hasSkippedByConflict ? skippedByConflict : undefined,
+            skippedCountByConflict: hasSkippedByConflict ? skippedByConflict.length : undefined,
+            skippedNodeIdsByPermission: hasSkippedByPermission ? skippedByPermission : undefined,
+            skippedCountByPermission: hasSkippedByPermission
+              ? skippedByPermission.length
+              : undefined,
+          },
+          retryDataObj
+        );
+
+        if (failCount === 0 && !hasAnySkipped && jobStatus !== 'cancelled') {
+          setTimeout(() => updateProgress({ id: progressId, remove: true }), 3000);
+        }
+        if (!retryData) {
+          setFolderPickerOpen(false);
+          setFolderPickerAction(null);
+        }
+      };
+
+      const handleStalled = () => {
+        if (poller) releasePoller(progressId, poller);
+        runSafely('refresh', () =>
+          onOperationComplete?.({
+            opType: action,
+            startedNodeId,
+            targetParentNodeId: destinationParentNodeId,
+          })
+        );
+        runSafely('clear-processing', () => clearProcessing(nodeIds));
+        updateProgressWithRetry(
+          progressId,
+          {
+            type: action,
+            status: 'error',
+            stalled: true,
+            keepOnError: true,
+            current: undefined,
+            error: t('fileManager.bulkStatusUnavailable'),
+          },
+          retryDataObj
+        );
+        if (!retryData) {
+          setFolderPickerOpen(false);
+          setFolderPickerAction(null);
+        }
+      };
+
+      poller = createBulkJobPoller({
+        jobId,
+        fetchStatus: (id, options) => getBulkOperationStatus(id, options),
+        onSnapshot: (job) => {
+          const { status: jobStatus, progress: jobProgress, total: jobTotal } = job;
           updateProgressWithRetry(
             progressId,
             {
@@ -514,119 +685,12 @@ export const useBulkOperations = (
             },
             retryDataObj
           );
-
-          if (jobStatus !== 'pending' && jobStatus !== 'running') {
-            activeIntervalsRef.current.delete(intervalId);
-            clearInterval(intervalId);
-            let skippedErrorMsg;
-            if (hasAnySkipped) {
-              const parts = [];
-              if (hasSkippedByConflict)
-                parts.push(t('fileManager.bulkSkippedCount', { count: skippedByConflict.length }));
-              if (hasSkippedByPermission)
-                parts.push(
-                  t('fileManager.bulkExcludedByPermission', { count: skippedByPermission.length })
-                );
-              skippedErrorMsg = parts.join(', ');
-            }
-            const finalStatus =
-              jobStatus === 'cancelled'
-                ? 'warning'
-                : failCount > 0
-                  ? 'error'
-                  : hasAnySkipped
-                    ? 'warning'
-                    : 'completed';
-            const currentMsg =
-              jobStatus === 'cancelled'
-                ? t('fileManager.bulkCancelledDone', { done: successCount, total: nodeIds.length })
-                : failCount > 0
-                  ? t('fileManager.bulkActionDonePartial', {
-                      done: successCount,
-                      total: nodeIds.length,
-                      action: actionName,
-                      failCount,
-                    })
-                  : t('fileManager.bulkActionDone', {
-                      done: successCount,
-                      total: nodeIds.length,
-                      action: actionName,
-                    });
-            updateProgressWithRetry(
-              progressId,
-              {
-                type: action,
-                status: finalStatus,
-                progress: successCount,
-                total: nodeIds.length,
-                current: currentMsg,
-                name: t('fileManager.bulkItemCount', { count: nodeIds.length, action: actionName }),
-                error:
-                  jobStatus === 'cancelled'
-                    ? t('common.cancelledByUser')
-                    : failCount > 0
-                      ? t('fileManager.uploadFailCount', { count: failCount })
-                      : skippedErrorMsg,
-                failedItems: failedItems.length > 0 ? failedItems : undefined,
-                keepOnError: failCount > 0 || hasAnySkipped || jobStatus === 'cancelled',
-                skippedNodeIdsByConflict: hasSkippedByConflict ? skippedByConflict : undefined,
-                skippedCountByConflict: hasSkippedByConflict ? skippedByConflict.length : undefined,
-                skippedNodeIdsByPermission: hasSkippedByPermission
-                  ? skippedByPermission
-                  : undefined,
-                skippedCountByPermission: hasSkippedByPermission
-                  ? skippedByPermission.length
-                  : undefined,
-              },
-              retryDataObj
-            );
-
-            // Undo-command seam (useBulkOperations.md §2.6): one toast per
-            // COMMAND, routed through the host's onUndoable when the journaled
-            // batch landed a pointer (move/copy only — the server never
-            // journals delete batches; trash restore owns those).
-            if (job.undo && job.undo.action_id != null && typeof onUndoable === 'function') {
-              onUndoable(
-                job,
-                action === 'move' ? 'fileManager.bulkMoveToast' : 'fileManager.bulkCopyToast',
-                { count: successCount },
-                { action }
-              );
-            }
-
-            if (successCount > 0) {
-              if (action === 'move') {
-                try {
-                  notifyRecentFilesChange();
-                } catch (err) {
-                  console.error('Failed to refresh recent files after bulk move:', err);
-                }
-              }
-            }
-            clearProcessing(nodeIds);
-            if (onOperationComplete) {
-              onOperationComplete({
-                opType: action,
-                startedNodeId,
-                targetParentNodeId: destinationParentNodeId,
-              });
-            }
-            if (failCount === 0 && !hasAnySkipped && jobStatus !== 'cancelled') {
-              setTimeout(() => updateProgress({ id: progressId, remove: true }), 3000);
-            }
-            if (!retryData) {
-              setFolderPickerOpen(false);
-              setFolderPickerAction(null);
-            }
-          }
-        } catch (err) {
-          console.error('Poll bulk move/copy status failed:', err);
-        }
-      };
-
-      const intervalId = setInterval(poll, POLL_INTERVAL_MS);
-      activeIntervalsRef.current.add(intervalId);
-      poll();
+        },
+        onTerminal: handleTerminal,
+        onStalled: handleStalled,
+      });
+      registerPoller(progressId, poller);
+      poller.start();
     },
     [
       selectedNodeIds,
@@ -642,6 +706,8 @@ export const useBulkOperations = (
       getActionName,
       updateProgress,
       onUndoable,
+      registerPoller,
+      releasePoller,
       t,
     ]
   );
@@ -798,11 +864,22 @@ export const useBulkOperations = (
       const progressItem = progressItems.find((item) => item.id === progressId);
       const jobId = progressItem?.jobId;
       if (!jobId) return;
+      const poller = pollersRef.current.get(progressId);
+
+      // §2.6.1: the cancel is only meaningful if its outcome can be observed.
+      // POST the cancel, then force one immediate status read. A successful
+      // read takes the normal terminal path (refresh first); a failed read
+      // surfaces the stalled state (refresh + message) instead of leaving the
+      // item spinning.
       try {
         await cancelBulkOperation(jobId);
       } catch (err) {
+        // eslint-disable-next-line no-console
         console.error('Cancel bulk operation failed:', err);
+        await poller?.checkNow();
+        return;
       }
+      await poller?.checkNow({ failFast: true });
     },
     [progressItems]
   );

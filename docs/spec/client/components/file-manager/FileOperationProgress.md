@@ -51,7 +51,7 @@
 
 ### 2.5 i18n Keys
 
-- `fileManager.progressTitle`, `fileManager.statusPreparing`, `fileManager.statusProcessing`, `fileManager.statusCompleted`, `fileManager.statusExcluded`, `fileManager.statusFail`, `fileManager.statusPartialFail`, `fileManager.statusWorking`, `fileManager.statusConflictCheck`, `fileManager.statusDeleting`, `fileManager.statusCopying`, `fileManager.statusMoving`, `fileManager.statusUploading`, `fileManager.statusDownloading`, `fileManager.statusRenaming`, `fileManager.statusCreatingFolder`, `fileManager.statusUploadPreparing`, `fileManager.statusRetryPreparing`, `fileManager.cancelOperation`, `fileManager.bulkSkippedCount`, `fileManager.bulkExcludedByPermission`, `fileManager.bulkExcludedTruncated`, `fileManager.failedItemsLabel`, `fileManager.retry`, `fileManager.errorWithMessage`, `fileManager.workingFallback`, `common.confirm`, `common.close`, `common.collapse`, `common.expand`, `common.unknownError`, `common.noItems`
+- `fileManager.progressTitle`, `fileManager.statusPreparing`, `fileManager.statusProcessing`, `fileManager.statusCompleted`, `fileManager.statusExcluded`, `fileManager.statusFail`, `fileManager.statusPartialFail`, `fileManager.statusWorking`, `fileManager.statusConflictCheck`, `fileManager.statusDeleting`, `fileManager.statusCopying`, `fileManager.statusMoving`, `fileManager.statusUploading`, `fileManager.statusDownloading`, `fileManager.statusRenaming`, `fileManager.statusCreatingFolder`, `fileManager.statusUploadPreparing`, `fileManager.statusRetryPreparing`, `fileManager.cancelOperation`, `fileManager.bulkSkippedCount`, `fileManager.bulkExcludedByPermission`, `fileManager.bulkExcludedTruncated`, `fileManager.failedItemsLabel`, `fileManager.retry`, `fileManager.errorWithMessage`, `fileManager.bulkStatusUnavailable`, `fileManager.workingFallback`, `common.confirm`, `common.close`, `common.collapse`, `common.expand`, `common.unknownError`, `common.noItems`
 
 ### 2.6 Conditional Rendering
 
@@ -63,6 +63,7 @@
 - Expanded view: single item fills drawer (header + body); "Collapse" button at bottom
 - New preparing/processing items: setExpandedItemIndex(null)
 - Error/warning: set expandedItemIndex to error item (no auto-open drawer); call showError/showWarning with message once per item
+- Stalled job item (`stalled:true`, `useBulkOperations.md` §2.6.1): rendered as a normal `status:'error'` item with `fileManager.bulkStatusUnavailable`; **no Retry button** (there is no user-triggered recovery — the hook already refreshed the listing automatically) and only the existing `확인` dismiss
 - Retry button only when item.status === 'error' && item.failedItems?.length && onRetry
 - Cancel link only when cancellable operations (upload, move, copy, delete)
 
@@ -77,6 +78,7 @@ Checklist for unit test writing:
 - [ ] Auto-collapse on new items; on error/warning expand that item when drawer is opened (no auto-open)
 - [ ] Upload fileItems list with per-file cancel
 - [ ] Skipped/excluded lists, failed items list
+- [ ] A stalled job item shows the status-unavailable message with only `확인` (no Retry) and no auto-removal (`keepOnError`)
 
 ### 2.8 Edge Cases
 

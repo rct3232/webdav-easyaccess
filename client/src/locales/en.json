@@ -199,6 +199,7 @@
     "uploadFileCount": "{{count}} file(s) upload",
     "downloadPreparing": "Preparing…",
     "downloadingPercent": "Downloading ({{percent}}%)",
+    "bulkStatusUnavailable": "Could not verify the operation status. The change may already be applied.",
     "bulkPreparing": "Preparing...",
     "bulkDeleteStartFail": "Delete failed to start",
     "bulkDeleting": "Deleting...",

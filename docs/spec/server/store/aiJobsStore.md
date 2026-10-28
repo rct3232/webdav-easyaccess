@@ -59,7 +59,7 @@ the store compares the row's stamped `content_hash` with the incoming one inside
 resets the SAME row so overwrite/restore always produces fresh claimable work, while a
 missing/identical hash keeps the pure DO-NOTHING dedupe (crash retries, byte-identical
 copies/restores). The reset is legal in every status (including `running`: a late
-`markDone` from the superseded execution then sees a non-`running` row and is a
+`markDone` from the previous execution then sees a non-`running` row and is a
 `{ changes: 0 }` no-op). `enqueueMany` stays pure DO NOTHING: it is backfill seeding over
 opaque driver keys, not a content-change signal.
 

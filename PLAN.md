@@ -2867,3 +2867,8 @@ snackbar and now has an explicit cancel surface (`§31.9`), so no search-side wo
   **144/3/147**, WebDAV unchanged 41/0. `playwright test --list` confirms 260 in 18 files.
 - **Release matrix:** GREEN at `E2E_WORKERS=1` on the merged tip `00881ada` — S3 253/7/260 and
   WebDAV 41/0, rc=0 (§31.8, Run D). The PG adapter leg is unaffected (no storage change).
+- **Model-free timing (tip `cb965996`, `WEA_SKIP_EMBED_MODEL=1`):** S3 release leg
+  **252/8/260 rc=0 in 13m40s at 1 worker** and **8m18s at 2 workers** (the extra skip is the
+  intentional `E2E-S3-AI-001` model-free skip, counted by the skip-budget reporter). The
+  model-on serial baseline was 26m50s, so the seam roughly halves the gate and makes
+  `E2E_WORKERS=2` viable on this host.

@@ -6,8 +6,8 @@ Summary of the test implementation for the Express.js server application. All te
 
 ## Test Statistics
 
-- **Total Test Suites**: 194 (sqlite `test:ci`, as of 2026-10-28 — post-P3 remediation + bulk polling resilience, including 2 skipped suites)
-- **Total Tests**: 3382 (3354 passed, 28 skipped)
+- **Total Test Suites**: 194 (sqlite `test:ci`, as of 2026-10-28 — post-P3 remediation + bulk polling resilience + model-free embed seam, including 2 skipped suites)
+- **Total Tests**: 3386 (3358 passed, 28 skipped)
 - **Pass Rate**: 100% of executed tests (0 failed) ✅
 - **Real-PostgreSQL adapter leg** (`test:ci:pg:adapters`): 31 suites / 471 passed, 1 skipped (472 total; recorded 2026-10-28 at `ai-feature` tip `309eb579` on a freshly recreated `webdav_test` DB)
 - **Execution Time**: Reported per run by `npm run test`

@@ -146,12 +146,14 @@ Field rules:
   on both `GET /` and `GET /:id` rows.
 
 - **GET /:** Query `sort` = `activity` (default — `activity_score` desc, then
-  `last_member_change_at`, `created_at` desc, final deterministic tie-break
-  `id` desc; `collectionsStore.md` §2.5) | `name` | `created` |
+  `COALESCE(last_member_change_at, created_at)` desc (a NULL member-change stamp falls
+  back to `created_at`, dialect-neutral), then `created_at` desc, final deterministic
+  tie-break `id` desc; `collectionsStore.md` §2.5) | `name` | `created` |
   `updated` | `similar`; `include` = comma list of `mine,shared,archived` (default
   `mine,shared`).
   `similar` = centroid-cluster grouping (greedy nearest-neighbor over the returned
-  rows in JS): rows are pre-grouped in cluster order and each carries
+  rows in JS) over `collection_centroids` rows of the ACTIVE embed model;
+  rows are pre-grouped in cluster order and each carries
   `cluster_index: 0|1|...` for group headers; all other sorts omit `cluster_index`.
   200: `{ "collections": [ <collection>, … ] }` — the full list, no pagination.
   **`GET /` rows carry the requester-scoped `last_visited_at`** (see field rules); one
@@ -188,7 +190,9 @@ Field rules:
     seed arms omit it.
 - **PUT /:id:** Body any of `{ name?, pinned?, publishMode? }` (publishMode ∈
   `ask|off|auto`). A user `name` write sets `name_locked=true`. `pinned:true` sets
-  `pinned_by='user'`; `pinned:false` unpins (eligible for auto-archive again). Owner-only.
+  `pinned_by='user'`; `pinned:false` unpins (eligible for auto-archive again) and the
+  unpin PERSISTS — the explicit unpin is not itself an auto-pin touch, so a system
+  collection stays unpinned until the next separate user touch. Owner-only.
   200: `{ "collection": <collection>, "undo": { "action_id": 991 } }`.
 - **POST /:id/archive:** Owner-only. Active → archived + `archived_at`. 409
   `collections.alreadyArchived`. 200: `{ "collection": <collection>, "undo":
@@ -450,7 +454,10 @@ suggestion row (a suggestion state transition is opportunistic).
   404 `collections.notFound` (masquerade — existence never leaks, §2.4.2).
 - **POST /for-nodes:** Body `{ nodeIds }` (1–200). Batch membership chips for the file
   listing. Resolves materialized membership in every collection visible to the
-  requester (own + granted, active only); no definition evaluation. 200: `{ "memberships": [
+  requester (own + granted, active only, minus hidden); no definition evaluation.
+  Privacy: the owner sees their own rows in every publish state; on a GRANTED
+  collection only `published=true` rows are returned (an unpublished row never leaks a
+  chip to a grantee). 200: `{ "memberships": [
 { "node_id": 90210, "collection_ids": [17, 23] } ] }` — one entry per requested node,
   `collection_ids` possibly empty.
 
@@ -576,7 +583,13 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
       `dismiss_count` and resets `dismissed_at`
 - [ ] Grants lifecycle: grant viewer → grantee lists the collection with `granted_role`
       and no `definition` field → revoke instant
-- [ ] for-nodes returns materialized membership chips only (no definition evaluation)
+- [ ] for-nodes returns materialized membership chips only (no definition evaluation);
+      the owner sees unpublished rows, a grantee only `published=true` rows, and
+      hidden/archived collections stay excluded for both
+- [ ] `PUT /:id` `pinned:false` on a `pinned_by='auto'` system row persists (`pinned`
+      false, `pinned_by` null); the next separate user touch auto-pins it again
+- [ ] `sort=similar` groups rows through the ACTIVE embed model's centroids; centroid
+      rows of a stale/non-active model id never group
 - [ ] Every mutation response carries snake_case fields and an `undo.action_id`;
       DELETE /:id carries none
 - [ ] Setup-mode: mount returns the guard response while setup incomplete

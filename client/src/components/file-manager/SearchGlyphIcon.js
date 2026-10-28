@@ -57,7 +57,13 @@ const r1 = (n) => Math.round(n * 10) / 10;
  * timeline and the cut in the cloud travels with the line every frame
  * (pending). FloatingSearchBar.md §2.6.
  */
-const SearchGlyphIcon = ({ llmConfigured = false, showAdd = false, orbit = false }) => {
+const SearchGlyphIcon = ({
+  llmConfigured = false,
+  showAdd = false,
+  showCancel = false,
+  orbit = false,
+}) => {
+  const addVisible = showAdd && !showCancel;
   const uid = useId().replace(/[^a-zA-Z0-9-]/g, '');
   const maskId = `search-glyph-cloud-${uid}`;
   const geomId = `search-glyph-overlay-${uid}`;
@@ -143,7 +149,7 @@ const SearchGlyphIcon = ({ llmConfigured = false, showAdd = false, orbit = false
         <mask id={maskId}>
           <rect x="-4" y="-4" width="32" height="32" fill="#fff" />
           <use href={`#${geomId}`} stroke="#000" strokeWidth={KNOCKOUT_WIDTH} />
-          {showAdd && (
+          {addVisible && (
             <g stroke="#000" strokeWidth={KNOCKOUT_WIDTH} strokeLinecap="round" fill="none">
               <line
                 x1={ADD_CENTER.cx}
@@ -156,6 +162,22 @@ const SearchGlyphIcon = ({ llmConfigured = false, showAdd = false, orbit = false
                 y1={ADD_CENTER.cy}
                 x2={ADD_CENTER.cx + ADD_CENTER.arm}
                 y2={ADD_CENTER.cy}
+              />
+            </g>
+          )}
+          {showCancel && (
+            <g stroke="#000" strokeWidth={KNOCKOUT_WIDTH} strokeLinecap="round" fill="none">
+              <line
+                x1={ADD_CENTER.cx - ADD_CENTER.arm}
+                y1={ADD_CENTER.cy - ADD_CENTER.arm}
+                x2={ADD_CENTER.cx + ADD_CENTER.arm}
+                y2={ADD_CENTER.cy + ADD_CENTER.arm}
+              />
+              <line
+                x1={ADD_CENTER.cx - ADD_CENTER.arm}
+                y1={ADD_CENTER.cy + ADD_CENTER.arm}
+                x2={ADD_CENTER.cx + ADD_CENTER.arm}
+                y2={ADD_CENTER.cy - ADD_CENTER.arm}
               />
             </g>
           )}
@@ -173,7 +195,7 @@ const SearchGlyphIcon = ({ llmConfigured = false, showAdd = false, orbit = false
         strokeWidth={STROKE_WIDTH}
         data-testid={llmConfigured ? 'search-action-glyph-wand' : 'search-action-glyph-search'}
       />
-      {showAdd && (
+      {addVisible && (
         <g
           fill="none"
           stroke="currentColor"
@@ -192,6 +214,28 @@ const SearchGlyphIcon = ({ llmConfigured = false, showAdd = false, orbit = false
             y1={ADD_CENTER.cy}
             x2={ADD_CENTER.cx + ADD_CENTER.arm}
             y2={ADD_CENTER.cy}
+          />
+        </g>
+      )}
+      {showCancel && (
+        <g
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={STROKE_WIDTH}
+          strokeLinecap="round"
+          data-testid="search-action-glyph-cancel"
+        >
+          <line
+            x1={ADD_CENTER.cx - ADD_CENTER.arm}
+            y1={ADD_CENTER.cy - ADD_CENTER.arm}
+            x2={ADD_CENTER.cx + ADD_CENTER.arm}
+            y2={ADD_CENTER.cy + ADD_CENTER.arm}
+          />
+          <line
+            x1={ADD_CENTER.cx - ADD_CENTER.arm}
+            y1={ADD_CENTER.cy + ADD_CENTER.arm}
+            x2={ADD_CENTER.cx + ADD_CENTER.arm}
+            y2={ADD_CENTER.cy - ADD_CENTER.arm}
           />
         </g>
       )}

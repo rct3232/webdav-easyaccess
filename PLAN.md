@@ -2738,3 +2738,21 @@ regressions (targeted reruns below).
   full matrix must still be recorded on a host with CPU headroom (or `E2E_WORKERS=1` on this
   one) before the single `ai-feature`→`dev` merge; inventory expectations stay 251/7/258 (S3)
   and 41/0 (WebDAV).
+
+### 31.9 Search cancel surface (2026-10-28)
+
+- **Delivered:** while a server search is pending, the 56px search button is the cancel control
+  (cloud+cross composite, `Cancel search` label/`title`, `data-cancel-active`); clicking it or
+  pressing Escape aborts the single `POST /api/search` through an `AbortController` and restores
+  the pre-submit mode/chain (browse→browse, refinement→previous results) with **no error toast**.
+  The pill's ✕ is hidden for the pending window. A 300 ms post-submit guard stops a submit
+  double-click from cancelling itself; the search POST carries an explicit 60 s timeout so a
+  hung request can no longer ride the 5-minute transport default.
+- **Specs:** `docs/spec/client/hooks/useSearchResults.md` (§2.3 `cancelSearch`, §2.5/§2.6
+  user-cancel ≠ failure, verification rows), `docs/spec/client/components/file-manager/FloatingSearchBar.md`
+  (§2.6/§2.7/§2.8 pending cancel + hidden ✕ + Escape), `docs/features/client-ui.md` (feature state).
+- **Tests:** client 188 suites / **2260** tests, rc=0 (new: 7 hook cancel cases, 4 bar cases,
+  3 button cases); `docsStatePurity` green (removed the `T4.1` task marker accidentally added to
+  `SystemSettingsContent.md` in `7593e6fc`); prettier/eslint clean on touched files.
+- **Not covered:** no new E2E case (the interaction is client-unit covered; a full-matrix re-pin
+  remains the pending release event).

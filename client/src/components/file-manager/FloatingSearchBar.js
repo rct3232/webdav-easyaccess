@@ -44,6 +44,7 @@ const FloatingSearchBar = ({
   placeholder,
   fabVisible = true,
   onSubmitQuery,
+  onCancelQuery,
   resultsModeActive = false,
   isPending = false,
   llmConfigured = false,
@@ -123,6 +124,14 @@ const FloatingSearchBar = ({
               // routes through setSearchQuery only.
               if (e.key === 'Enter' && submitSurface) {
                 onSubmitQuery(searchQuery);
+                return;
+              }
+              // §2.7 pending cancel: Escape aborts the in-flight submit and
+              // keeps the typed text (the native type=search clear is
+              // suppressed like the native cancel button).
+              if (e.key === 'Escape' && isPending && typeof onCancelQuery === 'function') {
+                e.preventDefault();
+                onCancelQuery();
               }
             }}
             inputProps={{ ref: inputRef }}
@@ -170,7 +179,7 @@ const FloatingSearchBar = ({
                 </InputAdornment>
               ),
               endAdornment:
-                searchQuery.length > 0 ? (
+                searchQuery.length > 0 && !isPending ? (
                   <InputAdornment position="end">
                     <IconButton
                       size="small"
@@ -192,6 +201,7 @@ const FloatingSearchBar = ({
           isMobile={isMobile}
           searchQuery={searchQuery}
           onSubmitQuery={onSubmitQuery}
+          onCancelQuery={onCancelQuery}
           resultsModeActive={resultsModeActive}
           isPending={isPending}
           llmConfigured={llmConfigured}

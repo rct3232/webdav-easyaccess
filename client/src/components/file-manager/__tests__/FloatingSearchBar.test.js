@@ -200,6 +200,99 @@ describe('FloatingSearchBar §2.7 (submit intents, end cluster)', () => {
   });
 });
 
+// -- §2.7 pending cancel surface (button is the cancel control, ✕ hidden) -------
+
+describe('FloatingSearchBar §2.7 (pending cancel surface)', () => {
+  it('hides the ✕ while a submit is pending and restores it afterwards', () => {
+    const { rerender } = renderWithProviders(
+      <FloatingSearchBar
+        {...defaultProps}
+        searchQuery="movie"
+        onSubmitQuery={jest.fn()}
+        onCancelQuery={jest.fn()}
+      />
+    );
+    expect(screen.getByRole('button', { name: /close|search close/i })).toBeInTheDocument();
+
+    rerender(
+      <FloatingSearchBar
+        {...defaultProps}
+        searchQuery="movie"
+        onSubmitQuery={jest.fn()}
+        onCancelQuery={jest.fn()}
+        isPending
+      />
+    );
+    expect(screen.queryByRole('button', { name: /close|search close/i })).not.toBeInTheDocument();
+
+    rerender(
+      <FloatingSearchBar
+        {...defaultProps}
+        searchQuery="movie"
+        onSubmitQuery={jest.fn()}
+        onCancelQuery={jest.fn()}
+      />
+    );
+    expect(screen.getByRole('button', { name: /close|search close/i })).toBeInTheDocument();
+  });
+
+  it('the 56px button routes to onCancelQuery while pending (no resubmit)', () => {
+    const onSubmitQuery = jest.fn();
+    const onCancelQuery = jest.fn();
+    renderWithProviders(
+      <FloatingSearchBar
+        {...defaultProps}
+        searchQuery="movie"
+        onSubmitQuery={onSubmitQuery}
+        onCancelQuery={onCancelQuery}
+        isPending
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('search-action-button'));
+    expect(onCancelQuery).toHaveBeenCalledTimes(1);
+    expect(onSubmitQuery).not.toHaveBeenCalled();
+  });
+
+  it('Escape cancels while pending and keeps the typed text', () => {
+    const onSubmitQuery = jest.fn();
+    const onCancelQuery = jest.fn();
+    const setSearchQuery = jest.fn();
+    renderWithProviders(
+      <FloatingSearchBar
+        {...defaultProps}
+        searchQuery="movie"
+        setSearchQuery={setSearchQuery}
+        onSubmitQuery={onSubmitQuery}
+        onCancelQuery={onCancelQuery}
+        isPending
+      />
+    );
+
+    fireEvent.keyDown(searchInput(), { key: 'Escape' });
+    expect(onCancelQuery).toHaveBeenCalledTimes(1);
+    expect(onSubmitQuery).not.toHaveBeenCalled();
+    expect(setSearchQuery).not.toHaveBeenCalled();
+  });
+
+  it('Escape outside pending is inert (no cancel, no submit)', () => {
+    const onSubmitQuery = jest.fn();
+    const onCancelQuery = jest.fn();
+    renderWithProviders(
+      <FloatingSearchBar
+        {...defaultProps}
+        searchQuery="movie"
+        onSubmitQuery={onSubmitQuery}
+        onCancelQuery={onCancelQuery}
+      />
+    );
+
+    fireEvent.keyDown(searchInput(), { key: 'Escape' });
+    expect(onCancelQuery).not.toHaveBeenCalled();
+    expect(onSubmitQuery).not.toHaveBeenCalled();
+  });
+});
+
 // -- §2.5 fab-slot search button mount ------------------------------------------
 
 describe('FloatingSearchBar §2.5 (fab-slot button mount)', () => {

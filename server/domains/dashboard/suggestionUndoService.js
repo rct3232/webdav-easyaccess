@@ -9,11 +9,13 @@
  * Inverse per item = restore-from-trash: fingerprint guard (trashed row with
  * the captured deleted_at, live parent), collision rename with the
  * trash-restore suffix idiom, WebDAV move-back BEFORE the DB marking (the
- * content world first), S3 mode does zero physical I/O, then
- * `untrashSubtree` + the suggestion rows `accepted → pending` inside the
- * journal TX. Guard failures SKIP the item (mixed results allowed); an
- * unexpected throw aborts the journal TX — retrying the undo re-converges
- * (restored items guard-skip as `changed`, store spec §2.4, routes spec §2.4).
+ * content world first, with an idempotent trash-gone/display-present check for
+ * retries), S3 mode does zero physical I/O, then `renameNodeTx` +
+ * `untrashSubtreeTx` + the suggestion rows `accepted → pending` on the
+ * caller-owned journal TX — one transaction on BOTH dialects. Guard failures
+ * SKIP the item (mixed results allowed; an already-restored node still flips
+ * its suggestions so retries converge); an unexpected throw aborts the journal
+ * TX (store spec §2.4, routes spec §2.4).
  */
 
 const { createFileNodesStore } = require('../../store/fileNodesStore');
@@ -25,8 +27,11 @@ const { buildTrashPath } = require('../../service/webdavRemoteOps');
 const SKIP_CHANGED = { applied: false, reason: 'changed' };
 
 function sameInstant(left, right) {
-  const a = Date.parse(left);
-  const b = Date.parse(right);
+  // Normalize both sides to epoch ms. `new Date(value).getTime()` preserves
+  // milliseconds for driver Date objects; `Date.parse(Date)` stringifies them
+  // at second precision and would reject every PG fingerprint.
+  const a = new Date(left).getTime();
+  const b = new Date(right).getTime();
   return Number.isFinite(a) && Number.isFinite(b) && a === b;
 }
 
@@ -58,13 +63,31 @@ function createSuggestionUndoService({
   const suggestions = () => suggestionsStore || fileSuggestionsStore;
   const compose = () => (compositionGetter || getComposition)();
 
+  async function flipSuggestionsToPending(item, tx) {
+    const ids = item && Array.isArray(item.suggestionIds) ? item.suggestionIds : [];
+    if (ids.length === 0) return;
+    await suggestions().flipStatesTx(tx, {
+      ids,
+      fromState: 'accepted',
+      toState: 'pending',
+    });
+  }
+
   async function applyRestoreItem(item, tx) {
     if (!item || !Number.isInteger(Number(item.nodeId))) return SKIP_CHANGED;
     const nodeId = Number(item.nodeId);
     const store = nodes();
 
     const node = await store.getNodeIncludingTrashed(nodeId);
-    if (!node || node.deletedAt == null || node.type !== 'file') return SKIP_CHANGED;
+    if (!node || node.type !== 'file') return SKIP_CHANGED;
+
+    // Already live: a previous attempt committed the node restore but not the
+    // journal flip (or the user restored it through the trash UX). The
+    // suggestion flip is idempotent and must still converge on retry.
+    if (node.deletedAt == null) {
+      await flipSuggestionsToPending(item, tx);
+      return SKIP_CHANGED;
+    }
     if (!sameInstant(node.deletedAt, item.deletedAt)) return SKIP_CHANGED;
 
     if (node.parentId != null) {
@@ -82,6 +105,9 @@ function createSuggestionUndoService({
     const { fileStorageMode, blobStore, fileNodeService } = compose();
     if (fileStorageMode === 'webdav' && blobStore) {
       const trashPath = buildTrashPath(nodeId);
+      const parentDisplayPath =
+        node.parentId == null ? '' : await fileNodeService.getNodePath(Number(node.parentId));
+      const displayPath = `${parentDisplayPath}/${finalName}`;
       let trashEntry = null;
       try {
         trashEntry = await blobStore.headBlob(trashPath);
@@ -89,25 +115,28 @@ function createSuggestionUndoService({
         void error;
         return SKIP_CHANGED;
       }
-      if (trashEntry == null) return SKIP_CHANGED;
-      const parentDisplayPath =
-        node.parentId == null ? '' : await fileNodeService.getNodePath(Number(node.parentId));
-      const displayPath = `${parentDisplayPath}/${finalName}`;
-      await blobStore.moveBlob(trashPath, displayPath);
+      if (trashEntry != null) {
+        await blobStore.moveBlob(trashPath, displayPath);
+      } else {
+        // Idempotent retry: a prior attempt moved the content before its DB TX
+        // rolled back. Treat the display path as already moved when present;
+        // when neither path holds the content there is nothing safe to do.
+        let displayEntry = null;
+        try {
+          displayEntry = await blobStore.headBlob(displayPath);
+        } catch (error) {
+          void error;
+          return SKIP_CHANGED;
+        }
+        if (displayEntry == null) return SKIP_CHANGED;
+      }
     }
 
     if (finalName !== node.name) {
-      await store.renameNode(nodeId, finalName);
+      await store.renameNodeTx(tx, nodeId, finalName);
     }
-    await store.untrashSubtree([nodeId]);
-
-    if (Array.isArray(item.suggestionIds) && item.suggestionIds.length > 0) {
-      await suggestions().flipStatesTx(tx, {
-        ids: item.suggestionIds,
-        fromState: 'accepted',
-        toState: 'pending',
-      });
-    }
+    await store.untrashSubtreeTx(tx, [nodeId]);
+    await flipSuggestionsToPending(item, tx);
     return { applied: true };
   }
 

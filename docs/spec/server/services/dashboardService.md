@@ -43,7 +43,8 @@ Target-contract spec (server side of `docs/spec/server/routes/dashboard.md`;
   registers through `store/actionJournalStore.registerUndoExecutor`)
 - `store/fileNodesStore` → `getUserRootNode`, `listSubtreeCacheRows`,
   `summarizeTrashedSubtree`, `getNodeIncludingTrashed`, `getChildren`, `renameNode`,
-  `untrashSubtree` (`docs/spec/server/store/fileNodesStore.md`)
+  `untrashSubtree`, `renameNodeTx`, `untrashSubtreeTx`
+  (`docs/spec/server/store/fileNodesStore.md`)
 - `store/aiEnrichmentsStore` → `getByNodeIds` (short-document exception input — §2.5)
 - `infrastructure/configResolver.getSharedResolver` (retention days)
 - `infrastructure/lockManager` (generate lock — §2.5 dedupe)
@@ -128,25 +129,33 @@ For each `payload.items` entry `{ nodeId, deletedAt, suggestionIds }`:
    throw): node exists, `deleted_at` set, `deleted_at` matches the captured `deletedAt`
    fingerprint (normalized to epoch ms), `type='file'`, parent live (or NULL). The
    requester identity is already enforced by the actions router (actor visibility); the
-   executor needs no user object (direct store writes, no ACL re-check).
+   executor needs no user object (direct store writes, no ACL re-check). One convergence
+   exception: when the node is ALREADY live (`deleted_at IS NULL` — a previous attempt
+   committed the restore, or the user restored it through the trash UX), the item's
+   `suggestionIds` still flip `accepted → pending` (idempotent `flipStatesTx(tx, …)`)
+   before the skip is reported, so suggestions and journal status converge on retry.
 2. **Collision name** — if a LIVE sibling carries the node's name, compute the restore name
    with the trash-restore suffix idiom (`resolveRestoreName` pattern: `base (2).ext`), else
    keep the name.
 3. **Content world first (webdav mode only):** move the blob back from the trash path to the
-   display path (final name) BEFORE any DB write (`blobStore.moveBlob`, trash-root ensured);
-   a move failure ⇒ item skipped, nothing marked. S3 mode: zero physical I/O (stable keys) —
-   no remote step.
-4. **DB writes:** `renameNode` (when renamed) then `untrashSubtree([nodeId])` via the
-   `fileNodesStore` facade (single-file restore: no covered descendants), then the suggestion
-   rows `accepted → pending` via `flipStatesTx(tx, …)` inside the journal TX.
+   display path (final name) BEFORE any DB write (`blobStore.moveBlob`, trash-root ensured).
+   When the trash path is already gone (a previous attempt moved it but its DB TX rolled
+   back, or the move happened out of band), verify the display-path entry and treat the
+   content as already moved — the item continues (idempotent retry); only when NEITHER path
+   holds the content is the item skipped. S3 mode: zero physical I/O (stable keys) — no
+   remote step.
+4. **DB writes:** `renameNodeTx(tx, nodeId, finalName)` (when renamed) then
+   `untrashSubtreeTx(tx, [nodeId])` — both on the caller-owned journal TX — then the
+   suggestion rows `accepted → pending` via `flipStatesTx(tx, …)`.
 5. Outcome `{ applied: true }`.
 
-The DB writes run through the facade's direct executor calls — inside the undo TX on sqlite
-(one connection joins the open transaction), committed alongside it on PG. The ordering
-(content move → untrash → row flips → journal `status='undone'` flip) keeps the content world
-consistent first; a crash between steps is re-converged by retrying the undo (restored items
-guard-skip as `changed`, the row still flips `undone` — `store/actionJournalStore.md` §2.4
-step 4). Undo never re-inserts rows and never re-trashes.
+The node restore/rename, the suggestion flips and the journal `status='undone'` flip run on
+the SAME `tx` on BOTH dialects (PG binds the journal client; SQLite joins the open
+connection) — there is no autocommitted half-state on either backend. A failure after the
+node restore rolls the whole undo back. The WebDAV blob move is outside the DB transaction by
+nature; the trash-path-missing/display-path-present check (step 3) together with the
+live-node suggestion flip (step 1) makes a retry after a failed attempt converge instead of
+stranding the suggestion in `accepted`. Undo never re-inserts rows and never re-trashes.
 
 ### 2.7 Validation
 
@@ -180,6 +189,11 @@ validated BEFORE any work (no trash call, no journal row). `MAX_ACCEPT_BATCH = 2
       all-rejected call → NO journal row; response `actionId` = the committed row id
 - [ ] Validation: `[]`, missing, 201 ids → `emptyNodeIds` before any work
 - [ ] Dismiss: pending → dismissed (404 shape via `suggestionNotFound` when `changes: 0`)
-- [ ] Undo: trashed nodes live again + rows `accepted → pending`; fingerprint mismatch
-      (hand-restored node) skipped per item with the rest applied; webdav move-back asserted
-      through the stubbed blobStore (s3 mode performs zero remote calls)
+- [ ] Undo: trashed nodes live again + rows `accepted → pending` + journal `undone` in ONE
+      transaction (node restore/rename and suggestion flips use the journal tx on BOTH
+      dialects; a forced failure after the restore rolls everything back — nothing applied);
+      fingerprint mismatch (hand-restored node) skipped per item with the rest applied and
+      the skipped item's suggestions re-pended so a retry converges; webdav move-back
+      asserted through the stubbed blobStore, including the idempotent retry when the trash
+      path is already gone but the display path holds the content (s3 mode performs zero
+      remote calls)

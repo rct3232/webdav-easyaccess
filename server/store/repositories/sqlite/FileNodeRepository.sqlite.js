@@ -156,9 +156,38 @@ module.exports = function createSqliteFileNodeRepository(executor) {
       }
     },
 
+    // Caller-owned TX variant (undo executor): identical statement on `tx` so
+    // the restore joins the journal transaction instead of autocommitting.
+    async untrashSubtreeTx(tx, nodeIds) {
+      if (!nodeIds || nodeIds.length === 0) return { changes: 0 };
+      try {
+        const placeholders = buildQuestionPlaceholders(nodeIds.length);
+        const res = await tx.run(
+          `UPDATE file_nodes SET deleted_at = NULL WHERE id IN (${placeholders})`,
+          nodeIds.map(Number)
+        );
+        return { changes: res.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async renameNode(id, newName) {
       try {
         const res = await executor.run(
+          `UPDATE file_nodes SET name = ?, updated_at = datetime('now') WHERE id = ?`,
+          [String(newName), Number(id)]
+        );
+        return { changes: res.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    // Caller-owned TX variant (undo executor) — same UPDATE, `tx.run`.
+    async renameNodeTx(tx, id, newName) {
+      try {
+        const res = await tx.run(
           `UPDATE file_nodes SET name = ?, updated_at = datetime('now') WHERE id = ?`,
           [String(newName), Number(id)]
         );

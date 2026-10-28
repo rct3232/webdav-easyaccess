@@ -730,11 +730,12 @@ describe('undo (accept command rows)', () => {
       id: Number(m1.nodeId),
     });
     const stored = await allSuggestionRows(user.id);
-    // the skipped item's row stays accepted; the applied one is pending again
+    // the applied item's row is pending again; the skipped item (already
+    // hand-restored) converges to pending too — a retry must not strand it
     const m1State = stored.find((r) => Number(r.node_id) === Number(m1.nodeId)).state;
     const m2State = stored.find((r) => Number(r.node_id) === Number(m2.nodeId)).state;
     expect(m1State).toBe('pending');
-    expect(m2State).toBe('accepted');
+    expect(m2State).toBe('pending');
     void kept2;
   });
 });

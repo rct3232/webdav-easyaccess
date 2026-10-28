@@ -23,11 +23,6 @@
 - **Facade test:** `server/domains/ai/__tests__/aiTagStore.test.js`
 - **DDL source of truth:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql` — the table is
   `ai_tag_raw(node_id→CASCADE, tag, PK(pair))` + `ai_tag_raw_tag_idx`. No other tag table exists in the DDL.
-- **Purge state (PLAN §19-5):** the `tag_embeddings`/`tag_parents` definitions REMAIN in 001
-  until the §17 big-bang deploy drops them — the DROP statements belong to the big-bang
-  migration script, not a live 001 edit. No runtime code references them (§2.6 grep); the
-  grep excludes only the 001 file itself and the DDL-parity table enumerations
-  (`PlatformSchema.conformance` / `sqliteSchemaInit` / `ddlValidation`).
 
 ### 2.2 Table contract — `ai_tag_raw`
 
@@ -64,8 +59,7 @@
 - [ ] Store applies NO normalization: writing `wasted time` and `wastedtime` as-given yields two rows (folding is the caller's pure function)
 - [ ] Contract surface: the facade exports exactly the three methods (array assert on `module.exports` keys)
 - [ ] Grep: no `tag_embeddings`/`tag_parents`/`tag_aliases`/`tag_merges` table access,
-      repository, or facade surface exists anywhere in `server/` runtime code — the 001
-      definitions and their DDL-parity enumerations persist until the big-bang script
-      drops them (§19-5)
+      repository, or facade surface exists anywhere in `server/` runtime code, and 001
+      defines no retired tag table (the DDL-parity suites assert their absence by name)
 - [ ] L2 conformance (real sqlite + real PostgreSQL): PK pair semantics, batch parity,
       FK `node_id` error mapping

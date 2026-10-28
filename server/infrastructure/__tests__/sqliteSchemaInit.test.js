@@ -183,12 +183,12 @@ describe('initSqliteSchema integration', () => {
     }
   });
 
-  it('creates exactly 38 tables (core + full §5 platform schema)', async () => {
+  it('creates exactly 36 tables (core + full §5 platform schema)', async () => {
     const rows = await queryDb(
       db,
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
     );
-    expect(rows.length).toBe(38);
+    expect(rows.length).toBe(36);
 
     const expectedTables = [
       // Core (pre-platform)
@@ -225,8 +225,6 @@ describe('initSqliteSchema integration', () => {
       // §5 AI foundation
       'llm_models',
       'collection_centroids',
-      'tag_embeddings',
-      'tag_parents',
       'ai_tag_raw',
       'embeddings',
       'embeddings_chunk',
@@ -238,6 +236,9 @@ describe('initSqliteSchema integration', () => {
 
     const actualNames = rows.map((r) => r.name).sort();
     expect(actualNames).toEqual([...expectedTables].sort());
+    // §4.18 dissolution: the retired tag tables are gone from 001 entirely.
+    expect(actualNames).not.toContain('tag_embeddings');
+    expect(actualNames).not.toContain('tag_parents');
   });
 
   it('file_nodes.id is INTEGER PRIMARY KEY AUTOINCREMENT', async () => {
@@ -325,10 +326,12 @@ describe('initSqliteSchema({ path }) file-database leg', () => {
           .all();
         const names = rows.map((r) => r.name).sort();
 
-        expect(names.length).toBe(38);
+        expect(names.length).toBe(36);
         expect(names).toContain('locks');
         expect(names).toContain('collections');
         expect(names).toContain('admin_reports');
+        expect(names).not.toContain('tag_embeddings');
+        expect(names).not.toContain('tag_parents');
       } finally {
         db.close();
       }

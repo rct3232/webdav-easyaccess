@@ -21,7 +21,7 @@
 - **Implementations:** `server/store/repositories/{sqlite,postgres}/AiEnrichmentsRepository.{sqlite,postgres}.js`
 - **Conformance (L2):** `server/store/repositories/__tests__/AiEnrichmentsRepository.conformance.test.js`
 - **Facade test:** `server/domains/ai/__tests__/aiEnrichmentsStore.test.js`
-- **DDL source of truth:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`. NOTE: `tag_embeddings`/`tag_parents` DDL rows linger in 001 only until the big-bang migration drops them (§19-5) — this store NEVER references those tables.
+- **DDL source of truth:** `server/store/postgresql/ddl/001_initial_normalized_schema.sql`. This store NEVER references the retired `tag_embeddings`/`tag_parents` tables, and 001 no longer defines them (§4.18 dissolution).
 
 ### 2.2 Row shape
 

@@ -81,13 +81,13 @@ describe('DDL Smoke Test', () => {
       }
     });
 
-    it('creates exactly 38 tables (core + full §5 platform schema)', async () => {
+    it('creates exactly 36 tables (core + full §5 platform schema)', async () => {
       const rows = await all(
         db,
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
       );
 
-      expect(rows.length).toBe(38);
+      expect(rows.length).toBe(36);
 
       const expectedTables = [
         // Core (pre-platform)
@@ -124,8 +124,6 @@ describe('DDL Smoke Test', () => {
         // §5 AI foundation
         'llm_models',
         'collection_centroids',
-        'tag_embeddings',
-        'tag_parents',
         'ai_tag_raw',
         'embeddings',
         'embeddings_chunk',
@@ -137,6 +135,9 @@ describe('DDL Smoke Test', () => {
 
       const actualTables = rows.map((r) => r.name).sort();
       expect(actualTables).toEqual(expectedTables.sort());
+      // §4.18 dissolution: the retired tag tables are gone from 001 entirely.
+      expect(actualTables).not.toContain('tag_embeddings');
+      expect(actualTables).not.toContain('tag_parents');
     });
 
     it('FK constraints work on self-referencing file_nodes.parent_id', async () => {

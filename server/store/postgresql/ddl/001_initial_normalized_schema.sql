@@ -390,21 +390,6 @@ CREATE TABLE IF NOT EXISTS collection_centroids (
   PRIMARY KEY (collection_id, model_id)
 );
 
-CREATE TABLE IF NOT EXISTS tag_embeddings (
-  tag TEXT NOT NULL,
-  model_id BIGINT NOT NULL REFERENCES llm_models(id),
-  vector TEXT NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (tag, model_id)
-);
-
-CREATE TABLE IF NOT EXISTS tag_parents (
-  child TEXT PRIMARY KEY,
-  parent TEXT NOT NULL,
-  source TEXT NOT NULL CHECK (source IN ('auto', 'admin')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
 CREATE TABLE IF NOT EXISTS ai_tag_raw (
   node_id BIGINT NOT NULL REFERENCES file_nodes(id) ON DELETE CASCADE,
   tag TEXT NOT NULL,

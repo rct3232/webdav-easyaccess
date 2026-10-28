@@ -7,7 +7,7 @@
  * the raw writer runs inside ONE transaction (§2.4). Plus the spec §2.6
  * purge-state assertions (PLAN §19: the tag layer is dissolved to
  * descriptive-only — no tag_embeddings/tag_parents surface anywhere in
- * server/ runtime code; the store applies zero normalization).
+ * server/ runtime code or in the DDL; the store applies zero normalization).
  *
  * The exhaustive dual-dialect matrix is the repository L2 conformance suite
  * (`store/repositories/__tests__/AiTagRepository.conformance.test.js`).
@@ -60,6 +60,7 @@ describe('aiTagStore facade', () => {
       'utf8'
     );
     expect(ddl).not.toMatch(/tag_aliases|tag_merges/i);
+    expect(ddl).not.toMatch(/\btag_embeddings\b|\btag_parents\b/i);
     expect(
       fs.existsSync(path.join(__dirname, '../../../store/repositories/TagAliasRepository.js'))
     ).toBe(false);
@@ -68,11 +69,12 @@ describe('aiTagStore facade', () => {
     ).toBe(false);
   });
 
-  it('spec §2.6 purge-state: no tag_embeddings/tag_parents surface in server/ runtime code (§19-5)', () => {
+  it('spec §2.6: no tag_embeddings/tag_parents surface in server/ runtime code', () => {
     const serverRoot = path.join(__dirname, '../../..');
-    // 001 keeps the tag_embeddings/tag_parents DEFINITIONS until the big-bang
-    // deploy drops them (§19-5); the DDL-parity suites enumerate 001 verbatim,
-    // so they are the only allowed mentions outside the DDL file itself.
+    // The retired tag tables are gone from 001 (§4.18 dissolution). The
+    // DDL-parity suites still name them in their explicit absence assertions,
+    // so those mentions (plus this file's own assertions) are the only allowed
+    // ones outside the DDL source itself.
     const ddlParityExceptions = new Set(
       [
         'store/repositories/__tests__/PlatformSchema.conformance.test.js',

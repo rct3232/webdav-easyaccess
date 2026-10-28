@@ -48,8 +48,6 @@ const EXPECTED_TABLES = [
   // §5 AI foundation
   'llm_models',
   'collection_centroids',
-  'tag_embeddings',
-  'tag_parents',
   'ai_tag_raw',
   'embeddings',
   'embeddings_chunk',
@@ -104,6 +102,12 @@ describe('PlatformSchema conformance (§5 tables)', () => {
     const tables = await listTables();
     const missing = EXPECTED_TABLES.filter((t) => !tables.includes(t));
     expect(missing).toEqual([]);
+  });
+
+  it('does NOT create the retired tag tables (§4.18 dissolution)', async () => {
+    const tables = await listTables();
+    expect(tables).not.toContain('tag_embeddings');
+    expect(tables).not.toContain('tag_parents');
   });
 
   it('collections carries the §5 column set', async () => {

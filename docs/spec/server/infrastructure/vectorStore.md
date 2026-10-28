@@ -78,7 +78,7 @@ allVectors(userScope)
 
 `userScope`: requester id → ACL resolution rides `fileNodesStore` joins (the same
 closure/owner logic as listings); `userScope=null` = provider-global (system passes:
-tag_embeddings lookups, clustering over a user's own corpus stays scoped).
+whole-corpus evolution clustering; clustering over a user's own corpus stays scoped).
 
 ### 2.3 Implementation matrix (exactly two families)
 

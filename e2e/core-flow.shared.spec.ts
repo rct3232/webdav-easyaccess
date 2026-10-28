@@ -798,6 +798,68 @@ test('E2E-BULK-007: Conflict resolution dialog appears when move/copy would coll
   await expect(conflictDialog.getByRole('button', { name: /merge/i })).toBeVisible();
 });
 
+test('E2E-BULK-010: Completed bulk move offers an undo toast that restores the source items', async ({
+  page,
+  request,
+}, testInfo) => {
+  const base = await openPrivateWorkspace(page, request, testInfo);
+  const isMobile = isMobileProject(testInfo);
+  const srcFile1Name = buildName(testInfo, 'bulk-undo-src-1', '.txt');
+  const srcFile2Name = buildName(testInfo, 'bulk-undo-src-2', '.txt');
+  const srcFile1Path = `/${base}/${srcFile1Name}`;
+  const srcFile2Path = `/${base}/${srcFile2Name}`;
+
+  const destFolderName = buildName(testInfo, 'bulk-undo-dest-folder');
+  const destFolderPath = `/${base}/${destFolderName}`;
+  const destFile1Path = `${destFolderPath}/${srcFile1Name}`;
+  const destFile2Path = `${destFolderPath}/${srcFile2Name}`;
+
+  await uploadFileViaUi(page, {
+    fileName: srcFile1Name,
+    mimeType: 'text/plain',
+    buffer: textFixtureBuffer,
+  });
+  await uploadFileViaUi(page, {
+    fileName: srcFile2Name,
+    mimeType: 'text/plain',
+    buffer: textFixtureBuffer,
+  });
+  await createFolderViaUi(page, destFolderName);
+
+  await selectTwoFiles(page, isMobile, srcFile1Path, srcFile2Path);
+  await openFolderPickerAndSelectDestination(page, 'move', destFolderName);
+
+  // Job-backed completion: the progress chip reaches its terminal "Done"
+  // state (then clears) before the command-level undo toast can be exercised.
+  await waitForBulkOperationToComplete(page);
+
+  // Journaled batch (domain=batch): ONE [Undo] slot per COMMAND on the
+  // move-completion toast, never per item (useBulkOperations.md §2.6).
+  const undoButton = page.getByTestId('undo-toast-action');
+  await expect(undoButton).toBeVisible({ timeout: 10_000 });
+  await expect(undoButton).toHaveText(/Undo/i);
+  await expect(page.getByRole('alert').filter({ has: undoButton })).toContainText(
+    /Move completed/i
+  );
+
+  // The forward move already emptied the source listing; the undo below must
+  // re-list both items, so the restore assertions are not vacuous.
+  await expect(fileItem(page, srcFile1Path)).toHaveCount(0);
+  await expect(fileItem(page, srcFile2Path)).toHaveCount(0);
+
+  await undoButton.click();
+
+  // Journal inverse: both move-back entries restore the pre-move parent, and
+  // the toast's per-call refresh re-reads the current (source) listing.
+  await expect(fileItem(page, srcFile1Path)).toBeVisible({ timeout: 20_000 });
+  await expect(fileItem(page, srcFile2Path)).toBeVisible({ timeout: 20_000 });
+
+  await gotoFilesPath(page, request, destFolderPath);
+  await expect(breadcrumbChip(page, destFolderName)).toBeVisible({ timeout: 20_000 });
+  await expect(fileItem(page, destFile1Path)).toHaveCount(0);
+  await expect(fileItem(page, destFile2Path)).toHaveCount(0);
+});
+
 test('E2E-OVERLAY-008: Approved user enters __recent__ and sees recent entries', async ({
   page,
   request,

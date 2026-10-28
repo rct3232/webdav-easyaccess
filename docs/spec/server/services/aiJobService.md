@@ -76,7 +76,7 @@ Enqueue decision table (per node, at hook time):
   are non-null and DIFFER, the same row is RESET to a fresh attempt (`pending`,
   `attempt=0`, retry/start/finish/last_error cleared, new hash), so an overwrite/restore
   of changed content always produces claimable work without a generation bump (aiJobsStore
-  §2.3/§2.4). A reset applies to any prior status; the superseded execution's late
+  §2.3/§2.4). A reset applies to any prior status; the previous execution's late
   `markDone` is a `{changes:0}` no-op. Content re-read at execution time via
   `blobStorageService.downloadBlob` (works on both backends; the upload buffer is not
   retained). The `caption`/`asr` completion chains use the SAME call shape and therefore

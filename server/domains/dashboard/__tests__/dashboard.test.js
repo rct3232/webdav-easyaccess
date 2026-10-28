@@ -479,16 +479,40 @@ describe('GET /api/dashboard — vector near-dup block', () => {
     expect(nearRows).toHaveLength(1);
     const keepId = Math.min(Number(a.nodeId), Number(b.nodeId));
     const memberId = Math.max(Number(a.nodeId), Number(b.nodeId));
-    expect(nearRows[0]).toEqual({
+    expect(nearRows[0]).toMatchObject({
       id: expect.any(Number),
       node_id: memberId,
       kind: 'near_dup',
       path: expect.stringContaining('/'),
       size_bytes: memberId === Number(b.nodeId) ? 140 : 100,
-      reason: { kind: 'near_dup', keep_node_id: keepId, score: expect.any(Number) },
+      reason: {
+        kind: 'near_dup',
+        keep_node_id: keepId,
+        score: expect.any(Number),
+        keep: {
+          name: 'near-a.txt',
+          relative_score: 0.5,
+          confidence: 'low',
+          basis: 'none',
+          factors: { activity: 0.5, quality: 0.5, name: 0.5, centrality: 0.5 },
+          unopened_30d: true,
+          score_version: 'v1',
+        },
+      },
       created_at: expect.any(String),
       expires_at: expect.any(String),
     });
+    // reason.keep rides the JSONB verbatim (snake_case; no raw activity data)
+    expect(Object.keys(nearRows[0].reason.keep).sort()).toEqual([
+      'basis',
+      'confidence',
+      'factors',
+      'name',
+      'relative_score',
+      'score_version',
+      'unopened_30d',
+    ]);
+    expect(JSON.stringify(nearRows[0].reason.keep)).not.toMatch(/last_seen|opens|downloads/);
     for (const key of Object.keys(res.body)) expect(key).not.toMatch(/[A-Z]/);
   });
 

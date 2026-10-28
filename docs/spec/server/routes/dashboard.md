@@ -83,7 +83,20 @@ bodies camelCase (`nodeIds`). Timestamps ISO-8601 UTC strings.
       "kind": "near_dup",
       "path": "/alice/docs/report v2.pdf",
       "size_bytes": 1048576,
-      "reason": { "kind": "near_dup", "keep_node_id": 90320, "score": 0.962 },
+      "reason": {
+        "kind": "near_dup",
+        "keep_node_id": 90320,
+        "score": 0.962,
+        "keep": {
+          "name": "report.pdf",
+          "relative_score": 0.74,
+          "confidence": "high",
+          "basis": "resolution",
+          "factors": { "activity": 0.9, "quality": 1, "name": 1, "centrality": 0.5 },
+          "unopened_30d": false,
+          "score_version": "v1"
+        }
+      },
       "created_at": "2025-10-20T03:00:00Z",
       "expires_at": "2025-11-19T03:00:00Z"
     },
@@ -123,10 +136,16 @@ Field rules:
   pass at the ACTIVE profile `θ_dup` with hash-twin members excluded and the short-document
   cosine exception), then lists the user's `pending`, unexpired rows. Row shape: `id`,
   `node_id`, `kind`, `path`, `size_bytes`, `reason` (the stored JSONB, snake_case verbatim),
-  `created_at`, `expires_at`. `kind: 'exact_dup'`/`'near_dup'` carry `keep_node_id` = smallest
-  node id in the group (deterministic keep rule); the keeper is never listed as a row —
-  only group members beyond it persist. Rule kinds (`'temp_pattern'`, `'stale_screenshot'`,
-  `'old_installer'`) suggest the row's own file and carry `reason.pattern`/`reason.age_days`.
+  `created_at`, `expires_at`. `kind: 'exact_dup'`/`'near_dup'` carry `keep_node_id` = the
+  group keeper (exact: smallest node id; near-dup: highest keeper composite, tie ⇒ smallest
+  node id — `dashboardService.md` §2.5.1); the keeper is never listed as a row — only group
+  members beyond it persist. Near-dup rows additionally carry `reason.keep` (additive on
+  new/re-materialized rows; no legacy backfill): `{ name (keeper basename only),
+  relative_score (0..1, group-relative), confidence high|medium|low, basis
+  activity|resolution|size|name|centrality|mixed|none, factors {activity,quality,name,
+  centrality}, unopened_30d, score_version:'v1' }` — raw activity counts/timestamps never
+  appear. Rule kinds (`'temp_pattern'`, `'stale_screenshot'`, `'old_installer'`) suggest the
+  row's own file and carry `reason.pattern`/`reason.age_days`.
   Rows sort by KIND RANK — exact rows first, near-dup rows after, rule-pattern rows
   last — insertion order (`id`) within the rank (stable under append-only re-reads).
   The vector generator leg runs ONLY when
@@ -221,9 +240,10 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
   stay `file:<nodeId>` for the rename family), `action='cleanup-accept'`. Undo executes via
   the generic `POST /api/actions/:id/undo` (actor visibility), never through a dashboard
   route.
-- The 30-days-unopened + low-score keeper adjudication is NOT in the suggestion payload;
-  near-dup keepers follow the deterministic smallest-node-id rule (§4.17 keeper selection is
-  a chat-side surface).
+- Near-dup keepers follow the keeper composite (`dashboardService.md` §2.5.1) and the
+  exposure block rides `reason.keep`; the client renders the label and the collapsible
+  "Why this keeper?" detail from that block only
+  (`/docs/spec/client/components/mypage/content/SuggestionsChecklist.md` §2.3).
 
 ### 2.5 Related Documents
 
@@ -268,3 +288,7 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
       in near-dup rows; ≤1-sentence enriched files never list a `near_dup` row); without an
       active embed model the payload has NO `near_duplicates` key, no `near_dup` row is
       materialized and GET stays 200 (§4.12 absent-not-disabled)
+- [ ] Near-dup keeper exposure: `reason.keep` carries the §2.4 field set with a basename-only
+      `name`, no raw activity counts/timestamps; exact/rule rows carry NO `keep` block; a
+      second read on unchanged inputs returns deep-equal rows (reason-only refresh leaves
+      `id`/`created_at`/`expires_at`/state stable)

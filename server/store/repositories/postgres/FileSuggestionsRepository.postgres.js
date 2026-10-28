@@ -77,6 +77,23 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
       }
     },
 
+    async updateReason(userId, id, reason) {
+      try {
+        const result = await executor.run(
+          `UPDATE file_suggestions SET reason = $1::jsonb
+            WHERE id = $2 AND user_id = $3 AND state = 'pending'`,
+          [
+            reason === null || reason === undefined ? null : JSON.stringify(reason),
+            Number(id),
+            Number(userId),
+          ]
+        );
+        return { changes: result.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async listIdsByNodesTx(tx, userId, nodeIds, state) {
       if (!Array.isArray(nodeIds) || nodeIds.length === 0) return [];
       try {

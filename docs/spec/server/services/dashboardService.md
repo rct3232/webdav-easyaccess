@@ -16,16 +16,19 @@ Target-contract spec (server side of `docs/spec/server/routes/dashboard.md`;
 
 - **Source:** `server/domains/dashboard/service.js` (composition, accept, dismiss)
 - **Rule matchers:** `server/domains/dashboard/suggestionsRules.js` (pure, LLM-free — §2.5)
+- **Keeper scorer:** `server/domains/dashboard/keeperScore.js` (pure, LLM-free — §2.5,
+  near-dup keeper composite v1)
 - **Undo executor:** `server/domains/dashboard/suggestionUndoService.js` (registers the
   `file`-domain undo handler — §2.6)
 - **Test files:** `server/domains/dashboard/__tests__/dashboardService.test.js`,
-  `__tests__/suggestionsRules.test.js`, `__tests__/suggestionUndo.test.js`
+  `__tests__/suggestionsRules.test.js`, `__tests__/keeperScore.test.js`,
+  `__tests__/suggestionUndo.test.js`
 
 ### 2.2 Main functions
 
 | Function                                   | Returns (camelCase domain object — the ROUTE serializes snake_case)                                                                                                                                                                                                       | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `getDashboardSummary(userId)`              | `{ duplicates: { groupCount, duplicateCount, reclaimableBytes }, nearDuplicates?: { groupCount, duplicateCount }, suggestions: [{ id, nodeId, kind, path, sizeBytes, reason, createdAt, expiresAt }], trash: { itemCount, totalBytes, oldestDeletedAt, retentionDays } }` | ONE `dupFinderService.findExactDuplicateGroups(userId)` pass feeds `duplicates` (the summary fields); `nearDupFinderService.findNearDuplicateGroups(userId)` feeds the `nearDuplicates` summary block when `available` (when not, the key is OMITTED — absent section, never an error, §4.12). The same two passes plus the rule matchers (§2.5) feed `materializeSuggestions(userId)`, which persists pending rows BEFORE the list read; `suggestions` = the user's `pending` rows with `expires_at` NULL-or-future, enriched with `path`/`sizeBytes` from the subtree read, ordered by kind rank — exact rows first, near-dup rows after, rule rows last — and by row id within the rank. The generator runs under the per-user generate lock (best-effort: lock held ⇒ skip materialize, still list existing rows). NULL-hash rows never surface (consumer-side assertion of the dupFinder guarantee). No user root ⇒ zeros/empty + zero materialized rows. Two consecutive calls on unchanged data return deep-equal results (materialization is idempotent).                                                                                                      |
+| `getDashboardSummary(userId)`              | `{ duplicates: { groupCount, duplicateCount, reclaimableBytes }, nearDuplicates?: { groupCount, duplicateCount }, suggestions: [{ id, nodeId, kind, path, sizeBytes, reason, createdAt, expiresAt }], trash: { itemCount, totalBytes, oldestDeletedAt, retentionDays } }` | ONE `dupFinderService.findExactDuplicateGroups(userId)` pass feeds `duplicates` (the summary fields); `nearDupFinderService.findNearDuplicateGroups(userId)` feeds the `nearDuplicates` summary block when `available` (when not, the key is OMITTED — absent section, never an error, §4.12). The same two passes plus the rule matchers (§2.5) feed `materializeSuggestions(userId)`, which persists pending rows BEFORE the list read; `suggestions` = the user's `pending` rows with `expires_at` NULL-or-future, enriched with `path`/`sizeBytes` from the subtree read, ordered by kind rank — exact rows first, near-dup rows after, rule rows last — and by row id within the rank. The generator runs under the per-user generate lock (best-effort: lock held ⇒ skip materialize, still list existing rows). NULL-hash rows never surface (consumer-side assertion of the dupFinder guarantee). No user root ⇒ zeros/empty + zero materialized rows. Two consecutive calls on unchanged data return deep-equal results (materialization is idempotent).                                                                   |
 | `materializeSuggestions(userId)`           | `{ inserted: number, expired: number }` (internal helper; observable through the GET)                                                                                                                                                                                     | §2.5 generator pass — dedup/idempotency/reconcile contract.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `acceptSuggestions(userId, user, nodeIds)` | `{ trashed: number[], rejectedNotOwned: number[], skipped: number[], actionId: number \| null }`                                                                                                                                                                          | Validation first (`emptyNodeIds` — §2.7). Per node: `ownerNodeResolver.isOwnerNode(userId, nodeId)` gate (own live node — foreign, unknown, already-trashed all fall to `rejectedNotOwned`, the owner check precedes the trash call); then the files-domain trash core `fileService.deleteNode(nodeId, userId, user)`; a core THROW → `skipped` (per-node isolation, the loop never aborts). After the trash loop, ONE journaled command: `commitChange('file', 'file:suggestion-accept:<userId>:<Date.now()>', { actor: String(userId), action: 'cleanup-accept', subjectLabel }, { inverse: { op: 'restore-from-trash' }, items })` where `items = [{ nodeId, deletedAt, suggestionIds }]` per trashed node (`deletedAt` = the post-trash row read — the undo fingerprint; `suggestionIds` = the pending rows listed pre-flip) and the TX mutation flips those rows `pending → accepted` (`fileSuggestionsStore.flipStatesTx`). Zero trashed nodes ⇒ NO journal row and `actionId: null` (nothing happened; the empty selection never commits an empty command). `result.actionId` surfaces as `undo: { actionId }` at the route. |
 | `dismissSuggestion(userId, suggestionId)`  | `{ id, state: 'dismissed' }`                                                                                                                                                                                                                                              | `store/fileSuggestionsStore.md` §2.3 `dismiss`; `changes: 0` → throws `suggestionNotFound` (404 at the route). Non-numeric/≤0 `suggestionId` → throws `invalidSuggestionId` (400). Not journaled (preference flip, not a file mutation).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -45,7 +48,9 @@ Target-contract spec (server side of `docs/spec/server/routes/dashboard.md`;
   `summarizeTrashedSubtree`, `getNodeIncludingTrashed`, `getChildren`, `renameNode`,
   `untrashSubtree`, `renameNodeTx`, `untrashSubtreeTx`
   (`docs/spec/server/store/fileNodesStore.md`)
-- `store/aiEnrichmentsStore` → `getByNodeIds` (short-document exception input — §2.5)
+- `store/aiEnrichmentsStore` → `getByNodeIds` (short-document exception input AND the
+  media-probe keeper input — §2.5/§2.5.1)
+- `store/usageStore` → `listNodeActivity` (keeper activity factor — §2.5.1)
 - `infrastructure/configResolver.getSharedResolver` (retention days)
 - `infrastructure/lockManager` (generate lock — §2.5 dedupe)
 - `service/composition.getComposition` → `fileService` (trash core),
@@ -73,14 +78,17 @@ Candidate sources, in INSERTION order (persisted rows keep it; the list orders b
    smallest node id; `reason = { kind, keep_node_id }`. NULL-hash rows never group
    (`dupFinderService.md` hard rule).
 2. **Near dups** (`kind='near_dup'`): from the nearDupFinder pass, ONLY when the vector leg
-   is `available`; members beyond the group's keeper (smallest node id);
-   `reason = { kind, keep_node_id, score }` (score = the group's best pairwise cosine).
+   is `available`; the keeper is the member with the highest KEEPER COMPOSITE (§2.5.1 —
+   ties ⇒ smallest node id), the remaining members are rows;
+   `reason = { kind, keep_node_id, score, keep }` (score = the group's best pairwise cosine;
+   `keep` = the keeper-exposure block of §2.5.1 — additive, no legacy backfill).
    **Short-document exception:** a member whose `ai_enrichments.summary` exists and holds at
    most one sentence (≤1 non-empty segment under sentence-final punctuation) is EXCLUDED
    from near-dup rows — edit variants of one-line files score low cosine; such files only
    surface through the hash path. A member with no enrichment row is NOT excluded (absence
    of evidence is not evidence of brevity). If exclusion leaves < 2 members the group
-   contributes no rows.
+   contributes no rows. Keeper selection is unchanged by the exclusion (the keeper is never
+   a row).
 3. **Rule variants** (LLM-free, filename/temp/pattern rules over the subtree cache rows —
    `suggestionsRules.js`):
    - `kind='temp_pattern'` — name/extension matches the temp family (`.tmp .temp .bak .old
@@ -97,6 +105,54 @@ Per-node dedupe: kind priority exact_dup > near_dup > temp_pattern > stale_scree
 old_installer — a node contributes AT MOST one candidate per pass; a node that is a keeper
 (`keep_node_id`) of an exact/near group in this pass contributes no candidate at all (the
 keeper is never listed, all kinds).
+
+### 2.5.1 Near-dup keeper composite (v1)
+
+Exact dups keep the smallest node id (identity — bytes are equal). Near-dup groups use a
+quality composite computed by the PURE module `keeperScore.js` (no IO, no clock reads —
+the caller passes `nowMs`). Every factor is min-max normalized WITHIN the group; an
+all-equal factor scores `0.5` (neutral, no invented preference).
+
+| Factor           | Weight | Raw signal                                                                                                                                                                                                                                                                                                                        |
+| ---------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Activity         | 0.45   | `node_activity.score` (30d half-life accumulator) decayed by last-seen recency (`2^(−ageDays/30)`). **30d unopened is a PENALTY, not an exclusion:** `last_seen_at` NULL or older than 30 days multiplies the raw value by `0.25`; a member with no accumulator row is unopened (raw 0).                                          |
+| Media Quality    | 0.30   | Image/video MIME with `ai_enrichments.probe` width & height ⇒ `log1p(width*height)`; media without a probe ⇒ `log1p(size_bytes)` fallback. Non-media (documents) are NEUTRAL `0.5` and excluded from the media min-max range. Lossless image/audio MIME (png/tiff/bmp, flac/wav) add `+0.05` after normalization, clamped to `1`. |
+| Name Originality | 0.15   | `1 − 0.2 × markerCount`, clamped `0.1..1`; markers: `copy`, `(1)`, `edited`, `export`, `compressed`, `small`, `thumb(nail)`, `preview`, `screenshot`, `temp`/`tmp`, `~$`.                                                                                                                                                         |
+| Centrality       | 0.10   | Mean cosine to every OTHER group member, computed from the nearDupFinder `pairScores` (missing pair ⇒ 0), normalized within the group.                                                                                                                                                                                            |
+
+Composite = `0.45·activity + 0.30·quality + 0.15·name + 0.10·centrality`. Keeper = highest
+composite; tie ⇒ smallest node id. Single-member factors are all-equal ⇒ neutral.
+
+**Exposure (`reason.keep`, additive on NEW/re-materialized near-dup rows only — no legacy
+backfill):**
+
+```
+keep: {
+  name: string,                 // keeper basename only (never a full path)
+  relative_score: number,       // keeper composite 0..1, 3 decimals (group-relative)
+  confidence: 'high' | 'medium' | 'low',
+  basis: 'activity' | 'resolution' | 'size' | 'name' | 'centrality' | 'mixed' | 'none',
+  factors: { activity, quality, name, centrality },   // 0..1, 3 decimals
+  unopened_30d: boolean,
+  score_version: 'v1'
+}
+```
+
+`basis` = the factor with the largest weighted edge of the keeper over the group mean
+(quality reads `resolution` when the keeper has a probe, `size` when the fallback applied;
+documents contribute no quality edge). No positive edge ⇒ `none`; two factors within `0.005`
+of the top edge ⇒ `mixed`. `confidence` from the composite margin over the runner-up:
+`≥0.10` high, `≥0.03` medium, else low (`basis: 'none'` is always low).
+
+**Data loading (no N+1):** the pass reads activity with ONE
+`usageStore.listNodeActivity(userId, allGroupMemberIds)` call and enrichments with ONE
+`aiEnrichmentsStore.getByNodeIds(allGroupMemberIds)` call; name/size/MIME come from the
+live subtree rows. The enrichment read is shared with the short-document exception.
+
+**Reason-only refresh:** for an existing PENDING near-dup row whose candidate key is still
+current, the stored `reason` is refreshed (same row id, `created_at`, `expires_at`, state) when
+keeper/quality inputs changed; unchanged rows are never written. Dismissed rows are left
+verbatim.
 
 Materialization semantics (`store/fileSuggestionsStore.md` §2.2/§2.4):
 
@@ -178,10 +234,18 @@ validated BEFORE any work (no trash call, no journal row). `MAX_ACCEPT_BATCH = 2
 - [ ] Rule variants: temp/screenshot/installer matchers fire per §2.5 (age boundaries on both
       sides); keepers excluded; priority dedupe holds
 - [ ] Near-dup feed: with an active embed model + canonical pooled rows above `θ_dup`,
-      `nearDuplicates` present + `near_dup` rows after the exact rows (keep = smallest node
-      id); hash-twin nodes appear ONLY in exact-dup rows; ≤1-sentence enriched members never
-      list `near_dup` rows (a no-enrichment member does list); no active model ⇒ no
-      `nearDuplicates` key, no `near_dup` rows, GET still 200
+      `nearDuplicates` present + `near_dup` rows after the exact rows (keeper = highest
+      composite, tie smallest node id); hash-twin nodes appear ONLY in exact-dup rows;
+      ≤1-sentence enriched members never list `near_dup` rows (a no-enrichment member does
+      list); no active model ⇒ no `nearDuplicates` key, no `near_dup` rows, GET still 200
+- [ ] Keeper composite: activity penalty (30d-unopened multiplier, never exclusion),
+      resolution-vs-size quality, name markers, centrality from `pairScores`, tie ⇒ smallest
+      id, missing activity/enrichment inputs; exact dups keep the smallest id and rule rows
+      are untouched
+- [ ] `reason.keep` shape: `name` basename only, `relative_score`/`factors` group-relative,
+      `confidence`, `basis`, `unopened_30d`, `score_version:'v1'`; a legacy pending near-dup
+      row without `keep` is not backfilled by a read; a keeper/quality change refreshes
+      `reason` only (id/created_at/expires_at/state stable)
 - [ ] Accept: own live file → trashed (row `deleted_at` set) + ONE `action_journal` command
       row (`domain='file'`, `action='cleanup-accept'`, items = trashed count) + suggestion
       rows `pending → accepted`; foreign id → `rejectedNotOwned` and the foreign row

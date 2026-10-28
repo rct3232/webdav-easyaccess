@@ -31,6 +31,13 @@ Target-contract spec (`docs/features/collections-platform.md` §4.16/§4.17 sugg
 ### 2.3 Contract Rules (checkbox in ALL cases)
 
 - Every row: checkbox + thumbnail + name + reason chip (`reason.kind`/`reason` text mapped via i18n; e.g. exact-dup / near-dup keeper pick / 30d-unopened / temp pattern).
+- Near-dup rows carrying `reason.keep` render the keeper label `Keep: <name> · <basis label>`
+  (basename only — never the keeper's full path) plus an accessible `Why this keeper?`
+  disclosure (`aria-expanded` + `aria-controls`) that expands the DETAIL: the raw
+  `relative_score` labeled group-relative and one bar per factor (`activity`, `quality`,
+  `name`, `centrality`), also labeled group-relative. Raw activity counts/timestamps are
+  never rendered. A row WITHOUT `reason.keep` renders no keeper label and no disclosure
+  (legacy rows — no backfill).
 - The ONLY accept control is `Accept selected (N)` above/below the list, `N` = live checked count, disabled at `N=0` (empty state shows the button absent, not disabled-with-zero).
 - No per-file accept, no threshold-variant layouts, no bulk-accept-all.
 - Accept executes `onAccept(checkedNodeIds)`; success → undo toast (`Moved N items to Trash` + Undo; checked count = inverse count, command row `subject` carries the item list). Absorbed failure → error, checkboxes retained.
@@ -44,6 +51,7 @@ Target-contract spec (`docs/features/collections-platform.md` §4.16/§4.17 sugg
 ### 2.5 i18n Keys
 
 - `mypage.suggestionsTitle`, `mypage.suggestionsAccept` (`Accept selected (N)`), `mypage.suggestionsDismiss`, `mypage.suggestionsReason*` (kind labels), `mypage.suggestionsEmpty`, `mypage.suggestionsExpiryNote`
+- Keeper exposure: `mypage.suggestionsKeep` (`Keep: {{name}} · {{basis}}`), `mypage.suggestionsKeepWhy` (`Why this keeper?`), `mypage.suggestionsKeepScore` (group-relative score), `mypage.suggestionsKeepFactor` (group-relative factor label), `mypage.suggestionsKeepBasis.*` (`Activity`, `Resolution`, `Size`, `Name`, `Centrality`, `Mixed`, `None`) — `en`/`ko` mirrors mandatory.
 
 ### 2.6 Verification Scenarios
 
@@ -53,6 +61,9 @@ Target-contract spec (`docs/features/collections-platform.md` §4.16/§4.17 sugg
 - [ ] No accept control exists per row (single-control rule).
 - [ ] `loading=true` renders skeletons; empty list renders `suggestionsEmpty` and no accept button.
 - [ ] The expiry footer appears only when at least one row carries a non-null `expires_at`.
+- [ ] A near-dup row with `reason.keep` shows `Keep: <name> · <basis>`; the `Why this keeper?`
+      disclosure is collapsed initially and expands the group-relative score + factor bars;
+      a row without `keep` shows neither; `en`/`ko` keys mirror.
 
 ### 2.7 Edge Cases
 

@@ -80,6 +80,35 @@ describe('FileSuggestionsRepository conformance', () => {
     expect(row.expiresAt).toBeNull();
   });
 
+  it('updateReason refreshes a PENDING reason only (id/timestamps/state stable)', async () => {
+    const node = await freshNode('reason-refresh');
+    const { id } = await insertRow(node, {
+      kind: 'near_dup',
+      reason: { kind: 'near_dup', keep_node_id: 1, score: 0.96 },
+    });
+    const before = (await repo.listPending(user.id)).find((row) => row.id === id);
+    const nextReason = {
+      kind: 'near_dup',
+      keep_node_id: 2,
+      score: 0.97,
+      keep: { name: 'a.txt', relative_score: 0.7, score_version: 'v1' },
+    };
+
+    await expect(repo.updateReason(999999, id, nextReason)).resolves.toEqual({ changes: 0 });
+    await expect(repo.updateReason(user.id, id, nextReason)).resolves.toEqual({ changes: 1 });
+
+    const after = (await repo.listPending(user.id)).find((row) => row.id === id);
+    expect(after.reason).toEqual(nextReason);
+    expect(after.createdAt).toBe(before.createdAt);
+    expect(after.expiresAt).toBe(before.expiresAt);
+    expect(after.state).toBe('pending');
+
+    await repo.dismiss(user.id, id);
+    await expect(repo.updateReason(user.id, id, { kind: 'near_dup' })).resolves.toEqual({
+      changes: 0,
+    });
+  });
+
   it('insert stores caller-provided expiresAt verbatim (ISO) and rejects unknown FKs', async () => {
     const node = await freshNode('expiry');
     const iso = '2099-01-01T00:00:00.000Z';

@@ -766,7 +766,10 @@ Rule variant (LLM-free): filename/temp patterns, stale screenshots, old installe
 dups via **content_hash first (T0.9a — cosine 1.0 detection redundant, E2)**. Vector
 variant: low-quality picks among near-dup groups at **θ_dup = 0.97** (E2v2: realistic-edit
 P10 = 0.977 vs unrelated P99 = 0.471 — separation measured; the earlier 0.98 guess was
-near-miss), "30d unopened + low score". θ_dup is a per-profile text-space constant —
+near-miss), with keeper selection by the LLM-free quality composite v1 (activity 0.45 / media
+quality 0.30 / name originality 0.15 / centrality 0.10, normalized within the group; 30d
+unopened is a 0.25 activity penalty, not an exclusion — `dashboardService.md` §2.5.1). θ_dup
+is a per-profile text-space constant —
 EG2 reference-set measured **0.955** (near-dup overall P10 0.9746 vs same-topic P90
 0.8105 / unrelated P99 0.7294; separable for near-dup only, topic/unrelated overlap
 reproduced from bge-m3). MEDIA θ_dup is FLAG-ONLY, never an auto-pick signal: image

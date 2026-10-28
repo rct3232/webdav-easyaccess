@@ -40,6 +40,10 @@ async function dismiss(userId, id) {
   return getRepository().dismiss(userId, id);
 }
 
+async function updateReason(userId, id, reason) {
+  return getRepository().updateReason(userId, id, reason);
+}
+
 async function listIdsByNodesTx(tx, userId, nodeIds, state) {
   return getRepository().listIdsByNodesTx(tx, userId, nodeIds, state);
 }
@@ -57,6 +61,7 @@ module.exports = {
   listPending,
   listKeys,
   dismiss,
+  updateReason,
   listIdsByNodesTx,
   flipStatesTx,
   expireStale,

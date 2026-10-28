@@ -61,9 +61,11 @@ Domain row (repository boundary; SQL snake_case → camel — `repository-contra
   `dismissed` and `expired` rows are terminal (audit trail); dismissed kinds are NEVER
   re-inserted for the same node (generator dedupe §2.4).
 - **`reason` JSONB keys are snake_case verbatim** — the wire serializes them unchanged
-  (`routes/dashboard.md` §2.4): `{ kind, keep_node_id?, score?, pattern?, age_days? }`.
-  `keep_node_id` on dup rows records the group keeper (smallest node id — deterministic
-  keep rule); `pattern`/`age_days` on rule rows carry the matched family and file age.
+  (`routes/dashboard.md` §2.4): `{ kind, keep_node_id?, score?, keep?, pattern?, age_days? }`.
+  `keep_node_id` on dup rows records the group keeper (exact: smallest node id; near-dup:
+  highest keeper composite, tie ⇒ smallest node id — `dashboardService.md` §2.5.1);
+  `keep` is the near-dup keeper-exposure block (additive on new/re-materialized rows only);
+  `pattern`/`age_days` on rule rows carry the matched family and file age.
 
 ### 2.3 Main methods (facade = repository surface, executor-bound unless `Tx`)
 
@@ -75,6 +77,7 @@ Domain row (repository boundary; SQL snake_case → camel — `repository-contra
 | `dismiss(userId, id)`                           | `=> Promise<{ changes }>`                    | `UPDATE … SET state='dismissed' WHERE id=? AND user_id=? AND state='pending'` — cross-user and non-pending targets report `changes: 0` (the route maps to 404).                                                                     |
 | `listIdsByNodesTx(tx, userId, nodeIds, state)`  | `=> Promise<Array<{ id, nodeId, kind }>>`    | Caller-owned TX (or the executor itself — facade-dispatch precedent): the row ids for the accept/undo node set under the expected `state` (fingerprint pre-read; `kind` included for candidate-set matching).                       |
 | `flipStatesTx(tx, { ids, fromState, toState })` | `=> Promise<{ changes }>`                    | Caller-owned TX (or the executor): state flip restricted to the id set AND the expected `fromState` (rows flipped by a concurrent command simply do not match — the count reports what actually moved).                             |
+| `updateReason(userId, id, reason)`              | `=> Promise<{ changes }>`                    | Reason-only refresh of a PENDING row: `UPDATE … SET reason=? WHERE id=? AND user_id=? AND state='pending'`. ID, `created_at`, `expires_at` and state are untouched; 0 = unknown/foreign/non-pending (the generator only refreshes rows it already listed). |
 | `expireStale({ now, limit })`                   | `=> Promise<{ changes, ids }>`               | Bounded retention pass: select up to `limit` `pending` ids with `expires_at < now` (NULL never expires), flip them to `expired`. `ids` feeds the run report.                                                                        |
 
 `Tx` methods take the caller-owned transaction (the `commitChange`/`undoAction` TX of
@@ -111,6 +114,8 @@ Domain row (repository boundary; SQL snake_case → camel — `repository-contra
 ### 2.6 Verification Scenarios
 
 - [ ] insert returns the generated id; reason round-trips as a parsed object on both dialects
+- [ ] `updateReason` rewrites the JSONB of a pending row only (id/created_at/expires_at/state
+      stable); non-pending/foreign ids report `changes: 0`
 - [ ] `listPending` excludes `accepted`/`dismissed`/`expired` rows and orders by id
 - [ ] `dismiss` is pending-only and user-scoped (other user's id → `changes: 0`)
 - [ ] `listIdsByNodesTx` + `flipStatesTx` inside one TX: accept flips exactly the pending

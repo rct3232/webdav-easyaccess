@@ -79,6 +79,23 @@ module.exports = function createSqliteFileSuggestionsRepository(executor) {
       }
     },
 
+    async updateReason(userId, id, reason) {
+      try {
+        const result = await executor.run(
+          `UPDATE file_suggestions SET reason = ?
+            WHERE id = ? AND user_id = ? AND state = 'pending'`,
+          [
+            reason === null || reason === undefined ? null : JSON.stringify(reason),
+            Number(id),
+            Number(userId),
+          ]
+        );
+        return { changes: result.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async listIdsByNodesTx(tx, userId, nodeIds, state) {
       if (!Array.isArray(nodeIds) || nodeIds.length === 0) return [];
       try {

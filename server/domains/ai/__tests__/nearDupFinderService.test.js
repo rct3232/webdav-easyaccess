@@ -325,6 +325,47 @@ describe('nearDupFinderService — honest degrade (§4.12 absence is data)', () 
   });
 });
 
+describe('nearDupFinderService — pairwise exposure for keeper centrality', () => {
+  it('exposes every member pair (incl. transitive pairs below θ) ordered by nodeA then nodeB', async () => {
+    const t = THETA + 0.001;
+    const v1 = new Array(DIM).fill(0);
+    const v2 = new Array(DIM).fill(0);
+    const v3 = new Array(DIM).fill(0);
+    v1[0] = 1;
+    v2[0] = t;
+    v2[1] = Math.sqrt(1 - t * t);
+    v3[0] = 2 * t * t - 1;
+    v3[1] = 2 * t * Math.sqrt(1 - t * t);
+
+    const finder = makeFinder({
+      subtreeRows: [
+        fileRow(31, { hash: 'h-31' }),
+        fileRow(32, { hash: 'h-32' }),
+        fileRow(33, { hash: 'h-33' }),
+      ],
+      embeddings: [embeddingRow(31, v1), embeddingRow(32, v2), embeddingRow(33, v3)],
+    });
+
+    const result = await finder.findNearDuplicateGroups(42);
+
+    expect(result.groupCount).toBe(1);
+    expect(result.groups[0].nodeIds).toEqual([31, 32, 33]);
+    const pairScores = result.groups[0].pairScores;
+    expect(pairScores.map((pair) => [pair.nodeA, pair.nodeB])).toEqual([
+      [31, 32],
+      [31, 33],
+      [32, 33],
+    ]);
+    const scoreOf = (a, b) => pairScores.find((pair) => pair.nodeA === a && pair.nodeB === b).score;
+    // the edge that formed the group agrees with the group's best score
+    expect(scoreOf(31, 32)).toBeCloseTo(t, 6);
+    expect(scoreOf(32, 33)).toBeCloseTo(t, 6);
+    expect(result.groups[0].score).toBeCloseTo(t, 6);
+    // the transitive pair below θ is still exposed for centrality
+    expect(scoreOf(31, 33)).toBeLessThan(THETA);
+  });
+});
+
 describe('nearDupFinderService — operational cap + idempotence', () => {
   it('caps the returned group set at MAX_NEAR_DUP_GROUPS, strongest first', async () => {
     const subtreeRows = [];

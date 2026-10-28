@@ -2580,21 +2580,21 @@ disabled`) sourced from the new `llmAdapter.getRoleReadiness('embed')`; it is no
 > the confirmed exposure defaults. Each unit is a task branch → `ai-feature`; worktrees are
 > isolated; full gates run on the merged tip (task units run targeted suites only).
 
-### 31.1 Units (all `[wip]`)
+### 31.1 Units (status)
 
-| Unit             | Branch / worktree                                    | Scope                                                                                                                                        |
-| ---------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| LLM readiness    | `fix/llm-probe-readiness` (wt-llm)                   | C3-A embed probe (dim/non-empty/non-degeneracy/pooling/positive control) + C4-A embed media warning (`partial`) + C6 hot registry sync/reset |
-| AI hooks         | `fix/ai-hooks-reeembed-derivatives` (wt-hooks)       | C1 content-change re-embed (hash-aware job reset) + derived tags wired at the four commit seams                                              |
-| Collections      | `fix/collections-touch-order-membership` (wt-colls)  | C2 explicit unpin, C4 active-model similar sort, C7 dialect-safe activity fallback, for-nodes published filter for non-owners                |
-| Hysteresis       | `feature/membership-hysteresis` (wt-hyst)            | EG2 `membershipHysteresis { inDelta: 0.02, outDelta: -0.02 }` (provisional) + band tests/spec                                                |
-| Undo TX          | `fix/suggestion-undo-tx` (wt-undo)                   | tx-aware untrash/rename + retry convergence for suggestion accept undo (PG/WebDAV)                                                           |
-| Tag DDL          | `chore/remove-retired-tag-ddl` (merged `e704cc71`)   | **DONE**: removed `tag_embeddings`/`tag_parents` from 001 + parity/grep/docs; no big-bang script (§31.5).                                    |
-| Docs             | `docs/contract-reconciliation` (wt-docs)             | D2 actions/api `file` writer, D3 ARCHITECTURE, D7 setup-wizard 6 steps, D8 remaining pointers; returns T4.4 draft                            |
-| Member of        | `feature/file-properties-member-of` (wt-memberof)    | D6 host+chips+navigation+tests                                                                                                               |
-| B keeper quality | `feature/near-dup-keeper-quality` (wt-b)             | B v1 scorer/exposure/reason-refresh/UI; no DDL                                                                                               |
-| BULK-010         | `test/p3-bulk-010` (wt-bulk)                         | dual core-flow batch-move undo E2E; coverage row planned→covered                                                                             |
-| Shared enums     | `refactor/shared-platform-enums` (merged `48751091`) | **Phase 1 DONE**: constants + docs/tests. **Phase 2 queued** (§31.3): migrate local arrays/literals after the code units merge.              |
+| Unit             | Branch / worktree                                            | Scope                                                                                                                                                  |
+| ---------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| LLM readiness    | `fix/llm-probe-readiness` (merged `58ec21a3`)                | **DONE**: C3-A embed probe (dim/non-empty/non-degeneracy/pooling/positive control) + C4-A embed media warning (`partial`) + C6 hot registry sync/reset |
+| AI hooks         | `fix/ai-hooks-reeembed-derivatives` (merged `16a0152f`)      | **DONE**: C1 content-change re-embed (hash-aware job reset) + derived tags wired at the four commit seams                                              |
+| Collections      | `fix/collections-touch-order-membership` (merged `f63fe741`) | **DONE**: C2 explicit unpin, C4 active-model similar sort, C7 dialect-safe activity fallback, for-nodes published filter for non-owners                |
+| Hysteresis       | `feature/membership-hysteresis` (merged `dc94a109`)          | **DONE**: EG2 `membershipHysteresis { inDelta: 0.02, outDelta: -0.02 }` (provisional) + band tests/spec                                                |
+| Undo TX          | `fix/suggestion-undo-tx` (merged `8370ef52`)                 | **DONE**: tx-aware untrash/rename + retry convergence for suggestion accept undo (PG/WebDAV)                                                           |
+| Tag DDL          | `chore/remove-retired-tag-ddl` (merged `e704cc71`)           | **DONE**: removed `tag_embeddings`/`tag_parents` from 001 + parity/grep/docs; no big-bang script (§31.5).                                              |
+| Docs             | `docs/contract-reconciliation` (merged `da99ba62`)           | **DONE**: D2 actions/api `file` writer, D3 ARCHITECTURE, D7 setup-wizard, D8 pointers; setup-step follow-up `fee1fee5`.                                |
+| Member of        | `feature/file-properties-member-of` (merged `593bb666`)      | **DONE**: D6 host + chips + navigation + tests                                                                                                         |
+| B keeper quality | `feature/near-dup-keeper-quality` (merged `303bd702`)        | **DONE**: B v1 scorer/exposure/reason-refresh/UI; no DDL                                                                                               |
+| BULK-010         | `test/p3-bulk-010` (merged `2a933ecb`)                       | **DONE**: dual core-flow batch-move undo E2E (2/2 targeted); coverage row covered                                                                      |
+| Shared enums     | `refactor/shared-platform-enums` (merged `48751091`)         | **Phase 1 DONE**; **Phase 2 in flight** on `refactor/shared-enum-consumers` (§31.3).                                                                   |
 
 ### 31.2 B v1 decisions (confirmed)
 
@@ -2652,3 +2652,26 @@ _schema_migrations WHERE filename='001_initial_normalized_schema.sql';` then re-
   migrations. No production data migration exists (never deployed).
 - **Residual:** `JOURNAL_DOMAIN.TAGS` remains in the 001 CHECK + shared constant for parity;
   remove both together in a DDL-scoped change or keep as the last unused enum member.
+
+### 31.6 Execution log — remediation unit merges (2026-10-28)
+
+- **Merged:** LLM readiness `58ec21a3`; AI hooks `16a0152f`; collections
+  `f63fe741`; hysteresis `dc94a109`; undo TX `8370ef52`; docs `da99ba62` + setup
+  follow-up `fee1fee5`; Member of `593bb666`; B keeper quality `303bd702`; BULK-010
+  `2a933ecb`; tag DDL `e704cc71`; shared enums Phase 1 `48751091`.
+- **Targeted gates:** LLM adapter/backendHealth/search 136; AI hooks 51; collections +
+  repository conformance + presets 390; undo/dashboard/fileNodes 89; B dashboard/
+  nearDup/fileSuggestions 115 + client checklist/dashboard 30; Member of client 177;
+  tag DDL sqlite 50 + real PG 18; BULK-010 dual E2E 2/2; docsStatePurity green.
+- **Caveats carried:** LLM hot registry sync uses `metadata:false` (next boot refreshes
+  model-specific metadata) and the real-weights positive control remains opt-in; re-embed
+  reset can overlap a still-running execution (guarded `markDone` no-op); derived tags do not
+  refresh on rename/move (backfill remains); a multi-field PUT containing `pinned:false`
+  skips auto-pin for that request; grantee `for-nodes` chips now omit unpublished rows;
+  WebDAV undo retry is idempotent but a new name collision can still require a manual move;
+  B keeps short-document members keeper-eligible, does not backfill legacy rows, and keeper
+  flips churn rows; BULK-010 raises the E2E inventory 256→258 (release matrix re-pin still
+  required); tag DDL changed the 001 checksum (local DB reset note in §31.5).
+- **Still open:** shared-enums Phase 2 consumer migration (in flight); final full
+  server/client + PG + E2E release gates on the merged tip; `JOURNAL_DOMAIN.TAGS` parity
+  decision; P4 hysteresis calibration and the remaining P4 carry-forward items.

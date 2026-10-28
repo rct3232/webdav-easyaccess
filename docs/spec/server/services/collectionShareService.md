@@ -73,10 +73,11 @@ Mode lives on the collection row (`publish_mode`), changed only by the owner
   confirm dialog is the batch approval, including the unseen remainder (copy obligation
   in collectionsService §2.7). Subsequent arrivals park per the mode above.
 - `publishPendingCount(userId, collectionId, rows)` → owner-only number of
-  `published=false` rows in the requester-resolved view (stored + derived). The items
-  route passes the SAME rows it just resolved (in-memory count, zero extra reads); the
-  owner gate lives here — a non-owner caller throws `forbidden`, and the route omits the
-  key for grantees.
+  `published=false` rows in the requester-resolved view (stored + derived), regardless of
+  `publish_mode` (`auto` publishes on add and never retroactively publishes parked
+  history, so legacy parked rows remain counted). The items route passes the SAME rows it
+  just resolved (in-memory count, zero extra reads); the owner gate lives here — a non-owner
+  caller throws `forbidden`, and the route omits the key for grantees.
 - `publish(userId, id, nodeIds, published=true|false)` → owner or editor (viewer →
   `forbidden`). Route surface `PUT /:id/items/publish`. `nodeIds` ride the shared
   `emptyNodeIds` boundary (1–200) and `published` must be boolean

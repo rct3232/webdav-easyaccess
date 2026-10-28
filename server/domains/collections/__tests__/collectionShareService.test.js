@@ -236,6 +236,19 @@ describe('shareService isVisibleToGrantee / publishPendingCount', () => {
       shareService.publishPendingCount(editor.user.id, collection.id, rows)
     ).rejects.toMatchObject({ message: 'forbidden' });
   });
+
+  it('publishPendingCount counts legacy parked rows in auto mode', async () => {
+    const owner = await createUserWithRoot('ppc-auto');
+    const { collection } = await collectionsService.createCollection(owner.user.id, {
+      name: 'Auto pending',
+    });
+    await collectionsService.updateCollection(owner.user.id, collection.id, {
+      publishMode: 'auto',
+    });
+    const rows = [{ published: false }, { published: true }];
+
+    expect(await shareService.publishPendingCount(owner.user.id, collection.id, rows)).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

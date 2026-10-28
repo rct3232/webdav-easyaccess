@@ -44,6 +44,10 @@ import FileManagerView from '../../components/file-manager/FileManagerView';
 // download, etc.) must flip the banner without a page remount.
 const HEALTH_POLL_INTERVAL_MS = 15000;
 
+// Stable empty slice for the properties `Member of` chips (dialog §3.2) —
+// keeps the grouped prop identity steady while no membership exists.
+const EMPTY_PROPERTIES_COLLECTIONS = [];
+
 const FileManager = ({ shareToken, linkInfo } = {}) => {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -1666,14 +1670,36 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       const id = row?.nodeId ?? row?.node_id;
       if (id != null) ids.push(id);
     }
+    // FilePropertiesDialog §3.2: the opened file's membership must exist even
+    // when it is not a current listing row (member route, stale target).
+    if (propertiesFile?.nodeId != null) ids.push(propertiesFile.nodeId);
     return ids;
-  }, [files, searchApi.zoneBRows, searchApi.zoneCRows]);
+  }, [files, searchApi.zoneBRows, searchApi.zoneCRows, propertiesFile?.nodeId]);
 
   const { membershipsByNodeId } = useCollectionMemberships({
     nodeIds: membershipNodeIds,
     collections: collectionsApi.collections,
     gateway: isShareLinkMode || user?.is_admin ? INERT_COLLECTIONS_GATEWAY : undefined,
   });
+
+  // Dialog `Member of` chips (FilePropertiesDialog.md §3.2): the host slices the
+  // map for the opened node and owns navigation (the dialog stays pure).
+  const propertiesCollections = useMemo(() => {
+    const nodeId = propertiesFile?.nodeId;
+    if (nodeId == null) return EMPTY_PROPERTIES_COLLECTIONS;
+    return membershipsByNodeId[nodeId] ?? EMPTY_PROPERTIES_COLLECTIONS;
+  }, [propertiesFile?.nodeId, membershipsByNodeId]);
+
+  // Chip click follows the collections member route with the same string-path
+  // setter the cards/tree rows use; the dialog closes first (host owns close).
+  const handleOpenCollectionFromProperties = useCallback(
+    (collectionId) => {
+      if (collectionId == null) return;
+      closePropertiesDialog();
+      setCurrentPath(`/__collections__/collection/${Number(collectionId)}`);
+    },
+    [closePropertiesDialog, setCurrentPath]
+  );
 
   // Files-surface toolbar bulk add (BulkActionToolbar.md §3 merged into
   // FileManagerControls): selection keys ARE nodeIds for authenticated rows
@@ -2315,6 +2341,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       shareDialogV2File,
       mobileShareFile,
       propertiesFile,
+      propertiesCollections,
       bulkDeleteFilePaths,
       bulkConflictData,
       setBulkConflictData,
@@ -2328,6 +2355,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       shareDialogV2File,
       mobileShareFile,
       propertiesFile,
+      propertiesCollections,
       bulkDeleteFilePaths,
       bulkConflictData,
       setBulkConflictData,
@@ -2435,6 +2463,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       openUploadDialog,
       openCreateFolderDialog,
       onShareTargetSave,
+      handleOpenCollectionFromProperties,
     }),
     [
       handleOperationComplete,
@@ -2452,6 +2481,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       openUploadDialog,
       openCreateFolderDialog,
       onShareTargetSave,
+      handleOpenCollectionFromProperties,
     ]
   );
 

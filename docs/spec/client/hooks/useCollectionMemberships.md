@@ -22,7 +22,7 @@
 
 | Name        | Type            | Required | Description                                                                                                                                                                               |
 | ----------- | --------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| nodeIds     | Array\<number\> | Y        | Node ids on the current files surfaces. The hook de-dupes, drops nullish ids and ignores the rest of the ordering. An empty set ⇒ no IO, empty map.                                       |
+| nodeIds     | Array\<number\> | Y        | Node ids on the current files surfaces. The hook de-dupes, drops nullish ids and ignores the rest of the ordering. An empty set ⇒ no IO, empty map. The shell also includes the currently opened properties target so its membership is available off-listing (`pages/FileManager.md` §7).                                       |
 | collections | Array\<object\> | Y        | `useCollections.collections` rows (`collection_id`/`name`). Name resolution + the stable chip order (collections-list order).                                                             |
 | gateway     | object          | N        | Memberships seams from `explorerGateway` §2.6: `getMemberships`, `subscribeToCollections` (default: the real gateway; the shell passes the inert seam for admin and share-link sessions). |
 
@@ -52,6 +52,7 @@
 - [ ] Empty id set ⇒ zero IO, empty map.
 - [ ] Unknown collection id ⇒ dropped (badge never renders an unresolvable name).
 - [ ] Inert gateway ⇒ zero `getMemberships` calls, empty map, no-op unsubscribe.
+- [ ] Opened-properties target id supplied by the host is part of the requested set even when it is not a listing row.
 
 ### 2.6 Non-goals
 

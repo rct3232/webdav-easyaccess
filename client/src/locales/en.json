@@ -458,6 +458,7 @@
     "selectFolderToShare": "Please select a folder to share.",
     "propertiesTabInfo": "Info",
     "propertiesTabVersions": "Versions",
+    "fileCollections": "Member of",
     "versionsEmpty": "No previous versions.",
     "versionsCurrentBadge": "Current",
     "versionsExpired": "Expired",

@@ -458,6 +458,7 @@
     "selectFolderToShare": "공유할 폴더를 선택해주세요.",
     "propertiesTabInfo": "정보",
     "propertiesTabVersions": "버전",
+    "fileCollections": "소속 컬렉션",
     "versionsEmpty": "이전 버전이 없습니다.",
     "versionsCurrentBadge": "현재",
     "versionsExpired": "만료됨",

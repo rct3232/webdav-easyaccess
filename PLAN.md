@@ -2576,19 +2576,19 @@ disabled`) sourced from the new `llmAdapter.getRoleReadiness('embed')`; it is no
 
 ### 31.1 Units (all `[wip]`)
 
-| Unit             | Branch / worktree                                   | Scope                                                                                                                                        |
-| ---------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| LLM readiness    | `fix/llm-probe-readiness` (wt-llm)                  | C3-A embed probe (dim/non-empty/non-degeneracy/pooling/positive control) + C4-A embed media warning (`partial`) + C6 hot registry sync/reset |
-| AI hooks         | `fix/ai-hooks-reeembed-derivatives` (wt-hooks)      | C1 content-change re-embed (hash-aware job reset) + derived tags wired at the four commit seams                                              |
-| Collections      | `fix/collections-touch-order-membership` (wt-colls) | C2 explicit unpin, C4 active-model similar sort, C7 dialect-safe activity fallback, for-nodes published filter for non-owners                |
-| Hysteresis       | `feature/membership-hysteresis` (wt-hyst)           | EG2 `membershipHysteresis { inDelta: 0.02, outDelta: -0.02 }` (provisional) + band tests/spec                                                |
-| Undo TX          | `fix/suggestion-undo-tx` (wt-undo)                  | tx-aware untrash/rename + retry convergence for suggestion accept undo (PG/WebDAV)                                                           |
-| Tag DDL          | `chore/remove-retired-tag-ddl` (wt-tagddl)          | remove `tag_embeddings`/`tag_parents` from 001 + parity tests/grep gate/docs (no big-bang script)                                            |
-| Docs             | `docs/contract-reconciliation` (wt-docs)            | D2 actions/api `file` writer, D3 ARCHITECTURE, D7 setup-wizard 6 steps, D8 remaining pointers; returns T4.4 draft                            |
-| Member of        | `feature/file-properties-member-of` (wt-memberof)   | D6 host+chips+navigation+tests                                                                                                               |
-| B keeper quality | `feature/near-dup-keeper-quality` (wt-b)            | B v1 scorer/exposure/reason-refresh/UI; no DDL                                                                                               |
-| BULK-010         | `test/p3-bulk-010` (wt-bulk)                        | dual core-flow batch-move undo E2E; coverage row planned→covered                                                                             |
-| Shared enums     | `refactor/shared-platform-enums` (wt-enums)         | D1-A Phase 1 constants + docs/tests; Phase 2 migration list follows after the units above merge                                              |
+| Unit             | Branch / worktree                                    | Scope                                                                                                                                        |
+| ---------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| LLM readiness    | `fix/llm-probe-readiness` (wt-llm)                   | C3-A embed probe (dim/non-empty/non-degeneracy/pooling/positive control) + C4-A embed media warning (`partial`) + C6 hot registry sync/reset |
+| AI hooks         | `fix/ai-hooks-reeembed-derivatives` (wt-hooks)       | C1 content-change re-embed (hash-aware job reset) + derived tags wired at the four commit seams                                              |
+| Collections      | `fix/collections-touch-order-membership` (wt-colls)  | C2 explicit unpin, C4 active-model similar sort, C7 dialect-safe activity fallback, for-nodes published filter for non-owners                |
+| Hysteresis       | `feature/membership-hysteresis` (wt-hyst)            | EG2 `membershipHysteresis { inDelta: 0.02, outDelta: -0.02 }` (provisional) + band tests/spec                                                |
+| Undo TX          | `fix/suggestion-undo-tx` (wt-undo)                   | tx-aware untrash/rename + retry convergence for suggestion accept undo (PG/WebDAV)                                                           |
+| Tag DDL          | `chore/remove-retired-tag-ddl` (wt-tagddl)           | remove `tag_embeddings`/`tag_parents` from 001 + parity tests/grep gate/docs (no big-bang script)                                            |
+| Docs             | `docs/contract-reconciliation` (wt-docs)             | D2 actions/api `file` writer, D3 ARCHITECTURE, D7 setup-wizard 6 steps, D8 remaining pointers; returns T4.4 draft                            |
+| Member of        | `feature/file-properties-member-of` (wt-memberof)    | D6 host+chips+navigation+tests                                                                                                               |
+| B keeper quality | `feature/near-dup-keeper-quality` (wt-b)             | B v1 scorer/exposure/reason-refresh/UI; no DDL                                                                                               |
+| BULK-010         | `test/p3-bulk-010` (wt-bulk)                         | dual core-flow batch-move undo E2E; coverage row planned→covered                                                                             |
+| Shared enums     | `refactor/shared-platform-enums` (merged `48751091`) | **Phase 1 DONE**: constants + docs/tests. **Phase 2 queued** (§31.3): migrate local arrays/literals after the code units merge.              |
 
 ### 31.2 B v1 decisions (confirmed)
 
@@ -2601,7 +2601,28 @@ disabled`) sourced from the new `llmAdapter.getRoleReadiness('embed')`; it is no
   stable). UI: `Keep: <name> · <basis>` + accessible “Why this keeper?” (group-relative score
   and factor bars only in the detail).
 
-### 31.3 Merge/gate order
+### 31.3 Shared enums Phase 2 migration queue
+
+Phase 1 shipped the constants only; no server call site consumes them yet. The follow-up
+branch (`refactor/shared-enum-consumers`, queued after the code units merge) replaces the
+local arrays/literals with the shared constants:
+
+- `collections/service.js:49` `VALID_PUBLISH_MODES` → `PUBLISH_MODE`
+- `collections/shareService.js:28` `VALID_GRANT_ROLES` → `GRANT_ROLE`
+- `actions/service.js:24-33` `JOURNAL_DOMAINS` → `JOURNAL_DOMAIN` (keep the dead-but-shipped
+  `TAGS` value until the 001 CHECK edit; remove both together or not at all)
+- `infrastructure/adapters/llm/index.js:39` `ROLES` → `LLM_ROLE`
+- `collections/evolutionService.js:1737` merge-state subset → `MERGE_SUGGESTION_STATE`
+  (exclude `DISMISSED`; do not use `ALL` blindly)
+- `setup/setupCore.js:49` `LLM_ROLES` (`chat|vision|asr`) is an intentional wizard subset —
+  keep it local or add a documented subset constant; never map it to `LLM_ROLE`
+- Literal origin/status/merge/file-suggestion sites (see the Phase 1 report) → the matching
+  constant. `status:'all'` is a list-filter pseudo-value, never passed to `isValid`; SQL
+  literals require template interpolation.
+- Known gaps: `JOURNAL_DOMAIN.TAGS` has no writer; `file_suggestions.state` has no DDL CHECK
+  (add one only in a DDL-scoped change). The Phase 1 test pins value/ALL/isValid parity.
+
+### 31.4 Merge/gate order
 
 `wt-colls`/`wt-hyst`/`wt-tagddl`/`wt-docs`/`wt-bulk`/`wt-memberof` may merge independently;
 `wt-undo` before `wt-b`; `wt-llm`/`wt-hooks` before the final full gate; `wt-enums` Phase 1

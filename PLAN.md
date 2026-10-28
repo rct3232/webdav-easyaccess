@@ -163,6 +163,8 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   profile θ_lo remnants; grep-gate `no tag_embeddings|tag_parents|getTagVectors|
 upsertAutoParent references` across `server/` except the purge commit itself.
   RED-first: flip aiTagStore §2.6 grep assertions to expect absence, then delete.
+  **DONE 2026-10-28:** the two DDL definitions were removed directly from 001 (no big-bang
+  script) and the parity/grep docs updated — merge `e704cc71`, log §31.5.
 - T1.1 LLM adapter (T2-hot: per-call config resolution, re-probe on change, restart-free
   §4.2) + budgets/breaker + startup probe + preset manifest & preset×capability probe-matrix
   verification (declared≠probed ⇒ capability off + admin warning, §4.23) + **EG2 model-pin
@@ -1022,6 +1024,10 @@ Owner record (2026-10-16, after the θ_tag/θ_lo/lifecycle review chain): "llm t
 5. **DDL posture**: `tag_embeddings`/`tag_parents` definitions stay in 001 only until the
    big-bang deploy (§17 ruling) drops them + `JOURNAL_DOMAIN` enum loses the unused `tags`
    value; NO new code references them (grep-gate in llmPresets §4).
+   **Superseded 2026-10-28:** no deployment consumed 001, so both retired tables were removed
+   directly from 001 (merge `e704cc71`, log §31.5); the big-bang DROP is no longer needed.
+   `JOURNAL_DOMAIN.TAGS` remains (DDL CHECK + constant parity) and is the only residual of
+   this bullet.
 6. **Docs touched**: AI_FEATURE_PLAN §3.1/§3.2/§4.9/§4.10/§4.11/§4.12/§4.15/§4.18(rewritten)/
    §4.19/§4.20/§4.23.3/§5/§10(Q11 closed)/§12.9; llmPresets (θ_lo field gone, map row, §4);
    specs: aiTagStore (derived-facet scope), collectionsService/evolutionService/searchService/
@@ -2583,7 +2589,7 @@ disabled`) sourced from the new `llmAdapter.getRoleReadiness('embed')`; it is no
 | Collections      | `fix/collections-touch-order-membership` (wt-colls)  | C2 explicit unpin, C4 active-model similar sort, C7 dialect-safe activity fallback, for-nodes published filter for non-owners                |
 | Hysteresis       | `feature/membership-hysteresis` (wt-hyst)            | EG2 `membershipHysteresis { inDelta: 0.02, outDelta: -0.02 }` (provisional) + band tests/spec                                                |
 | Undo TX          | `fix/suggestion-undo-tx` (wt-undo)                   | tx-aware untrash/rename + retry convergence for suggestion accept undo (PG/WebDAV)                                                           |
-| Tag DDL          | `chore/remove-retired-tag-ddl` (wt-tagddl)           | remove `tag_embeddings`/`tag_parents` from 001 + parity tests/grep gate/docs (no big-bang script)                                            |
+| Tag DDL          | `chore/remove-retired-tag-ddl` (merged `e704cc71`)   | **DONE**: removed `tag_embeddings`/`tag_parents` from 001 + parity/grep/docs; no big-bang script (§31.5).                                    |
 | Docs             | `docs/contract-reconciliation` (wt-docs)             | D2 actions/api `file` writer, D3 ARCHITECTURE, D7 setup-wizard 6 steps, D8 remaining pointers; returns T4.4 draft                            |
 | Member of        | `feature/file-properties-member-of` (wt-memberof)    | D6 host+chips+navigation+tests                                                                                                               |
 | B keeper quality | `feature/near-dup-keeper-quality` (wt-b)             | B v1 scorer/exposure/reason-refresh/UI; no DDL                                                                                               |
@@ -2629,3 +2635,20 @@ local arrays/literals with the shared constants:
 after the code units (Phase 2 follows). Final gate: server/client `test:ci`, PG adapters for
 repository/DDL/undo units, dual E2E (collections/retrieval/ai + core-flow), docsStatePurity,
 prettier/eslint, release matrix before the single `ai-feature`→`dev` merge.
+
+### 31.5 Execution log — tag DDL removal (2026-10-28)
+
+- Branch `chore/remove-retired-tag-ddl`, commit `4466da5a`, merge `e704cc71`.
+- Removed the `tag_embeddings`/`tag_parents` CREATE blocks from 001 (no ALTER/migration
+  script). DDL-parity suites now expect **36 tables** and assert both names absent;
+  `aiTagStore.test.js` keeps the server-wide grep gate and adds the 001 absence pin.
+- Specs: `aiTagStore.md` purge paragraph deleted, `aiEnrichmentsStore.md` linger note
+  replaced, `vectorStore.md` stale `tag_embeddings lookups` example corrected.
+- Gates: 5 targeted sqlite suites / 50 pass; 3 real-PG suites / 18 pass on a fresh DB;
+  docsStatePurity included; eslint/prettier clean.
+- **Operational:** 001's checksum changed. Already-migrated local/e2e DBs need a reset —
+  recreate the DB or `DROP TABLE IF EXISTS tag_embeddings, tag_parents; DELETE FROM
+_schema_migrations WHERE filename='001_initial_normalized_schema.sql';` then re-run
+  migrations. No production data migration exists (never deployed).
+- **Residual:** `JOURNAL_DOMAIN.TAGS` remains in the 001 CHECK + shared constant for parity;
+  remove both together in a DDL-scoped change or keep as the last unused enum member.

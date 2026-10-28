@@ -243,8 +243,10 @@ Field rules:
 `state`: `normal | revoked`; `reason` = the matched rule captured when a rule-managed
 row was materialized (`"tag:poster"`, `"path:/travel/2026"`, `"similar"`), `null` for
 manual rows. `mime` is the filecache mime type from the node row (nullable);
-it is `null` on `state:"revoked"` placeholder rows like `name`/`type` (no metadata leak). `publish_pending_count` is owner-visible only (keyed on collection
-`publish_mode != auto` rows with `published=false`); grantees get the key omitted.
+it is `null` on `state:"revoked"` placeholder rows like `name`/`type` (no metadata leak). `publish_pending_count` is owner-visible only and counts every `published=false` row in
+the resolved view, regardless of `publish_mode` (`auto` publishes on add and never
+retroactively publishes parked history, so legacy parked rows remain counted); grantees
+get the key omitted.
 `digest` appears only when `since` was supplied.
 Serving `GET /:id/items` stamps `collection_digest_cursors.last_visited_at` to now for
 the requester (the read IS the visit; no separate reset endpoint) — one fetch per open

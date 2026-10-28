@@ -92,6 +92,10 @@ function createBackendHealth() {
       const from = current.status;
       const next = initialState();
       next.status = 'ok';
+      // An ok report is normally clean; a hint is allowed for the
+      // partial-but-usable state (§2.3, e.g. ai.embed media caps OFF while
+      // text_embed passes). The next hint-free ok clears it.
+      if (hint) next.hint = hint;
       next.lastCheckedAt = now;
       state.set(key, next);
       if (from === 'fail') fireTransition(key, from, next.status, next);

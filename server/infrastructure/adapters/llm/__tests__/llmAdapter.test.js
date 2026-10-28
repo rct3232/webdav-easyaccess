@@ -19,6 +19,7 @@ const { createLlmAdapter } = require('../index');
 const { resolveBudget, createLimiter } = require('../budget');
 const { kit } = require('../presets');
 const probeState = require('../probeState');
+const vectorRuntime = require('../../../../domains/ai/vectorStoreRuntime');
 
 // ── test seams ───────────────────────────────────────────────────────────────
 
@@ -256,6 +257,22 @@ const REMOTE_CHAT = {
   LLM_CHAT_API_KEY: 'sk-chat',
 };
 
+/** A unit basis vector — distinct indexes are guaranteed non-degenerate. */
+function unitVectorAt(index, dim = 768) {
+  const vector = new Array(dim).fill(0);
+  vector[index] = 1;
+  return vector;
+}
+
+/** External-EG2 profile fixture: dim + the declared pooling shape. */
+const EMBED_PRESET = {
+  id: 'embeddinggemma-2-external',
+  family: 'llama.cpp',
+  expected: { text_embed: true, image_embed: true, audio_embed: true, video_embed: true },
+  profile: { dim: 768, pooling: 'mean' },
+  budgets: { maxInputCharsDefault: 8192, chunkBudget: 4, batchSize: 8 },
+};
+
 const LOCK = {
   repo: 'onnx-community/embeddinggemma-2-ONNX',
   revision: 'daa72c51243991dfcaf9f9137d2c573d8f7790c0',
@@ -293,6 +310,9 @@ function buildAdapter(overrides = {}) {
     aiUsageDailyStore: usage,
     health: { report: (key, patch) => healthReports.push({ key, patch }) },
     presetFor: () => null,
+    // Hermetic built-in positive control: the real ONNX kit pass belongs to
+    // the embedded smoke suite; adapter tests assert the probe wiring only.
+    embeddedPositiveControl: async () => ({ median: 1, min: 1, dim: 768 }),
     clock,
     timers,
     // Hermetic default transport: a CONFORMING endpoint, so a remote embed
@@ -791,7 +811,11 @@ describe('remote-embed EG2 conformance activation gate', () => {
     // Cached by the resolved-config signature: repeated activation and the
     // call path reuse the verdict — never another provider round-trip.
     await expect(adapter.roleConfigured('embed')).resolves.toBe(true);
-    await expect(adapter.getRoleClient('embed')).resolves.not.toBeNull();
+    const embedClient = await adapter.getRoleClient('embed');
+    embedClient.queue({
+      type: 'ok',
+      value: { vectors: [unitVectorAt(0), unitVectorAt(1)], dim: 768 },
+    });
     await expect(adapter.probeRole('embed')).resolves.toMatchObject({ ok: true });
     expect(endpoint.calls).toHaveLength(1);
   });
@@ -872,6 +896,252 @@ describe('remote-embed EG2 conformance activation gate', () => {
     await expect(adapter.roleConfigured('embed')).resolves.toBe(true);
     await expect(adapter.getRoleClient('embed')).resolves.not.toBeNull();
     expect(endpoint.calls).toHaveLength(0);
+  });
+});
+
+// ── embed text probe completeness + partial admin state (C3-A/C4-A) ──────────
+
+describe('embed text probe completeness', () => {
+  beforeEach(() => probeState.reset());
+
+  const capability = (name) =>
+    probeState.getCapabilityEntries().find((entry) => entry.capability === name);
+
+  function withProps(endpoint, pooling) {
+    return async (url, init) => {
+      if (String(url).endsWith('/props')) {
+        return {
+          ok: true,
+          status: 200,
+          async json() {
+            return { pooling };
+          },
+        };
+      }
+      return endpoint.fetchImpl(url, init);
+    };
+  }
+
+  it('healthy remote endpoint passes: non-empty, profile dim, distinct samples ⇒ text_embed ON', async () => {
+    const endpoint = makeConformanceEndpoint('conforming');
+    const r = makeResolver({ ...REMOTE_EMBED });
+    const { adapter, healthReports } = buildAdapter({
+      resolver: r,
+      deps: {
+        fetchImpl: withProps(endpoint, 'mean'),
+        presetFor: () => EMBED_PRESET,
+      },
+    });
+    const client = await adapter.getRoleClient('embed');
+    client.queue({
+      type: 'ok',
+      value: { vectors: [unitVectorAt(0), unitVectorAt(2)], dim: 768 },
+    });
+
+    await expect(adapter.probeRole('embed')).resolves.toMatchObject({ ok: true, reason: null });
+    expect(capability('text_embed')).toMatchObject({ enabled: true, reason: null });
+    expect(
+      healthReports.some((h) => h.key === 'ai.embed' && h.patch.ok === true && !h.patch.hint)
+    ).toBe(true);
+
+    // Activation-time only: the cached verdict is reused, never re-embedded.
+    const textProbeCalls = client.calls.filter((call) => call.method === 'embed').length;
+    expect(textProbeCalls).toBe(1);
+    await adapter.probeRole('embed');
+    await adapter.roleConfigured('embed');
+    expect(client.calls.filter((call) => call.method === 'embed')).toHaveLength(textProbeCalls);
+  });
+
+  it('constant-output endpoint ⇒ degenerateEmbedding, text_embed OFF + ai.embed failure', async () => {
+    const endpoint = makeConformanceEndpoint('conforming');
+    const r = makeResolver({ ...REMOTE_EMBED });
+    const { adapter, healthReports } = buildAdapter({
+      resolver: r,
+      deps: { fetchImpl: endpoint.fetchImpl, presetFor: () => EMBED_PRESET },
+    });
+    const client = await adapter.getRoleClient('embed');
+    const constant = unitVectorAt(0);
+    client.queue({ type: 'ok', value: { vectors: [constant, constant], dim: 768 } });
+
+    await expect(adapter.probeRole('embed')).resolves.toMatchObject({
+      ok: false,
+      reason: 'degenerateEmbedding',
+    });
+    expect(capability('text_embed')).toMatchObject({
+      enabled: false,
+      reason: 'degenerateEmbedding',
+    });
+    expect(healthReports.find((h) => h.key === 'ai.embed' && h.patch.ok === false).patch).toMatchObject(
+      { code: 'probe_failed', reason: 'degenerateEmbedding' }
+    );
+  });
+
+  it('wrong runtime dim (512 vs profile 768) ⇒ wrongDim, text_embed OFF', async () => {
+    const endpoint = makeConformanceEndpoint('conforming');
+    const r = makeResolver({ ...REMOTE_EMBED });
+    const { adapter } = buildAdapter({
+      resolver: r,
+      deps: { fetchImpl: endpoint.fetchImpl, presetFor: () => EMBED_PRESET },
+    });
+    const client = await adapter.getRoleClient('embed');
+    client.queue({
+      type: 'ok',
+      value: { vectors: [new Array(512).fill(0.1), new Array(512).fill(0.2)], dim: 512 },
+    });
+
+    await expect(adapter.probeRole('embed')).resolves.toMatchObject({
+      ok: false,
+      reason: 'wrongDim',
+    });
+    expect(capability('text_embed')).toMatchObject({ enabled: false, reason: 'wrongDim' });
+  });
+
+  it('server pooling mismatch vs profile ⇒ poolingMismatch, text_embed OFF', async () => {
+    const endpoint = makeConformanceEndpoint('conforming');
+    const r = makeResolver({ ...REMOTE_EMBED });
+    const { adapter } = buildAdapter({
+      resolver: r,
+      deps: {
+        fetchImpl: withProps(endpoint, 'cls'),
+        presetFor: () => EMBED_PRESET,
+      },
+    });
+    const client = await adapter.getRoleClient('embed');
+    client.queue({
+      type: 'ok',
+      value: { vectors: [unitVectorAt(0), unitVectorAt(3)], dim: 768 },
+    });
+
+    await expect(adapter.probeRole('embed')).resolves.toMatchObject({
+      ok: false,
+      reason: 'poolingMismatch',
+    });
+    expect(capability('text_embed')).toMatchObject({
+      enabled: false,
+      reason: 'poolingMismatch',
+    });
+  });
+
+  it('built-in positive-control failure ⇒ positiveControlFailed, text_embed OFF + admin reason', async () => {
+    const { adapter, healthReports } = buildAdapter({
+      deps: {
+        embeddedPositiveControl: async () => ({ median: 0.2, min: 0.1, dim: 768 }),
+      },
+    });
+    const client = await adapter.getRoleClient('embed');
+    client.queue({
+      type: 'ok',
+      value: { vectors: [unitVectorAt(0), unitVectorAt(1)], dim: 768 },
+    });
+
+    await expect(adapter.probeRole('embed')).resolves.toMatchObject({
+      ok: false,
+      reason: 'positiveControlFailed',
+    });
+    expect(capability('text_embed')).toMatchObject({
+      enabled: false,
+      reason: 'positiveControlFailed',
+    });
+    expect(healthReports.find((h) => h.key === 'ai.embed' && h.patch.ok === false).patch).toMatchObject(
+      { code: 'probe_failed', reason: 'positiveControlFailed' }
+    );
+  });
+
+  it('built-in healthy positive control passes text_embed', async () => {
+    const { adapter } = buildAdapter();
+    const client = await adapter.getRoleClient('embed');
+    client.queue({
+      type: 'ok',
+      value: { vectors: [unitVectorAt(0), unitVectorAt(1)], dim: 768 },
+    });
+
+    await expect(adapter.probeRole('embed')).resolves.toMatchObject({ ok: true });
+    expect(capability('text_embed')).toMatchObject({ enabled: true, reason: null });
+  });
+
+  it('failed embed MEDIA with text_embed passing ⇒ ai.embed ok + hint (admin partial)', async () => {
+    const endpoint = makeConformanceEndpoint('conforming');
+    const r = makeResolver({ ...REMOTE_EMBED });
+    const mediaFailingClients = {
+      created: [],
+      createClient(spec) {
+        const client = {
+          spec,
+          calls: [],
+          async embed(texts) {
+            this.calls.push({ method: 'embed', texts });
+            return { vectors: [unitVectorAt(0), unitVectorAt(4)], dim: 768 };
+          },
+          async embedQuery() {
+            return { vectors: [unitVectorAt(0)], dim: 768 };
+          },
+          async embedMedia() {
+            throw Object.assign(new Error('media silently dropped'), {
+              class: 'config',
+              reason: 'media_dropped',
+            });
+          },
+        };
+        this.created.push(client);
+        return client;
+      },
+    };
+    const { adapter, healthReports } = buildAdapter({
+      resolver: r,
+      clients: mediaFailingClients,
+      deps: { fetchImpl: endpoint.fetchImpl, presetFor: () => EMBED_PRESET },
+    });
+
+    await expect(adapter.probeRole('embed')).resolves.toMatchObject({ ok: true });
+    expect(capability('text_embed')).toMatchObject({ enabled: true });
+    expect(capability('image_embed')).toMatchObject({ enabled: false });
+    const partial = healthReports.find(
+      (h) => h.key === 'ai.embed' && h.patch.ok === true && h.patch.hint
+    );
+    expect(partial.patch).toMatchObject({
+      ok: true,
+      hint: 'serverErrors.ai.providerProbeFailed',
+    });
+  });
+});
+
+// ── hot embed registry sync + vector reset (C6) ──────────────────────────────
+
+describe('hot embed registry sync', () => {
+  it('a hot embed config change updates the registry/modelId and resets the vector store once', async () => {
+    const r = makeResolver({ ...REMOTE_EMBED });
+    const { adapter, models } = buildAdapter({ resolver: r });
+    const reset = jest.spyOn(vectorRuntime, 'resetVectorStore').mockImplementation(() => {});
+    try {
+      // Boot sync + initial observation (the boot probe primes the signature).
+      await adapter.syncModelRegistry();
+      await adapter.getRoleClient('embed');
+      const before = await models.getActiveByRole('embed');
+      expect(before).toMatchObject({ modelName: 'embeddinggemma-2' });
+      reset.mockClear();
+
+      // Hot config change: the client rebuild must ALSO re-sync the embed row.
+      await r.set('LLM_EMBED_MODEL', 'embeddinggemma-2-v2');
+      const client = await adapter.getRoleClient('embed');
+      const after = await models.getActiveByRole('embed');
+      expect(after.id).not.toBe(before.id);
+      expect(after).toMatchObject({
+        role: 'embed',
+        engine: 'remote',
+        modelName: 'embeddinggemma-2-v2',
+        enabled: true,
+      });
+      expect(reset).toHaveBeenCalledTimes(1);
+
+      client.queue({ type: 'ok', value: { vectors: [unitVectorAt(0)], dim: 768 } });
+      await expect(adapter.embed(['hello'])).resolves.toMatchObject({ modelId: after.id });
+
+      // Same signature again: no double sync / no second reset.
+      await adapter.getRoleClient('embed');
+      expect(reset).toHaveBeenCalledTimes(1);
+    } finally {
+      reset.mockRestore();
+    }
   });
 });
 

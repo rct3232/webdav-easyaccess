@@ -223,6 +223,24 @@ describe('AI role slots (T0.7b — ai.embed / ai.chat, §4.12)', () => {
     expect(tracker.getHealth()['ai.chat'].consecutiveFailures).toBe(1);
   });
 
+  it('ok:true keeps a partial hint; the next hint-free ok clears it', () => {
+    const tracker = createBackendHealth();
+    tracker.report('ai.embed', { ok: true, hint: 'serverErrors.ai.providerProbeFailed' });
+
+    expect(tracker.getHealth()['ai.embed']).toMatchObject({
+      status: 'ok',
+      hint: 'serverErrors.ai.providerProbeFailed',
+      consecutiveFailures: 0,
+    });
+    // code/reason stay cleared on the ok report.
+    expect(tracker.getHealth()['ai.embed'].code).toBeUndefined();
+    expect(tracker.getHealth()['ai.embed'].reason).toBeUndefined();
+
+    tracker.report('ai.embed', { ok: true });
+    expect(tracker.getHealth()['ai.embed'].hint).toBeUndefined();
+    expect(tracker.getHealth()['ai.embed'].status).toBe('ok');
+  });
+
   it('an ai.<role> report never flips a backend row and vice versa', () => {
     const tracker = createBackendHealth();
     const transitions = collectTransitions(tracker);

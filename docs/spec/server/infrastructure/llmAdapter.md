@@ -87,7 +87,10 @@ Target-contract spec.
   retried by the next activation/debounced pass.
 - **On signature change:** re-probe the role (debounced ~60s; admin "test" button =
   manual trigger) → `backendHealth` rows update → `settings/public` `ai:{embed,chat}`
-  flags flip live (email_enabled precedent `settings.js:18-29`). Running enrichment
+  flags flip live (email_enabled precedent `settings.js:18-29`). An embed client rebuild
+  also re-syncs the embed `llm_models` row/`modelId` in place and, when the model identity
+  changed, resets the boot-frozen vector store (§2.3 `syncModelRegistry`); this hot sync is
+  non-recursive and adds no provider inference/metadata call. Running enrichment
   workers adopt the new config at the NEXT job; query-embed adopts at the next request
   (mid-switch failure degrades — never surfaces as error); budget breakers RESET
   on reconfig. Usage HISTORY is DB truth and is NEVER reset by a reconfig
@@ -109,7 +112,7 @@ Target-contract spec.
 | `probeRole(role)` / `probeConfiguredRoles()`        | The adapter's probe entry points: `probeRole` runs the role's suite (embed ⇒ conformance gate, chat/vision/asr ⇒ the injected probe suite) and publishes the matrix result; `probeConfiguredRoles()` probes every configured role once (the startup/INITIAL probe). Both return `{ok, role, reason}` and never throw on a probe failure.                                                                                                                                                                                                                                                                                                                                                    |
 | `getEffectiveCapabilities()`                        | The EFFECTIVE `{embed, chat, vision, asr}` set published by the probe matrix (`probeState`). This — not raw config presence — is what the enrichment hook's decision table and admin capability surfaces read (§2.4).                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `breakerState(role)` / `budgetStatus()`             | admin card inputs: `ok \| budget_paused \| breaker_open(cooldown_left)` + `ai_usage_daily` rows                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `syncModelRegistry()`                               | upsert `llm_models` rows from resolved configs + probe results (`max_input_chars`, `chunk_budget`, `batch_size`, `reasoning`, `enabled`) — there is NO `dim` column on `llm_models` and none will be added (DDL 001 is closed): the ACTIVE model's dim is runtime-derived from the model profile (llmModelsStore §1 dim note) and persisted per-row on the embeddings rows — the registry is the adapter's persisted view, never hand-edited except `reasoning` (experiment switch)                                                                                                                                                                                                         |
+| `syncModelRegistry()`                               | upsert `llm_models` rows from resolved configs + probe results (`max_input_chars`, `chunk_budget`, `batch_size`, `reasoning`, `enabled`) — there is NO `dim` column on `llm_models` and none will be added (DDL 001 is closed): the ACTIVE model's dim is runtime-derived from the model profile (llmModelsStore §1 dim note) and persisted per-row on the embeddings rows — the registry is the adapter's persisted view, never hand-edited except `reasoning` (experiment switch). Runs at boot AND on a hot embed signature change that rebuilds the embed client: the embed registry row/`modelId` is re-synced in place, and an embed IDENTITY change (`engine`/`base_url_key`/`model_name`/`model_revision`) resets the boot-frozen vector store so the next init rebuilds the derived artifact at the new dim/space. The hot path is non-recursive (registry sync never calls `observeRole`) and makes NO provider inference call beyond the debounced probe already scheduled for the signature; the registry budget resync uses the non-metadata chain steps so no extra metadata GET is issued. |
 
 ### 2.4 Probe suite (IN-DOMAIN samples — hard rule)
 
@@ -125,24 +128,39 @@ runs against the in-process client — fixtures local, no HTTP). Every probe sam
 in-domain material; out-of-domain probes produce false negatives indistinguishable from false
 capability claims:
 
-- `embed`: real mixed-ko/en sentence set → verify non-empty, `dim` == profile, and
-  NON-DEGENERACY (two distinct samples must not cosine ≥0.999 — catches constant-output
+- `embed`: real mixed-ko/en sentence set → verify non-empty vectors, `dim` == profile dim,
+  and NON-DEGENERACY (two distinct samples must not cosine ≥0.999 — catches constant-output
   endpoints). Text is sent with the profile's task prefixes. When the profile declares
-  `pooling`, `/props` (llama family) is read: server pooling ≠ profile pooling ⇒ `text_embed`
-  OFF with reason — pooling is SPACE-shaping (same weights, different space, zero errors).
+  `pooling` and the endpoint exposes `/props` (llama family), server pooling ≠ profile
+  pooling ⇒ `text_embed` OFF with reason `poolingMismatch` — pooling is SPACE-shaping
+  (same weights, different space, zero errors). The text verdict is cached per config
+  signature; it runs on probe/activation passes only, never per search/embed call. Failure
+  reasons: `emptyTextEmbedding | wrongDim | degenerateEmbedding | poolingMismatch` (and
+  `positiveControlFailed` for the built-in engine, below).
+  **BUILT-IN ENGINE — POSITIVE CONTROL:** the embedded engine additionally runs the existing
+  `positiveControl` (checked-in kit + lockfile weights) at the provisioning/activation
+  probe, never per request. A median below the kit threshold, a dim mismatch or a probe
+  exception ⇒ `text_embed` OFF with `positiveControlFailed` (dim mismatch reports
+  `wrongDim`) and an `ai.embed` failure row. The expensive kit pass is cached per signature
+  like every other probe verdict.
   **CONFORMANCE (external embed only — EG2 model pin):** the fixed reference-kit strings are
   embedded and the **median cos to the canonical vectors ≥ calibrated threshold** (release
   artifact, [llmPresets](llmPresets.md) §2.2; negatives measured on same-dim model twins).
   Fail (or wrong dim) ⇒ the WHOLE embed role OFF with `nonConformingEndpoint`, admin card
   shows the measured median; partial activation (text-ok/media-off) only for endpoints that
-  pass conformance and then fail a media probe. Built-in rows skip this gate (lockfile
-  checksum IS the identity). The gate is executed by `probeEmbedConformance` with the
-  profile's document prefix (the calibrated space); the verdict is cached per config
-  signature — one activation pass per signature, reused by every later call and by the
-  debounced re-probe — and reported to `ai.embed` as `probe_failed` with
+  pass conformance + the text probe and then fail a media probe. Built-in rows skip this
+  gate (lockfile checksum IS the identity). The gate is executed by `probeEmbedConformance`
+  with the profile's document prefix (the calibrated space); the verdict is cached per
+  config signature — one activation pass per signature, reused by every later call and by
+  the debounced re-probe — and reported to `ai.embed` as `probe_failed` with
   `reason=nonConformingEndpoint|wrongDim`; the `probeRole('embed')` outcome carries the
   measured median/threshold for the admin card. A rejected endpoint yields no role client:
   `roleConfigured('embed')` is `false` and callers park.
+  **ADMIN PARTIAL STATE:** a failed embed MEDIA sub-capability with `text_embed` still
+  passing reports `ai.embed` as `{ ok:true, hint: serverErrors.ai.providerProbeFailed }` —
+  the client 5-state mapper renders that as `partial`, never `probe_failed`. A failed
+  `text_embed` (including pooling/positive-control failures) reports `ok:false` +
+  `code=probe_failed` + the reason, so the card stays `probe_failed`.
 - `image_embed` / `audio_embed` / `video_embed`: probes run `mediaProbe.js` with
   POSITIVE CONTROLS in the profile `requestShape` — known failure mode: a
   multimodal-DECLARING endpoint silently ignores wrongly-shaped media and returns a TEXT

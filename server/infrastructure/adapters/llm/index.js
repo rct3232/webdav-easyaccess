@@ -139,9 +139,25 @@ function defaultCreateClient(spec) {
 }
 
 /**
+ * Default built-in positive control: the existing embedded-onnx kit pass over
+ * the provisioned lockfile weights. Loaded lazily so unit tests and boots that
+ * never probe the embedded engine do not import onnxruntime.
+ */
+function defaultEmbeddedPositiveControl({ modelDir, lock }) {
+  // eslint-disable-next-line global-require
+  const onnx = require('./clients/embedded-onnx');
+  return onnx.positiveControl({
+    modelDir,
+    lock,
+    kitPath: require.resolve('./eg2-reference-kit.json'),
+  });
+}
+
+/**
  * @param {object} deps
  * @param {{getConfig: Function}} deps.configResolver  per-call T2 resolver
  * @param {Function} [deps.createClient]              ({role,engine,baseUrl,apiKey,model,preset}) => client
+ * @param {Function} [deps.embeddedPositiveControl]   ({modelDir,lock}) => {median,min,dim} (built-in kit pass)
  * @param {Function} [deps.probeRole]                 async ({role}) => probe outcome (probe suite)
  * @param {object}   [deps.provisioner]               {runProvision, weightsPresent, loadLock, resolveModelDir}
  * @param {object}   [deps.llmModelsStore]            registry facade (default: server/store/llmModelsStore)
@@ -158,6 +174,7 @@ function createLlmAdapter(deps = {}) {
   const {
     configResolver,
     createClient = defaultCreateClient,
+    embeddedPositiveControl = defaultEmbeddedPositiveControl,
     probeRole: probeSuite = null,
     provisioner = require('./provision'),
     llmModelsStore = null,
@@ -338,12 +355,39 @@ function createLlmAdapter(deps = {}) {
     if (!capability) return null;
 
     const preset = await Promise.resolve(presetFor(role));
-    const matrix = evaluateCapabilityMatrix(preset, probeResults || {});
+    const results = probeResults || {};
+    const matrix = evaluateCapabilityMatrix(preset, results).map((entry) => ({
+      ...entry,
+      reason: results[entry.capability]?.reason ?? null,
+    }));
     const stored = probeState.setRoleCapabilities(role, matrix);
     const primary = stored.find((entry) => entry.capability === capability) || null;
 
     const failed = stored.find((entry) => entry.note === 'probe-failed');
-    if (failed && role !== 'embed' && health) {
+    const mediaFailed = stored.some(
+      (entry) =>
+        entry.capability !== 'text_embed' && entry.probed === true && entry.enabled !== true
+    );
+    if (health && role === 'embed') {
+      // Text is the role's primary capability: a failed text_embed is a
+      // terminal role failure (admin `probe_failed`). A media-only failure
+      // leaves the role usable: status ok + hint renders as admin `partial`.
+      if (primary && primary.probed && !primary.enabled) {
+        health.report('ai.embed', {
+          ok: false,
+          code: 'probe_failed',
+          ...(primary.reason ? { reason: String(primary.reason).slice(0, 120) } : {}),
+          hint: 'serverErrors.ai.providerProbeFailed',
+        });
+      } else if (mediaFailed) {
+        health.report('ai.embed', {
+          ok: true,
+          hint: 'serverErrors.ai.providerProbeFailed',
+        });
+      } else if (primary && primary.enabled) {
+        health.report('ai.embed', { ok: true });
+      }
+    } else if (failed && health) {
       health.report(`ai.${role}`, {
         ok: false,
         code: 'probe_failed',
@@ -408,6 +452,98 @@ function createLlmAdapter(deps = {}) {
     }
     probeCache.set(signature, { ...(cached || {}), media });
     return media;
+  }
+
+  /**
+   * In-domain text-embed verdict (§2.4): non-empty vectors, profile dim,
+   * non-degeneracy, optional pooling-shape match, plus the built-in engine's
+   * checked-in positive control. Cached per resolved-config signature — it is
+   * an activation probe, NEVER a per-request one.
+   */
+  async function textVerdict(resolved) {
+    const signature = signatureOf(resolved);
+    const cached = probeCache.get(signature);
+    if (cached && cached.text) return cached.text;
+
+    const { entry } = await observeRole('embed');
+    const client = entry && entry.client;
+    let text;
+    if (!client || typeof client.embed !== 'function') {
+      text = {
+        capability: 'text_embed',
+        pass: false,
+        reason: 'not_configured',
+        measurements: {},
+      };
+    } else {
+      const {
+        runEmbedTextProbe,
+        fetchServerPooling,
+      } = require('./probe');
+      // Lazy require: presets is a leaf module (kit/threshold accessor).
+      const { kit } = require('./presets');
+      const preset = await Promise.resolve(presetFor('embed'));
+      const lock = resolved.engine === 'embedded' ? provisioner.loadLock() : null;
+      const dim = preset?.profile?.dim ?? (lock ? lock.dim : null);
+      const pooling = preset?.profile?.pooling ?? null;
+      const serverPooling =
+        resolved.engine === 'remote' && pooling
+          ? await fetchServerPooling({
+              baseUrl: resolved.baseUrl,
+              apiKey: resolved.apiKey,
+              ...(fetchImpl ? { fetchImpl } : {}),
+            })
+          : null;
+
+      text = await runEmbedTextProbe({
+        embed: (samples) => client.embed(samples),
+        dim,
+        pooling,
+        serverPooling,
+      });
+
+      if (text.pass && resolved.engine === 'embedded') {
+        try {
+          const pass = await embeddedPositiveControl({
+            modelDir: provisioner.resolveModelDir(),
+            lock,
+          });
+          const threshold = kit().threshold;
+          if (!pass || (dim && pass.dim !== dim)) {
+            text = {
+              capability: 'text_embed',
+              pass: false,
+              reason: 'wrongDim',
+              measurements: {
+                expectedDim: dim,
+                observedDim: pass ? pass.dim : null,
+              },
+            };
+          } else if (!Number.isFinite(pass.median) || pass.median < threshold) {
+            text = {
+              capability: 'text_embed',
+              pass: false,
+              reason: 'positiveControlFailed',
+              measurements: { median: pass.median, threshold },
+            };
+          } else {
+            text.measurements = {
+              ...text.measurements,
+              positiveControl: { median: pass.median, threshold },
+            };
+          }
+        } catch (err) {
+          text = {
+            capability: 'text_embed',
+            pass: false,
+            reason: 'positiveControlFailed',
+            measurements: { error: err && err.message ? err.message : String(err) },
+          };
+        }
+      }
+    }
+    probeCache.set(signature, { ...(cached || {}), text });
+    return text;
   }
 
   /**
@@ -510,18 +646,19 @@ function createLlmAdapter(deps = {}) {
             threshold: verdict.threshold,
           };
         }
+        const text = await textVerdict(resolved);
         const media = await mediaVerdict(resolved);
-        if (media) {
-          await publishRoleCapabilities('embed', { text_embed: { pass: true }, ...media });
-        } else {
-          await publishRoleCapability('embed', { ok: true, reason: null });
-        }
+        await publishRoleCapabilities('embed', {
+          text_embed: { pass: text.pass === true, reason: text.reason ?? null },
+          ...(media || {}),
+        });
         return {
-          ok: true,
+          ok: text.pass === true,
           role,
-          reason: null,
+          reason: text.pass === true ? null : text.reason,
           median: verdict.median,
           threshold: verdict.threshold,
+          text,
           ...(media ? { media } : {}),
         };
       }
@@ -536,13 +673,20 @@ function createLlmAdapter(deps = {}) {
         });
         return { ok: false, role, reason: 'notProvisioned', exempt: true };
       }
+      const text = await textVerdict(resolved);
       const media = await mediaVerdict(resolved);
-      if (media) {
-        await publishRoleCapabilities('embed', { text_embed: { pass: true }, ...media });
-      } else {
-        await publishRoleCapability('embed', { ok: true, reason: null });
-      }
-      return { ok: true, role, reason: null, exempt: true, ...(media ? { media } : {}) };
+      await publishRoleCapabilities('embed', {
+        text_embed: { pass: text.pass === true, reason: text.reason ?? null },
+        ...(media || {}),
+      });
+      return {
+        ok: text.pass === true,
+        role,
+        reason: text.pass === true ? null : text.reason,
+        exempt: true,
+        text,
+        ...(media ? { media } : {}),
+      };
     }
 
     const resolved = await resolveRoleConfig(role);
@@ -649,6 +793,18 @@ function createLlmAdapter(deps = {}) {
         ...(fetchImpl ? { fetchImpl } : {}),
       });
       clients.set(role, { signature, client, spec: resolved });
+      // C6: a rebuild of the embed client is a model-identity event for the
+      // registry too. Sync ONLY the embed row in place (non-recursive, no
+      // provider metadata GET on the hot path); an identity change resets the
+      // boot-frozen vector store. The debounced probe below is the only
+      // provider work this signature change schedules.
+      if (role === 'embed') {
+        try {
+          await syncRoleRegistry('embed', { metadata: false });
+        } catch {
+          /* registry sync must never block config adoption */
+        }
+      }
     } else {
       clients.delete(role);
       // An unconfigured role carries no capability and no probe warning.
@@ -677,6 +833,13 @@ function createLlmAdapter(deps = {}) {
             configured: false,
             reason: verdict.reason === 'nonConformingEndpoint' ? 'non_conforming' : 'probe_failed',
           };
+        }
+        // The text verdict is an activation-time cache entry: if it already
+        // ran and failed (non-degenerate/dim/pooling), the semantic text leg
+        // must not use this endpoint. No probe is triggered from readiness.
+        const text = probeCache.get(signatureOf(resolved))?.text;
+        if (text && text.pass !== true) {
+          return { configured: false, reason: 'probe_failed' };
         }
         try {
           // Prime the client cache/readiness bookkeeping; a dialect factory
@@ -734,10 +897,13 @@ function createLlmAdapter(deps = {}) {
 
   // ── budget chain + caps ────────────────────────────────────────────────────
 
-  async function getBudget(role) {
+  async function getBudget(role, { metadata: allowMetadata = true } = {}) {
     const resolved = await resolveRoleConfig(role);
     const preset = await Promise.resolve(presetFor(role));
-    const metadata = fetchPublishedMetadata ? await fetchPublishedMetadata(role, resolved) : null;
+    const metadata =
+      allowMetadata && fetchPublishedMetadata
+        ? await fetchPublishedMetadata(role, resolved)
+        : null;
     const chain = resolveBudget({
       adminCap: await configResolver.getConfig('LLM_MAX_INPUT_CHARS'),
       publishedMetadata: metadata,
@@ -905,58 +1071,71 @@ function createLlmAdapter(deps = {}) {
   }
 
   /**
-   * Upsert `llm_models` rows from the resolved configs (§2.3). NO dim column
-   * exists (DDL 001 is closed): the dim is runtime-derived from the model
-   * profile and persisted per-row on the embeddings rows.
+   * Upsert ONE role's `llm_models` row (§2.3). NO dim column exists (DDL 001
+   * is closed): the dim is runtime-derived from the model profile and
+   * persisted per-row on the embeddings rows.
+   *
+   * `metadata:false` is the HOT path: registry sync must not issue provider
+   * metadata GETs beyond the probe already scheduled for the new signature.
    */
-  async function syncModelRegistry() {
-    let rows = 0;
-    for (const role of ROLES) {
-      const resolved = await resolveRoleConfig(role);
-      if (!resolved.engine) continue;
-      if (resolved.engine === 'embedded' && !(await embeddedPresent())) continue;
+  async function syncRoleRegistry(role, { metadata = true } = {}) {
+    const resolved = await resolveRoleConfig(role);
+    if (!resolved.engine) return { rows: 0 };
+    if (resolved.engine === 'embedded' && !(await embeddedPresent())) return { rows: 0 };
 
-      const preset = await Promise.resolve(presetFor(role));
-      const lock = resolved.engine === 'embedded' ? provisioner.loadLock() : null;
-      const spec = {
-        role,
-        provider: resolved.engine === 'embedded' ? 'embedded' : (preset?.family ?? 'remote'),
-        engine: resolved.engine,
-        baseUrlKey: resolved.engine === 'remote' ? ROLE_KEYS[role][0] : '',
-        modelName:
-          resolved.engine === 'embedded' ? String(lock.repo).split('/').pop() : resolved.model,
-        modelRevision: resolved.engine === 'embedded' ? (lock.revision ?? null) : null,
-        precision: resolved.engine === 'embedded' ? (lock.dtype ?? null) : null,
-        maxInputChars: (await getBudget(role)).maxInputChars,
-        chunkBudget:
-          preset?.budgets?.chunkBudget ??
-          (Number(await configResolver.getConfig('LLM_CHUNK_BUDGET')) || 4),
-        batchSize: preset?.budgets?.batchSize ?? null,
-        enabled: true,
-      };
+    const preset = await Promise.resolve(presetFor(role));
+    const lock = resolved.engine === 'embedded' ? provisioner.loadLock() : null;
+    const spec = {
+      role,
+      provider: resolved.engine === 'embedded' ? 'embedded' : (preset?.family ?? 'remote'),
+      engine: resolved.engine,
+      baseUrlKey: resolved.engine === 'remote' ? ROLE_KEYS[role][0] : '',
+      modelName:
+        resolved.engine === 'embedded' ? String(lock.repo).split('/').pop() : resolved.model,
+      modelRevision: resolved.engine === 'embedded' ? (lock.revision ?? null) : null,
+      precision: resolved.engine === 'embedded' ? (lock.dtype ?? null) : null,
+      maxInputChars: (await getBudget(role, { metadata })).maxInputChars,
+      chunkBudget:
+        preset?.budgets?.chunkBudget ??
+        (Number(await configResolver.getConfig('LLM_CHUNK_BUDGET')) || 4),
+      batchSize: preset?.budgets?.batchSize ?? null,
+      enabled: true,
+    };
 
-      const before = await modelsStore().getActiveByRole(role);
-      const sameIdentity =
-        before &&
-        before.engine === spec.engine &&
-        before.baseUrlKey === spec.baseUrlKey &&
-        before.modelName === spec.modelName &&
-        (before.modelRevision ?? null) === (spec.modelRevision ?? null);
-      const { id } = await modelsStore().upsertModel(spec);
-      modelIds.set(role, id);
-      if (!sameIdentity) {
-        rows += 1;
-        // An embed model identity change invalidates the boot-frozen vector
-        // engine (space key + runtime dim); the next init() rebuilds the
-        // derived artifact at the new dim (vectorStore.md §2.1/§2.4).
-        if (role === 'embed') {
-          try {
-            require('../../../domains/ai/vectorStoreRuntime').resetVectorStore();
-          } catch {
-            /* vector seam not loaded in this process — nothing to reset */
-          }
+    const before = await modelsStore().getActiveByRole(role);
+    const sameIdentity =
+      before &&
+      before.engine === spec.engine &&
+      before.baseUrlKey === spec.baseUrlKey &&
+      before.modelName === spec.modelName &&
+      (before.modelRevision ?? null) === (spec.modelRevision ?? null);
+    const { id } = await modelsStore().upsertModel(spec);
+    modelIds.set(role, id);
+    if (!sameIdentity) {
+      // An embed model identity change invalidates the boot-frozen vector
+      // engine (space key + runtime dim); the next init() rebuilds the
+      // derived artifact at the new dim (vectorStore.md §2.1/§2.4).
+      if (role === 'embed') {
+        try {
+          require('../../../domains/ai/vectorStoreRuntime').resetVectorStore();
+        } catch {
+          /* vector seam not loaded in this process — nothing to reset */
         }
       }
+      return { rows: 1 };
+    }
+    return { rows: 0 };
+  }
+
+  /**
+   * Boot registry sync: upsert every configured role (llmAdapter.md §2.3).
+   * Hot embed config changes call `syncRoleRegistry('embed')` directly from
+   * `observeRole` — never through this whole-role loop (no double boot work).
+   */
+  async function syncModelRegistry({ metadata = true } = {}) {
+    let rows = 0;
+    for (const role of ROLES) {
+      rows += (await syncRoleRegistry(role, { metadata })).rows;
     }
     return { rows };
   }

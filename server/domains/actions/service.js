@@ -19,17 +19,10 @@ const collectionsStore = require('../../store/collectionsStore');
 const createCollectionsRepository = require('../../store/repositories/CollectionsRepository');
 const { createError } = require('../../utils/errorHandler');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const { JOURNAL_DOMAIN } = require('@webdav-easyaccess/shared/constants');
 
-// Journal domains enum (§5 schema CHECK; routes/actions.md §2.4).
-const JOURNAL_DOMAINS = [
-  'collection',
-  'batch',
-  'settings',
-  'permissions',
-  'tags',
-  'file',
-  'sharing',
-];
+// Journal domains enum (§5 schema CHECK; routes/actions.md §2.4) — mirrors the
+// `action_journal.domain` CHECK, TAGS included (no writer yet).
 
 // Fixed feed window + cap (routes.md §2.4 decisions: 30d listing horizon,
 // cap 200, no cursor — personal scale).
@@ -99,7 +92,7 @@ async function isVisibleTo(requesterId, row) {
  * @param {{ domain?: string }} [options]
  */
 async function getActionsFeed(requesterId, { domain } = {}) {
-  if (domain != null && !JOURNAL_DOMAINS.includes(domain)) {
+  if (domain != null && !JOURNAL_DOMAIN.isValid(domain)) {
     throw serviceError('invalidDomain', 400);
   }
 
@@ -411,7 +404,7 @@ async function applyCollectionInverse({ row, tx }) {
   return [outcome];
 }
 
-actionJournalStore.registerUndoExecutor('collection', applyCollectionInverse);
+actionJournalStore.registerUndoExecutor(JOURNAL_DOMAIN.COLLECTION, applyCollectionInverse);
 
 // -- undo --------------------------------------------------------------------
 
@@ -462,7 +455,7 @@ async function undoAction(requesterId, actionId, { confirmCascade = false } = {}
 }
 
 module.exports = {
-  JOURNAL_DOMAINS,
+  JOURNAL_DOMAIN,
   FEED_LIMIT,
   FEED_WINDOW_DAYS,
   getActionsFeed,

@@ -39,6 +39,12 @@ const usageStore = require('../../store/usageStore');
 const aiTagStore = require('../../store/aiTagStore');
 const aiEnrichmentsStore = require('../../store/aiEnrichmentsStore');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
+const {
+  COLLECTION_ORIGIN,
+  COLLECTION_STATUS,
+  PUBLISH_MODE,
+  MERGE_SUGGESTION_STATE,
+} = require('@webdav-easyaccess/shared/constants');
 const permissionStore = require('../../domains/permissions/stores/permissionStore');
 const lockManager = require('../../infrastructure/lockManager');
 const { getPresetByFamilyRole } = require('../../infrastructure/adapters/llm/presets');
@@ -429,7 +435,9 @@ async function writeNightEvalReport(passes, perUser) {
  */
 async function reconcileUser(userId) {
   const { evaluateDefinitionMembership } = require('./service');
-  const owned = (await collectionsStore.listForUser(userId, { status: 'active' })).filter(
+  const owned = (
+    await collectionsStore.listForUser(userId, { status: COLLECTION_STATUS.ACTIVE })
+  ).filter(
     (row) => row.ownerId === Number(userId) && definitionEngine.hasDefinition(row.definition)
   );
 
@@ -476,7 +484,7 @@ async function reconcileCollection({ evaluateDefinitionMembership }, userId, col
         batch,
         userId,
         {
-          published: collection.publishMode === 'auto',
+          published: collection.publishMode === PUBLISH_MODE.AUTO,
           source: 'system',
           reason,
         },
@@ -978,8 +986,8 @@ async function createCandidateCollection({
     {
       ownerId: userId,
       name,
-      origin: 'system',
-      publishMode: 'ask',
+      origin: COLLECTION_ORIGIN.SYSTEM,
+      publishMode: PUBLISH_MODE.ASK,
       definition: candidate.definition,
     },
     { actor: 'system' }
@@ -1070,7 +1078,7 @@ async function runCreatePass(userId) {
   const owned = (await collectionsStore.listForUser(ownerId, { status: 'all' })).filter(
     (row) => row.ownerId === ownerId
   );
-  const ownedActive = owned.filter((row) => row.status === 'active');
+  const ownedActive = owned.filter((row) => row.status === COLLECTION_STATUS.ACTIVE);
   const storedSets = new Map();
   for (const collection of ownedActive) {
     const rows = await collectionsStore.listStoredItems(collection.id);
@@ -1083,20 +1091,22 @@ async function runCreatePass(userId) {
   const rateBlocked =
     rateDays > 0 &&
     owned.some((row) => {
-      if (row.origin !== 'system') return false;
+      if (row.origin !== COLLECTION_ORIGIN.SYSTEM) return false;
       const createdAt = new Date(row.createdAt).getTime();
       return Number.isFinite(createdAt) && now - createdAt < rateWindowMs;
     });
   let createdThisPass = false;
   let activeTightMid = ownedActive.filter(
-    (row) => row.origin === 'system' && tierOf(row.definition) !== 'loose'
+    (row) => row.origin === COLLECTION_ORIGIN.SYSTEM && tierOf(row.definition) !== 'loose'
   ).length;
   const looseEvents = new Set(
     ownedActive
-      .filter((row) => row.origin === 'system' && tierOf(row.definition) === 'loose')
+      .filter(
+        (row) => row.origin === COLLECTION_ORIGIN.SYSTEM && tierOf(row.definition) === 'loose'
+      )
       .map((row) => eventClassOf(row.definition))
   );
-  const systemCount = owned.filter((row) => row.origin === 'system').length;
+  const systemCount = owned.filter((row) => row.origin === COLLECTION_ORIGIN.SYSTEM).length;
   const namer = await resolveSystemNamer();
 
   for (const candidate of candidates) {
@@ -1241,7 +1251,7 @@ function splitDefinition({ parent, tier, theta }) {
 function looseEventClassTaken(activeCollections, parent, eventClass) {
   return activeCollections.some((row) => {
     if (Number(row.id) === Number(parent.id)) return false;
-    if (row.origin !== 'system' || tierOf(row.definition) !== 'loose') return false;
+    if (row.origin !== COLLECTION_ORIGIN.SYSTEM || tierOf(row.definition) !== 'loose') return false;
     if (eventClassOf(row.definition) !== eventClass) return false;
     const splitOf =
       row.definition && typeof row.definition === 'object' ? row.definition.split_of : null;
@@ -1294,8 +1304,8 @@ async function createSplitSibling({
     {
       ownerId: userId,
       name,
-      origin: 'system',
-      publishMode: 'ask',
+      origin: COLLECTION_ORIGIN.SYSTEM,
+      publishMode: PUBLISH_MODE.ASK,
       definition,
     },
     { actor: 'system' }
@@ -1365,10 +1375,12 @@ async function runSplitPass(userId) {
   const owned = (await collectionsStore.listForUser(ownerId, { status: 'all' })).filter(
     (row) => row.ownerId === ownerId
   );
-  const parents = owned.filter((row) => row.origin === 'system' && row.status === 'active');
+  const parents = owned.filter(
+    (row) => row.origin === COLLECTION_ORIGIN.SYSTEM && row.status === COLLECTION_STATUS.ACTIVE
+  );
   if (parents.length === 0) return result;
 
-  const ownedActive = owned.filter((row) => row.status === 'active');
+  const ownedActive = owned.filter((row) => row.status === COLLECTION_STATUS.ACTIVE);
   const storedSets = new Map();
   for (const collection of ownedActive) {
     const rows = await collectionsStore.listStoredItems(collection.id);
@@ -1384,15 +1396,15 @@ async function runSplitPass(userId) {
   const rateBlocked =
     rateDays > 0 &&
     owned.some((row) => {
-      if (row.origin !== 'system') return false;
+      if (row.origin !== COLLECTION_ORIGIN.SYSTEM) return false;
       const createdAt = new Date(row.createdAt).getTime();
       return Number.isFinite(createdAt) && now - createdAt < rateWindowMs;
     });
   let createdThisPass = false;
   let activeTightMid = ownedActive.filter(
-    (row) => row.origin === 'system' && tierOf(row.definition) !== 'loose'
+    (row) => row.origin === COLLECTION_ORIGIN.SYSTEM && tierOf(row.definition) !== 'loose'
   ).length;
-  const systemCount = owned.filter((row) => row.origin === 'system').length;
+  const systemCount = owned.filter((row) => row.origin === COLLECTION_ORIGIN.SYSTEM).length;
   let namer = null;
 
   for (const parent of parents) {
@@ -1590,9 +1602,9 @@ async function runMergeCandidatePass(userId, { arbiterLeg = false } = {}) {
       arbiterSuggested: 0,
     };
   }
-  const owned = (await collectionsStore.listForUser(userId, { status: 'active' })).filter(
-    (row) => row.ownerId === Number(userId)
-  );
+  const owned = (
+    await collectionsStore.listForUser(userId, { status: COLLECTION_STATUS.ACTIVE })
+  ).filter((row) => row.ownerId === Number(userId));
   if (owned.length < 2) {
     return {
       suggested: 0,
@@ -1623,7 +1635,7 @@ async function runMergeCandidatePass(userId, { arbiterLeg = false } = {}) {
 
   const collectionIds = owned.map((row) => row.id);
   const dismissedRows = await collectionsStore.listMergeSuggestions(collectionIds, {
-    state: 'dismissed',
+    state: MERGE_SUGGESTION_STATE.DISMISSED,
   });
   const dismissedByPair = new Map(dismissedRows.map((row) => [pairKey(row.aId, row.bId), row]));
 
@@ -1636,7 +1648,9 @@ async function runMergeCandidatePass(userId, { arbiterLeg = false } = {}) {
     for (let j = i + 1; j < owned.length; j += 1) {
       const a = owned[i];
       const b = owned[j];
-      if (a.origin !== 'system' && b.origin !== 'system') continue;
+      if (a.origin !== COLLECTION_ORIGIN.SYSTEM && b.origin !== COLLECTION_ORIGIN.SYSTEM) {
+        continue;
+      }
 
       const aSet = memberSets.get(a.id);
       const bSet = memberSets.get(b.id);
@@ -1663,7 +1677,7 @@ async function runMergeCandidatePass(userId, { arbiterLeg = false } = {}) {
         continue;
       }
       const row = await collectionsStore.upsertMergeSuggestion(a.id, b.id, score);
-      if (row && row.state === 'pending') suggested += 1;
+      if (row && row.state === MERGE_SUGGESTION_STATE.PENDING) suggested += 1;
     }
   }
 
@@ -1676,7 +1690,7 @@ async function runMergeCandidatePass(userId, { arbiterLeg = false } = {}) {
       const key = pairKey(candidate.a.id, candidate.b.id);
       const existing = existingByPair.get(key);
       if (existing) {
-        if (existing.state === 'dismissed' && dismissedDue(existing, now)) {
+        if (existing.state === MERGE_SUGGESTION_STATE.DISMISSED && dismissedDue(existing, now)) {
           const result = await collectionsStore.reopenMergeSuggestion(existing.id, {
             score: Math.round(candidate.jaccard * 1000),
           });
@@ -1715,7 +1729,11 @@ async function runMergeCandidatePass(userId, { arbiterLeg = false } = {}) {
             input.score,
             { arbiterVerdict: decision.verdict, arbiterReason: decision.reason }
           );
-          if (row && row.state === 'pending' && row.arbiterVerdict === decision.verdict) {
+          if (
+            row &&
+            row.state === MERGE_SUGGESTION_STATE.PENDING &&
+            row.arbiterVerdict === decision.verdict
+          ) {
             arbiterSuggested += 1;
           }
         }
@@ -1734,7 +1752,11 @@ async function runMergeCandidatePass(userId, { arbiterLeg = false } = {}) {
  */
 async function loadSuggestionPairsByState(collectionIds, dismissedByPair) {
   const byPair = new Map(dismissedByPair);
-  for (const state of ['pending', 'rejected', 'merged']) {
+  for (const state of [
+    MERGE_SUGGESTION_STATE.PENDING,
+    MERGE_SUGGESTION_STATE.REJECTED,
+    MERGE_SUGGESTION_STATE.MERGED,
+  ]) {
     const rows = await collectionsStore.listMergeSuggestions(collectionIds, { state });
     for (const row of rows || []) {
       const key = pairKey(row.aId, row.bId);
@@ -1867,8 +1889,10 @@ async function runArchivePass(userId) {
   const ownerId = Number(userId);
   if (!Number.isInteger(ownerId) || ownerId <= 0) return result;
 
-  const active = (await collectionsStore.listForUser(ownerId, { status: 'active' })).filter(
-    (row) => row.ownerId === ownerId && row.origin === 'system' && !row.pinned
+  const active = (
+    await collectionsStore.listForUser(ownerId, { status: COLLECTION_STATUS.ACTIVE })
+  ).filter(
+    (row) => row.ownerId === ownerId && row.origin === COLLECTION_ORIGIN.SYSTEM && !row.pinned
   );
   if (active.length === 0) return result;
 
@@ -1929,7 +1953,7 @@ async function runPurgePass(userId) {
   if (retentionDays <= 0) return result;
 
   const archived = (await collectionsStore.listArchived(ownerId)).filter(
-    (row) => row.ownerId === ownerId && row.origin === 'system'
+    (row) => row.ownerId === ownerId && row.origin === COLLECTION_ORIGIN.SYSTEM
   );
   if (archived.length === 0) return result;
 
@@ -1965,7 +1989,7 @@ async function reconcileAutoPinUser(userId) {
   let cleared = 0;
   for (const collection of owned) {
     if (collection.pinnedBy !== 'auto') continue;
-    if (collection.origin === 'system' && collection.pinned) continue;
+    if (collection.origin === COLLECTION_ORIGIN.SYSTEM && collection.pinned) continue;
     const result = await collectionsStore.clearAutoPin(collection.id);
     cleared += result.changes;
   }

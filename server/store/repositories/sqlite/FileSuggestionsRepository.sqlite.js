@@ -2,6 +2,7 @@
 
 const { mapDatabaseError } = require('../../../utils/errorHandler');
 const { mapSuggestionRow } = require('../fileSuggestionsShared');
+const { FILE_SUGGESTION_STATE } = require('@webdav-easyaccess/shared/constants');
 
 /**
  * sqlite implementation of FileSuggestionsRepository (`?` placeholders).
@@ -21,7 +22,7 @@ module.exports = function createSqliteFileSuggestionsRepository(executor) {
       try {
         const result = await executor.run(
           `INSERT INTO file_suggestions (user_id, node_id, kind, reason, state, created_at, expires_at)
-           VALUES (?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, ?)`,
+           VALUES (?, ?, ?, ?, '${FILE_SUGGESTION_STATE.PENDING}', CURRENT_TIMESTAMP, ?)`,
           [
             Number(userId),
             Number(nodeId),
@@ -40,7 +41,7 @@ module.exports = function createSqliteFileSuggestionsRepository(executor) {
       try {
         const { rows } = await executor.query(
           `SELECT * FROM file_suggestions
-            WHERE user_id = ? AND state = 'pending'
+            WHERE user_id = ? AND state = '${FILE_SUGGESTION_STATE.PENDING}'
             ORDER BY id`,
           [Number(userId)]
         );
@@ -69,8 +70,8 @@ module.exports = function createSqliteFileSuggestionsRepository(executor) {
     async dismiss(userId, id) {
       try {
         const result = await executor.run(
-          `UPDATE file_suggestions SET state = 'dismissed'
-            WHERE id = ? AND user_id = ? AND state = 'pending'`,
+          `UPDATE file_suggestions SET state = '${FILE_SUGGESTION_STATE.DISMISSED}'
+            WHERE id = ? AND user_id = ? AND state = '${FILE_SUGGESTION_STATE.PENDING}'`,
           [Number(id), Number(userId)]
         );
         return { changes: result.changes };
@@ -83,7 +84,7 @@ module.exports = function createSqliteFileSuggestionsRepository(executor) {
       try {
         const result = await executor.run(
           `UPDATE file_suggestions SET reason = ?
-            WHERE id = ? AND user_id = ? AND state = 'pending'`,
+            WHERE id = ? AND user_id = ? AND state = '${FILE_SUGGESTION_STATE.PENDING}'`,
           [
             reason === null || reason === undefined ? null : JSON.stringify(reason),
             Number(id),
@@ -135,15 +136,15 @@ module.exports = function createSqliteFileSuggestionsRepository(executor) {
         const cap = Number.isInteger(limit) && limit > 0 ? limit : 1000;
         const { rows } = await executor.query(
           `SELECT id FROM file_suggestions
-            WHERE state = 'pending' AND expires_at IS NOT NULL AND expires_at < ?
+            WHERE state = '${FILE_SUGGESTION_STATE.PENDING}' AND expires_at IS NOT NULL AND expires_at < ?
             ORDER BY id LIMIT ?`,
           [cutoff, cap]
         );
         const ids = rows.map((row) => Number(row.id));
         if (ids.length === 0) return { changes: 0, ids: [] };
         const result = await executor.run(
-          `UPDATE file_suggestions SET state = 'expired'
-            WHERE state = 'pending' AND id IN (${placeholders(ids.length)})`,
+          `UPDATE file_suggestions SET state = '${FILE_SUGGESTION_STATE.EXPIRED}'
+            WHERE state = '${FILE_SUGGESTION_STATE.PENDING}' AND id IN (${placeholders(ids.length)})`,
           ids
         );
         return { changes: result.changes, ids };

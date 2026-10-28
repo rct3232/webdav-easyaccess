@@ -22,10 +22,14 @@ const userStore = require('../../store/userStore');
 const aclService = require('../../domains/permissions/services/aclService');
 const { isOwnerNode } = require('../../domains/permissions/policy/ownerNodeResolver');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
-const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
+const {
+  PERMISSIONS,
+  GRANT_ROLE,
+  COLLECTION_ORIGIN,
+  PUBLISH_MODE,
+} = require('@webdav-easyaccess/shared/constants');
 const wire = require('./wire');
 
-const VALID_GRANT_ROLES = ['viewer', 'editor'];
 const MAX_NODE_IDS = 200;
 
 function serviceError(code) {
@@ -61,7 +65,7 @@ function parseNodeIds(raw) {
 
 /** §4.9b auto-pin on user touch of a system collection (non-journaled). */
 async function touchSystemAutoPin(collection) {
-  if (collection && collection.origin === 'system') {
+  if (collection && collection.origin === COLLECTION_ORIGIN.SYSTEM) {
     await collectionsStore.setAutoPin(collection.id);
   }
 }
@@ -116,7 +120,7 @@ async function requireOwnerOrRole(userId, collection, minimumRole) {
   if (!grant || (await collectionsStore.isHiddenFor(userId, collection.id))) {
     throw serviceError('notFound');
   }
-  if (minimumRole === 'editor' && grant.role !== 'editor') {
+  if (minimumRole === GRANT_ROLE.EDITOR && grant.role !== GRANT_ROLE.EDITOR) {
     throw serviceError('forbidden');
   }
   return grant.role;
@@ -136,7 +140,7 @@ async function requireOwnerOrRole(userId, collection, minimumRole) {
  */
 function isVisibleToGrantee(collection, viewRow) {
   if (viewRow && viewRow.published) return true;
-  return Boolean(viewRow && viewRow.virtual) && collection.publishMode === 'auto';
+  return Boolean(viewRow && viewRow.virtual) && collection.publishMode === PUBLISH_MODE.AUTO;
 }
 
 /**
@@ -167,7 +171,7 @@ async function publish(userId, collectionId, nodeIds, published) {
   const parsed = parseNodeIds(nodeIds);
   if (published !== true && published !== false) throw serviceError('invalidPublishMode');
   const { collection } = await getCollectionForRead(userId, collectionId);
-  await requireOwnerOrRole(userId, collection, 'editor');
+  await requireOwnerOrRole(userId, collection, GRANT_ROLE.EDITOR);
 
   const stored = await collectionsStore.listStoredItems(collectionId);
   const memberIds = new Set(stored.map((row) => Number(row.nodeId)));
@@ -224,7 +228,7 @@ async function listGrants(userId, collectionId) {
  * grantee's hidden flag (the sole recovery path — spec §2.5).
  */
 async function grant(userId, collectionId, { granteeId, role } = {}) {
-  if (!VALID_GRANT_ROLES.includes(role)) throw serviceError('invalidRole');
+  if (!GRANT_ROLE.isValid(role)) throw serviceError('invalidRole');
   const { collection } = await getCollectionForRead(userId, collectionId);
   await requireOwner(userId, collection);
   const granteeNumber = Number(granteeId);

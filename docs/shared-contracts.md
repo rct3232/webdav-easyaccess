@@ -71,17 +71,18 @@ Defined in `shared/constants.js`. Both client and server may import `@webdav-eas
 
 AI-platform enums (same file, same `ALL`/`isValid` shape as the existing status enums):
 
-| Constant            | Purpose                                                          | Allowed values / notes                                                                                                            |
-| ------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `COLLECTION_ORIGIN` | Collection provenance                                            | `system`, `user`, `seed`, `search` — silent evolution touches `system` only (invariant 3)                                         |
-| `COLLECTION_STATUS` | Collection lifecycle                                             | `active`, `archived`                                                                                                              |
-| `PUBLISH_MODE`      | Per-collection shared-view publish gate                          | `ask` (default), `off`, `auto`                                                                                                    |
-| `GRANT_ROLE`        | Collection grant role (separate channel from file `PERMISSIONS`) | `viewer`, `editor` (owner is implicit, not a grant row)                                                                           |
-| `JOURNAL_DOMAIN`    | `action_journal.domain`                                          | `collection`, `batch`, `settings`, `permissions`, `tags`, `file`, `sharing`                                                       |
-| `LLM_ROLE`          | LLM adapter role                                                 | `embed`, `chat`, `vision`, `asr`                                                                                                  |
-| `SUGGESTION_STATE`  | Merge-suggestion state (`collection_merge_suggestions`)          | `pending`, `merged`, `dismissed`, `rejected` — the `file_suggestions` state enum is owned by its the corresponding docs step spec |
-| `USAGE_ACTION`      | `usage_events.action`                                            | `open`, `download`, `preview`, `search_hit`, `like`                                                                               |
-| `AI_JOB_KIND`       | `ai_jobs.kind`                                                   | `embed`, `features`, `caption`, `asr`, `backfill` — mirrors the DDL CHECK (parity-tested)                                         |
+| Constant                 | Purpose                                                          | Allowed values / notes                                                                                                    |
+| ------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `COLLECTION_ORIGIN`      | Collection provenance                                            | `system`, `user`, `seed`, `search` — silent evolution touches `system` only (invariant 3)                                 |
+| `COLLECTION_STATUS`      | Collection lifecycle                                             | `active`, `archived`                                                                                                      |
+| `PUBLISH_MODE`           | Per-collection shared-view publish gate                          | `ask` (default), `off`, `auto`                                                                                            |
+| `GRANT_ROLE`             | Collection grant role (separate channel from file `PERMISSIONS`) | `viewer`, `editor` (owner is implicit, not a grant row)                                                                   |
+| `JOURNAL_DOMAIN`         | `action_journal.domain`                                          | `collection`, `batch`, `settings`, `permissions`, `tags`, `file`, `sharing`                                               |
+| `LLM_ROLE`               | LLM adapter role                                                 | `embed`, `chat`, `vision`, `asr`                                                                                          |
+| `MERGE_SUGGESTION_STATE` | `collection_merge_suggestions.state`                             | `pending`, `merged`, `dismissed`, `rejected` — mirrors the DDL CHECK; `dismissed → pending` on a re-surfaced pair         |
+| `FILE_SUGGESTION_STATE`  | `file_suggestions.state`                                         | `pending`, `accepted`, `dismissed`, `expired` — separate enum from merge suggestions (`accepted`/`expired` are file-only) |
+| `USAGE_ACTION`           | `usage_events.action`                                            | `open`, `download`, `preview`, `search_hit`, `like`                                                                       |
+| `AI_JOB_KIND`            | `ai_jobs.kind`                                                   | `embed`, `features`, `caption`, `asr`, `backfill` — mirrors the DDL CHECK (parity-tested)                                 |
 
 Use these constants instead of magic strings so client and server stay in sync.
 

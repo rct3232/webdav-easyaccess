@@ -207,8 +207,9 @@ function parseVectorText(value) {
   return out.length > 0 && out.every((n) => Number.isFinite(n)) ? out : null;
 }
 
+/** Clamp an offset-derived membership threshold to [0,1] (collectionsService §2.3). */
 function clampCosine(value) {
-  return Math.max(-1, Math.min(1, value));
+  return Math.max(0, Math.min(1, value));
 }
 
 /**

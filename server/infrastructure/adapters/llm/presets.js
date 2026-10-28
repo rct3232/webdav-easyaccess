@@ -32,6 +32,11 @@ const EG2_PROFILE = {
   thetaDup: 0.955,
   deltaBase: 0.08,
   edgeCos: { tight: 0.86, mid: 0.8, loose: 0.72 },
+  // PROVISIONAL membership band around each collection definition's θ
+  // (collectionsService.md §2.3): θ_in = θ + inDelta, θ_out = θ + outDelta,
+  // clamped to [0,1]. Refined after operation — not a calibrated release
+  // measurement. Consumers fall back to θ_in = θ_out = θ when absent.
+  membershipHysteresis: { inDelta: 0.02, outDelta: -0.02 },
   throughputDocsMin: null,
   calibrated: false,
   requestShape: 'plain-input',

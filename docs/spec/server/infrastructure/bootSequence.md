@@ -61,7 +61,10 @@ lets DB-sourced configuration take effect before require-time consts are capture
    warn-only, embed caps OFF + admin reason, boot continues — the runBoot catch must not
    fire). The boot that first leaves setup mode (post-restart) is an ordinary configured
    boot: same posture, no special event or marker. Setup mode (wizard up) ⇒ the step no-ops
-   entirely — zero bytes fetched while `setup_complete=false`.
+   entirely — zero bytes fetched while `setup_complete=false`. `WEA_SKIP_EMBED_MODEL`
+   truthy (`1/true/yes/on`) ⇒ the built-in branch no-ops as well: no lock read, no weights
+   hash, no provisioning attempt, and the embed role resolves `not_configured`; a remote
+   embed override still resolves and runs normally.
 9. FFmpeg init (best-effort, warn-only).
 10. Boot connection probes for the ACTIVE file backend only (warn-only):
     - WEA_FILE_STORAGE=webdav → utils/webdav `testConnection`; failure logs warn.

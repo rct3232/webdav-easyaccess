@@ -49,7 +49,13 @@ class SkipBudgetReporter {
 
   assertWithinBudget() {
     const actualSkips = this.skippedTests.length;
-    if (actualSkips === this.expectedSkips) return;
+    // The model-free seam intentionally skips the AI case; it is not part of
+    // the static platform/resource budget, so add it only when observed.
+    const modelFreeSkip =
+      isEmbedModelDisabled() &&
+      this.skippedTests.some((entry) => entry.title.includes('E2E-S3-AI-001'));
+    const expectedSkips = this.expectedSkips + (modelFreeSkip ? 1 : 0);
+    if (actualSkips === expectedSkips) return;
 
     const skippedList = this.skippedTests
       .map((entry) => `  - ${entry.title} (${entry.location})`)
@@ -57,11 +63,21 @@ class SkipBudgetReporter {
     const detail = skippedList ? `\nSkipped cases:\n${skippedList}` : '';
 
     throw new Error(
-      `[skip-budget] Expected ${this.expectedSkips} skipped test(s) for this release run, but observed ${actualSkips}. ` +
+      `[skip-budget] Expected ${expectedSkips} skipped test(s) for this release run, but observed ${actualSkips}. ` +
         `Every skip must be one of the documented static skips for the group; remove the extra test.skip or update the ` +
         `documented budget when the skip set intentionally changes.${detail}`
     );
   }
+}
+
+const EMBED_DISABLED_VALUES = new Set(['1', 'true', 'yes', 'on']);
+
+function isEmbedModelDisabled() {
+  return EMBED_DISABLED_VALUES.has(
+    String(process.env.WEA_SKIP_EMBED_MODEL || '')
+      .trim()
+      .toLowerCase()
+  );
 }
 
 function parseExpectedSkips(rawValue) {

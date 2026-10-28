@@ -679,6 +679,38 @@ describe('daily caps ⇒ budget_paused', () => {
 
 // ── syncModelRegistry (§2.3 — NO dim column) ─────────────────────────────────
 
+describe('built-in embed disabled seam', () => {
+  it('resolves not_configured with no weights hash, registry row, or boot probe', async () => {
+    const weightsPresent = jest.fn(async () => true);
+    const { adapter, models, probeCalls } = buildAdapter({
+      deps: {
+        provisioner: {
+          runProvision: async () => ({ status: 'skipped-disabled' }),
+          weightsPresent,
+          loadLock: () => LOCK,
+          resolveModelDir: () => '/fixtures/model-dir',
+          isEmbedModelDisabled: () => true,
+        },
+      },
+    });
+
+    await expect(adapter.roleConfigured('embed')).resolves.toBe(false);
+    await expect(adapter.getRoleReadiness('embed')).resolves.toEqual({
+      configured: false,
+      reason: 'not_configured',
+    });
+
+    const synced = await adapter.syncModelRegistry();
+    expect(synced.rows).toBe(0);
+    expect(await models.getActiveByRole('embed')).toBeNull();
+
+    const outcomes = await adapter.probeConfiguredRoles();
+    expect(outcomes.embed).toBeUndefined();
+    expect(probeCalls).toEqual([]);
+    expect(weightsPresent).not.toHaveBeenCalled();
+  });
+});
+
 describe('syncModelRegistry', () => {
   it('upserts the active remote embed row; repeat calls map to the SAME id; never writes a dim', async () => {
     const r = makeResolver({ ...REMOTE_EMBED, LLM_MAX_INPUT_CHARS: '8000' });
@@ -971,9 +1003,9 @@ describe('embed text probe completeness', () => {
       enabled: false,
       reason: 'degenerateEmbedding',
     });
-    expect(healthReports.find((h) => h.key === 'ai.embed' && h.patch.ok === false).patch).toMatchObject(
-      { code: 'probe_failed', reason: 'degenerateEmbedding' }
-    );
+    expect(
+      healthReports.find((h) => h.key === 'ai.embed' && h.patch.ok === false).patch
+    ).toMatchObject({ code: 'probe_failed', reason: 'degenerateEmbedding' });
   });
 
   it('wrong runtime dim (512 vs profile 768) ⇒ wrongDim, text_embed OFF', async () => {
@@ -1042,9 +1074,9 @@ describe('embed text probe completeness', () => {
       enabled: false,
       reason: 'positiveControlFailed',
     });
-    expect(healthReports.find((h) => h.key === 'ai.embed' && h.patch.ok === false).patch).toMatchObject(
-      { code: 'probe_failed', reason: 'positiveControlFailed' }
-    );
+    expect(
+      healthReports.find((h) => h.key === 'ai.embed' && h.patch.ok === false).patch
+    ).toMatchObject({ code: 'probe_failed', reason: 'positiveControlFailed' });
   });
 
   it('built-in healthy positive control passes text_embed', async () => {

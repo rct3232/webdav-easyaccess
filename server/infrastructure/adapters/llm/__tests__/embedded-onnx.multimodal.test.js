@@ -16,13 +16,33 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const provisioner = require('../provision');
+const onnx = require('../clients/embedded-onnx');
 
 const MODEL_DIR = process.env.WEA_MODEL_DIR || '/tmp/opencode/delta-base/models';
 const lock = provisioner.loadLock();
 const modelPath = lock ? path.join(MODEL_DIR, lock.repo, lock.revision) : null;
-const enabled = process.env.WEA_LLM_EMBEDDED_SMOKE === '1' && modelPath && fs.existsSync(modelPath);
+const enabled =
+  process.env.WEA_LLM_EMBEDDED_SMOKE === '1' &&
+  !provisioner.isEmbedModelDisabled() &&
+  modelPath &&
+  fs.existsSync(modelPath);
 
 const maybeDescribe = enabled ? describe : describe.skip;
+
+describe('embedded ONNX disabled seam', () => {
+  const PREV = process.env.WEA_SKIP_EMBED_MODEL;
+  afterEach(() => {
+    if (PREV === undefined) delete process.env.WEA_SKIP_EMBED_MODEL;
+    else process.env.WEA_SKIP_EMBED_MODEL = PREV;
+  });
+
+  it('refuses to load the engine before importing transformers', async () => {
+    process.env.WEA_SKIP_EMBED_MODEL = '1';
+    await expect(
+      onnx.embedDocuments(['disabled'], { modelDir: '/nonexistent', lock: {} })
+    ).rejects.toMatchObject({ class: 'config', reason: 'embed_disabled' });
+  });
+});
 
 maybeDescribe('embedded ONNX multimodal path (real weights)', () => {
   jest.setTimeout(120_000);

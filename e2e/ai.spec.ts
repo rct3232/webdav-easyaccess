@@ -23,7 +23,7 @@ import {
 } from './helpers/scratchUser';
 import { flushPrivateWorkspaceCleanups, uploadFileAt } from './helpers/files';
 import { resolveNodeId } from './helpers/resolvePath';
-import { skipWhenUnavailable } from './helpers/skipPolicy';
+import { skipWhenEmbedModelDisabled, skipWhenUnavailable } from './helpers/skipPolicy';
 
 /**
  * E2E-S3-AI-001 — semantic search over the embed-enabled engine
@@ -33,7 +33,9 @@ import { skipWhenUnavailable } from './helpers/skipPolicy';
  * zero-download no-op and the embed role is configured from the first
  * request. A text document is uploaded, the embed job is awaited through the
  * `ai_jobs` drain state, and a phrase that does NOT name-match the file
- * exercises the embed leg end-to-end.
+ * exercises the embed leg end-to-end. The scratch env opts out of the shared
+ * model-free seam (`WEA_SKIP_EMBED_MODEL=0`); an intentional model-free run
+ * skips this case through `skipWhenEmbedModelDisabled()`.
  *
  * SCRATCH-HERMETIC per the destructive-case policy (docs/TESTING_STRATEGY.md):
  * own server per Playwright project (desktop :5016, own sqlite,
@@ -161,6 +163,7 @@ let userToken = '';
 let homeNodeId = 0;
 
 test.beforeAll(async ({ request }, testInfo) => {
+  skipWhenEmbedModelDisabled();
   skipWhenUnavailable(
     !fs.existsSync(
       path.join(WEA_MODEL_DIR, modelLock.repo, modelLock.revision, 'onnx', 'model_q4.onnx')
@@ -181,6 +184,7 @@ test.beforeAll(async ({ request }, testInfo) => {
     JWT_SECRET: 'ai-e2e-jwt-secret',
     ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
     WEA_MODEL_DIR,
+    WEA_SKIP_EMBED_MODEL: '0',
   });
   spawned = spawnScratchServer(scratch, SCRATCH_PORT);
   await waitForScratchHealth(spawned, SCRATCH_PORT);

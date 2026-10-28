@@ -17,3 +17,26 @@ export function skipWhenUnavailable(unavailable: boolean, reason: string): void 
   }
   test.skip(true, reason);
 }
+
+const EMBED_DISABLED_VALUES = new Set(['1', 'true', 'yes', 'on']);
+
+/** Mirrors the server's built-in embed-model test/ops seam. */
+export function isEmbedModelDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return EMBED_DISABLED_VALUES.has(
+    String(env.WEA_SKIP_EMBED_MODEL || '')
+      .trim()
+      .toLowerCase()
+  );
+}
+
+/**
+ * Intentional model-free run (not a missing resource): skip even in CI because
+ * the operator explicitly disabled the model. Cases that require the model must
+ * opt out with `WEA_SKIP_EMBED_MODEL=0` and call this before boot.
+ */
+export function skipWhenEmbedModelDisabled(
+  reason = 'built-in embed model disabled by WEA_SKIP_EMBED_MODEL'
+): void {
+  if (!isEmbedModelDisabled()) return;
+  test.skip(true, reason);
+}

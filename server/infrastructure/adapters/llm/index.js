@@ -35,8 +35,7 @@ const crypto = require('crypto');
 
 const { classifyLlmError, createBreaker, createLimiter, resolveBudget } = require('./budget');
 const probeState = require('./probeState');
-
-const ROLES = ['embed', 'chat', 'vision', 'asr'];
+const { LLM_ROLE } = require('@webdav-easyaccess/shared/constants');
 
 /** Server role → the matrix capability key it toggles. */
 const CAPABILITY_BY_ROLE = {
@@ -631,7 +630,7 @@ function createLlmAdapter(deps = {}) {
    * injected suite and publish the resulting effective capability.
    */
   async function probeRoleNow(role) {
-    if (!ROLES.includes(role)) return { ok: false, role, reason: 'unknown role' };
+    if (!LLM_ROLE.isValid(role)) return { ok: false, role, reason: 'unknown role' };
 
     if (role === 'embed') {
       const resolved = await resolveRoleConfig('embed');
@@ -722,7 +721,7 @@ function createLlmAdapter(deps = {}) {
    */
   async function probeConfiguredRoles() {
     const outcomes = {};
-    for (const role of ROLES) {
+    for (const role of LLM_ROLE.ALL) {
       const resolved = await resolveRoleConfig(role);
       if (!resolved.engine) continue;
       try {
@@ -943,7 +942,7 @@ function createLlmAdapter(deps = {}) {
 
   async function budgetStatus() {
     const out = {};
-    for (const role of ROLES) {
+    for (const role of LLM_ROLE.ALL) {
       out[role] = {
         ...(await breakerState(role)),
         budget: await getBudget(role),
@@ -1134,7 +1133,7 @@ function createLlmAdapter(deps = {}) {
    */
   async function syncModelRegistry({ metadata = true } = {}) {
     let rows = 0;
-    for (const role of ROLES) {
+    for (const role of LLM_ROLE.ALL) {
       rows += (await syncRoleRegistry(role, { metadata })).rows;
     }
     return { rows };

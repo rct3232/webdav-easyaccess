@@ -27,6 +27,7 @@ const { getComposition } = require('../../service/composition');
 const storage = require('../../store/storage');
 const { classifyCleanup, isShortDocument, KIND_RANK } = require('./suggestionsRules');
 const { computeGroupKeeper } = require('./keeperScore');
+const { FILE_SUGGESTION_STATE } = require('@webdav-easyaccess/shared/constants');
 // Module-load side effect: registers the `file`-domain undo executor for the
 // accept command rows committed below (dashboardService.md §2.6).
 require('./suggestionUndoService');
@@ -271,7 +272,11 @@ async function materializeFromPass(userId, pass) {
     const history = await fileSuggestionsStore.listKeys(userId);
     const blocked = new Set(
       history
-        .filter((key) => key.state === 'pending' || key.state === 'dismissed')
+        .filter(
+          (key) =>
+            key.state === FILE_SUGGESTION_STATE.PENDING ||
+            key.state === FILE_SUGGESTION_STATE.DISMISSED
+        )
         .map((key) => `${key.nodeId}:${key.kind}`)
     );
 
@@ -290,7 +295,7 @@ async function materializeFromPass(userId, pass) {
         storage.getExecutor(),
         Number(userId),
         [...new Set(candidates.map((candidate) => candidate.nodeId))],
-        'accepted'
+        FILE_SUGGESTION_STATE.ACCEPTED
       );
       for (const row of accepted) {
         const key = `${row.nodeId}:${row.kind}`;
@@ -304,8 +309,8 @@ async function materializeFromPass(userId, pass) {
       // eslint-disable-next-line no-await-in-loop
       await fileSuggestionsStore.flipStatesTx(storage.getExecutor(), {
         ids: rePendIds,
-        fromState: 'accepted',
-        toState: 'pending',
+        fromState: FILE_SUGGESTION_STATE.ACCEPTED,
+        toState: FILE_SUGGESTION_STATE.PENDING,
       });
     }
 
@@ -349,8 +354,8 @@ async function materializeFromPass(userId, pass) {
     if (staleIds.length > 0) {
       const flip = await fileSuggestionsStore.flipStatesTx(storage.getExecutor(), {
         ids: staleIds,
-        fromState: 'pending',
-        toState: 'expired',
+        fromState: FILE_SUGGESTION_STATE.PENDING,
+        toState: FILE_SUGGESTION_STATE.EXPIRED,
       });
       expired = flip.changes;
     }
@@ -491,7 +496,7 @@ async function acceptSuggestions(userId, user, nodeIds) {
       storage.getExecutor(),
       Number(userId),
       [nodeId],
-      'pending'
+      FILE_SUGGESTION_STATE.PENDING
     );
     items.push({
       nodeId,
@@ -514,8 +519,8 @@ async function acceptSuggestions(userId, user, nodeIds) {
         // eslint-disable-next-line no-await-in-loop
         const flip = await fileSuggestionsStore.flipStatesTx(tx, {
           ids: item.suggestionIds,
-          fromState: 'pending',
-          toState: 'accepted',
+          fromState: FILE_SUGGESTION_STATE.PENDING,
+          toState: FILE_SUGGESTION_STATE.ACCEPTED,
         });
         flipped += flip.changes;
       }
@@ -541,7 +546,7 @@ async function dismissSuggestion(userId, suggestionId) {
     // single 404 shape — unknown, foreign and non-pending never diverge
     throw serviceError('suggestionNotFound', 404);
   }
-  return { id, state: 'dismissed' };
+  return { id, state: FILE_SUGGESTION_STATE.DISMISSED };
 }
 
 module.exports = {

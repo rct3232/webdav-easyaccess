@@ -2,6 +2,7 @@
 
 const { mapDatabaseError } = require('../../../utils/errorHandler');
 const { mapSuggestionRow, inPlaceholders } = require('../fileSuggestionsShared');
+const { FILE_SUGGESTION_STATE } = require('@webdav-easyaccess/shared/constants');
 
 /**
  * postgres implementation of FileSuggestionsRepository (`$n` placeholders).
@@ -19,7 +20,7 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
         // single-PK idiom) and reports the generated id as `lastId`.
         const result = await executor.run(
           `INSERT INTO file_suggestions (user_id, node_id, kind, reason, state, created_at, expires_at)
-           VALUES ($1, $2, $3, $4::jsonb, 'pending', NOW(), $5::timestamptz)`,
+           VALUES ($1, $2, $3, $4::jsonb, '${FILE_SUGGESTION_STATE.PENDING}', NOW(), $5::timestamptz)`,
           [
             Number(userId),
             Number(nodeId),
@@ -38,7 +39,7 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
       try {
         const { rows } = await executor.query(
           `SELECT * FROM file_suggestions
-            WHERE user_id = $1 AND state = 'pending'
+            WHERE user_id = $1 AND state = '${FILE_SUGGESTION_STATE.PENDING}'
             ORDER BY id`,
           [Number(userId)]
         );
@@ -67,8 +68,8 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
     async dismiss(userId, id) {
       try {
         const result = await executor.run(
-          `UPDATE file_suggestions SET state = 'dismissed'
-            WHERE id = $1 AND user_id = $2 AND state = 'pending'`,
+          `UPDATE file_suggestions SET state = '${FILE_SUGGESTION_STATE.DISMISSED}'
+            WHERE id = $1 AND user_id = $2 AND state = '${FILE_SUGGESTION_STATE.PENDING}'`,
           [Number(id), Number(userId)]
         );
         return { changes: result.changes };
@@ -81,7 +82,7 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
       try {
         const result = await executor.run(
           `UPDATE file_suggestions SET reason = $1::jsonb
-            WHERE id = $2 AND user_id = $3 AND state = 'pending'`,
+            WHERE id = $2 AND user_id = $3 AND state = '${FILE_SUGGESTION_STATE.PENDING}'`,
           [
             reason === null || reason === undefined ? null : JSON.stringify(reason),
             Number(id),
@@ -135,15 +136,15 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
         const cap = Number.isInteger(limit) && limit > 0 ? limit : 1000;
         const { rows } = await executor.query(
           `SELECT id FROM file_suggestions
-            WHERE state = 'pending' AND expires_at IS NOT NULL AND expires_at < $1::timestamptz
+            WHERE state = '${FILE_SUGGESTION_STATE.PENDING}' AND expires_at IS NOT NULL AND expires_at < $1::timestamptz
             ORDER BY id LIMIT $2::int`,
           [cutoff, cap]
         );
         const ids = rows.map((row) => Number(row.id));
         if (ids.length === 0) return { changes: 0, ids: [] };
         const result = await executor.run(
-          `UPDATE file_suggestions SET state = 'expired'
-            WHERE state = 'pending' AND id IN (${inPlaceholders(ids.length)})`,
+          `UPDATE file_suggestions SET state = '${FILE_SUGGESTION_STATE.EXPIRED}'
+            WHERE state = '${FILE_SUGGESTION_STATE.PENDING}' AND id IN (${inPlaceholders(ids.length)})`,
           ids
         );
         return { changes: result.changes, ids };

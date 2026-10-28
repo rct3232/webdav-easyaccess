@@ -46,6 +46,8 @@ const EMAIL_KEYS = ['host', 'port', 'user', 'password', 'secure', 'fromName'];
 // Wizard AI step (T1.1c, setup.md §2.4a): the llm block carries one sub-object
 // per configured role — embed is NOT a wizard surface (built-in engine).
 const LLM_ROLE_KEYS = ['baseUrl', 'apiKey', 'model'];
+// Intentional wizard SUBSET of `LLM_ROLE` (embed is excluded — the built-in
+// engine owns it), so this stays local and must never be mapped to `LLM_ROLE`.
 const LLM_ROLES = ['chat', 'vision', 'asr'];
 const LLM_ROLE_ENTRY_KEYS = {
   chat: ['LLM_CHAT_BASE_URL', 'LLM_CHAT_API_KEY', 'LLM_CHAT_MODEL'],

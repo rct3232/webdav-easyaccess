@@ -21,6 +21,7 @@
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const fileSuggestionsStore = require('../../store/fileSuggestionsStore');
 const actionJournalStore = require('../../store/actionJournalStore');
+const { FILE_SUGGESTION_STATE, JOURNAL_DOMAIN } = require('@webdav-easyaccess/shared/constants');
 const { getComposition } = require('../../service/composition');
 const { buildTrashPath } = require('../../service/webdavRemoteOps');
 
@@ -68,8 +69,8 @@ function createSuggestionUndoService({
     if (ids.length === 0) return;
     await suggestions().flipStatesTx(tx, {
       ids,
-      fromState: 'accepted',
-      toState: 'pending',
+      fromState: FILE_SUGGESTION_STATE.ACCEPTED,
+      toState: FILE_SUGGESTION_STATE.PENDING,
     });
   }
 
@@ -164,6 +165,6 @@ function createSuggestionUndoService({
 
 /** Shared default instance + registration (module-load side effect). */
 const sharedService = createSuggestionUndoService();
-actionJournalStore.registerUndoExecutor('file', (args) => sharedService.handle(args));
+actionJournalStore.registerUndoExecutor(JOURNAL_DOMAIN.FILE, (args) => sharedService.handle(args));
 
 module.exports = { createSuggestionUndoService, sharedService, resolveRestoreName };

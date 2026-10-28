@@ -20,7 +20,13 @@ const aclService = require('../../domains/permissions/services/aclService');
 const { isOwnerNode } = require('../../domains/permissions/policy/ownerNodeResolver');
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const { validateFileName } = require('@webdav-easyaccess/shared/validation');
-const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
+const {
+  PERMISSIONS,
+  COLLECTION_ORIGIN,
+  COLLECTION_STATUS,
+  PUBLISH_MODE,
+  GRANT_ROLE,
+} = require('@webdav-easyaccess/shared/constants');
 const aiTagStore = require('../../store/aiTagStore');
 const embeddingsStore = require('../../store/embeddingsStore');
 const aiJobsStore = require('../../store/aiJobsStore');
@@ -46,7 +52,6 @@ const { getCollectionForRead, requireOwner, requireOwnerOrRole } = shareService;
 const VALID_SORTS = ['activity', 'name', 'created', 'updated', 'similar'];
 const STORE_SORTS = new Set(['activity', 'name', 'created', 'updated']);
 const VALID_INCLUDE_TOKENS = ['mine', 'shared', 'archived'];
-const VALID_PUBLISH_MODES = ['ask', 'off', 'auto'];
 const MAX_NODE_IDS = 200;
 const PREVIEW_SAMPLE_CAP = 12;
 const SEED_NEIGHBORS_K = 200;
@@ -307,7 +312,7 @@ async function buildVectorContext(
 
 /** §4.9b auto-pin on user touch of a system collection (non-journaled). */
 async function touchSystemAutoPin(collection) {
-  if (collection && collection.origin === 'system') {
+  if (collection && collection.origin === COLLECTION_ORIGIN.SYSTEM) {
     const result = await collectionsStore.setAutoPin(collection.id);
     return Boolean(result && result.changes > 0);
   }
@@ -632,7 +637,7 @@ async function createCollection(userId, { name } = {}) {
   if (validateFileName(name)) throw serviceError('invalidName');
   const finalName = await resolveCollectionName(userId, name.trim());
   const created = await collectionsStore.createCollection(
-    { ownerId: userId, name: finalName, origin: 'user' },
+    { ownerId: userId, name: finalName, origin: COLLECTION_ORIGIN.USER },
     { actor: userId }
   );
   return { collection: created, undo: { actionId: created.actionId } };
@@ -661,7 +666,7 @@ async function createSeedCollection(userId, { name, seedNodeId } = {}) {
     {
       ownerId: userId,
       name: finalName,
-      origin: 'seed',
+      origin: COLLECTION_ORIGIN.SEED,
       definition: {
         kind: 'seed_vector',
         seed_ref: parsedSeedId,
@@ -743,7 +748,7 @@ async function createSearchCollection(userId, { name, semantic } = {}) {
     {
       ownerId: userId,
       name: finalName,
-      origin: 'search',
+      origin: COLLECTION_ORIGIN.SEARCH,
       definition: { kind: 'search', result_ref: resultRef, predicates: [] },
     },
     { actor: userId }
@@ -800,7 +805,7 @@ async function updateCollection(userId, collectionId, patch = {}) {
   }
 
   if (patch.publishMode !== undefined && patch.publishMode !== null) {
-    if (!VALID_PUBLISH_MODES.includes(patch.publishMode)) throw serviceError('invalidPublishMode');
+    if (!PUBLISH_MODE.isValid(patch.publishMode)) throw serviceError('invalidPublishMode');
     const updated = await collectionsStore.setPublishMode(collectionId, patch.publishMode, {
       actor: userId,
     });
@@ -833,7 +838,7 @@ async function archiveCollection(userId, collectionId) {
 async function restoreCollection(userId, collectionId) {
   const { collection } = await getCollectionForRead(userId, collectionId);
   await requireOwner(userId, collection);
-  if (collection.status !== 'archived') throw serviceError('notArchived');
+  if (collection.status !== COLLECTION_STATUS.ARCHIVED) throw serviceError('notArchived');
   // The partial unique fires when the row turns active, so a collision is
   // resolved with a silent suffix rename BEFORE the restore (§2.5 as-built).
   if (await collectionsStore.existsActiveName(collection.ownerId, collection.name)) {
@@ -855,9 +860,9 @@ async function restoreCollection(userId, collectionId) {
 async function deleteCollectionPermanent(userId, collectionId) {
   const { collection } = await getCollectionForRead(userId, collectionId);
   await requireOwner(userId, collection);
-  if (collection.status !== 'archived') throw serviceError('notArchived');
+  if (collection.status !== COLLECTION_STATUS.ARCHIVED) throw serviceError('notArchived');
   const defFingerprint =
-    collection.origin === 'system' && collection.definition
+    collection.origin === COLLECTION_ORIGIN.SYSTEM && collection.definition
       ? definitionEngine.fingerprintDefinition(collection.definition)
       : undefined;
   await collectionsStore.deleteCollectionPermanent(collectionId, { defFingerprint });
@@ -964,7 +969,7 @@ function parseNodeIds(raw) {
 async function addItems(userId, collectionId, nodeIds) {
   const parsed = parseNodeIds(nodeIds);
   const { collection } = await getCollectionForRead(userId, collectionId);
-  await requireOwnerOrRole(userId, collection, 'editor');
+  await requireOwnerOrRole(userId, collection, GRANT_ROLE.EDITOR);
 
   const addable = [];
   const rejectedNotReadable = [];
@@ -977,7 +982,7 @@ async function addItems(userId, collectionId, nodeIds) {
   }
 
   // §4.7: stored rows start published=false unless publish_mode='auto'
-  const published = collection.publishMode === 'auto';
+  const published = collection.publishMode === PUBLISH_MODE.AUTO;
   const result = await collectionsStore.addItems(
     collectionId,
     addable,
@@ -997,7 +1002,7 @@ async function addItems(userId, collectionId, nodeIds) {
 async function removeItems(userId, collectionId, nodeIds) {
   const parsed = parseNodeIds(nodeIds);
   const { collection } = await getCollectionForRead(userId, collectionId);
-  const role = await requireOwnerOrRole(userId, collection, 'editor');
+  const role = await requireOwnerOrRole(userId, collection, GRANT_ROLE.EDITOR);
   const isOwner = role === 'owner';
 
   const storedDeletes = [];
@@ -1012,7 +1017,7 @@ async function removeItems(userId, collectionId, nodeIds) {
       continue;
     }
     if (!isOwner) throw serviceError('forbidden');
-    if (collection.origin === 'user') {
+    if (collection.origin === COLLECTION_ORIGIN.USER) {
       // an exclusion on a user-origin collection is meaningless
       ignored.push(nodeId);
     } else {
@@ -1063,9 +1068,9 @@ async function checkUploadAdmissions(userId, nodeId) {
   }
 
   const providers = await buildProviders(userId);
-  const collections = (await collectionsStore.listForUser(userId, { status: 'active' })).filter(
-    (row) => row.ownerId === userId && definitionEngine.hasDefinition(row.definition)
-  );
+  const collections = (
+    await collectionsStore.listForUser(userId, { status: COLLECTION_STATUS.ACTIVE })
+  ).filter((row) => row.ownerId === userId && definitionEngine.hasDefinition(row.definition));
 
   const admittedCollectionIds = [];
   for (const collection of collections) {
@@ -1091,7 +1096,7 @@ async function checkUploadAdmissions(userId, nodeId) {
     const reason = admitted.get(parsedNodeId);
     if (!reason) continue;
 
-    const published = collection.publishMode === 'auto';
+    const published = collection.publishMode === PUBLISH_MODE.AUTO;
     const result = await collectionsStore.addItems(
       collection.id,
       [parsedNodeId],
@@ -1506,7 +1511,7 @@ async function mergeCollections(userId, collectionId, otherId) {
   ]);
   await requireOwner(userId, survivor);
   await requireOwner(userId, other);
-  if (survivor.status !== 'active' || other.status !== 'active') {
+  if (survivor.status !== COLLECTION_STATUS.ACTIVE || other.status !== COLLECTION_STATUS.ACTIVE) {
     throw serviceError('notArchived');
   }
 

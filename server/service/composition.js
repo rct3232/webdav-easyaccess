@@ -10,6 +10,7 @@ const { createFailSafeService } = require('./failSafeService');
 const { createTrashService } = require('./trashService');
 const aiJobsStore = require('../store/aiJobsStore');
 const { createNodeContentHook } = require('../domains/ai/nodeContentHook');
+const { syncNodeDerivedTagsForNode } = require('../domains/ai/derivedTags');
 const aclService = require('../domains/permissions/services/aclService');
 const ownerNodeResolver = require('../domains/permissions/policy/ownerNodeResolver');
 const permissionStore = require('../store/permissionStore');
@@ -26,14 +27,28 @@ let _composition = null;
 
 /**
  * Post-commit hook composition: AI enrichment stays independent, then the
- * collections admission point-check materializes any matching membership, and
- * the owner's upload evolution debounce is (re-)armed. Everything after the
- * write is best-effort — failures are logged, never propagated.
+ * local derived tags are refreshed so a tag predicate can see the fresh node,
+ * then the collections admission point-check materializes any matching
+ * membership, and the owner's upload evolution debounce is (re-)armed.
+ * Everything after the write is best-effort — failures are logged, never
+ * propagated.
  */
-function createComposedNodeContentHook(enrichmentHook) {
+function createComposedNodeContentHook(enrichmentHook, { fileNodesStore, syncDerivedTags } = {}) {
+  const syncTags =
+    syncDerivedTags || ((nodeId) => syncNodeDerivedTagsForNode(nodeId, { fileNodesStore }));
   return {
     async onNodeContentCommitted(nodeId, contentHash) {
       await enrichmentHook.onNodeContentCommitted(nodeId, contentHash);
+      try {
+        // LLM-free derived facets; tag-predicate admission below reads
+        // ai_tag_raw, so this must run before checkUploadAdmissionsForNode.
+        await syncTags(nodeId);
+      } catch (error) {
+        console.error(
+          `[derivedTags] commit sync failed for node ${nodeId}:`,
+          error && error.message
+        );
+      }
       try {
         await require('../domains/collections/service').checkUploadAdmissionsForNode(nodeId);
       } catch (error) {
@@ -76,7 +91,8 @@ function createComposition(overrides = {}) {
       createNodeContentHook({
         aiJobsRepository: aiJobsStore,
         fileNodesStore,
-      })
+      }),
+      { fileNodesStore }
     );
 
   const uploadService =

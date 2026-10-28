@@ -22,7 +22,9 @@
  * @property {(olderThanDays?: number) => Promise<Array<Object>>} getTopmostTrashedNodes
  * @property {(nodeIds: number[]) => Promise<{ changes: number }>} markSubtreeDeleted
  * @property {(nodeIds: number[]) => Promise<{ changes: number }>} untrashSubtree
+ * @property {(tx: { run: Function }, nodeIds: number[]) => Promise<{ changes: number }>} untrashSubtreeTx
  * @property {(id, newName) => Promise<{ changes: number }>} renameNode
+ * @property {(tx: { run: Function }, id, newName) => Promise<{ changes: number }>} renameNodeTx
  * @property {(id, newParentId) => Promise<{ changes: number }>} moveNode
  * @property {(nodeIds: number[]) => Promise<{ changes: number }>} deleteNodeTree
  * @property {(id, status) => Promise<{ changes: number }>} updateSyncStatus

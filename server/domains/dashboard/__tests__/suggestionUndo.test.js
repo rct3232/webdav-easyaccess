@@ -18,8 +18,9 @@ const { createFileNodesStore } = require('@server/store/fileNodesStore');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const composition = require('@server/service/composition');
 const actionJournalStore = require('@server/store/actionJournalStore');
+const storage = require('@server/store/storage');
+const { createSuggestionUndoService } = require('@server/domains/dashboard/suggestionUndoService');
 const dashboardService = require('@server/domains/dashboard/service');
-require('@server/domains/dashboard/suggestionUndoService'); // registers the file-domain executor
 
 let fileNodeService;
 let dbCleanup;
@@ -150,6 +151,31 @@ describe('restore-from-trash undo', () => {
     }
   });
 
+  it('WebDAV retry: trash path already gone + display path present continues idempotently (no second move)', async () => {
+    setMode('webdav');
+    try {
+      const { user, member, accept } = await acceptDupPair('webdav-retry');
+      // Simulate an earlier attempt that moved the blob out of the trash but
+      // whose DB TX rolled back: the node is still trashed in the DB while the
+      // external content already sits at the display path.
+      const trashPath = `/.wea-trash/${Number(member.nodeId)}`;
+      await blobStub.moveBlob(trashPath, '/simulated/display/retry.bin');
+      blobStub.moveBlob.mockClear();
+
+      const result = await actionJournalStore.undoAction(accept.actionId, {});
+      expect(result).toMatchObject({ undone: 1, skipped: [] });
+      // Idempotent: the retry verifies the display path instead of re-moving.
+      expect(blobStub.moveBlob).not.toHaveBeenCalled();
+
+      await expect(createFileNodesStore().getNode(Number(member.nodeId))).resolves.toMatchObject({
+        id: Number(member.nodeId),
+      });
+      expect((await suggestionState(user.id, member.nodeId))[0]).toBe('pending');
+    } finally {
+      setMode('s3');
+    }
+  });
+
   it('name collision at undo time: the restored row lands under the trash-restore suffix idiom', async () => {
     const { member, accept } = await acceptDupPair('collision');
     const parentDirOf = (
@@ -165,6 +191,46 @@ describe('restore-from-trash undo', () => {
     expect(result.undone).toBe(1);
     const restored = await createFileNodesStore().getNode(Number(member.nodeId));
     expect(restored.name).toMatch(/^(.*) \(\d+\)\.bin$/);
+  });
+
+  it('retry after a committed node restore: skipped item re-pends its suggestions and the journal flips undone', async () => {
+    const { user, member, accept } = await acceptDupPair('retry-restored');
+    // Simulate a previous attempt that committed the node restore but never
+    // reached the journal/suggestion flip: live node, row still accepted.
+    await createFileNodesStore().untrashSubtree([Number(member.nodeId)]);
+    expect((await suggestionState(user.id, member.nodeId))[0]).toBe('accepted');
+    expect((await actionJournalStore.getAction(accept.actionId)).status).toBe('applied');
+
+    const result = await actionJournalStore.undoAction(accept.actionId, {});
+    expect(result.undone).toBe(0);
+    expect(result.skipped).toEqual([{ reason: 'changed' }]);
+    // Convergence: the retry must not leave the suggestion stranded in accepted.
+    expect((await suggestionState(user.id, member.nodeId))[0]).toBe('pending');
+    expect((await actionJournalStore.getAction(accept.actionId)).status).toBe('undone');
+  });
+
+  it('failure after the node restore inside the journal TX rolls the restore back (nothing applied)', async () => {
+    const { user, member, accept } = await acceptDupPair('rollback');
+    const action = await actionJournalStore.getAction(accept.actionId);
+    const item = action.payload.items[0];
+    const svc = createSuggestionUndoService({
+      suggestionsStore: {
+        flipStatesTx: jest.fn().mockRejectedValue(new Error('injected failure after node restore')),
+      },
+    });
+
+    await expect(
+      storage.getExecutor().transaction(async (tx) => {
+        await svc.applyRestoreItem(item, tx);
+      })
+    ).rejects.toThrow();
+
+    // The node-restore and suggestion-flip writes share the journal TX: the
+    // failure rolls them back, and the journal row is still applied.
+    const row = await createFileNodesStore().getNodeIncludingTrashed(Number(member.nodeId));
+    expect(row.deletedAt).not.toBeNull();
+    expect((await suggestionState(user.id, member.nodeId))[0]).toBe('accepted');
+    expect((await actionJournalStore.getAction(accept.actionId)).status).toBe('applied');
   });
 
   it('trashed-parent guard: a node whose parent was trashed after accept is skipped, not orphan-restored', async () => {

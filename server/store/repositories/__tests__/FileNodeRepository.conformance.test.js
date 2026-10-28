@@ -382,6 +382,39 @@ describe('FileNodeRepository conformance', () => {
     expect((await repo.getNode(stranger.id)).deletedAt).toBeNull();
   });
 
+  it('A13: renameNodeTx/untrashSubtreeTx join the caller TX (failure after restore rolls both back)', async () => {
+    const parent = await repo.createNode(null, uniqueName('fn-tx-p'), 'directory');
+    const node = await repo.createNode(parent.id, uniqueName('fn-tx-n'), 'file');
+    await repo.markSubtreeDeleted([node.id]);
+    const originalName = node.name;
+    const restoredName = uniqueName('fn-tx-restored');
+    const executor = storage.getExecutor();
+
+    // Undo executor shape: node restore/rename then a later step throws before
+    // the journal/suggestion flip — the whole TX must unwind on BOTH dialects.
+    await expect(
+      executor.transaction(async (tx) => {
+        await repo.renameNodeTx(tx, node.id, restoredName);
+        await repo.untrashSubtreeTx(tx, [node.id]);
+        throw new Error('injected failure after node restore');
+      })
+    ).rejects.toThrow();
+
+    const untouched = await repo.getNodeIncludingTrashed(node.id);
+    expect(untouched.name).toBe(originalName);
+    expect(untouched.deletedAt).not.toBeNull();
+    await expect(repo.getNode(node.id)).resolves.toBeNull();
+
+    // Success path: the same tx-bound calls commit together and become live.
+    await executor.transaction(async (tx) => {
+      await repo.renameNodeTx(tx, node.id, restoredName);
+      await repo.untrashSubtreeTx(tx, [node.id]);
+    });
+    const restored = await repo.getNode(node.id);
+    expect(restored.name).toBe(restoredName);
+    expect(restored.deletedAt).toBeNull();
+  });
+
   it('A13: getObjectMapBySubtree returns every object_map row of the subtree (any status)', async () => {
     const root = await repo.createNode(null, uniqueName('fn-omst-root'), 'directory');
     const child = await repo.createNode(root.id, uniqueName('fn-omst-c'), 'file');

@@ -27,12 +27,15 @@
 | activeFileStorage | string   | N        | null    | Active file backend (`'s3' \| 'webdav'`); gates the versions tab visibility                                                                                 |
 | onTrashRestore    | function | N        | -       | Trash restore executor `(file) => Promise`. When provided and the opened item is trashed (`file.isTrashed`), the action bar renders the Restore icon button |
 | onTrashPurge      | function | N        | -       | Trash permanent-delete executor `(file) => Promise`; error-accented icon button behind an in-dialog error confirm                                           |
+| collections       | array    | N        | `[]`    | Host-prepared containing-collection entries `{ id, name }` for the opened node (§3.2). Empty/absent ⇒ no `Member of` row; the dialog performs no membership IO            |
+| onOpenCollection  | function | N        | -       | Collection-chip click handler `(collectionId) => void`; host closes the dialog and navigates (§3.2). Chips render only when both data and this callback are present           |
 
 ### 2.3 Callback Signatures
 
-| Callback | When invoked | Arguments |
-| -------- | ------------ | --------- |
-| onClose  | Dialog close | -         |
+| Callback        | When invoked      | Arguments      |
+| --------------- | ----------------- | -------------- |
+| onClose         | Dialog close      | -              |
+| onOpenCollection | `Member of` chip click | `collectionId` |
 
 ### 2.4 Dependencies
 
@@ -110,6 +113,7 @@ Addendum per docs/features/collections-platform.md §3.3 (like entry points), §
 ### 3.2 `Member of` chip row — Info tab, read-only
 
 - Host-prepared for-nodes membership data (`POST /collections/for-nodes`; dialog performs no IO): chip row of containing collection names under the property items; chip click routes to that collection's member view via `onOpenCollection(collectionId)` (host navigates, dialog closes). Empty/absent data ⇒ no row. Read-only: no add/remove controls in the dialog (membership mutates in menus/toolbars).
+- Rendering contract: the `dialogs.fileCollections` label sits above a wrapping chip row, one chip per `{ id, name }` entry in host order (collections-LIST order from the hook); each chip is a small clickable MUI `Chip` with `data-testid="props-collection-chip-<id>"`. Chips render only on the Info tab, only when `collections.length > 0` AND `onOpenCollection` is provided (absent callback ⇒ absent affordance, never dead chips). The dialog issues no collections request, passes the id verbatim, and never closes itself — the host owns both close and navigation.
 
 ### 3.3 `AI Info` tab — DISPLAY-ONLY
 
@@ -126,4 +130,4 @@ Addendum per docs/features/collections-platform.md §3.3 (like entry points), §
 
 - [ ] (target) AI tab absent when no ai data (both empty-object and missing-field cases); present when any ai field arrives.
 - [ ] (target) Like icon reflects `file.liked`; click calls `onToggleLike(file)` once without closing the dialog.
-- [ ] (target) Membership chips render from props with zero network calls from the dialog.
+- [ ] Membership chips render from props with zero network calls from the dialog; a chip click calls `onOpenCollection(id)` once; empty/absent data (or an absent callback) renders no row.

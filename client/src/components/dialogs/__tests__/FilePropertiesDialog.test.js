@@ -425,3 +425,87 @@ describe('FilePropertiesDialog AI-platform header like toggle (§3)', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+describe('FilePropertiesDialog AI-platform `Member of` chips (§3.2)', () => {
+  const collections = [
+    { id: 17, name: 'Beach' },
+    { id: 23, name: 'Work' },
+  ];
+
+  beforeEach(() => {
+    getFolderPermissions.mockResolvedValue([]);
+    getFolderStats.mockResolvedValue({ fileCount: 42, totalSize: 2048 });
+  });
+
+  it('renders one chip per host-provided collection under the property items', async () => {
+    renderWithProviders(
+      <FilePropertiesDialog
+        {...defaultProps}
+        collections={collections}
+        onOpenCollection={jest.fn()}
+      />
+    );
+
+    expect(await screen.findByTestId('props-collection-chip-17')).toHaveTextContent('Beach');
+    expect(screen.getByTestId('props-collection-chip-23')).toHaveTextContent('Work');
+    expect(screen.getByText('Member of')).toBeInTheDocument();
+  });
+
+  it('renders the chips without any collections network call from the dialog', async () => {
+    const fetchSpy = jest.spyOn(globalThis, 'fetch');
+    try {
+      renderWithProviders(
+        <FilePropertiesDialog
+          {...defaultProps}
+          collections={collections}
+          onOpenCollection={jest.fn()}
+        />
+      );
+
+      expect(await screen.findByTestId('props-collection-chip-17')).toBeInTheDocument();
+      const collectionsCalls = fetchSpy.mock.calls.filter(([url]) =>
+        /collections|for-nodes/.test(String(url))
+      );
+      expect(collectionsCalls).toHaveLength(0);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('calls onOpenCollection(id) once per chip click without closing the dialog', async () => {
+    const onOpenCollection = jest.fn();
+    const onClose = jest.fn();
+    renderWithProviders(
+      <FilePropertiesDialog
+        {...defaultProps}
+        onClose={onClose}
+        collections={collections}
+        onOpenCollection={onOpenCollection}
+      />
+    );
+
+    fireEvent.click(await screen.findByTestId('props-collection-chip-23'));
+
+    expect(onOpenCollection).toHaveBeenCalledTimes(1);
+    expect(onOpenCollection).toHaveBeenCalledWith(23);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('renders no row when the host passes empty/absent data or withholds the callback', async () => {
+    const { unmount } = renderWithProviders(
+      <FilePropertiesDialog {...defaultProps} collections={[]} onOpenCollection={jest.fn()} />
+    );
+    expect(screen.queryByTestId('props-collections')).not.toBeInTheDocument();
+    expect(screen.queryByText('Member of')).not.toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(<FilePropertiesDialog {...defaultProps} onOpenCollection={jest.fn()} />);
+    expect(screen.queryByTestId('props-collections')).not.toBeInTheDocument();
+  });
+
+  it('renders no dead chips when the host withholds onOpenCollection', () => {
+    renderWithProviders(<FilePropertiesDialog {...defaultProps} collections={collections} />);
+    expect(screen.queryByTestId('props-collections')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('props-collection-chip-17')).not.toBeInTheDocument();
+  });
+});

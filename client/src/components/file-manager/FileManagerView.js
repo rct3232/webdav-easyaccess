@@ -379,6 +379,7 @@ const FileManagerView = ({
     shareDialogV2File,
     mobileShareFile,
     propertiesFile,
+    propertiesCollections,
     bulkDeleteFilePaths,
     bulkConflictData,
     setBulkConflictData,
@@ -433,6 +434,7 @@ const FileManagerView = ({
     openUploadDialog,
     openCreateFolderDialog,
     onShareTargetSave,
+    handleOpenCollectionFromProperties,
   } = commands;
   const {
     progressItems,
@@ -1536,6 +1538,8 @@ const FileManagerView = ({
           onClose={closePropertiesDialog}
           file={propertiesFile}
           activeFileStorage={activeFileStorage}
+          collections={propertiesCollections}
+          onOpenCollection={handleOpenCollectionFromProperties}
           {...(likeToggleHandler &&
           propertiesFile?.isRecentFile !== true &&
           propertiesFile?.isTrashed !== true

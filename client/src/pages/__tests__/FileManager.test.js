@@ -2914,6 +2914,53 @@ describe('FileManager', () => {
       expect(screen.queryByText(/rename/i)).not.toBeInTheDocument();
     }, 15000);
 
+    it('properties shows the opened row`s `Member of` chips and a chip click opens that collection', async () => {
+      let itemsCalls17 = 0;
+      const beach = { ...memberCollection, collection_id: 17, name: 'Beach' };
+      server.use(
+        http.get('/api/collections', () =>
+          HttpResponse.json({ collections: [memberCollection, beach] })
+        ),
+        http.get('/api/collections/merge-suggestions', () =>
+          HttpResponse.json({ suggestions: [] })
+        ),
+        http.get('/api/collections/5/items', () =>
+          HttpResponse.json({ items: [memberItem(false)] })
+        ),
+        http.get('/api/collections/17/items', () => {
+          itemsCalls17 += 1;
+          return HttpResponse.json({ items: [] });
+        }),
+        // The opened row is NOT a session-listing row (member route): its id
+        // must enter the membership read via the properties target.
+        http.post('/api/collections/for-nodes', async ({ request }) => {
+          const body = await request.json();
+          return HttpResponse.json({
+            memberships: (body.nodeIds || []).includes(90210)
+              ? [{ node_id: 90210, collection_ids: [17] }]
+              : [],
+          });
+        }),
+        http.get('/api/permissions/folder', () => HttpResponse.json([]))
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, {
+        initialEntries: ['/files/__collections__/collection/5'],
+      });
+
+      fireEvent.click(await screen.findByTestId('member-menu-button'));
+      fireEvent.click(await screen.findByTestId('member-properties'));
+
+      const chip = await screen.findByTestId('props-collection-chip-17');
+      expect(chip).toHaveTextContent('Beach');
+
+      fireEvent.click(chip);
+      await waitFor(() => expect(itemsCalls17).toBeGreaterThan(0));
+      await waitFor(() =>
+        expect(screen.queryByTestId('props-collection-chip-17')).not.toBeInTheDocument()
+      );
+    }, 15000);
+
     it('exclude dispatches DELETE /:id/items for the row and reports through the undo toast', async () => {
       let delBody = null;
       server.use(

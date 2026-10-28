@@ -15,6 +15,7 @@ import {
   Tab,
   IconButton,
   Alert,
+  Chip,
 } from '@mui/material';
 import {
   Download as DownloadIcon,
@@ -46,6 +47,8 @@ const FilePropertiesDialog = ({
   onTrashRestore,
   onTrashPurge,
   onToggleLike,
+  collections = [],
+  onOpenCollection,
 }) => {
   const { t } = useTranslation();
   const permissionLabels = getPermissionLabels(t);
@@ -522,6 +525,29 @@ const FilePropertiesDialog = ({
                 </Box>
               ))}
             </Box>
+
+            {/* 4. `Member of` chip row (§3.2): host-prepared membership, read-only.
+                No IO here — absent data or callback ⇒ no row. */}
+            {Array.isArray(collections) && collections.length > 0 && onOpenCollection && (
+              <Box data-testid="props-collections" sx={{ mt: 1, py: 1 }}>
+                <Typography {...typoCommon} color="text.secondary" sx={{ mb: 0.5 }}>
+                  {t('dialogs.fileCollections')}
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {collections.map((collection) => (
+                    <Chip
+                      key={collection.id}
+                      label={collection.name}
+                      size="small"
+                      data-testid={`props-collection-chip-${collection.id}`}
+                      aria-label={collection.name}
+                      onClick={() => onOpenCollection(collection.id)}
+                      sx={{ maxWidth: '100%' }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            )}
           </>
         )}
       </DialogContent>

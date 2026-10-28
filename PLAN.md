@@ -2701,3 +2701,40 @@ _schema_migrations WHERE filename='001_initial_normalized_schema.sql';` then re-
   (Core 142/3/145).
 - **Not merged to `dev`.** The single `ai-feature`→`dev` merge remains after the release soak
   and the remaining P4 work.
+
+### 31.8 Release matrix evidence (2026-10-28)
+
+Three full release-matrix attempts on the merged remediation tip. **No attempt is green**;
+the residual failures are host-capacity/transport effects, not reproducible product
+regressions (targeted reruns below).
+
+| Run          | Config                      | S3 (`test:e2e:release`)                            | WebDAV (`test:e2e:release:webdav`)   |
+| ------------ | --------------------------- | -------------------------------------------------- | ------------------------------------ |
+| A `19c1b880` | 3 workers                   | 238 passed / 3 failed / 7 skipped / 10 did not run | 39 passed / 1 failed / 1 did not run |
+| B `7593e6fc` | 3 workers                   | 250 passed / 1 failed / 7 skipped                  | 40 passed / 1 failed                 |
+| C `8396b23f` | 2 workers (`E2E_WORKERS=2`) | 238 passed / 2 failed / 6 skipped / 12 did not run | 34 passed / 2 failed / 5 did not run |
+
+- **Run A product regression (fixed):** `E2E-WEBDAV-ADMINCFG-004` — the admin warning card
+  rendered healthy/not-configured `ai.*` tracker rows (C4-A added a healthy `ai.embed` row).
+  Fixed in `7593e6fc` (card shows `preparing | probe_failed | partial` only) + client unit
+  coverage; targeted rerun 1/1 green.
+- **Run A test-budget fix (merged):** `E2E-S3-TRASHADMIN-001` asserted the first listing 15s
+  after a full page reload; the release matrix's client boot exceeds that. Budget raised to
+  60s (`2e51aba5` / merge `8396b23f`), matching retrieval's first-paint budget.
+- **Failure inventory across A–C:** trash-admin desktop row-not-removed after a completed
+  delete (A, B, C); retrieval/collections `toBeVisible` timeouts at 60s (A, C);
+  `E2E-EXP-004` / `E2E-EXP-002` `folders/create` 500 `databaseQueryFailed`
+  (`Connection terminated due to connection timeout`, runs B and C); `E2E-WEBDAV-MIG-001`
+  and a trash-admin mobile case `ECONNRESET` on scratch-server requests (C). The failing set
+  changes every run.
+- **Capacity evidence:** host has 6 cores / 15 GB; `uptime` 15-minute load average reached
+  ~12 while the matrix ran (3–5 scratch servers, each booting the ONNX embedding model, plus
+  the Chromium workers). Traces show 9.6s client boot solo vs 24s+ under the matrix, 12–14s
+  main-thread gaps between the delete completion and the listing refresh, and one retrieval
+  run where Enter was pressed on a focused/filled search box but **zero** `POST /api/search`
+  reached that scratch server (the client absorbs transport failures and returns to browse).
+- **Targeted reruns on the same tip (all green):** webdav-admin-config `ADMINCFG-004` 1/1;
+  trash-admin desktop+mobile pair 2/2; trash-admin desktop solo 1/1; BULK-010 dual 2/2. The
+  full matrix must still be recorded on a host with CPU headroom (or `E2E_WORKERS=1` on this
+  one) before the single `ai-feature`→`dev` merge; inventory expectations stay 251/7/258 (S3)
+  and 41/0 (WebDAV).

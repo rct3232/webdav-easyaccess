@@ -156,6 +156,10 @@ Runs for every ACTIVE definition-driven collection (system, seed, search). Manua
 2. Apply exclusions, then the hysteresis diff:
    - stored member: keep while `score ≥ θ_out`; remove below it;
    - non-member: add while `score ≥ θ_in`;
+   - `θ_in`/`θ_out` derive from the definition's `theta` plus the active model profile's
+     `membershipHysteresis.inDelta/outDelta`, each clamped to [0,1] (the shipped EG2 profile
+     carries the PROVISIONAL offsets `{ inDelta: 0.02, outDelta: -0.02 }`, refined after
+     operation; profiles without finite offsets use `theta_in = theta_out = theta`);
    - predicate atoms are boolean (match ⇒ keep/add, no match ⇒ remove/skip);
    - a member whose pooled vector is missing or belongs to another model is KEPT
      (no churn on enrichment gaps); a non-member without a vector is not added.
@@ -334,7 +338,7 @@ driven by backfill completion). `deleteCentroids` on purge/merge loser.
 | `AI_EVOLUTION_INACTIVE_DAYS`                                                                                                 | `30`    | archive gate: no positive member activity for this window (ε = 0)                                                        |
 | `AI_EVOLUTION_MIN_AGE_DAYS`                                                                                                  | `14`    | archive grace for system-origin collections                                                                              |
 | `AI_EVOLUTION_CREATE_RATE_DAYS`                                                                                              | `7`     | max one system create per user per window                                                                                |
-| membership hysteresis offsets                                                                                                | profile | `membershipHysteresis.inDelta/outDelta` around `definition.theta`; absent finite values fall back to no band             |
+| membership hysteresis offsets                                                                                                | profile | `membershipHysteresis.inDelta/outDelta` around θ; shipped EG2 PROVISIONAL {+0.02/−0.02}; absent finite ⇒ no band         |
 | tier edge-cos 0.82/0.80/0.72, k≈6, δ/θ shapes                                                                                | profile | **release-measured profile values** (release artifacts — no runtime calibration; re-open trigger: measured corpus drift) |
 | min 8 / ≤1-wk / ≤12 active / caps 120·500 / band 0.55–0.7 / ratio·jaccard 0.7 / arbiter cap 8 pairs per call                 | fixed   | product rules                                                                                                            |
 

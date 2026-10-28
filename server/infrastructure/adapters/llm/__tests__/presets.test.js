@@ -88,6 +88,22 @@ describe('presets manifest (llmPresets §2.2/§2.2a/§2.3)', () => {
     }
   });
 
+  it('both EG2 rows carry the PROVISIONAL membership hysteresis band (§2.2 profile, §2.3 rows)', () => {
+    // Band offsets drive θ_in/θ_out for seed/centroid collection membership
+    // (collectionsService.md §2.3). Shipped values are provisional — refined
+    // after operation — and every EG2 row must expose the same band.
+    for (const id of ['embeddinggemma-2-onnx-q4', 'embeddinggemma-2-external']) {
+      const row = presets.find((r) => r.id === id);
+      expect(row.profile.membershipHysteresis).toEqual({ inDelta: 0.02, outDelta: -0.02 });
+      expect(row.profile.membershipHysteresis.inDelta).toBeGreaterThan(0);
+      expect(row.profile.membershipHysteresis.outDelta).toBeLessThan(0);
+    }
+    // The chat row is not an embed profile — it declares no membership band.
+    expect(presets.find((r) => r.id === 'gemma-4-12b-it').profile.membershipHysteresis).toBe(
+      undefined
+    );
+  });
+
   it('external-EG2 row: conformance block carries the checked-in kit path + median-cos', () => {
     const row = presets.find((r) => r.id === 'embeddinggemma-2-external');
     expect(row.roles).toContain('embed');

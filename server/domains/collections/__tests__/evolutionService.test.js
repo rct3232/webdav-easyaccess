@@ -407,6 +407,63 @@ describe('evolutionService reconcile pass (§2.4-bis)', () => {
     expect(third.perUser[0].reconciled).toEqual({ added: 0, removed: 0, collections: 0 });
   });
 
+  it('drives the membership band from the active EG2 profile: band keeps members and rejects non-members, predicates stay boolean', async () => {
+    const ctx = await createUserWithRoot('reconcile-band');
+    const modelId = await ensureEmbedModel('reconcile-band');
+    const seed = await fileNodeService.createFile(ctx.root.id, 'band-seed.jpg');
+    const bandMember = await fileNodeService.createFile(ctx.root.id, 'band-member.jpg');
+    const bandNonMember = await fileNodeService.createFile(ctx.root.id, 'band-new.jpg');
+    const above = await fileNodeService.createFile(ctx.root.id, 'band-above.jpg');
+    const below = await fileNodeService.createFile(ctx.root.id, 'band-below.jpg');
+    await embedNode(seed.id, modelId, [1, 0, 0, 0]);
+    // cos 0.6 sits inside the shipped band (θ 0.6 ⇒ θ_in 0.62, θ_out 0.58)
+    await embedNode(bandMember.id, modelId, [3, 4, 0, 0]);
+    await embedNode(bandNonMember.id, modelId, [3, 4, 0, 0]);
+    // cos 0.8 — above θ_in
+    await embedNode(above.id, modelId, [4, 3, 0, 0]);
+    // cos 0 — below θ_out
+    await embedNode(below.id, modelId, [0, 1, 0, 0]);
+
+    const collection = await createSystemCollection(ctx, {
+      definition: { kind: 'seed_vector', seed_ref: seed.id, theta: 0.6 },
+    });
+    // pre-existing rule-managed members: bandMember (in band) and below (under θ_out)
+    await collectionsStore.addItems(
+      collection.id,
+      [bandMember.id, below.id],
+      ctx.user.id,
+      { published: true, source: 'seed' },
+      { actor: ctx.user.id }
+    );
+
+    const flat = await fileNodeService.createDirectory(ctx.root.id, 'flat');
+    const flatFile = await fileNodeService.createFile(flat.id, 'plain.txt');
+    const predicateCol = await createSystemCollection(ctx, {
+      definition: {
+        kind: 'predicate',
+        any_of: [{ type: 'path', value: `/${ctx.user.username}/flat` }],
+      },
+    });
+
+    await evolutionService.runEvolutionPass({ users: [ctx.user.id] });
+
+    const ids = (await storedItems(collection.id)).map((row) => row.nodeId);
+    // existing member inside the band survives
+    expect(ids).toContain(bandMember.id);
+    // the same score never admits a non-member
+    expect(ids).not.toContain(bandNonMember.id);
+    // existing member below θ_out is removed
+    expect(ids).not.toContain(below.id);
+    // non-member above θ_in is admitted
+    expect(ids).toContain(above.id);
+    expect(ids).toContain(seed.id);
+
+    // predicate atoms are boolean: no pooled vector, no band — the path match admits
+    const predicateIds = (await storedItems(predicateCol.id)).map((row) => row.nodeId);
+    expect(predicateIds).toContain(flat.id);
+    expect(predicateIds).toContain(flatFile.id);
+  });
+
   it('subtracts collection exclusions before the diff and leaves manual collections untouched', async () => {
     const ctx = await createUserWithRoot('reconcile-excl');
     const travel = await fileNodeService.createDirectory(ctx.root.id, 'travel');

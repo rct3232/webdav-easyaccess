@@ -122,8 +122,10 @@ config keys.
   an existing member is kept while `score ≥ θ_out`; a non-member is admitted while
   `score ≥ θ_in`; otherwise the row is removed. Predicate atoms are boolean and have no
   band. `θ_in > θ_out`; both derive from the definition's `theta` plus the active model
-  profile's membership offsets (`membershipHysteresis.inDelta/outDelta`). A profile
-  without finite offsets uses `theta_in = theta_out = theta`.
+  profile's membership offsets (`membershipHysteresis.inDelta/outDelta`), each clamped to
+  [0,1]. The shipped EG2 profile carries the PROVISIONAL offsets
+  `{ inDelta: 0.02, outDelta: -0.02 }` (refined after operation). A profile without finite
+  offsets uses `theta_in = theta_out = theta`.
 - **Vector membership uses pooled vectors.** Seed cosine is computed against
   `embeddingsStore.get(seed_ref)`; centroid cosine against the active model's
   `collection_centroids` row. Cross-`model_id` comparison is forbidden.
@@ -413,8 +415,9 @@ collections / no-access reads throw `notFound` (404 masquerade — existence nev
 
 Cosine thresholds (`theta`, `theta_in`/`theta_out`) ship in the active model profile —
 release-measured values (release artifacts, displayed with provenance in the admin governance panel), never runtime-computed. The membership band is carried by
-`profile.membershipHysteresis.inDelta/outDelta`; absent finite offsets leave
-`theta_in = theta_out = definition.theta`.
+`profile.membershipHysteresis.inDelta/outDelta`; the shipped EG2 profile values are
+PROVISIONAL (`inDelta 0.02` / `outDelta −0.02`) and refined after operation. Absent finite
+offsets leave `theta_in = theta_out = definition.theta`.
 
 ## 4. Dependencies
 

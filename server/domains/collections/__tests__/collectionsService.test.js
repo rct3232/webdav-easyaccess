@@ -477,6 +477,76 @@ describe('collectionsService vector-definition preview gates (§2.7)', () => {
   });
 });
 
+describe('collectionsService membership hysteresis band (§2.3)', () => {
+  it('derives θ_in/θ_out from the active EG2 profile: band keeps a member, refuses a non-member', async () => {
+    const ctx = await createUserWithRoot('band');
+    const modelId = await ensureEmbedModel('band');
+    const seed = await fileNodeService.createFile(ctx.root.id, 'band-seed.jpg');
+    const bandMember = await fileNodeService.createFile(ctx.root.id, 'band-member.jpg');
+    const bandNonMember = await fileNodeService.createFile(ctx.root.id, 'band-new.jpg');
+    const aboveNonMember = await fileNodeService.createFile(ctx.root.id, 'above-new.jpg');
+    const belowMember = await fileNodeService.createFile(ctx.root.id, 'below-member.jpg');
+    await embedNode(seed.id, modelId, [1, 0, 0, 0]);
+    // cos 0.6 to the seed — inside the shipped band (θ 0.6 ⇒ θ_in 0.62, θ_out 0.58)
+    await embedNode(bandMember.id, modelId, [3, 4, 0, 0]);
+    await embedNode(bandNonMember.id, modelId, [3, 4, 0, 0]);
+    // cos 0.8 — above θ_in
+    await embedNode(aboveNonMember.id, modelId, [4, 3, 0, 0]);
+    // cos 0 — below θ_out
+    await embedNode(belowMember.id, modelId, [0, 1, 0, 0]);
+
+    const admitted = await collectionsService.evaluateDefinitionMembership(
+      ctx.user.id,
+      { kind: 'seed_vector', seed_ref: seed.id, theta: 0.6 },
+      { previousMembers: new Set([bandMember.id, belowMember.id]) }
+    );
+
+    // an existing member inside the band survives
+    expect(admitted.has(bandMember.id)).toBe(true);
+    // the SAME score never admits a non-member
+    expect(admitted.has(bandNonMember.id)).toBe(false);
+    // an existing member below θ_out is removed
+    expect(admitted.has(belowMember.id)).toBe(false);
+    // a non-member above θ_in is admitted
+    expect(admitted.has(aboveNonMember.id)).toBe(true);
+    // the seed itself scores 1.0 and is admitted
+    expect(admitted.has(seed.id)).toBe(true);
+  });
+
+  it('clamps offset-derived thresholds to [0,1]', async () => {
+    const ctx = await createUserWithRoot('bandclamp');
+    const modelId = await ensureEmbedModel('bandclamp');
+    const seed = await fileNodeService.createFile(ctx.root.id, 'clamp-seed.jpg');
+    const negativeMember = await fileNodeService.createFile(ctx.root.id, 'clamp-negative.jpg');
+    await embedNode(seed.id, modelId, [1, 0, 0, 0]);
+    // cos ≈ -0.001 — inside the UNCLAMPED θ_out = 0.01 − 0.02 = −0.01 band
+    await embedNode(negativeMember.id, modelId, [-1, 1000, 0, 0]);
+
+    const admitted = await collectionsService.evaluateDefinitionMembership(
+      ctx.user.id,
+      { kind: 'seed_vector', seed_ref: seed.id, theta: 0.01 },
+      { previousMembers: new Set([negativeMember.id]) }
+    );
+
+    // θ_out clamps to 0, so the negative score is below the band and the member leaves
+    expect(admitted.has(negativeMember.id)).toBe(false);
+  });
+
+  it('predicate atoms stay boolean — no vector band and no embedding required', async () => {
+    const ctx = await createUserWithRoot('bandpredicate');
+    const folder = await fileNodeService.createDirectory(ctx.root.id, 'plain');
+    const file = await fileNodeService.createFile(folder.id, 'note.txt');
+
+    const admitted = await collectionsService.evaluateDefinitionMembership(ctx.user.id, {
+      kind: 'predicate',
+      any_of: [{ type: 'path', value: `/${ctx.user.username}/plain` }],
+    });
+
+    expect(admitted.has(folder.id)).toBe(true);
+    expect(admitted.has(file.id)).toBe(true);
+  });
+});
+
 describe('collectionsService similar sort', () => {
   it('groups rows by greedy nearest-neighbor over centroids with stable cluster_index', async () => {
     const ctx = await createUserWithRoot('svc-similar');

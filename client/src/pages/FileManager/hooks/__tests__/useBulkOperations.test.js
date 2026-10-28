@@ -49,6 +49,8 @@ describe('useBulkOperations', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    // CRA's Jest config resets mock implementations between tests.
+    mockGetCurrentNodeId.mockReturnValue(0);
     fileService.batchDeleteFiles.mockResolvedValue({ jobId: 'job-del' });
     fileService.batchMoveFiles.mockResolvedValue({ jobId: 'job-move' });
     fileService.batchCopyFiles.mockResolvedValue({ jobId: 'job-copy' });
@@ -548,6 +550,121 @@ describe('useBulkOperations', () => {
 
       expect(mockOnOperationComplete).toHaveBeenCalledWith(
         expect.objectContaining({ opType: 'move' })
+      );
+    });
+  });
+
+  // -- §2.6.1 job-status failures (stalled / expired / cancel force-check) ------
+
+  describe('§2.6.1 (unreadable job status)', () => {
+    const advance = async (ms = 0) => {
+      await act(async () => {
+        jest.advanceTimersByTime(ms);
+      });
+    };
+
+    async function startDelete(result) {
+      await act(async () => {
+        result.current.handleBulkDelete();
+      });
+      // The first read is scheduled on a 0 ms timer.
+      await advance(0);
+    }
+
+    it('five consecutive read failures surface the stalled item and refresh the listing once', async () => {
+      fileService.getBulkOperationStatus.mockRejectedValue(new Error('network down'));
+      const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+      await startDelete(result);
+      await advance(400);
+      await advance(800);
+      await advance(1600);
+      await advance(3200);
+
+      const item = result.current.progressItems.find((entry) => entry.type === 'delete');
+      expect(item).toMatchObject({
+        status: 'error',
+        stalled: true,
+        keepOnError: true,
+        error: 'fileManager.bulkStatusUnavailable',
+      });
+      expect(mockOnOperationComplete).toHaveBeenCalledTimes(1);
+      expect(mockOnOperationComplete).toHaveBeenCalledWith(
+        expect.objectContaining({ opType: 'delete', startedNodeId: 0 })
+      );
+
+      // No auto-removal for a stalled item.
+      await advance(30_000);
+      expect(result.current.progressItems.some((entry) => entry.id === item.id)).toBe(true);
+    });
+
+    it('a 404 job-expired read lands in the same stalled state immediately (no retry)', async () => {
+      const expired = Object.assign(new Error('not found'), { response: { status: 404 } });
+      fileService.getBulkOperationStatus.mockRejectedValue(expired);
+      const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+      await startDelete(result);
+
+      expect(fileService.getBulkOperationStatus).toHaveBeenCalledTimes(1);
+      const item = result.current.progressItems.find((entry) => entry.type === 'delete');
+      expect(item).toMatchObject({ status: 'error', stalled: true });
+      expect(mockOnOperationComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it('a throwing notification cannot skip the terminal refresh', async () => {
+      notifyRecentFilesChange.mockImplementationOnce(() => {
+        throw new Error('notifier boom');
+      });
+      const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+      await act(async () => {
+        result.current.handleBulkDelete();
+      });
+      await advance(500);
+
+      expect(mockOnOperationComplete).toHaveBeenCalledTimes(1);
+      expect(notifyRecentFilesChange).toHaveBeenCalled();
+    });
+
+    it('cancel forces one status read and completes through the normal terminal path', async () => {
+      const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+      await act(async () => {
+        result.current.handleBulkDelete();
+      });
+      const progressId = result.current.progressItems[0].id;
+
+      await act(async () => {
+        await result.current.handleCancelBulkOperation(progressId);
+      });
+
+      expect(fileService.cancelBulkOperation).toHaveBeenCalledWith('job-del');
+      expect(mockOnOperationComplete).toHaveBeenCalledTimes(1);
+      expect(result.current.progressItems[0].stalled).toBeUndefined();
+    });
+
+    it('a failed forced read after the cancel surfaces the stalled state (refresh included)', async () => {
+      fileService.getBulkOperationStatus.mockRejectedValueOnce(new Error('status down'));
+      const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+      await act(async () => {
+        result.current.handleBulkDelete();
+      });
+      const progressId = result.current.progressItems[0].id;
+
+      await act(async () => {
+        await result.current.handleCancelBulkOperation(progressId);
+      });
+
+      expect(fileService.cancelBulkOperation).toHaveBeenCalledWith('job-del');
+      expect(result.current.progressItems[0]).toMatchObject({
+        status: 'error',
+        stalled: true,
+        error: 'fileManager.bulkStatusUnavailable',
+      });
+      expect(mockOnOperationComplete).toHaveBeenCalledTimes(1);
+      expect(mockOnOperationComplete).toHaveBeenCalledWith(
+        expect.objectContaining({ opType: 'delete' })
       );
     });
   });

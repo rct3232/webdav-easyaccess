@@ -469,6 +469,26 @@ describe('GET /api/files/bulk-operation/:jobId', () => {
     expect(res.status).toBe(404);
     expect(res.body.errorCode).toBeDefined();
   });
+
+  it('marks the mutable job snapshot as no-store', async () => {
+    const { user, token, homeNodeId } = await createUserWithHomeNode({
+      username: `files-job-store-${Date.now()}`,
+    });
+    await grantHomePermission({ userId: user.id, homeNodeId, permission: 'write' });
+
+    const jobRes = await request(app)
+      .post('/api/files/batch-delete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nodeIds: [homeNodeId] });
+    expect(jobRes.status).toBe(202);
+
+    const res = await request(app)
+      .get(`/api/files/bulk-operation/${jobRes.body.jobId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+  });
 });
 
 describe('PUT /api/files/rename', () => {

@@ -72,6 +72,39 @@ test('E2E-TRASH-001: Deleted item disappears from its folder and appears in the 
   await expect(fileItem(page, filePath)).toBeVisible({ timeout: 10_000 });
 });
 
+test('E2E-TRASH-013: Unreadable job status surfaces the stalled item and refreshes the listing automatically', async ({
+  page,
+  request,
+}, testInfo) => {
+  const base = await openPrivateWorkspace(page, request, testInfo);
+  const isMobile = isMobileProject(testInfo);
+  const token = await getSessionToken(page);
+  const fileName = buildName(testInfo, 'trash-status-unavailable', '.txt');
+  const filePath = `/${base}/${fileName}`;
+
+  const folderNodeId = await resolveNodeId(request, token, `/${base}`);
+  await uploadFileAt(request, token, folderNodeId, fileName, 'text/plain', textFixtureBuffer);
+  await gotoFilesPath(page, request, `/${base}`);
+  await expect(fileItem(page, filePath)).toBeVisible({ timeout: 60_000 });
+
+  // Fault injection: the delete itself succeeds, only the job-status polling is
+  // cut (useBulkOperations.md §2.6.1). Five failed reads (~6 s) end the poll.
+  await page.route('**/api/files/bulk-operation/**', (route) => route.abort());
+  await deleteItemViaUi(page, isMobile, filePath);
+  pendingTrashPurges.push({ token, name: fileName });
+
+  // No user action: the stalled entry refreshes the listing once by itself.
+  await expect(fileItem(page, filePath)).toHaveCount(0, { timeout: 60_000 });
+
+  // The progress surface keeps the single stalled message until dismissed.
+  await page.locator('#file-progress-slot button').first().click();
+  await expect(
+    page.getByText(/could not verify the operation status|작업 상태를 확인할 수 없습니다/i)
+  ).toBeVisible({ timeout: 30_000 });
+
+  await page.unroute('**/api/files/bulk-operation/**');
+});
+
 test('E2E-TRASH-003: Restore round-trip keeps the file byte-identical', async ({
   page,
   request,

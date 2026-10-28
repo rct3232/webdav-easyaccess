@@ -393,11 +393,27 @@ describe('fileService', () => {
       await batchMoveFiles([{ sourceNodeId: 1, destinationParentNodeId: 2 }]);
       const status = await getBulkOperationStatus('job-x');
 
-      expect(get).toHaveBeenCalledWith(expect.stringContaining('job-x'));
+      expect(get).toHaveBeenCalledWith(
+        expect.stringContaining('job-x'),
+        expect.objectContaining({ maxRetries: 0 })
+      );
       expect(status).toHaveProperty('status');
       expect(status).toHaveProperty('progress');
       expect(status).toHaveProperty('total');
       expect(status).toHaveProperty('results');
+    });
+
+    it('getBulkOperationStatus forwards the poller signal/timeout and owns retries', async () => {
+      const controller = new AbortController();
+      get.mockResolvedValueOnce({ data: { status: 'running', progress: 0, total: 1 } });
+
+      await getBulkOperationStatus('job-y', { signal: controller.signal, timeout: 10000 });
+
+      expect(get).toHaveBeenCalledWith(expect.stringContaining('job-y'), {
+        maxRetries: 0,
+        signal: controller.signal,
+        timeout: 10000,
+      });
     });
 
     it('getBulkOperationStatus returns error for unknown jobId', async () => {

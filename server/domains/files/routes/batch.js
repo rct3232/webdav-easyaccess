@@ -101,6 +101,9 @@ router.get(
     if (String(job.userId) !== String(req.user.id)) {
       throw forbiddenError(SERVER_ERROR_CODES.files.accessDenied);
     }
+    // Mutable polling endpoint: never let the browser cache or revalidate a
+    // snapshot (a stale 304 body would freeze the client's progress item).
+    res.set('Cache-Control', 'no-store');
     res.json({
       status: job.status,
       progress: job.progress,

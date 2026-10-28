@@ -198,6 +198,7 @@
     "uploadFileCount": "{{count}}개 파일 업로드",
     "downloadPreparing": "준비 중…",
     "downloadingPercent": "다운로드 중 ({{percent}}%)",
+    "bulkStatusUnavailable": "작업 상태를 확인할 수 없습니다. 작업이 이미 반영되었을 수 있습니다.",
     "bulkPreparing": "준비 중...",
     "bulkDeleteStartFail": "삭제 시작 실패",
     "bulkDeleting": "삭제 중...",

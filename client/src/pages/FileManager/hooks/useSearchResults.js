@@ -164,7 +164,8 @@ export const useSearchResults = ({
   // recomputed client-side over ALL committed terms at every step.
   const applyStep = useCallback((prevSnapshot, response, term) => {
     const nameMatches = Array.isArray(response.name_matches) ? response.name_matches : [];
-    const semanticRows = Array.isArray(response.semantic) ? response.semantic : [];
+    const semanticPresent = Array.isArray(response.semantic);
+    const semanticRows = semanticPresent ? response.semantic : [];
     const terms = [...chainRef.current.map((step) => step.term), term];
     const zoneAIds = new Set(
       (filesRef.current ?? [])
@@ -179,15 +180,15 @@ export const useSearchResults = ({
       zoneBRows = nameMatches;
     }
     // The snapshot's semantic section IS the response's `semantic` array in the
-    // server's delivered order (routes/search.md §2.4 — omitted key on the
-    // `semantic_available:false` degrade ⇒ empty Zone C; an honestly empty leg
-    // keeps `semanticAvailable` true with zero rows).
+    // server's delivered order (routes/search.md §2.4 — key ABSENT on the gate
+    // degrade ⇒ empty Zone C; an honestly empty leg keeps the key present and
+    // `semanticAvailable` true with zero rows).
     const zoneCRows = semanticRows;
     return {
       zoneAIds,
       zoneBRows,
       zoneCRows,
-      semanticAvailable: response.semantic_available === true,
+      semanticAvailable: semanticPresent,
       resultRef: response.result_ref ?? null,
       // NL-parsed predicate atoms (routes/search.md §2.4): stored verbatim as
       // field/value session state — the client never interprets them, and the
@@ -414,10 +415,10 @@ export const useSearchResults = ({
     [zoneAIds, currentSnapshot]
   );
 
-  // §2.6 save-gate input: the current snapshot's `semantic_available` flag
-  // (`routes/search.md` §2.4). The shell combines it with the Zone C count
-  // and the admin operator withhold to pass (or withhold) the chip bar's
-  // save callback.
+  // §2.6 save-gate input: the current snapshot's derived `semanticAvailable`
+  // (the response's `semantic` key presence, `routes/search.md` §2.4). The
+  // shell combines it with the Zone C count and the admin operator withhold to
+  // pass (or withhold) the chip bar's save callback.
   const semanticAvailable = chain.length > 0 ? currentSnapshot.semanticAvailable === true : false;
 
   // §2.6 save-to-collection boundary (searchService.md §2.6): create the

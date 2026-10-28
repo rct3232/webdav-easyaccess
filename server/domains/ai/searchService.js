@@ -13,18 +13,20 @@
  *
  * The `semantic` section (§2.3 steps 3–8): the step-3 gate
  * (`roleConfigured('embed')` ∧ `AI_SEMANTIC_SEARCH_ENABLED`) decides whether
- * the leg runs at all — gate off ⇒ the response OMITS the section
- * (`semantic_available:false`, `semantic_unavailable_reason:
- * serverErrors.ai.notConfigured`; AI absence is DATA, never an error). When
+ * the leg runs at all — gate off ⇒ the response OMITS the section and emits
+ * `semantic_unavailable_reason` (`not_configured | preparing |
+ * provisioning_failed | probe_failed | non_conforming | disabled`; AI absence
+ * is DATA, never an error). The section's PRESENCE is the availability signal:
+ * absent = not run, `[]` = ran honestly empty, non-empty = scored rows. When
  * the gate opens, the query AND its ≤3 segments embed through
  * `llmAdapter.embedQuery` behind the `query_parses` get-or-embed cache
  * (§2.3 step 4 — normalized text is the primary key, the vector TEXT is a
  * JSON envelope validated against the current space identity) and the
  * scoring leg runs behind the ONE injectable `semanticScorer` seam (§2.5a).
  * No scorer injected ⇒ the section is returned HONESTLY EMPTY
- * (`semantic_available:true`, `counts.semantic:0`) — scores are never
- * fabricated. Any provider failure/timeout/mid-switch error degrades the
- * same honest-empty way — never a 5xx.
+ * (`semantic: []`, `counts.semantic:0`) — scores are never fabricated. Any
+ * provider failure/timeout/mid-switch error degrades the same honest-empty
+ * way — never a 5xx.
  *
  * Thrown codes are bare strings translated by the route ERROR_MAP:
  * `queryRequired` / `queryTooLong` / `searchFail` (§2.7). The conversational
@@ -47,7 +49,15 @@ const QUERY_MAX_LENGTH = 200;
 const DEFAULT_NAME_LIMIT = 200;
 const DEFAULT_SEMANTIC_LIMIT = 50;
 const MAX_SEGMENTS = 3;
-const SEMANTIC_UNAVAILABLE_REASON = 'serverErrors.ai.notConfigured';
+/** Readiness vocabulary for the absent-section diagnostic (not i18n error keys). */
+const SEMANTIC_UNAVAILABLE_REASON = Object.freeze({
+  NOT_CONFIGURED: 'not_configured',
+  PREPARING: 'preparing',
+  PROVISIONING_FAILED: 'provisioning_failed',
+  PROBE_FAILED: 'probe_failed',
+  NON_CONFORMING: 'non_conforming',
+  DISABLED: 'disabled',
+});
 
 /**
  * Stable section-order+caps version of the signature `sort` component
@@ -390,18 +400,59 @@ function createSearchService(opts = {}) {
    * `embedText` is the whole-query embed input — the refined vector-query text
    * when step 3a supplied one, else the normalized query (§2.4 signature material).
    */
-  async function runSemanticLeg(userId, normalizedQuery, embedText) {
-    const adapter = resolveLlmAdapter();
-    let configured = false;
-    if (adapter && typeof adapter.roleConfigured === 'function') {
+  /**
+   * Readiness of the embed role for the semantic leg. Prefers the adapter's
+   * reason-bearing `getRoleReadiness`; falls back to the boolean
+   * `roleConfigured` (test doubles / older seams) with `not_configured`.
+   */
+  async function resolveEmbedReadiness(adapter) {
+    if (!adapter) {
+      return { configured: false, reason: SEMANTIC_UNAVAILABLE_REASON.NOT_CONFIGURED };
+    }
+    if (typeof adapter.getRoleReadiness === 'function') {
       try {
-        configured = (await adapter.roleConfigured('embed')) === true;
+        const readiness = await adapter.getRoleReadiness('embed');
+        if (readiness && typeof readiness.configured === 'boolean') {
+          return {
+            configured: readiness.configured,
+            reason:
+              readiness.configured === true
+                ? null
+                : readiness.reason || SEMANTIC_UNAVAILABLE_REASON.NOT_CONFIGURED,
+          };
+        }
       } catch {
-        configured = false;
+        /* fall through to the boolean seam */
       }
     }
-    if (!configured || !(await semanticSearchEnabled())) {
-      return { ran: false };
+    if (typeof adapter.roleConfigured === 'function') {
+      try {
+        const configured = (await adapter.roleConfigured('embed')) === true;
+        return {
+          configured,
+          reason: configured ? null : SEMANTIC_UNAVAILABLE_REASON.NOT_CONFIGURED,
+        };
+      } catch {
+        /* fall through */
+      }
+    }
+    return { configured: false, reason: SEMANTIC_UNAVAILABLE_REASON.NOT_CONFIGURED };
+  }
+
+  async function runSemanticLeg(userId, normalizedQuery, embedText) {
+    const adapter = resolveLlmAdapter();
+    const readiness = await resolveEmbedReadiness(adapter);
+    let enabled = true;
+    try {
+      enabled = await semanticSearchEnabled();
+    } catch {
+      enabled = true;
+    }
+    if (!readiness.configured || !enabled) {
+      return {
+        ran: false,
+        reason: readiness.configured ? SEMANTIC_UNAVAILABLE_REASON.DISABLED : readiness.reason,
+      };
     }
 
     // The segment cap is a property of the QUERY (§2.3 step 5), known before
@@ -563,8 +614,11 @@ function createSearchService(opts = {}) {
         nameTruncated: truncated,
         ...(leg.ran ? { semanticCappedSegments: leg.cappedSegments } : {}),
       },
-      semanticAvailable: leg.ran,
-      ...(leg.ran ? {} : { semanticUnavailableReason: SEMANTIC_UNAVAILABLE_REASON }),
+      ...(leg.ran
+        ? {}
+        : {
+            semanticUnavailableReason: leg.reason || SEMANTIC_UNAVAILABLE_REASON.NOT_CONFIGURED,
+          }),
     };
   }
 

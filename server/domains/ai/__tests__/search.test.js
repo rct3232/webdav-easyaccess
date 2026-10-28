@@ -287,8 +287,7 @@ describe('POST /api/search embed-absent degradation + result_ref', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.semantic).toBeUndefined();
-    expect(res.body.semantic_available).toBe(false);
-    expect(res.body.semantic_unavailable_reason).toBe(SERVER_ERROR_CODES.ai.notConfigured);
+    expect(res.body.semantic_unavailable_reason).toBe('not_configured');
     expect(res.body.name_matches).toHaveLength(1);
     expect(res.body.counts.semantic).toBe(0);
   });
@@ -475,7 +474,6 @@ describe('POST /api/search embed-configured wire states', () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.semantic)).toBe(true);
     expect(res.body.semantic).toEqual([]);
-    expect(res.body.semantic_available).toBe(true);
     expect(res.body.semantic_unavailable_reason).toBeUndefined();
     expect(res.body.counts.semantic_capped_segments).toBe(false);
     expect(res.body.result_ref).toMatch(/^sr1\.[0-9a-f]{16}$/);
@@ -493,8 +491,7 @@ describe('POST /api/search embed-configured wire states', () => {
     expect(res.status).toBe(200);
     expect('semantic' in res.body).toBe(false);
     expect('semantic_capped_segments' in res.body.counts).toBe(false);
-    expect(res.body.semantic_available).toBe(false);
-    expect(res.body.semantic_unavailable_reason).toBe(SERVER_ERROR_CODES.ai.notConfigured);
+    expect(res.body.semantic_unavailable_reason).toBe('not_configured');
   });
 });
 
@@ -564,7 +561,6 @@ describe('POST /api/search NL-parse wire states', () => {
       'semantic',
       'result_ref',
       'counts',
-      'semantic_available',
     ]);
 
     // Same query, chat now CONFIGURED but the model output violates the closed grammar:

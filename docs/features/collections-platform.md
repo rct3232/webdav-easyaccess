@@ -224,7 +224,7 @@ targets the full snapshot) and renders the results as accordion zones inside the
 `docs/spec/client/components/file-manager/SearchQueryChipBar.md`): typing without submit promotes and
 highlights loaded rows live (never hides), another submit chains a refinement step. The
 `Save as collection` affordance renders on the results surface when the gate passes
-(`semantic_available:true` AND a non-empty semantic section, non-admin actor); the click opens the
+(the `semantic` key PRESENT AND a non-empty semantic section, non-admin actor); the click opens the
 host-owned confirm dialog (member preview + batch-publish copy) and confirming creates the
 search-origin collection from the flattened semantic snapshot — `{ name, semantic: { resultRef,
 predicates: [], nodeIds } }` through `POST /api/collections` (the initial set is created published —

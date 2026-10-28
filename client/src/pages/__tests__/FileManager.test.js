@@ -2275,8 +2275,7 @@ describe('FileManager', () => {
       name_matches: rows.map((r) => ({ node_id: r.node_id, name: r.name })),
       counts: { name: rows.length, semantic: 0, total: rows.length, name_truncated: false },
       result_ref: resultRef,
-      semantic_available: false,
-      semantic_unavailable_reason: 'serverErrors.ai.notConfigured',
+      semantic_unavailable_reason: 'not_configured',
     });
 
     const metadataHandler = (overrides = {}) =>
@@ -2311,7 +2310,6 @@ describe('FileManager', () => {
         semantic_capped_segments: false,
       },
       result_ref: 'sr1.abc',
-      semantic_available: true,
     });
 
     const submitSearchText = async (value) => {
@@ -2678,7 +2676,6 @@ describe('FileManager', () => {
               semantic_capped_segments: false,
             },
             result_ref: 'sr1.abc',
-            semantic_available: true,
           })
         ),
         metadataHandler(),
@@ -3324,8 +3321,7 @@ describe('FileManager — files-surface membership chips + bulk add (CollectionM
           name_matches: [{ node_id: 55, name: 'zone-file.pdf' }],
           counts: { name: 1, semantic: 0, total: 1, name_truncated: false },
           result_ref: 'sr1.abc',
-          semantic_available: false,
-          semantic_unavailable_reason: 'serverErrors.ai.notConfigured',
+          semantic_unavailable_reason: 'not_configured',
         })
       ),
       http.post('/api/files/metadata', async ({ request }) => {

@@ -6,8 +6,8 @@ Summary of the test implementation for the Express.js server application. All te
 
 ## Test Statistics
 
-- **Total Test Suites**: 189 (sqlite `test:ci`, as of 2026-10-27 — P3 exit gate at `ai-feature` tip `ea480625`, per the orchestrator's jest-chain report)
-- **Total Tests**: 3305
+- **Total Test Suites**: 189 (sqlite `test:ci`, as of 2026-10-28 — post-P3 search-wire change on `ai-feature`, per the orchestrator's jest-chain report)
+- **Total Tests**: 3309
 - **Pass Rate**: 100% ✅
 - **Real-PostgreSQL adapter leg** (`test:ci:pg:adapters`): 31 suites / 461 passed, 1 skipped (462 total; recorded 2026-10-27 at the P3 exit-gate jest chain, `ai-feature` tip `ea480625` — the only post-gate merges touch e2e/docs/scripts, no repository/SQL files, so the leg stands at the gate tip)
 - **Execution Time**: Reported per run by `npm run test`
@@ -153,14 +153,14 @@ tiers only.
   — WebKit refuses the band-40 default 5060, see `docs/RCA_LOG.md` 2026-10-27),
   `s3-ai-desktop` 1 / 0 / 0 (pre-seeded `WEA_MODEL_DIR` weights resolved from the
   default `/tmp/opencode/delta-base/models`).
-- The jest tiers above are the orchestrator's exit-gate ownership, all re-pinned
-  at the P3 gate: server sqlite 189 suites / 3305 tests, client 188 suites /
-  2235 tests (see `client/TEST_SUMMARY.md`), real-PostgreSQL adapter leg
-  31 suites / 461 passed + 1 skipped (`test:ci:pg:adapters`).
+- The jest tiers above are the orchestrator's exit-gate ownership, re-pinned
+  at the post-P3 search-wire change: server sqlite 189 suites / 3309 tests,
+  client 188 suites / 2235 tests (see `client/TEST_SUMMARY.md`), real-PostgreSQL
+  adapter leg 31 suites / 461 passed + 1 skipped (`test:ci:pg:adapters`).
 
 ## Conclusion
 
-- 3305 tests across 189 suites, 100% pass rate (as of 2026-10-27, sqlite `test:ci`, per the orchestrator's P3 exit-gate jest chain at `ai-feature` tip `ea480625`); real-PostgreSQL adapter leg `test:ci:pg:adapters`: 31 suites / 461 passed + 1 skipped, same chain and tip
+- 3309 tests across 189 suites, 100% pass rate (as of 2026-10-28, sqlite `test:ci`, post-P3 search-wire change on `ai-feature`); real-PostgreSQL adapter leg `test:ci:pg:adapters`: 31 suites / 461 passed + 1 skipped, same run
 - Tests are colocated with source: domain routes/services/stores/policy under `domains/<x>/`, shared layer under `service/` and `store/`, plus `infrastructure/`, `middleware/`, `models/`, `utils/`
 - Route integration tests cover main API endpoints via Supertest
 - L2 repository conformance suites (store + permission repositories, executor) run against real sqlite and, on the adapter leg, real PostgreSQL

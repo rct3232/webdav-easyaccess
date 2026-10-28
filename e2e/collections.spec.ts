@@ -61,7 +61,7 @@ import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
  * own sqlite, project-scoped S3 bucket) and never touches the shared :5002
  * pool. One scratch server serves the whole (serial) file per project —
  * restart is not a behavior under test here. No AI surfaces are expected
- * (`semantic_available:false`) and the scratch server runs with
+ * (`semantic` key absent) and the scratch server runs with
  * `WEA_SKIP_AI_WORKER=1`: P0 only — the merge-card cases (021/022) stay
  * LLM-free by seeding the pending suggestion rows directly (the proposal WRITE
  * side is the evolution pass; the card contract under test is the read surface
@@ -708,7 +708,7 @@ test('E2E-S3-COLLECTION-009: Storage dashboard renders the collection journal fe
   await expect(undoneRow.first()).toBeVisible({ timeout: 10_000 });
 
   // P0 expectation: no AI surfaces — no capacity sparkline (series seam
-  // absent) and no suggestion checkboxes (`semantic_available:false`).
+  // absent) and no suggestion checkboxes (`semantic` key absent).
   await expect(page.getByTestId('capacity-sparkline')).toHaveCount(0);
   await expect(page.getByTestId('suggestion-checkbox')).toHaveCount(0);
 });

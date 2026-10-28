@@ -20,8 +20,7 @@ const SEARCH_RESPONSE = {
   ],
   result_ref: 'sr1.9f3c2a7e41b0d8c5',
   counts: { name: 2, semantic: 0, total: 2, name_truncated: false },
-  semantic_available: false,
-  semantic_unavailable_reason: 'serverErrors.ai.notConfigured',
+  semantic_unavailable_reason: 'not_configured',
 };
 
 const SESSION_FILES = [
@@ -230,7 +229,6 @@ describe('useSearchResults chain refinement + undo snapshots', () => {
           name_matches: [{ node_id: 11, name: 'Fun-MOVIE-notes.pdf' }],
           result_ref: 'sr1.step2',
           counts: { name: 1, semantic: 0, total: 1, name_truncated: false },
-          semantic_available: false,
         }),
     });
 
@@ -286,7 +284,6 @@ describe('useSearchResults chain refinement + undo snapshots', () => {
           name_matches: [{ node_id: 99, name: 'unrelated.x' }],
           result_ref: 'sr1.step2',
           counts: { name: 1, semantic: 0, total: 1, name_truncated: false },
-          semantic_available: false,
         }),
     });
     const { result } = renderSearchHook({ gateway });
@@ -385,7 +382,6 @@ describe('useSearchResults zone A + live promotion', () => {
         ],
         result_ref: 'sr1.x',
         counts: { name: 2, semantic: 0, total: 2, name_truncated: false },
-        semantic_available: false,
       }),
     });
     const { result } = renderSearchHook({ gateway });
@@ -408,7 +404,6 @@ describe('useSearchResults zone A + live promotion', () => {
         semantic: [{ node_id: 90, name: 'fantasy.jpg', score: 0.71 }],
         result_ref: 'sr1.y',
         counts: { name: 1, semantic: 1, total: 2, name_truncated: false },
-        semantic_available: true,
       }),
     });
     const showError = jest.fn();
@@ -527,7 +522,6 @@ describe('useSearchResults zone thumbnail merge', () => {
         semantic: [{ node_id: 90, name: 'fantasy.jpg', score: 0.71 }],
         result_ref: 'sr1.y',
         counts: { name: 1, semantic: 1, total: 2, name_truncated: false },
-        semantic_available: true,
       }),
     });
     const { result } = renderSearchHook({ gateway });
@@ -757,7 +751,6 @@ describe('useSearchResults zone C activation (T1.5c)', () => {
       name_truncated: false,
       semantic_capped_segments: false,
     },
-    semantic_available: true,
   };
 
   const createGateway = (overrides = {}) => ({
@@ -818,7 +811,7 @@ describe('useSearchResults zone C activation (T1.5c)', () => {
     ]);
   });
 
-  it('the current snapshot reports semanticAvailable from the response flag', async () => {
+  it('the current snapshot reports semanticAvailable from the semantic key presence', async () => {
     const { result } = renderSearchHook({ gateway: createGateway() });
 
     await act(async () => {
@@ -836,7 +829,6 @@ describe('useSearchResults zone C activation (T1.5c)', () => {
           name_matches: [{ node_id: 11, name: 'movie.pdf' }],
           result_ref: 'sr1.step2',
           counts: { name: 1, semantic: 0, total: 1, name_truncated: false },
-          semantic_available: false,
         }),
     });
     const { result } = renderSearchHook({ gateway });
@@ -1078,7 +1070,6 @@ describe('useSearchResults NL-parsed predicates consumption', () => {
           name_truncated: false,
           semantic_capped_segments: false,
         },
-        semantic_available: true,
         predicates: NL_ATOMS,
       }),
       createCollection: jest.fn().mockResolvedValue(created),

@@ -139,8 +139,7 @@ describe('searchService response shape', () => {
       expect.objectContaining({ nodeId: expect.any(Number), name: 'shape-notes.md' }),
     ]);
     expect(result.counts).toEqual({ name: 1, semantic: 0, total: 1, nameTruncated: false });
-    expect(result.semanticAvailable).toBe(false);
-    expect(result.semanticUnavailableReason).toBe('serverErrors.ai.notConfigured');
+    expect(result.semanticUnavailableReason).toBe('not_configured');
   });
 
   it('maps repository rows to { nodeId, name } only (no type/size leakage)', async () => {
@@ -262,7 +261,6 @@ describe('searchService semantic leg — degrade matrix', () => {
     const result = await service.search(ctx.user.id, { query: 'unfindable phrase' });
 
     expect(result.semantic).toEqual([]);
-    expect(result.semanticAvailable).toBe(true);
     expect(result.semanticUnavailableReason).toBeUndefined();
     expect(result.counts).toEqual({
       name: 0,
@@ -281,8 +279,7 @@ describe('searchService semantic leg — degrade matrix', () => {
     const result = await service.search(ctx.user.id, { query: 'absent' });
 
     expect(result.semantic).toBeUndefined();
-    expect(result.semanticAvailable).toBe(false);
-    expect(result.semanticUnavailableReason).toBe('serverErrors.ai.notConfigured');
+    expect(result.semanticUnavailableReason).toBe('not_configured');
     expect(result.counts.semanticCappedSegments).toBeUndefined();
   });
 
@@ -299,8 +296,28 @@ describe('searchService semantic leg — degrade matrix', () => {
     const result = await service.search(ctx.user.id, { query: 'killed' });
 
     expect(result.semantic).toBeUndefined();
-    expect(result.semanticAvailable).toBe(false);
-    expect(result.semanticUnavailableReason).toBe('serverErrors.ai.notConfigured');
+    expect(result.semanticUnavailableReason).toBe('disabled');
+  });
+
+  it.each([
+    ['preparing', 'preparing'],
+    ['non_conforming', 'non_conforming'],
+    ['provisioning_failed', 'provisioning_failed'],
+    ['probe_failed', 'probe_failed'],
+  ])('surfaces the adapter readiness reason %s on the omit shape', async (reason) => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, `readiness-${reason}.txt`);
+    const service = createC1Service({
+      adapter: {
+        getRoleReadiness: async () => ({ configured: false, reason }),
+        embedQuery: async () => ({ vectors: [[1, 0, 0, 0]], dim: 4, modelId: 7 }),
+      },
+    });
+
+    const result = await service.search(ctx.user.id, { query: reason });
+
+    expect(result.semantic).toBeUndefined();
+    expect(result.semanticUnavailableReason).toBe(reason);
   });
 
   it('provider failure with the role configured ⇒ honest empty (available true), name intact, no throw', async () => {
@@ -312,7 +329,6 @@ describe('searchService semantic leg — degrade matrix', () => {
 
     expect(result.nameMatches).toHaveLength(1);
     expect(result.semantic).toEqual([]);
-    expect(result.semanticAvailable).toBe(true);
     expect(result.counts.total).toBe(1);
     expect(result.counts.semantic).toBe(0);
   });
@@ -328,7 +344,6 @@ describe('searchService semantic leg — degrade matrix', () => {
     const result = await service.search(ctx.user.id, { query: 'midswitch phrase' });
 
     expect(result.semantic).toEqual([]);
-    expect(result.semanticAvailable).toBe(true);
   });
 
   it('typed-array adapter vectors (Float32Array) are normalized into the cache envelope', async () => {
@@ -341,9 +356,7 @@ describe('searchService semantic leg — degrade matrix', () => {
     };
     const service = createC1Service({ adapter });
 
-    const result = await service.search(ctx.user.id, { query: 'typed' });
-
-    expect(result.semanticAvailable).toBe(true);
+    await service.search(ctx.user.id, { query: 'typed' });
     const { rows } = await dbQuery('SELECT vector FROM query_parses WHERE normalized_query = ?', [
       'typed',
     ]);
@@ -546,7 +559,6 @@ describe('searchService semantic leg — scorer seam + assembly', () => {
       { nodeId: a.id, name: 'red-file.txt', score: 0.9 },
       { nodeId: c.id, name: 'green-file.txt', score: 0.9 },
     ]);
-    expect(result.semanticAvailable).toBe(true);
     expect(result.counts).toEqual({
       name: 1,
       semantic: 2,
@@ -579,7 +591,6 @@ describe('searchService semantic leg — scorer seam + assembly', () => {
     const result = await service.search(ctx.user.id, { query: 'boom' });
 
     expect(result.semantic).toEqual([]);
-    expect(result.semanticAvailable).toBe(true);
     expect(result.counts.semantic).toBe(0);
   });
 });
@@ -640,12 +651,10 @@ describe('searchService semantic leg — production scorer BASELINE_SAMPLE_DOCS'
       });
 
       const first = await service.search(ctx.user.id, { query: 'hot baseline alpha' });
-      expect(first.semanticAvailable).toBe(true);
       expect(first.counts.semantic).toBe(1);
 
       config.BASELINE_SAMPLE_DOCS = '9';
       const second = await service.search(ctx.user.id, { query: 'hot baseline beta' });
-      expect(second.semanticAvailable).toBe(true);
       expect(second.counts.semantic).toBe(1);
 
       expect(sampleCaps).toEqual([3, 9]);
@@ -710,7 +719,6 @@ describe('searchService default scorer — vectorStore engine factory', () => {
     const result = await service.search(ctx.user.id, { query: 'unmatchable phrase' });
 
     expect(engine.neighbors).toHaveBeenCalled();
-    expect(result.semanticAvailable).toBe(true);
     expect(result.semantic.map((row) => row.nodeId)).toContain(Number(file.id));
   });
 });
@@ -904,7 +912,6 @@ describe('searchService NL-parse leg — output, validation, cache', () => {
     const result = await service.search(ctx.user.id, { query: 'provider fail query' });
 
     expect(result.predicates).toBeUndefined();
-    expect(result.semanticAvailable).toBe(true);
     expect(await readPredicatesColumn('provider fail query')).toEqual([]);
   });
 

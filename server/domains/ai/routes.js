@@ -46,7 +46,6 @@ function serializeSearch(result) {
         ? { semantic_capped_segments: result.counts.semanticCappedSegments }
         : {}),
     },
-    semantic_available: result.semanticAvailable,
     ...(result.semanticUnavailableReason !== undefined
       ? { semantic_unavailable_reason: result.semanticUnavailableReason }
       : {}),

@@ -438,6 +438,49 @@ describe('SystemSettingsContent', () => {
     expect(screen.queryByTestId('backend-health-card')).not.toBeInTheDocument();
   });
 
+  it('does not show the card for healthy or not-configured AI role rows', async () => {
+    server.use(
+      http.get('/api/admin/health', () =>
+        HttpResponse.json({
+          backends: {
+            postgresql: { status: 'ok' },
+            s3: { status: 'unknown' },
+            webdav: { status: 'ok' },
+            'ai.embed': { status: 'ok' },
+            'ai.chat': { status: 'unknown' },
+          },
+        })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    await waitFor(() => {
+      expect(screen.getByText(/allow registration/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('backend-health-card')).not.toBeInTheDocument();
+  });
+
+  it('shows a partial AI warning inside the backend-health card', async () => {
+    server.use(
+      http.get('/api/admin/health', () =>
+        HttpResponse.json({
+          backends: {
+            postgresql: { status: 'ok' },
+            s3: { status: 'unknown' },
+            webdav: { status: 'ok' },
+            'ai.embed': { status: 'ok', hint: 'serverErrors.ai.providerProbeFailed' },
+          },
+        })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    const card = await screen.findByTestId('backend-health-card');
+    expect(within(card).getByText(/partial/i)).toBeInTheDocument();
+  });
+
   it('renders only the failing backends on the backend-health card', async () => {
     server.use(
       http.get('/api/admin/config', () =>
@@ -709,7 +752,7 @@ describe('SystemSettingsContent', () => {
     expect(within(card).getByText(/probe: HTTP 401/i)).toBeInTheDocument();
   });
 
-  it('maps an ok AI row to the ok state and a hint-bearing ok row to partial', async () => {
+  it('shows a hint-bearing ok row as partial and hides healthy ok rows', async () => {
     server.use(
       http.get('/api/admin/health', () =>
         HttpResponse.json({
@@ -727,7 +770,7 @@ describe('SystemSettingsContent', () => {
     renderSystemSettingsContent();
 
     const card = await screen.findByTestId('backend-health-card');
-    expect(within(card).getByText(/embed: ok/i)).toBeInTheDocument();
+    expect(within(card).queryByText(/embed: ok/i)).not.toBeInTheDocument();
     expect(within(card).getByText(/chat: partial/i)).toBeInTheDocument();
     expect(within(card).getByText(/model provisioning failed/i)).toBeInTheDocument();
   });

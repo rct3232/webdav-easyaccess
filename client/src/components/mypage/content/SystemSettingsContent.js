@@ -264,7 +264,10 @@ const SystemSettingsContent = () => {
   const aiRoleEntries = Object.entries(backendHealth)
     .filter(([key]) => key.startsWith('ai.'))
     .map(([key, row]) => ({ key, role: key.slice(3), row, mapped: mapAiRoleState(row) }))
-    .filter((entry) => entry.mapped);
+    .filter(
+      (entry) =>
+        entry.mapped && ['preparing', 'probe_failed', 'partial'].includes(entry.mapped.state)
+    );
 
   const syncSummary = configSyncReport?.summary;
   const configSyncActionable = (syncSummary?.drift || 0) > 0 || (syncSummary?.envOnly || 0) > 0;

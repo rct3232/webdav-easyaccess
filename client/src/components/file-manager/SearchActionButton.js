@@ -24,6 +24,7 @@ const SearchActionButton = ({
   isMobile = false,
   searchQuery = '',
   onSubmitQuery,
+  onCancelQuery,
   resultsModeActive = false,
   isPending = false,
   llmConfigured = false,
@@ -31,8 +32,16 @@ const SearchActionButton = ({
   const { t } = useTranslation();
   const offset = isMobile ? MOBILE_OFFSET : DESKTOP_OFFSET;
   const resultsEmpty = resultsModeActive && !searchQuery;
+  // §2.6/§2.7: while a submit is in flight the button IS the cancel control
+  // (the host hides the ✕ for the same window). Without a cancel seam the
+  // button keeps its previous submit-only behavior.
+  const cancelActive = isPending && typeof onCancelQuery === 'function';
 
   const handleClick = () => {
+    if (cancelActive) {
+      onCancelQuery();
+      return;
+    }
     if (typeof onSubmitQuery !== 'function') return;
     // §2.6: results mode with empty text is the owner-ruled no-op; every other
     // click submits the current value and the host decides what to do with it.
@@ -41,14 +50,21 @@ const SearchActionButton = ({
   };
 
   const glyph = (
-    <SearchGlyphIcon llmConfigured={llmConfigured} showAdd={resultsEmpty} orbit={isPending} />
+    <SearchGlyphIcon
+      llmConfigured={llmConfigured}
+      showAdd={resultsEmpty}
+      showCancel={cancelActive}
+      orbit={isPending}
+    />
   );
 
   return (
     <Fab
       color="inherit"
       data-testid="search-action-button"
-      aria-label={t('nav.searchSubmit')}
+      data-cancel-active={cancelActive ? 'true' : undefined}
+      aria-label={cancelActive ? t('nav.searchCancel') : t('nav.searchSubmit')}
+      title={cancelActive ? t('nav.searchCancel') : undefined}
       onClick={handleClick}
       sx={{
         position: 'fixed',

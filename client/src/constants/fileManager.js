@@ -34,6 +34,15 @@ export const FLOATING_BOTTOM_HEIGHT_DESKTOP = 104; // 48 + 56
 // the animation duration.
 export const SEARCH_ORBIT_CYCLE_MS = 1600;
 
+// A user cancel is ignored inside this window after a submit so a submit
+// double-click cannot immediately cancel itself (useSearchResults.md §2.3).
+export const SEARCH_CANCEL_GUARD_MS = 300;
+
+// Explicit bound for the single search POST: an unresponsive server surfaces
+// through the absorbed-failure path instead of holding `pending` for the
+// transport default (5 min). Timeouts are never retried by httpClient.
+export const SEARCH_REQUEST_TIMEOUT_MS = 60_000;
+
 export const PREVIEWABLE_EXTENSIONS = [
   ...IMAGE_EXTENSIONS,
   ...VIDEO_EXTENSIONS,

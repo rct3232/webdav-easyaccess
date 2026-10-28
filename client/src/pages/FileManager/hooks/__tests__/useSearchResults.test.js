@@ -57,9 +57,10 @@ function renderSearchHook({
   sortMode = 'name_asc',
   liveText = '',
   minPendingMs = 0,
+  cancelGuardMs = 0,
 } = {}) {
   const utils = renderHook((props) => useSearchResults(props), {
-    initialProps: { showError, gateway, files, sortMode, liveText, minPendingMs },
+    initialProps: { showError, gateway, files, sortMode, liveText, minPendingMs, cancelGuardMs },
   });
   return { ...utils, gateway, showError };
 }
@@ -216,6 +217,155 @@ describe('useSearchResults mode machine', () => {
     expect(result.current.chain).toHaveLength(1);
     expect(result.current.chain[0].term).toBe('movie');
     expect(result.current.zoneBRows.map((row) => row.nodeId)).toEqual([11, 12]);
+  });
+});
+
+describe('useSearchResults user cancel (§2.3/§2.6)', () => {
+  it('passes an AbortSignal and the explicit 60s search timeout through the gateway seam', async () => {
+    const { result, gateway } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    const [, options] = gateway.runSearch.mock.calls[0];
+    expect(options.signal).toBeInstanceOf(AbortSignal);
+    expect(options.timeout).toBe(60_000);
+  });
+
+  it('cancelSearch aborts the request, restores browse, drops the late payload and never toasts', async () => {
+    let signal = null;
+    let resolveSearch;
+    const gateway = createGateway({
+      runSearch: jest.fn((args, options) => {
+        signal = options?.signal;
+        return new Promise((resolve) => {
+          resolveSearch = resolve;
+        });
+      }),
+    });
+    const { result, showError } = renderSearchHook({ gateway });
+
+    act(() => {
+      result.current.submitSearch('movie');
+    });
+    expect(result.current.mode).toBe('pending');
+
+    let cancelled = false;
+    act(() => {
+      cancelled = result.current.cancelSearch();
+    });
+
+    expect(cancelled).toBe(true);
+    expect(signal.aborted).toBe(true);
+    expect(result.current.mode).toBe('browse');
+
+    // A late payload (server finished before the abort landed) is discarded.
+    await act(async () => {
+      resolveSearch(SEARCH_RESPONSE);
+      await Promise.resolve();
+    });
+    expect(result.current.mode).toBe('browse');
+    expect(result.current.chain).toHaveLength(0);
+    expect(showError).not.toHaveBeenCalled();
+  });
+
+  it('cancelSearch from a refinement restores the previous results chain untouched', async () => {
+    const gateway = createGateway();
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    expect(result.current.mode).toBe('results');
+
+    gateway.runSearch.mockImplementationOnce(() => new Promise(() => {}));
+    act(() => {
+      result.current.submitSearch('other');
+    });
+    expect(result.current.mode).toBe('pending');
+
+    act(() => {
+      expect(result.current.cancelSearch()).toBe(true);
+    });
+
+    expect(result.current.mode).toBe('results');
+    expect(result.current.chain).toHaveLength(1);
+    expect(result.current.chain[0].term).toBe('movie');
+    expect(result.current.zoneBRows.map((row) => row.nodeId)).toEqual([11, 12]);
+  });
+
+  it('ignores a cancel inside the post-submit guard window', async () => {
+    const gateway = createGateway({
+      runSearch: jest.fn(() => new Promise(() => {})),
+    });
+    const { result } = renderSearchHook({ gateway, cancelGuardMs: 60 });
+
+    act(() => {
+      result.current.submitSearch('movie');
+    });
+    act(() => {
+      expect(result.current.cancelSearch()).toBe(false);
+    });
+    expect(result.current.mode).toBe('pending');
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+    act(() => {
+      expect(result.current.cancelSearch()).toBe(true);
+    });
+    expect(result.current.mode).toBe('browse');
+  });
+
+  it('cancelSearch with nothing in flight is a no-op', () => {
+    const { result } = renderSearchHook();
+    expect(result.current.cancelSearch()).toBe(false);
+    expect(result.current.mode).toBe('browse');
+  });
+
+  it('cancelSearch during the minimum pending hold prevents the commit', async () => {
+    const { result } = renderSearchHook({ minPendingMs: 200 });
+
+    act(() => {
+      result.current.submitSearch('movie');
+    });
+    // The response has landed; the §2.3 hold keeps `pending` up.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(result.current.mode).toBe('pending');
+
+    act(() => {
+      expect(result.current.cancelSearch()).toBe(true);
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 260));
+    });
+    expect(result.current.mode).toBe('browse');
+    expect(result.current.chain).toHaveLength(0);
+  });
+
+  it('exitResults aborts an in-flight submit so no orphan request survives', () => {
+    let signal = null;
+    const gateway = createGateway({
+      runSearch: jest.fn((args, options) => {
+        signal = options?.signal;
+        return new Promise(() => {});
+      }),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    act(() => {
+      result.current.submitSearch('movie');
+    });
+    act(() => {
+      result.current.exitResults();
+    });
+
+    expect(signal.aborted).toBe(true);
+    expect(result.current.mode).toBe('browse');
   });
 });
 

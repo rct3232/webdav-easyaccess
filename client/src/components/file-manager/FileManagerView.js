@@ -1300,6 +1300,9 @@ const FileManagerView = ({
           {...(onSubmitQuery
             ? {
                 onSubmitQuery,
+                ...(typeof searchResults?.cancelSearch === 'function'
+                  ? { onCancelQuery: searchResults.cancelSearch }
+                  : {}),
                 resultsModeActive: searchResultsMode || searchPending,
                 isPending: searchPending,
                 llmConfigured,

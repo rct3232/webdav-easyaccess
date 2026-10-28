@@ -6,7 +6,11 @@ import {
   matchesTerm,
 } from '../../../utils/searchHighlight';
 import { sortFiles } from '../../../utils/fileUtils';
-import { SEARCH_ORBIT_CYCLE_MS } from '../../../constants/fileManager';
+import {
+  SEARCH_CANCEL_GUARD_MS,
+  SEARCH_ORBIT_CYCLE_MS,
+  SEARCH_REQUEST_TIMEOUT_MS,
+} from '../../../constants/fileManager';
 import * as recentQueriesStorage from '../../../services/recentQueriesStorage';
 
 /**
@@ -131,6 +135,7 @@ export const useSearchResults = ({
   sortMode = 'name_asc',
   liveText = '',
   minPendingMs = SEARCH_ORBIT_CYCLE_MS,
+  cancelGuardMs = SEARCH_CANCEL_GUARD_MS,
   onCommit = undefined,
 } = {}) => {
   const [mode, setMode] = useState('browse');
@@ -154,6 +159,26 @@ export const useSearchResults = ({
   modeRef.current = mode;
   const attemptedEnrichmentRef = useRef(new Set());
   const submitSeqRef = useRef(0);
+  // Single in-flight search POST (useSearchResults.md §2.3 user cancel):
+  // `searchAbortRef` is non-null only while a submit is running; the started
+  // timestamp feeds the 300 ms cancel guard and `pendingPreviousModeRef`
+  // restores the pre-submit surface on cancel.
+  const searchAbortRef = useRef(null);
+  const searchStartedAtRef = useRef(0);
+  const pendingPreviousModeRef = useRef('browse');
+
+  // Unmount (navigation/logout) aborts an in-flight search so no orphan
+  // request outlives the surface (useSearchResults.md §2.5).
+  useEffect(
+    () => () => {
+      const controller = searchAbortRef.current;
+      if (controller) {
+        searchAbortRef.current = null;
+        controller.abort();
+      }
+    },
+    []
+  );
 
   const fail = useCallback((code) => {
     if (typeof showErrorRef.current === 'function') showErrorRef.current(code);
@@ -218,54 +243,87 @@ export const useSearchResults = ({
 
       const seq = ++submitSeqRef.current;
       const startedAt = Date.now();
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
+      searchStartedAtRef.current = startedAt;
+      pendingPreviousModeRef.current = previousMode;
       setMode('pending');
 
       let payload = null;
       let envelope = null;
-      payload = await gateway.runSearch(
-        { query: trimmed },
-        {
-          onError: (error) => {
-            envelope = error;
-          },
+      // The controller stays live until the WHOLE submit settles (response +
+      // minimum pending hold + commit) so the cancel button is never a dead
+      // affordance during the §2.3 hold window; `cancelSearch` bumps the
+      // sequence, so a cancel there prevents the commit and restores the
+      // previous surface. Abort after the response is a wire no-op.
+      try {
+        payload = await gateway.runSearch(
+          { query: trimmed },
+          {
+            signal: controller.signal,
+            timeout: SEARCH_REQUEST_TIMEOUT_MS,
+            onError: (error) => {
+              envelope = error;
+            },
+          }
+        );
+        // User cancel (§2.3): `cancelSearch` bumped the sequence and restored
+        // the prior mode — the settled payload is dropped without a toast.
+        if (controller.signal.aborted) return;
+        if (submitSeqRef.current !== seq) return;
+
+        if (payload === null || payload === undefined) {
+          const code =
+            envelope?.errorCode === 'serverErrors.search.queryRequired' ||
+            envelope?.errorCode === 'serverErrors.search.queryTooLong'
+              ? envelope.errorCode
+              : 'serverErrors.search.fail';
+          fail(code);
+          setMode(previousMode);
+          return;
         }
-      );
-      if (submitSeqRef.current !== seq) return;
 
-      if (payload === null || payload === undefined) {
-        const code =
-          envelope?.errorCode === 'serverErrors.search.queryRequired' ||
-          envelope?.errorCode === 'serverErrors.search.queryTooLong'
-            ? envelope.errorCode
-            : 'serverErrors.search.fail';
-        fail(code);
-        setMode(previousMode);
-        return;
+        const remaining = minPendingMs - (Date.now() - startedAt);
+        if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+        if (submitSeqRef.current !== seq) return;
+
+        const snapshot = applyStep(prevSnapshot, payload, trimmed);
+        const step = {
+          term: trimmed,
+          op: INTERSECT_NAME_OP,
+          snapshot,
+          inputTextAtCommit: String(query ?? ''),
+        };
+        setChain(prevSnapshot ? [...previousChain, step] : [step]);
+        setMode('results');
+        if (typeof onCommit === 'function') onCommit(trimmed);
+
+        setRecentQueries((prev) => {
+          const next = upsertChip(prev, trimmed, payload.result_ref ?? undefined);
+          recentQueriesStorage.saveRecentQueries(next);
+          return next;
+        });
+      } finally {
+        if (searchAbortRef.current === controller) searchAbortRef.current = null;
       }
-
-      const remaining = minPendingMs - (Date.now() - startedAt);
-      if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
-      if (submitSeqRef.current !== seq) return;
-
-      const snapshot = applyStep(prevSnapshot, payload, trimmed);
-      const step = {
-        term: trimmed,
-        op: INTERSECT_NAME_OP,
-        snapshot,
-        inputTextAtCommit: String(query ?? ''),
-      };
-      setChain(prevSnapshot ? [...previousChain, step] : [step]);
-      setMode('results');
-      if (typeof onCommit === 'function') onCommit(trimmed);
-
-      setRecentQueries((prev) => {
-        const next = upsertChip(prev, trimmed, payload.result_ref ?? undefined);
-        recentQueriesStorage.saveRecentQueries(next);
-        return next;
-      });
     },
     [gateway, applyStep, fail, minPendingMs, onCommit]
   );
+
+  // User cancel (§2.3): aborts the single in-flight search POST, discards the
+  // settled payload through the sequence guard, and restores the pre-submit
+  // surface. NOT an error — no toast (contrast: the absorbed `null` failure).
+  const cancelSearch = useCallback(() => {
+    const controller = searchAbortRef.current;
+    if (!controller) return false;
+    if (Date.now() - searchStartedAtRef.current < cancelGuardMs) return false;
+
+    searchAbortRef.current = null;
+    submitSeqRef.current += 1;
+    controller.abort();
+    setMode(pendingPreviousModeRef.current === 'results' ? 'results' : 'browse');
+    return true;
+  }, [cancelGuardMs]);
 
   // Pure client-side snapshot restore — no server call, no re-search.
   const undoToStep = useCallback((index) => {
@@ -276,6 +334,11 @@ export const useSearchResults = ({
   }, []);
 
   const exitResults = useCallback(() => {
+    const controller = searchAbortRef.current;
+    if (controller) {
+      searchAbortRef.current = null;
+      controller.abort();
+    }
     submitSeqRef.current += 1;
     setMode('browse');
     setChain([]);
@@ -480,6 +543,7 @@ export const useSearchResults = ({
     libraryAddTarget,
     recentQueries,
     submitSearch,
+    cancelSearch,
     saveFromResults,
     undoToStep,
     exitResults,

@@ -156,6 +156,61 @@ describe('SearchActionButton icon states (§2.6)', () => {
     );
     expect(screen.queryByTestId('search-action-glyph-add')).not.toBeInTheDocument();
   });
+
+  it('isPending: the button is the cancel control (aria-label + cross overlay), never a resubmit', () => {
+    const onSubmitQuery = jest.fn();
+    const onCancelQuery = jest.fn();
+    renderWithProviders(
+      <SearchActionButton
+        {...baseProps}
+        searchQuery="movie"
+        onSubmitQuery={onSubmitQuery}
+        onCancelQuery={onCancelQuery}
+        isPending
+      />
+    );
+
+    expect(button()).toHaveAttribute('aria-label', 'Cancel search');
+    expect(button()).toHaveAttribute('data-cancel-active', 'true');
+    expect(screen.getByTestId('search-action-glyph-cancel')).toBeInTheDocument();
+    // The orbit is still the pending indicator while the cross advertises cancel.
+    expect(screen.getByTestId('search-action-glyph-orbit')).toBeInTheDocument();
+
+    fireEvent.click(button());
+    expect(onCancelQuery).toHaveBeenCalledTimes(1);
+    expect(onSubmitQuery).not.toHaveBeenCalled();
+  });
+
+  it('isPending without a cancel seam stays submit-only (unchanged host contract)', () => {
+    const onSubmitQuery = jest.fn();
+    renderWithProviders(
+      <SearchActionButton
+        {...baseProps}
+        searchQuery="movie"
+        onSubmitQuery={onSubmitQuery}
+        isPending
+      />
+    );
+
+    expect(button()).not.toHaveAttribute('data-cancel-active');
+    expect(screen.queryByTestId('search-action-glyph-cancel')).not.toBeInTheDocument();
+    fireEvent.click(button());
+    expect(onSubmitQuery).toHaveBeenCalledWith('movie');
+  });
+
+  it('cancel never renders the Add overlay on top of the cancel cross', () => {
+    renderWithProviders(
+      <SearchActionButton
+        {...baseProps}
+        resultsModeActive
+        searchQuery=""
+        onCancelQuery={jest.fn()}
+        isPending
+      />
+    );
+    expect(screen.getByTestId('search-action-glyph-cancel')).toBeInTheDocument();
+    expect(screen.queryByTestId('search-action-glyph-add')).not.toBeInTheDocument();
+  });
 });
 
 // -- §2.6 knockout structure (cloud cut along the overlay lines, no plates) ----

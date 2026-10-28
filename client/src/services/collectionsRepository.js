@@ -331,7 +331,14 @@ export const runSearch = async ({ query, resultRef } = {}, options = {}) => {
     if (resultRef !== undefined && resultRef !== null) {
       body.result_ref = resultRef;
     }
-    return readPayload(await post('/search', body));
+    const config = {};
+    if (options.signal) config.signal = options.signal;
+    if (options.timeout != null) config.timeout = options.timeout;
+    const response =
+      Object.keys(config).length > 0
+        ? await post('/search', body, config)
+        : await post('/search', body);
+    return readPayload(response);
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to run search:', error);

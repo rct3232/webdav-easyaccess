@@ -234,6 +234,36 @@ describe('collection lifecycle (create/list/rename/archive/restore/delete)', () 
     expect(gone.body.errorCode).toBe(codes().collections.notFound);
   });
 
+  it('PUT pinned:false persists on an auto-pinned system collection; a later touch re-pins', async () => {
+    const { user, token } = await createUserWithRoot('unpin');
+    const system = await collectionsStore.createCollection(
+      { ownerId: user.id, name: 'Auto pinned', origin: 'system' },
+      { actor: user.id }
+    );
+    await collectionsStore.setAutoPin(system.id);
+
+    const unpin = await request(app)
+      .put(`/api/collections/${system.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ pinned: false });
+    expect(unpin.status).toBe(200);
+    expect(unpin.body.collection).toMatchObject({ pinned: false, pinned_by: null });
+    expect(unpin.body.undo.action_id).toBeGreaterThan(0);
+
+    // read back — the unpin survived the request (C2 regression)
+    const readBack = await request(app)
+      .get(`/api/collections/${system.id}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(readBack.body).toMatchObject({ pinned: false, pinned_by: null });
+
+    // a separate user touch keeps the §4.9b auto-pin taxonomy
+    const renamed = await request(app)
+      .put(`/api/collections/${system.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Auto pinned renamed' });
+    expect(renamed.body.collection).toMatchObject({ pinned: true, pinned_by: 'auto' });
+  });
+
   it('name collisions on create and restore auto-suffix instead of erroring', async () => {
     const { token } = await createUserWithRoot('suffix');
 
@@ -1762,6 +1792,55 @@ describe('POST /for-nodes membership chips', () => {
       .send({ nodeIds: [] });
     expect(empty.status).toBe(400);
     expect(empty.body.errorCode).toBe(codes().collections.emptyNodeIds);
+  });
+
+  it('owner sees unpublished rows; a grantee only sees published rows (Decision 2)', async () => {
+    const owner = await createUserWithRoot('fn-priv-owner');
+    const viewer = await createUserWithRoot('fn-priv-viewer');
+    const parked = await fileNodeService.createFile(owner.root.id, 'parked.jpg');
+
+    const created = await createCollectionViaApi(owner.token, { name: 'Privacy col' });
+    const id = created.body.collection.collection_id;
+    await request(app)
+      .post(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ nodeIds: [parked.id] });
+    await request(app)
+      .post(`/api/collections/${id}/grants`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ userId: viewer.user.id, role: 'viewer' });
+
+    const chipsFor = async (token) => {
+      const res = await request(app)
+        .post('/api/collections/for-nodes')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ nodeIds: [parked.id] });
+      expect(res.status).toBe(200);
+      return res.body.memberships[0].collection_ids;
+    };
+
+    // ask mode → the stored row starts published=false
+    expect(await chipsFor(owner.token)).toEqual([id]);
+    expect(await chipsFor(viewer.token)).toEqual([]);
+
+    // publishing flips the grantee-visible chip on
+    const publish = await request(app)
+      .put(`/api/collections/${id}/items/publish`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ nodeIds: [parked.id], published: true });
+    expect(publish.status).toBe(200);
+    expect(await chipsFor(viewer.token)).toEqual([id]);
+
+    // hidden stays excluded for the grantee, archived for everyone (unchanged)
+    await collectionsStore.setVisible(viewer.user.id, id, true);
+    expect(await chipsFor(viewer.token)).toEqual([]);
+    await collectionsStore.setVisible(viewer.user.id, id, false);
+
+    await request(app)
+      .post(`/api/collections/${id}/archive`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(await chipsFor(owner.token)).toEqual([]);
+    expect(await chipsFor(viewer.token)).toEqual([]);
   });
 });
 

@@ -40,9 +40,9 @@ const wire = require('./wire');
 // collectionShareService.md). Destructured for unchanged call sites.
 const { getCollectionForRead, requireOwner, requireOwnerOrRole } = shareService;
 
-// Constants with later-task owners (§3.1/§3.4): SIMILAR_MODEL_ID is a
-// placeholder until the T1.1 model registry supplies the active embed model;
-// item activity scores arrive with the T0.6 node_activity rollup store.
+// Constants with later-task owners (§3.1/§3.4): item activity scores arrive
+// with the T0.6 node_activity rollup store. `similar` grouping resolves the
+// ACTIVE embed model from the llm_models registry (never a fixed placeholder).
 const VALID_SORTS = ['activity', 'name', 'created', 'updated', 'similar'];
 const STORE_SORTS = new Set(['activity', 'name', 'created', 'updated']);
 const VALID_INCLUDE_TOKENS = ['mine', 'shared', 'archived'];
@@ -58,7 +58,6 @@ const SEED_NEIGHBORS_K = 200;
  * owned by the active model profile (§2.3), never by this service.
  */
 const SEED_VECTOR_THETA = 0.62;
-const SIMILAR_MODEL_ID = 0;
 const SIMILAR_CLUSTER_COSINE = 0.7;
 
 // Runtime seams (boot singletons / lazy requires); unit tests swap them so the
@@ -308,8 +307,10 @@ async function buildVectorContext(
 /** §4.9b auto-pin on user touch of a system collection (non-journaled). */
 async function touchSystemAutoPin(collection) {
   if (collection && collection.origin === 'system') {
-    await collectionsStore.setAutoPin(collection.id);
+    const result = await collectionsStore.setAutoPin(collection.id);
+    return Boolean(result && result.changes > 0);
   }
+  return false;
 }
 
 async function canReadNode(userId, nodeId) {
@@ -471,13 +472,21 @@ function parseInclude(raw) {
 /**
  * `similar` (§3.1): greedy nearest-neighbor over centroid vectors in JS
  * (≤~20 rows); centroid-less rows are singleton clusters. cluster order =
- * first appearance over the activity-ordered input (stable).
+ * first appearance over the activity-ordered input (stable). Centroids are
+ * model-keyed (§2.3), so the read uses the ACTIVE embed model — the same
+ * resolution the definition/preview paths use. Without an active embed model
+ * there is no grouping space: every row is a singleton.
  */
 async function groupBySimilarity(rows) {
-  const centroids = await collectionsStore.getCentroids(
-    rows.map((row) => row.id),
-    SIMILAR_MODEL_ID
-  );
+  const activeModel = await llmModelsStore.getActiveByRole('embed');
+  const modelId = activeModel ? Number(activeModel.id) : null;
+  const centroids =
+    Number.isInteger(modelId) && modelId > 0
+      ? await collectionsStore.getCentroids(
+          rows.map((row) => row.id),
+          modelId
+        )
+      : [];
   const vectorById = new Map();
   for (const entry of centroids) {
     const vector = parseCentroid(entry.centroid);
@@ -798,7 +807,15 @@ async function updateCollection(userId, collectionId, patch = {}) {
     row = await collectionsStore.getCollection(collectionId);
   }
 
-  await touchSystemAutoPin(row);
+  // §4.9b auto-pin on user touch of a system collection — EXCEPT an explicit
+  // unpin: setAutoPin pins any `origin='system'` row with `pinned=FALSE`, so
+  // touching here would immediately undo the `pinned:false` the user just
+  // requested. The unpin persists until the next SEPARATE user touch
+  // (collectionsService.md §2.2, evolutionService.md §2.9).
+  if (patch.pinned !== false && (await touchSystemAutoPin(row))) {
+    // The response must reflect the pin the touch just applied.
+    row = await collectionsStore.getCollection(collectionId);
+  }
   return { collection: row, undo: { actionId: firstActionId } };
 }
 

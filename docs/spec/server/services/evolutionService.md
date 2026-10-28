@@ -303,8 +303,10 @@ tuned, via admin counters: `tombstone-suppressed` vs `regenerated-anyway`.
 
 Pinning itself happens at the TOUCH (store-embedded `setAutoPin` inside the journaled
 TX — membership add, membership removal via stored-row delete OR new exclusion, publish
-toggle, rename, pin/unpin, grant/share change, accepting a merge as survivor,
-restore-from-archive). Pass 6 is the nightly RECONCILE (idempotent): (a) asserts
+toggle, rename, pin, grant/share change, accepting a merge as survivor,
+restore-from-archive). An explicit user UNPIN (`pinned:false`) is NOT a touch: it
+clears `pinned`/`pinned_by` and persists, so unpinning a system collection is not undone
+by the unpin request itself (the next separate touch pins it again). Pass 6 is the nightly RECONCILE (idempotent): (a) asserts
 `pinned_by='auto'` only on `origin='system'` rows (NULL elsewhere — pin is meaningless
 for user|seed|search, which silent evolution never archives); (b) never downgrades
 `pinned_by='user'` (an explicit user pin wins over the auto chip); (c) emits no journal
@@ -404,7 +406,8 @@ driven by backfill completion). `deleteCentroids` on purge/merge loser.
       dismissed band row re-raises on the cadence with its verdict preserved; card
       without user click NEVER merges (arbiter self-execution grep/test ban)
 - [ ] Auto-pin reconcile: each touch type (per §2.9) pins a system row (`pinned_by='auto'`,
-      no journal row for the pin); read/view/like touches do NOT pin; user-origin rows
+      no journal row for the pin); an explicit user unpin persists (not re-pinned by the
+      unpin request itself); read/view/like touches do NOT pin; user-origin rows
       keep NULL; nightly reconcile clears any illegal non-system auto-pin
 - [ ] No tag pass: evolution writes nothing to `ai_tag_raw` (the only derived-facet writer is
       derivedTagsService); no `tag_parents`/`tag_embeddings` reference exists in any

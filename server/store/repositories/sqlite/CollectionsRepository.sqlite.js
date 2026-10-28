@@ -23,7 +23,10 @@ module.exports = function createSqliteCollectionsRepository(executor) {
     // `c.id DESC` is the deterministic tie-breaker (RCA 2026-09-23): second-
     // granular sqlite timestamps tie on rapid creates, and a plan-dependent
     // row order is not a contract — newest-first is the §3.1 gravity.
-    activity: 'c.activity_score DESC, c.last_member_change_at DESC, c.created_at DESC, c.id DESC',
+    // COALESCE keeps the NULL member-change fallback DIALECT-NEUTRAL: SQLite
+    // sorts NULL last on DESC while PostgreSQL sorts it first.
+    activity:
+      'c.activity_score DESC, COALESCE(c.last_member_change_at, c.created_at) DESC, c.created_at DESC, c.id DESC',
     name: 'c.name',
     created: 'c.created_at DESC, c.id DESC',
     updated: 'c.updated_at DESC, c.id DESC',
@@ -174,14 +177,17 @@ module.exports = function createSqliteCollectionsRepository(executor) {
     async listForNodes(userId, nodeIds) {
       if (!nodeIds || nodeIds.length === 0) return [];
       try {
+        // Decision 2 (collectionsStore.md §2.3): the owner sees every
+        // materialized row; a GRANTED collection only exposes published rows.
         const { rows } = await executor.query(
           `SELECT ci.node_id, ci.collection_id
            FROM collection_items ci
            JOIN collections c ON c.id = ci.collection_id
            LEFT JOIN collection_visibility v ON v.collection_id = c.id AND v.user_id = ?
            WHERE (c.owner_id = ?
-                    OR EXISTS (SELECT 1 FROM collection_grants g
-                                WHERE g.collection_id = c.id AND g.grantee_id = ?))
+                    OR (ci.published = 1
+                        AND EXISTS (SELECT 1 FROM collection_grants g
+                                     WHERE g.collection_id = c.id AND g.grantee_id = ?)))
              AND COALESCE(v.hidden, 0) = 0
              AND c.status = 'active'
              AND ci.node_id IN (${placeholders(nodeIds.length)})`,

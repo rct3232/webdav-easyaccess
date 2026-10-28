@@ -140,6 +140,35 @@ describe('collectionsService lifecycle', () => {
     expect(restored.collection.name).toBe('Dup (2)');
     expect(restored.collection.status).toBe('active');
   });
+
+  it('an explicit unpin of an auto-pinned system collection persists (C2)', async () => {
+    const ctx = await createUserWithRoot('unpin');
+    const system = await collectionsStore.createCollection(
+      { ownerId: ctx.user.id, name: 'System unpin', origin: 'system' },
+      { actor: ctx.user.id }
+    );
+    await collectionsStore.setAutoPin(system.id);
+    expect(await collectionsStore.getCollection(system.id)).toMatchObject({
+      pinned: true,
+      pinnedBy: 'auto',
+    });
+
+    const updated = await collectionsService.updateCollection(ctx.user.id, system.id, {
+      pinned: false,
+    });
+    expect(updated.collection).toMatchObject({ pinned: false, pinnedBy: null });
+    // persisted, not re-pinned by the unpin request itself
+    expect(await collectionsStore.getCollection(system.id)).toMatchObject({
+      pinned: false,
+      pinnedBy: null,
+    });
+
+    // a DIFFERENT user touch keeps the §4.9b auto-pin taxonomy
+    const renamed = await collectionsService.updateCollection(ctx.user.id, system.id, {
+      name: 'System unpin renamed',
+    });
+    expect(renamed.collection).toMatchObject({ pinned: true, pinnedBy: 'auto' });
+  });
 });
 
 describe('collectionsService member view and membership', () => {
@@ -478,19 +507,22 @@ describe('collectionsService vector-definition preview gates (§2.7)', () => {
 });
 
 describe('collectionsService similar sort', () => {
-  it('groups rows by greedy nearest-neighbor over centroids with stable cluster_index', async () => {
+  it('groups rows by greedy nearest-neighbor over the ACTIVE embed model centroids', async () => {
     const ctx = await createUserWithRoot('svc-similar');
     const a = await collectionsService.createCollection(ctx.user.id, { name: 'A' });
     const b = await collectionsService.createCollection(ctx.user.id, { name: 'B' });
     const c = await collectionsService.createCollection(ctx.user.id, { name: 'C' });
 
-    // SIMILAR_MODEL_ID is pinned to 0 until the T1.1 model registry lands — seed
-    // the placeholder model row explicitly.
-    await dbRun(
-      `INSERT INTO llm_models (id, role, provider, base_url_key, model_name) VALUES (0, 'embed', 'test', 'k', 'm')`
+    // Centroids are MODEL-KEYED: seed them under the active embed model, the
+    // same resolution the definition/preview paths use (no placeholder id).
+    const modelId = await ensureEmbedModel('svc-similar');
+    await collectionsStore.upsertCentroid(a.collection.id, modelId, JSON.stringify([1, 0]), 3);
+    await collectionsStore.upsertCentroid(
+      b.collection.id,
+      modelId,
+      JSON.stringify([0.99, 0.01]),
+      3
     );
-    await collectionsStore.upsertCentroid(a.collection.id, 0, JSON.stringify([1, 0]), 3);
-    await collectionsStore.upsertCentroid(b.collection.id, 0, JSON.stringify([0.99, 0.01]), 3);
     // c has no centroid → singleton cluster
 
     const grouped = await collectionsService.listCollections(ctx.user.id, {
@@ -511,6 +543,53 @@ describe('collectionsService similar sort', () => {
     });
     const mapAgain = new Map(again.collections.map((row) => [row.name, row.cluster_index]));
     expect(mapAgain.get('A')).toBe(byName.get('A').cluster_index);
+  });
+
+  it('ignores centroid rows of a non-active model id (regression: no fixed placeholder model)', async () => {
+    const ctx = await createUserWithRoot('svc-similar-stale');
+    const a = await collectionsService.createCollection(ctx.user.id, { name: 'Stale A' });
+    const b = await collectionsService.createCollection(ctx.user.id, { name: 'Stale B' });
+
+    // Centroid rows written in an OLD embed space…
+    const staleModelId = await ensureEmbedModel('svc-similar-stale');
+    await collectionsStore.upsertCentroid(a.collection.id, staleModelId, JSON.stringify([1, 0]), 3);
+    await collectionsStore.upsertCentroid(b.collection.id, staleModelId, JSON.stringify([1, 0]), 3);
+
+    // …must never ground the grouping once another embed model is the active one.
+    const activeModelId = await ensureEmbedModel('svc-similar-active');
+    expect(activeModelId).toBeGreaterThan(staleModelId);
+
+    const staleGrouping = await collectionsService.listCollections(ctx.user.id, {
+      sort: 'similar',
+      include: 'mine',
+    });
+    const staleByName = new Map(staleGrouping.collections.map((row) => [row.name, row]));
+    expect(staleByName.get('Stale A').cluster_index).not.toBe(
+      staleByName.get('Stale B').cluster_index
+    );
+
+    // Re-keying the same vectors to the active model restores the grouping.
+    await collectionsStore.upsertCentroid(
+      a.collection.id,
+      activeModelId,
+      JSON.stringify([1, 0]),
+      3
+    );
+    await collectionsStore.upsertCentroid(
+      b.collection.id,
+      activeModelId,
+      JSON.stringify([1, 0]),
+      3
+    );
+
+    const activeGrouping = await collectionsService.listCollections(ctx.user.id, {
+      sort: 'similar',
+      include: 'mine',
+    });
+    const activeByName = new Map(activeGrouping.collections.map((row) => [row.name, row]));
+    expect(activeByName.get('Stale A').cluster_index).toBe(
+      activeByName.get('Stale B').cluster_index
+    );
   });
 });
 

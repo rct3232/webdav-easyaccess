@@ -81,8 +81,9 @@ function classifyNode(node) {
  *
  * @param {Object} deps
  * @param {Object} deps.aiJobsRepository - the ai_jobs queue (enqueue contract
- *   aiJobsStore.md §2.3: (nodeId, kind, generation, contentHash?) with
- *   ON CONFLICT DO NOTHING dedupe).
+ *   aiJobsStore.md §2.3: (nodeId, kind, generation, contentHash?) with the
+ *   content-aware conflict rule — identical/absent hash ⇒ `null` dedupe, a
+ *   different non-null hash resets the same row to `pending`).
  * @param {Object} deps.fileNodesStore - node lookup (getNode: type/name/mimeType).
  * @param {Function} [deps.capabilityProbe] - async (role) => boolean for
  *   'chat' | 'vision' | 'asr'; defaults to the shared config resolver.

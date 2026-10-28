@@ -27,10 +27,14 @@
  * @typedef {Object} AiJobsRepository
  * @property {'sqlite'|'postgres'} dialect
  * @property {(nodeId, kind, generation, contentHash?) => Promise<{id: number}|null>} enqueue
- *   INSERT ON CONFLICT (node,kind,generation) DO NOTHING; `null` = duplicate
- *   already present (the dedupe-skip contract).
+ *   INSERT ON CONFLICT (node,kind,generation); a fresh row is `pending`. On
+ *   conflict, a DIFFERENT non-null content hash resets the SAME row to a fresh
+ *   attempt (`pending`, attempt 0, retry/start/finish/last_error cleared);
+ *   an identical or absent hash performs no update and returns `null` (the
+ *   dedupe-skip contract).
  * @property {(items: Array<{nodeId, kind, generation, contentHash?}>) => Promise<{enqueued: number}>} enqueueMany
- *   One TX, per-item ON CONFLICT DO NOTHING — backfill seeding.
+ *   One TX, per-item ON CONFLICT DO NOTHING — backfill seeding (no
+ *   content-change reset: driver keys are opaque, not file hashes).
  * @property {(opts?: { excludeKinds?: string[] }) => Promise<AiJob|null>} claimNext
  *   Atomically move the oldest claimable row to `running` (started_at=now);
  *   `null` when nothing is claimable — never throws on "nothing to do".

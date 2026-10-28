@@ -80,6 +80,122 @@ describe('AiJobsRepository conformance', () => {
     expect(Number(two.id)).not.toBe(Number(one.id));
   });
 
+  it('a DIFFERENT non-null content_hash resets the SAME row to a fresh pending attempt (re-embed)', async () => {
+    await clearJobs();
+    const node = await uniqueNode();
+    const job = await repo.enqueue(node.nodeId, 'embed', 1, 'hash-v1');
+    await repo.claimNext();
+    await repo.markDone(job.id);
+
+    let row = await readRow(job.id);
+    expect(row.status).toBe('done');
+    expect(row.finished_at).toBeTruthy();
+    const firstFinishedAt = row.finished_at;
+
+    // Same generation: the content change must re-arm the existing row, not
+    // require a generation bump and not append a second row.
+    const reset = await repo.enqueue(node.nodeId, 'embed', 1, 'hash-v2');
+    expect(reset).not.toBeNull();
+    expect(Number(reset.id)).toBe(Number(job.id));
+
+    row = await readRow(job.id);
+    expect(row.status).toBe('pending');
+    expect(row.attempt).toBe(0);
+    expect(row.next_retry_at).toBeNull();
+    expect(row.started_at).toBeNull();
+    expect(row.finished_at).toBeNull();
+    expect(row.last_error).toBeNull();
+    expect(row.content_hash).toBe('hash-v2');
+
+    // The delayed worker's markDone for the superseded run is a no-op.
+    await expect(repo.markDone(job.id)).resolves.toEqual({ changes: 0 });
+
+    const claimed = await repo.claimNext();
+    expect(claimed).not.toBeNull();
+    expect(Number(claimed.id)).toBe(Number(job.id));
+    expect(claimed.contentHash).toBe('hash-v2');
+    expect(firstFinishedAt).not.toBeNull();
+  });
+
+  it('an IDENTICAL content_hash keeps the duplicate-null contract (no reset, no second row)', async () => {
+    await clearJobs();
+    const node = await uniqueNode();
+    const job = await repo.enqueue(node.nodeId, 'embed', 1, 'hash-same');
+    await repo.claimNext();
+    await repo.markDone(job.id);
+
+    await expect(repo.enqueue(node.nodeId, 'embed', 1, 'hash-same')).resolves.toBeNull();
+
+    const row = await readRow(job.id);
+    expect(row.status).toBe('done');
+    expect(row.finished_at).toBeTruthy();
+    const { rows } = await dbQuery('SELECT COUNT(*) AS cnt FROM ai_jobs WHERE node_id = ?', [
+      Number(node.nodeId),
+    ]);
+    expect(Number(rows[0].cnt)).toBe(1);
+  });
+
+  it('null hashes never reset: incoming null and a previously-null stamped row are both duplicates', async () => {
+    await clearJobs();
+    const node = await uniqueNode();
+    const nullStamped = await repo.enqueue(node.nodeId, 'embed', 1, null);
+    await repo.claimNext();
+    await repo.markDone(nullStamped.id);
+
+    // Existing null + incoming non-null ⇒ no comparison possible ⇒ no reset.
+    await expect(repo.enqueue(node.nodeId, 'embed', 1, 'hash-new')).resolves.toBeNull();
+    let row = await readRow(nullStamped.id);
+    expect(row.status).toBe('done');
+    expect(row.content_hash).toBeNull();
+
+    // Existing non-null + incoming null ⇒ no reset either.
+    const other = await uniqueNode();
+    const stamped = await repo.enqueue(other.nodeId, 'embed', 1, 'hash-old');
+    await repo.claimNext();
+    await repo.markDone(stamped.id);
+    await expect(repo.enqueue(other.nodeId, 'embed', 1, null)).resolves.toBeNull();
+    row = await readRow(stamped.id);
+    expect(row.status).toBe('done');
+    expect(row.content_hash).toBe('hash-old');
+  });
+
+  it('a content-change reset also clears a failed row’s backoff and attempt', async () => {
+    await clearJobs();
+    const node = await uniqueNode();
+    const job = await repo.enqueue(node.nodeId, 'embed', 1, 'hash-fail-v1');
+    await repo.claimNext();
+    await repo.markFailed(job.id, 'boom');
+
+    let row = await readRow(job.id);
+    expect(row.attempt).toBe(1);
+    expect(row.next_retry_at).toBeTruthy();
+
+    const reset = await repo.enqueue(node.nodeId, 'embed', 1, 'hash-fail-v2');
+    expect(reset).not.toBeNull();
+    row = await readRow(job.id);
+    expect(row.status).toBe('pending');
+    expect(row.attempt).toBe(0);
+    expect(row.next_retry_at).toBeNull();
+    await expect(repo.claimNext()).resolves.not.toBeNull();
+  });
+
+  it('enqueueMany stays pure DO NOTHING even when the incoming hash differs (backfill seeding)', async () => {
+    await clearJobs();
+    const node = await uniqueNode();
+    const job = await repo.enqueue(node.nodeId, 'backfill', 1, 'driver-a');
+    await repo.claimNext();
+    await repo.markDone(job.id);
+
+    const result = await repo.enqueueMany([
+      { nodeId: node.nodeId, kind: 'backfill', generation: 1, contentHash: 'driver-b' },
+    ]);
+    expect(result.enqueued).toBe(0);
+
+    const row = await readRow(job.id);
+    expect(row.status).toBe('done');
+    expect(row.content_hash).toBe('driver-a');
+  });
+
   it('enqueue on an unknown node rejects (FK enforced)', async () => {
     await expect(repo.enqueue(999999999, 'embed', 1)).rejects.toBeDefined();
   });

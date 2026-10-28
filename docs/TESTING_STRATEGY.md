@@ -75,8 +75,9 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   Patterns gate). Concrete IDs, case ownership, and project/slot mapping are canonical in
   [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
 - **Degradation-matrix suite:** one suite per §4.12 capability column — `None` (no adapter
-  configured at all; the built-in embed engine suppressed by fixture — absent lock/weights ⇒
-  `roleConfigured('embed')` false), `embed` (fake embed only), `embed+chat` (fake embed+chat) — and the
+  configured at all; the built-in embed engine suppressed by `WEA_SKIP_EMBED_MODEL=1` or by an
+  absent lock/weights fixture ⇒ `roleConfigured('embed')` false), `embed` (fake embed only),
+  `embed+chat` (fake embed+chat) — and the
   **None and embed columns must pass green with no real adapter present** (the
   "never-a-render-dependency" invariant, verified by construction).
 - **Parser legs (`parse.nl`):** verified hermetically by unit/integration suites with an
@@ -84,6 +85,13 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   cache hit ⇒ zero chat calls, schema-checked grammar-constrained output, chat-off ⇒
   byte-identical parser-free response. The parser E2E case (`E2E-S3-AI-002`) rides the
   fake-LLM harness (T4.3), not a dedicated scratch project.
+- **Model-free test mode:** `WEA_SKIP_EMBED_MODEL` truthy (`1/true/yes/on`) suppresses
+  the built-in embed weights check, provisioning, ONNX import, and boot probe; the embed
+  role resolves `not_configured` with no `ai.embed` failure row. Non-AI E2E suites set it
+  by default. Cases that require the model opt out (`WEA_SKIP_EMBED_MODEL=0`, pre-seeded
+  `WEA_MODEL_DIR`) and call `skipWhenEmbedModelDisabled()`; an intentional model-free run
+  skips them in CI, while a missing required resource still throws through
+  `skipWhenUnavailable()`.
 - **Provisioning-trigger fixtures (`llmPresets.md` §4):** hermetic legs assert the
   provider-triggered postures — a setup-mode boot fetches ZERO model bytes (network stub);
   every configured boot missing weights — the first one after the wizard included, no

@@ -20,6 +20,8 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
+const { isEmbedModelDisabled } = require('../provision');
+
 let transformers = null;
 
 function getTransformers() {
@@ -59,6 +61,9 @@ let cachedProcessor = null;
  * zero-egress guarantee for air-gapped installs).
  */
 async function loadEngine({ modelDir, lock }) {
+  if (isEmbedModelDisabled()) {
+    throw mediaError('embed_disabled', 'built-in embed model disabled (WEA_SKIP_EMBED_MODEL)');
+  }
   if (cachedPipeline) return cachedPipeline;
   const t = getTransformers();
   t.env.useFS = true;

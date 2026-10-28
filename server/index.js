@@ -313,6 +313,10 @@ async function runBoot() {
         String(embedBaseUrl ?? '').trim() !== '' && String(embedModel ?? '').trim() !== '';
       if (remoteOverrideActive) {
         console.log('Remote embed override active — built-in provisioning deferred');
+      } else if (provisioner.isEmbedModelDisabled()) {
+        console.log(
+          'Built-in embed model disabled (WEA_SKIP_EMBED_MODEL) — zero weights checks, zero inference'
+        );
       } else {
         const lock = provisioner.loadLock();
         const modelDir = provisioner.resolveModelDir();

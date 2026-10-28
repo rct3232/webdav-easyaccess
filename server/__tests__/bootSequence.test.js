@@ -102,6 +102,7 @@ function childEnv(overrides = {}) {
     WEA_SKIP_GC_SCHEDULER: '1',
     WEA_SKIP_ROLLUP_SCHEDULER: '1',
     WEA_SKIP_EVOLUTION_SCHEDULER: '1',
+    WEA_SKIP_EMBED_MODEL: '1',
     ...overrides,
   };
   for (const key of Object.keys(env)) {
@@ -252,6 +253,9 @@ describeBoot('bootSequence (real child-process boots)', () => {
 
     it('listens on the DB-sourced PORT although the environment carries no PORT (L98)', async () => {
       expect(handle.log.stdout).toMatch(new RegExp(`Server is running on port ${listenPort}`));
+      // The model-free seam keeps the configured boot from touching weights or ONNX.
+      expect(handle.log.stdout).toContain('Built-in embed model disabled');
+      expect(handle.log.stdout).not.toContain('Embed model weights present');
       const res = await httpJson(listenPort, { urlPath: '/api/health' });
       expect(res.status).toBe(200);
       // T1 population evidence: the DB-sourced file-storage value reached

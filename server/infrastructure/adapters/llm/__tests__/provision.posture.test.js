@@ -145,6 +145,61 @@ describe('built-in embed provisioning postures (T1.0a)', () => {
     });
   });
 
+  describe('posture 0 — built-in model disabled by test/ops seam', () => {
+    const PREV = process.env.WEA_SKIP_EMBED_MODEL;
+    afterEach(() => {
+      if (PREV === undefined) delete process.env.WEA_SKIP_EMBED_MODEL;
+      else process.env.WEA_SKIP_EMBED_MODEL = PREV;
+    });
+
+    it('skips before any weights hash or download and reports no caps-off state', async () => {
+      process.env.WEA_SKIP_EMBED_MODEL = '1';
+      const h = makeHarness();
+      try {
+        const result = await provision.runProvision({
+          mode: 'boot',
+          setupComplete: true,
+          remoteOverrideActive: false,
+          modelDir: h.modelDir,
+          lock: h.lock,
+          health: h.health,
+          fetcher: h.fetcher,
+          logger: h.logger,
+        });
+
+        expect(result.status).toBe('skipped-disabled');
+        expect(h.fetchLog).toEqual([]);
+        expect(capsOffReported(h.logLines)).toBe(false);
+        expect(h.health.getHealth()['ai.embed'].status).toBe('unknown');
+        expect(h.health.getHealth()['ai.embed'].preparing).toBeUndefined();
+      } finally {
+        h.cleanup();
+      }
+    });
+
+    it('treats 0/false as enabled and runs the normal posture', async () => {
+      process.env.WEA_SKIP_EMBED_MODEL = '0';
+      const h = makeHarness();
+      try {
+        const result = await provision.runProvision({
+          mode: 'boot',
+          setupComplete: true,
+          remoteOverrideActive: false,
+          modelDir: h.modelDir,
+          lock: h.lock,
+          health: h.health,
+          fetcher: h.fetcher,
+          logger: h.logger,
+        });
+
+        expect(result.status).toBe('provisioned');
+        expect(h.fetchLog.length).toBe(h.lock.files.length);
+      } finally {
+        h.cleanup();
+      }
+    });
+  });
+
   describe('posture 2 — remote override active defers the trigger', () => {
     it('skips with no attempt and no caps-off: absent weights are the normal state', async () => {
       const h = makeHarness();

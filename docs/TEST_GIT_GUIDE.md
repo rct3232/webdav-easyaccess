@@ -244,10 +244,18 @@ Required assumptions:
   settings. WebDAV scratch servers use the one shared bytemark with a
   project/case-scoped root. Migration uses a project-scoped destination bucket.
   `WEA_SKIP_AI_WORKER=1` skips the worker loop only; boot provisioning still
-  runs. `AI_SEMANTIC_SEARCH_ENABLED` is a `dbOnly` setting and is ignored from
-  the environment; tests that need the kill switch write it through the
-  database/config surface. Only AI-dependent tests supply the model directory and
-  enable the worker.
+  runs. `WEA_SKIP_EMBED_MODEL=1` (truthy `1/true/yes/on`) additionally makes a
+  configured boot skip the built-in model entirely: no weights hash, no
+  provisioning/download, no ONNX import, no boot probe, and the embed role
+  resolves `not_configured` without an `ai.embed` failure row. Non-AI scratch
+  suites set it through `scratchRuntimeEnv()`; the shared E2E stack sets it in
+  `.env.e2e` / `.env.e2e.webdav`. AI-dependent tests opt out with
+  `WEA_SKIP_EMBED_MODEL=0`, pre-seed `WEA_MODEL_DIR`, and enable the worker.
+  `AI_SEMANTIC_SEARCH_ENABLED` is a `dbOnly` setting and is ignored from the
+  environment; tests that need the kill switch write it through the
+  database/config surface. A release run with the model-free seam skips the
+  AI case intentionally; the skip-budget reporter adds that single skip without
+  changing the static platform/resource budget.
 
 ### Parallel E2E runs (multiple git worktrees / checkouts)
 

@@ -16,6 +16,9 @@
  *    run; consumers park and drain once the role flips configured (§22-6).
  *  - Weights present (WEA_MODEL_DIR pre-seed or previously provisioned) ⇒
  *    status 'present': zero download attempts, zero network egress.
+ *  - `WEA_SKIP_EMBED_MODEL` truthy ⇒ status 'skipped-disabled': no lock read,
+ *    no weight hash, no download, and the role resolves unconfigured; a remote
+ *    override is unaffected.
  *  - Switching to remote NEVER deletes existing weights.
  */
 
@@ -25,6 +28,21 @@ const crypto = require('crypto');
 const { getDataDir } = require('../../../utils/paths');
 
 const LOCK_PATH = path.join(__dirname, 'model.lock.json');
+
+const EMBED_DISABLED_VALUES = new Set(['1', 'true', 'yes', 'on']);
+
+/**
+ * Test/ops seam: truthy `WEA_SKIP_EMBED_MODEL` means the built-in embed model
+ * is intentionally unavailable. The ONNX import/inference is never attempted
+ * and the role resolves unconfigured; a remote embed override is unaffected.
+ */
+function isEmbedModelDisabled(env = process.env) {
+  return EMBED_DISABLED_VALUES.has(
+    String(env.WEA_SKIP_EMBED_MODEL || '')
+      .trim()
+      .toLowerCase()
+  );
+}
 
 /**
  * Weights tree root: `<modelDir>/<repo>/<revision>` — the HF snapshot layout
@@ -78,6 +96,7 @@ function sha256File(filePath) {
  * Missing/truncated/corrupted files ⇒ false (weights not usable).
  */
 async function weightsPresent(dir, lock) {
+  if (isEmbedModelDisabled()) return false;
   const root = weightsRoot(dir, lock);
   if (!fs.existsSync(root)) return false;
   for (const f of lock.files) {
@@ -186,7 +205,7 @@ async function provisionWeights({ modelDir, lock, fetcher, logger, corruptFile =
  * @param {Object} [params.fetcher]                  { fetchBuffer(repo, revision, path) } seam — no real HTTP in tests
  * @param {Object} [params.logger]                   { log, warn, error }
  * @param {string} [params.corruptFile]              test-only: corrupt one fixture file to force sha256 failure
- * @returns {Promise<{status: 'provisioned'|'present'|'skipped-setup'|'skipped-remote'|'failed', reason?: string}>}
+ * @returns {Promise<{status: 'provisioned'|'present'|'skipped-setup'|'skipped-remote'|'skipped-disabled'|'failed', reason?: string}>}
  */
 async function runProvision(params = {}) {
   const {
@@ -200,7 +219,7 @@ async function runProvision(params = {}) {
     corruptFile = null,
   } = params;
 
-  const lock = lockOverride || loadLock();
+  let lock = lockOverride;
 
   // Posture 1 (PLAN §22-5): setup mode never downloads — zero bytes, zero egress.
   if (!setupComplete) {
@@ -217,6 +236,16 @@ async function runProvision(params = {}) {
     return { status: 'skipped-remote' };
   }
 
+  // Test/ops seam: the built-in model is intentionally disabled. Do not read
+  // the lock, hash weights, or attempt a download.
+  if (isEmbedModelDisabled()) {
+    logger.log(
+      '[provisioning] Built-in embed model disabled (WEA_SKIP_EMBED_MODEL): no weights check, no download.'
+    );
+    return { status: 'skipped-disabled' };
+  }
+
+  lock = lock || loadLock();
   const dir = modelDir || resolveModelDir();
   const key = 'ai.embed';
 
@@ -260,4 +289,10 @@ async function runProvision(params = {}) {
   return { status: 'provisioned' };
 }
 
-module.exports = { loadLock, resolveModelDir, weightsPresent, runProvision };
+module.exports = {
+  loadLock,
+  resolveModelDir,
+  weightsPresent,
+  runProvision,
+  isEmbedModelDisabled,
+};

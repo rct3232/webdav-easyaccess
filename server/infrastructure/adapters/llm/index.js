@@ -252,6 +252,13 @@ function createLlmAdapter(deps = {}) {
     if (reprobeDebounceS > 0) tunables.reprobeDebounceS = reprobeDebounceS;
   }
 
+  /** Test/ops seam: the built-in embed model is intentionally unavailable. */
+  function embedModelDisabled() {
+    return typeof provisioner?.isEmbedModelDisabled === 'function'
+      ? provisioner.isEmbedModelDisabled()
+      : false;
+  }
+
   async function resolveRoleConfig(role) {
     const keys = ROLE_KEYS[role];
     const [baseUrl, apiKey, model] = await Promise.all(
@@ -259,8 +266,14 @@ function createLlmAdapter(deps = {}) {
     );
     // Remote ⇒ non-empty {base_url, model} (§2.3 roleConfigured): a partial
     // triple is NOT a remote config. Embed falls back to the built-in
-    // embedded provider; every other role without a triple is unconfigured.
-    const engine = isSet(baseUrl) && isSet(model) ? 'remote' : role === 'embed' ? 'embedded' : null;
+    // embedded provider unless the model is intentionally disabled; every
+    // other role without a triple is unconfigured.
+    const engine =
+      isSet(baseUrl) && isSet(model)
+        ? 'remote'
+        : role === 'embed' && !embedModelDisabled()
+          ? 'embedded'
+          : null;
     return { role, baseUrl, apiKey, model, engine };
   }
 
@@ -279,6 +292,7 @@ function createLlmAdapter(deps = {}) {
   }
 
   async function embeddedPresent() {
+    if (embedModelDisabled()) return false;
     const lock = provisioner.loadLock();
     if (!lock) return false;
     return provisioner.weightsPresent(provisioner.resolveModelDir(), lock);
@@ -290,7 +304,7 @@ function createLlmAdapter(deps = {}) {
    * NOT configured while it runs (consumers park, never claim-and-fail).
    */
   async function triggerInPlaceProvision() {
-    if (provisioning) return;
+    if (embedModelDisabled() || provisioning) return;
     const lock = provisioner.loadLock();
     const modelDir = provisioner.resolveModelDir();
     if (await provisioner.weightsPresent(modelDir, lock)) return; // instant return to built-in
@@ -475,10 +489,7 @@ function createLlmAdapter(deps = {}) {
         measurements: {},
       };
     } else {
-      const {
-        runEmbedTextProbe,
-        fetchServerPooling,
-      } = require('./probe');
+      const { runEmbedTextProbe, fetchServerPooling } = require('./probe');
       // Lazy require: presets is a leaf module (kit/threshold accessor).
       const { kit } = require('./presets');
       const preset = await Promise.resolve(presetFor('embed'));
@@ -660,6 +671,10 @@ function createLlmAdapter(deps = {}) {
           text,
           ...(media ? { media } : {}),
         };
+      }
+      if (embedModelDisabled()) {
+        probeState.clearRoleCapability('embed');
+        return { ok: false, role, reason: 'disabled', exempt: true };
       }
       if (provisioning) return { ok: false, role, reason: 'preparing' };
       const present = await embeddedPresent();
@@ -900,9 +915,7 @@ function createLlmAdapter(deps = {}) {
     const resolved = await resolveRoleConfig(role);
     const preset = await Promise.resolve(presetFor(role));
     const metadata =
-      allowMetadata && fetchPublishedMetadata
-        ? await fetchPublishedMetadata(role, resolved)
-        : null;
+      allowMetadata && fetchPublishedMetadata ? await fetchPublishedMetadata(role, resolved) : null;
     const chain = resolveBudget({
       adminCap: await configResolver.getConfig('LLM_MAX_INPUT_CHARS'),
       publishedMetadata: metadata,

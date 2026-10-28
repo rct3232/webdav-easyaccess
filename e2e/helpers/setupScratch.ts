@@ -68,6 +68,8 @@ const CONFIG_ENV_KEYS = [
   'WEBDAV_USERNAME',
   'WEBDAV_PASSWORD',
   'WEBDAV_AUTH_TYPE',
+  'WEA_MODEL_DIR',
+  'WEA_SKIP_EMBED_MODEL',
   'JWT_SECRET',
   'JWT_EXPIRES_IN',
   'PORT',
@@ -144,6 +146,7 @@ export function s3ScratchEnv(bucket: string): Record<string, string> {
 export function scratchRuntimeEnv(extra: Record<string, string> = {}): Record<string, string> {
   return {
     WEA_SKIP_AI_WORKER: '1',
+    WEA_SKIP_EMBED_MODEL: '1',
     ...extra,
   };
 }

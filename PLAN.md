@@ -2772,18 +2772,17 @@ after a restart — the job store is the in-memory `bulkJobStore`, TTL 1 h) leav
 progress item stuck with no user-visible signal. (b) Search failure already surfaces a 5 s
 snackbar and now has an explicit cancel surface (`§31.9`), so no search-side work remains.
 
-**Policy** (D1 resolved; D2/D3 proposed, awaiting confirmation).
+**Policy** (D1 resolved; D2/D3 merged per the owner direction).
 
-| Key                       | Value                                                                                                                                                                                                                              | Rationale                                                               |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `POLL_MAX_FAILURES` (`N`) | 5 consecutive                                                                                                                                                                                                                      | ~11 s of backoff before declaring the status unreadable                 |
-| Backoff                   | 400 → 800 → 1600 → 3200 → 5000 ms (cap)                                                                                                                                                                                            | keeps the first seconds responsive, stops hammering a struggling server |
-| Per-request timeout       | 10 s (status GET only)                                                                                                                                                                                                             | the 300 s transport default would freeze the item for minutes           |
-| `404`                     | job-expired terminal-unknown, no retry                                                                                                                                                                                             | the mutation may already be applied; refresh is the only safe answer    |
-| Stalled item              | the operation's **progress item** (same drawer/panel entry, no new row): `status:'error'`, `stalled:true`, `keepOnError:true`, message "작업 상태를 확인할 수 없습니다", plus a `목록 새로고침` button next to the existing `확인` | the stuck item is already the surface; no extra banner                  |
-| Refresh                   | `onOperationComplete` (host `refreshNow`) runs FIRST on any terminal/expired/stalled outcome, each remaining side effect isolated in its own try/catch                                                                             | the listing must not depend on notifications/progress                   |
-| Cancel                    | POST cancel → one forced status fetch (10 s) → terminal handler or stalled+refresh                                                                                                                                                 | cancel is not an escape hatch if it cannot observe the result           |
-| `404` surface             | the same progress item marked `warning` with "작업 상태를 확인할 수 없습니다 (만료)" + automatic listing refresh; the drawer's existing one-shot warning toast accompanies it                                                      | no separate row/banner                                                  |
+| Key                         | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Rationale                                                                                        |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `POLL_MAX_FAILURES` (`N`)   | 5 consecutive                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | ~11 s of backoff before declaring the status unreadable                                          |
+| Backoff                     | 400 → 800 → 1600 → 3200 → 5000 ms (cap)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | keeps the first seconds responsive, stops hammering a struggling server                          |
+| Per-request timeout         | 10 s (status GET only)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | the 300 s transport default would freeze the item for minutes                                    |
+| Unreadable status (stalled) | ONE state for BOTH triggers: (1) 5 consecutive status-read failures, (2) `404` job-expired. The operation's **progress item** (same drawer/panel entry, no new row/banner) becomes `status:'error'`, `stalled:true`, `keepOnError:true` with the identical message "작업 상태를 확인할 수 없습니다. 작업이 이미 반영되었을 수 있습니다." and a `목록 새로고침` button next to the existing `확인`. A `404` additionally fires the same refresh automatically (the job can never be read again); read failures wait for the button | one surface, one wording; the poll has stopped, so only the listing can reconcile the stale rows |
+| When it fires               | fast failures: ~11 s (400+800+1600+3200 ms backoff after the 1st failure); hanging requests: up to ~56 s (5 × 10 s timeout + backoff); `404`: immediately                                                                                                                                                                                                                                                                                                                                                                         | bounded, explainable feedback instead of an infinite spinner                                     |
+| Refresh                     | `onOperationComplete` (host `refreshNow`) runs FIRST on any terminal/stalled outcome, each remaining side effect isolated in its own try/catch                                                                                                                                                                                                                                                                                                                                                                                    | the listing must not depend on notifications/progress                                            |
+| Cancel                      | POST cancel → one forced status fetch (10 s) → terminal handler or the same stalled state                                                                                                                                                                                                                                                                                                                                                                                                                                         | cancel is not an escape hatch if it cannot observe the result                                    |
 
 **Task graph** (each task lists objective / inputs / outputs / verification / deps).
 
@@ -2799,19 +2798,20 @@ snackbar and now has an explicit cancel surface (`§31.9`), so no search-side wo
   `bulkJobPoller.test.js` with fake timers (success, N failures → one stalled, 404 → expired
   immediately, no overlapping fetch, dispose mid-flight, terminal-once). Deps: T4.5. Parallel
   with T4.7.
-- **T4.7 — Progress drawer stalled state.** Render the `refreshListing` action for
-  `stalled:true` items (host callback from `FileManager` → `loadFiles`), keep dismiss/close,
-  i18n `fileManager.bulkStatusUnavailable` / `fileManager.refreshListing`. Verify: unit tests on
-  the drawer + a hook-level test that a stalled item carries the flag. Deps: T4.5. Parallel with
-  T4.6.
+- **T4.7 — Progress drawer stalled state (one state, D2+D3 merged).** Render the `목록 새로고침`
+  action for `stalled:true` items (host callback from `FileManager` → `loadFiles`), keep the
+  existing `확인` dismiss, i18n `fileManager.bulkStatusUnavailable` (identical wording for the
+  5-failure and the 404 trigger) / `fileManager.refreshListing`. Verify: unit tests on the
+  drawer + a hook-level test that both triggers set the same flag/message. Deps: T4.5. Parallel
+  with T4.6.
 - **T4.8 — Delete path migration + refresh-first terminal handling.** Replace the delete loop;
-  on terminal/expired/stalled call `onOperationComplete` before notifications, each side effect
-  isolated. Verify: existing bulk/delete client tests + new stalled/expired cases; manual
+  on terminal **and on the merged stalled state** call `onOperationComplete` before
+  notifications, each side effect isolated. Verify: existing bulk/delete client tests + new stalled/expired cases; manual
   trace check. Deps: T4.6, T4.7.
 - **T4.9 — Move/copy path migration.** Same for move/copy, preserving the undo pointer
   (exactly once) and the skipped-by-conflict/permission buckets. Deps: T4.8.
 - **T4.10 — Cancel force-check.** `handleCancelBulkOperation`: cancel POST → one forced status
-  fetch → single terminal handler, or stalled + refresh. Guard against double terminal
+  fetch → single terminal handler, or the same stalled state (which refreshes). Guard against double terminal
   handling. Verify: unit test (cancel → status completed → refresh once; cancel → status fails
   → stalled + refresh). Deps: T4.8.
 - **T4.11 — DROPPED (owner decision).** No persistent search error row and no pending-Enter
@@ -2833,11 +2833,10 @@ snackbar and now has an explicit cancel surface (`§31.9`), so no search-side wo
 **Decisions.** (owner answers 2026-10-28)
 
 - **D1 — resolved:** `N`=5, backoff 400→800→1600→3200→5000 ms, status GET timeout 10 s.
-- **D2 — proposed:** the stalled item's `목록 새로고침` action refreshes the listing **and
-  dismisses the item** (one gesture); the plain `확인` button keeps its current dismiss-only
-  meaning. Awaiting confirmation.
-- **D3 — proposed:** no new row — the same progress item turns `warning` with the expired
-  message and the listing refreshes automatically; the drawer's existing one-shot warning toast
-  is the only extra signal. Awaiting confirmation.
+- **D2/D3 — merged (owner direction):** ONE stalled state with one identical message
+  ("작업 상태를 확인할 수 없습니다. 작업이 이미 반영되었을 수 있습니다.") for both triggers
+  (5 consecutive read failures, `404`). Action = `목록 새로고침` (+ existing `확인`); the refresh
+  is the only reconciliation path once polling stops, and a `404` also refreshes automatically.
+  The button refreshes **and dismisses** the item; `확인` stays dismiss-only.
 - **D4 — resolved:** Enter while pending stays inert (no hint, no resubmit).
 - **D5 — resolved:** one bulk case in `trash.spec.ts` (+2 instances → 258→260); no search case.

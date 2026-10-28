@@ -622,10 +622,12 @@ describe('getDashboardSummary — vector near-dup feed + persisted variant (near
       source: 'fulltext',
       contentHash: null,
     });
+    // c mirrors b on the other side of a: a is the central member (keeper),
+    // b and c sit at ±θ from it and fall below θ to each other.
     await embeddingsStore.upsert(Number(c.nodeId), {
       modelId,
       dim: 4,
-      vector: nearPairVector(t),
+      vector: [t, -Math.sqrt(1 - t * t), 0, 0],
       source: 'fulltext',
       contentHash: null,
     });
@@ -638,6 +640,8 @@ describe('getDashboardSummary — vector near-dup feed + persisted variant (near
     const summary = await dashboardService.getDashboardSummary(user.id);
     const nearRows = summary.suggestions.filter((r) => r.kind === 'near_dup');
     expect(nearRows.map((r) => r.nodeId).sort((x, y) => x - y)).toEqual([Number(c.nodeId)]);
+    expect(nearRows[0].reason.keep_node_id).toBe(Number(a.nodeId));
+    expect(nearRows[0].reason.keep.basis).toBe('centrality');
     const stored = await allSuggestionRows(user.id);
     expect(
       stored.some((r) => r.kind === 'near_dup' && Number(r.node_id) === Number(b.nodeId))

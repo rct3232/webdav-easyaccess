@@ -949,6 +949,25 @@
     "suggestionsDismiss": "Dismiss",
     "suggestionsEmpty": "Nothing to clean up.",
     "suggestionsExpiryNote": "Unaccepted suggestions are kept until expiry.",
+    "suggestionsKeep": "Keep: {{name}} · {{basis}}",
+    "suggestionsKeepWhy": "Why this keeper?",
+    "suggestionsKeepScore": "Group-relative score: {{score}}",
+    "suggestionsKeepFactorsLabel": "Group-relative factors",
+    "suggestionsKeepBasis": {
+      "Activity": "Activity",
+      "Resolution": "Resolution",
+      "Size": "Size",
+      "Name": "Name",
+      "Centrality": "Centrality",
+      "Mixed": "Mixed",
+      "None": "No strong signal"
+    },
+    "suggestionsKeepFactor": {
+      "Activity": "Activity",
+      "Quality": "Media quality",
+      "Name": "Name originality",
+      "Centrality": "Centrality"
+    },
     "suggestionsReason": {
       "ExactDup": "Exact duplicate",
       "NearDup": "Near duplicate",

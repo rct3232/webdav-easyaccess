@@ -16,6 +16,7 @@ const { createFileNodesStore } = require('../../store/fileNodesStore');
 const fileSuggestionsStore = require('../../store/fileSuggestionsStore');
 const actionJournalStore = require('../../store/actionJournalStore');
 const aiEnrichmentsStore = require('../../store/aiEnrichmentsStore');
+const usageStore = require('../../store/usageStore');
 const lockManager = require('../../infrastructure/lockManager');
 const dupFinderService = require('../ai/dupFinderService');
 const { createNearDupFinderService } = require('../ai/nearDupFinderService');
@@ -25,6 +26,7 @@ const { getSharedResolver } = require('../../infrastructure/configResolver');
 const { getComposition } = require('../../service/composition');
 const storage = require('../../store/storage');
 const { classifyCleanup, isShortDocument, KIND_RANK } = require('./suggestionsRules');
+const { computeGroupKeeper } = require('./keeperScore');
 // Module-load side effect: registers the `file`-domain undo executor for the
 // accept command rows committed below (dashboardService.md §2.6).
 require('./suggestionUndoService');
@@ -100,15 +102,107 @@ async function computeHygienePass(userId) {
   return { root, dups, near, liveRows };
 }
 
+/** Stable key-order JSON for reason comparison (PG jsonb key reordering safe). */
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/**
+ * Reason-only refresh decision (§2.5.1): a pending near-dup row changes when
+ * the keeper or the group score changed, or when its existing keep block no
+ * longer matches the fresh one. A LEGACY row (no keep block) is never
+ * backfilled while keeper/score stay unchanged.
+ */
+function shouldRefreshNearReason(stored, nextReason) {
+  if (!stored || stored.kind !== 'near_dup') return false;
+  const prev = stored.reason || {};
+  if (Number(prev.keep_node_id) !== Number(nextReason.keep_node_id)) return true;
+  if (Number(prev.score) !== Number(nextReason.score)) return true;
+  if (!prev.keep) return false;
+  return canonicalJson(prev.keep) !== canonicalJson(nextReason.keep);
+}
+
+/**
+ * Near-dup candidates with the keeper composite (§2.5.1). ONE activity read +
+ * ONE enrichment read cover every group (no N+1); name/size/MIME come from the
+ * live subtree rows. Keeper peers list as rows; the short-document exception
+ * still gates the listing side only.
+ */
+async function buildNearCandidates(userId, near, byId, keepers) {
+  if (!near.available || near.groups.length === 0) return [];
+
+  const allIds = [
+    ...new Set(near.groups.flatMap((group) => group.nodeIds.map((nodeId) => Number(nodeId)))),
+  ];
+  const activityByNode = new Map();
+  const probeByNode = new Map();
+  const summaryByNode = new Map();
+  if (allIds.length > 0) {
+    const activityRows = await usageStore.listNodeActivity(Number(userId), allIds);
+    for (const row of activityRows) activityByNode.set(Number(row.nodeId), row);
+    const enrichments = await aiEnrichmentsStore.getByNodeIds(allIds);
+    for (const row of enrichments || []) {
+      const nodeId = Number(row.nodeId);
+      probeByNode.set(nodeId, row.probe ?? null);
+      summaryByNode.set(nodeId, row.summary ?? null);
+    }
+  }
+
+  const nowMs = Date.now();
+  const candidates = [];
+  for (const group of near.groups) {
+    const memberIds = group.nodeIds.map((nodeId) => Number(nodeId));
+    if (memberIds.length < 2) continue;
+    const members = memberIds.map((nodeId) => {
+      const row = byId.get(nodeId);
+      return {
+        nodeId,
+        name: row?.name ?? '',
+        sizeBytes: Number(row?.size) || 0,
+        mimeType: row?.mimeType ?? null,
+      };
+    });
+    const { keeperNodeId, keep } = computeGroupKeeper({
+      members,
+      activityByNode,
+      probeByNode,
+      pairScores: group.pairScores || [],
+      nowMs,
+    });
+    keepers.add(keeperNodeId);
+    for (const nodeId of memberIds) {
+      if (nodeId === keeperNodeId) continue;
+      if (isShortDocument(summaryByNode.get(nodeId) ?? null)) continue;
+      candidates.push({
+        nodeId,
+        kind: 'near_dup',
+        reason: {
+          kind: 'near_dup',
+          keep_node_id: keeperNodeId,
+          score: Math.round(Number(group.score) * 1000) / 1000,
+          keep,
+        },
+      });
+    }
+  }
+  return candidates;
+}
+
 /**
  * Candidate set for the generator pass (dashboardService.md §2.5): exact
- * dup members, near-dup members (short-doc excluded), rule-pattern rows.
- * Keepers never list for ANY kind; one candidate per node by kind priority
- * (exact > near > temp > screenshot > installer).
+ * dup members, near-dup members (keeper composite + short-doc excluded),
+ * rule-pattern rows. Keepers never list for ANY kind; one candidate per node
+ * by kind priority (exact > near > temp > screenshot > installer).
  */
 async function buildCandidates(userId, pass) {
   const { dups, near, liveRows } = pass;
   const nowMs = Date.now();
+  const byId = new Map(liveRows.map((row) => [Number(row.nodeId), row]));
 
   const keepers = new Set();
   const ordered = [];
@@ -125,39 +219,8 @@ async function buildCandidates(userId, pass) {
     });
   }
 
-  const nearMembers = [];
-  if (near.available) {
-    for (const group of near.groups) {
-      const keepNodeId = Number(group.nodeIds[0]);
-      keepers.add(keepNodeId);
-      group.nodeIds.slice(1).forEach((nodeId) => {
-        nearMembers.push({ nodeId: Number(nodeId), keepNodeId, score: group.score });
-      });
-    }
-    // Short-document exception (§4.17): ≤1-sentence enriched members leave
-    // the near-dup candidate set; NO enrichment row is NOT evidence of
-    // brevity and stays in.
-    if (nearMembers.length > 0) {
-      const enrichments = await aiEnrichmentsStore.getByNodeIds(nearMembers.map((m) => m.nodeId));
-      const summaryByNode = new Map(
-        (enrichments || []).map((row) => [Number(row.nodeId), row.summary])
-      );
-      for (const member of nearMembers) {
-        if (isShortDocument(summaryByNode.get(member.nodeId) ?? null)) continue;
-        ordered.push({
-          nodeId: member.nodeId,
-          kind: 'near_dup',
-          reason: {
-            kind: 'near_dup',
-            keep_node_id: member.keepNodeId,
-            score: Math.round(member.score * 1000) / 1000,
-          },
-        });
-      }
-    }
-  }
+  ordered.push(...(await buildNearCandidates(userId, near, byId, keepers)));
 
-  const byId = new Map(liveRows.map((row) => [Number(row.nodeId), row]));
   for (const row of liveRows) {
     if (row.type !== 'file') continue;
     const nodeId = Number(row.nodeId);
@@ -248,9 +311,24 @@ async function materializeFromPass(userId, pass) {
 
     let inserted = 0;
     const candidateKeys = new Set();
+    const pendingBefore = await fileSuggestionsStore.listPending(userId);
+    const pendingByKey = new Map(
+      pendingBefore.map((row) => [`${Number(row.nodeId)}:${row.kind}`, row])
+    );
     for (const candidate of candidates) {
-      candidateKeys.add(`${candidate.nodeId}:${candidate.kind}`);
-      if (blocked.has(`${candidate.nodeId}:${candidate.kind}`)) continue;
+      const key = `${candidate.nodeId}:${candidate.kind}`;
+      candidateKeys.add(key);
+      if (blocked.has(key)) {
+        // Reason-only refresh (§2.5.1): an existing pending near-dup row keeps
+        // its id/created_at/expires_at/state; legacy rows stay un-backfilled
+        // while keeper/score are unchanged.
+        const stored = pendingByKey.get(key);
+        if (stored && shouldRefreshNearReason(stored, candidate.reason)) {
+          // eslint-disable-next-line no-await-in-loop
+          await fileSuggestionsStore.updateReason(Number(userId), stored.id, candidate.reason);
+        }
+        continue;
+      }
       // eslint-disable-next-line no-await-in-loop
       await fileSuggestionsStore.insert({
         userId: Number(userId),
@@ -264,9 +342,8 @@ async function materializeFromPass(userId, pass) {
 
     // Reconcile: pending rows outside the current candidate set (candidate
     // vanished, keeper flipped, node left the live set) expire.
-    const pending = await fileSuggestionsStore.listPending(userId);
-    const staleIds = pending
-      .filter((row) => !candidateKeys.has(`${row.nodeId}:${row.kind}`))
+    const staleIds = pendingBefore
+      .filter((row) => !candidateKeys.has(`${Number(row.nodeId)}:${row.kind}`))
       .map((row) => row.id);
     let expired = 0;
     if (staleIds.length > 0) {

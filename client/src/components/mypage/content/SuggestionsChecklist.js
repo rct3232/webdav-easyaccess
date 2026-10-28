@@ -14,6 +14,7 @@ import {
   Button,
   Checkbox,
   IconButton,
+  LinearProgress,
   List,
   ListItem,
   ListItemText,
@@ -23,11 +24,18 @@ import {
 import { Close as CloseIcon } from '@mui/icons-material';
 import { formatFileSize } from '../../../utils/format';
 
+const KEEPER_FACTORS = ['activity', 'quality', 'name', 'centrality'];
+
 function basename(path) {
   const segments = String(path || '')
     .split('/')
     .filter(Boolean);
   return segments.length > 0 ? segments[segments.length - 1] : String(path || '');
+}
+
+function capitalize(value) {
+  const text = String(value || '');
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function reasonLabelKey(kind) {
@@ -41,12 +49,22 @@ function reasonLabelKey(kind) {
 const SuggestionsChecklist = ({ suggestions = [], onAccept, onDismiss, loading = false }) => {
   const { t } = useTranslation();
   const [checked, setChecked] = useState(() => new Set());
+  const [expandedKeepers, setExpandedKeepers] = useState(() => new Set());
 
   const toggle = useCallback((nodeId, isOn) => {
     setChecked((prev) => {
       const next = new Set(prev);
       if (isOn) next.add(nodeId);
       else next.delete(nodeId);
+      return next;
+    });
+  }, []);
+
+  const toggleKeeperDetail = useCallback((nodeId) => {
+    setExpandedKeepers((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
       return next;
     });
   }, []);
@@ -112,16 +130,82 @@ const SuggestionsChecklist = ({ suggestions = [], onAccept, onDismiss, loading =
               checked={checked.has(row.node_id)}
               onChange={(event) => toggle(row.node_id, event.target.checked)}
             />
-            <ListItemText
-              primary={basename(row.path)}
-              secondary={
-                <>
-                  {t(reasonLabelKey(row.reason?.kind || row.kind))} ·{' '}
-                  {formatFileSize(row.size_bytes)}
-                  {row.path ? ` · ${row.path}` : ''}
-                </>
-              }
-            />
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <ListItemText
+                primary={basename(row.path)}
+                secondary={
+                  <>
+                    {t(reasonLabelKey(row.reason?.kind || row.kind))} ·{' '}
+                    {formatFileSize(row.size_bytes)}
+                    {row.path ? ` · ${row.path}` : ''}
+                  </>
+                }
+              />
+              {row.reason?.keep ? (
+                <Box sx={{ pl: 1.5, pb: 0.5 }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                    data-testid={`keeper-label-${row.node_id}`}
+                  >
+                    {t('mypage.suggestionsKeep', {
+                      name: row.reason.keep.name,
+                      basis: t(`mypage.suggestionsKeepBasis.${capitalize(row.reason.keep.basis)}`),
+                    })}
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant="text"
+                    aria-expanded={expandedKeepers.has(row.node_id)}
+                    aria-controls={`keeper-detail-${row.node_id}`}
+                    onClick={() => toggleKeeperDetail(row.node_id)}
+                    sx={{ textTransform: 'none', minWidth: 0, px: 0 }}
+                  >
+                    {t('mypage.suggestionsKeepWhy')}
+                  </Button>
+                  {expandedKeepers.has(row.node_id) ? (
+                    <Box
+                      id={`keeper-detail-${row.node_id}`}
+                      data-testid={`keeper-detail-${row.node_id}`}
+                      sx={{ py: 0.5 }}
+                    >
+                      <Typography variant="caption" display="block" color="text.secondary">
+                        {t('mypage.suggestionsKeepScore', {
+                          score: row.reason.keep.relative_score,
+                        })}
+                      </Typography>
+                      <Typography variant="caption" display="block" color="text.secondary">
+                        {t('mypage.suggestionsKeepFactorsLabel')}
+                      </Typography>
+                      {KEEPER_FACTORS.map((factor) => {
+                        const value = Number(row.reason.keep.factors?.[factor]);
+                        const ratio = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+                        return (
+                          <Box
+                            key={factor}
+                            sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}
+                          >
+                            <Typography variant="caption" sx={{ minWidth: 96 }}>
+                              {t(`mypage.suggestionsKeepFactor.${capitalize(factor)}`)}
+                            </Typography>
+                            <LinearProgress
+                              variant="determinate"
+                              value={ratio * 100}
+                              data-testid={`keeper-factor-${factor}`}
+                              sx={{ flex: 1, height: 6, borderRadius: 3 }}
+                            />
+                            <Typography variant="caption" color="text.secondary">
+                              {Math.round(ratio * 100)}%
+                            </Typography>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  ) : null}
+                </Box>
+              ) : null}
+            </Box>
           </ListItem>
         ))}
       </List>

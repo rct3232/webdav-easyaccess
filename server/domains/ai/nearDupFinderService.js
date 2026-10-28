@@ -28,7 +28,7 @@
  */
 
 const { createFileNodesStore } = require('../../store/fileNodesStore');
-const { parseVector } = require('./vectorStore/vectorMath');
+const { parseVector, cosineSimilarity } = require('./vectorStore/vectorMath');
 const { createTextVectorJs } = require('./vectorStore/TextVectorJs');
 
 /** Operational cap of returned near-dup groups (routes/dashboard.md §2.4). */
@@ -190,10 +190,12 @@ function createNearDupFinderService({
     // and non-candidates ENGINE-side (vectorStore.md §2.2) — returned scores
     // are f64 cosine over the canonical TEXT rows (vectorStore.md §2.6).
     const uf = makeUnionFind();
-    const pairScores = new Map();
+    const edgeScores = new Map();
+    const vectorsById = new Map();
     for (const row of canonicalRows) {
       const selfId = Number(row.nodeId);
       const queryVec = parseVector(row.vector, row.dim);
+      vectorsById.set(selfId, queryVec);
       const neighbors = await engine.neighbors(
         queryVec,
         candidates.size,
@@ -204,8 +206,8 @@ function createNearDupFinderService({
         const otherId = Number(nodeId);
         uf.union(selfId, otherId);
         const key = pairKey(selfId, otherId);
-        const prev = pairScores.get(key) || 0;
-        if (score > prev) pairScores.set(key, score);
+        const prev = edgeScores.get(key) || 0;
+        if (score > prev) edgeScores.set(key, score);
       }
     }
 
@@ -226,8 +228,23 @@ function createNearDupFinderService({
       let score = 0;
       for (let i = 0; i < nodeIds.length; i += 1) {
         for (let j = i + 1; j < nodeIds.length; j += 1) {
-          const pairScore = pairScores.get(pairKey(nodeIds[i], nodeIds[j])) || 0;
-          if (pairScore > score) score = pairScore;
+          const edgeScore = edgeScores.get(pairKey(nodeIds[i], nodeIds[j])) || 0;
+          if (edgeScore > score) score = edgeScore;
+        }
+      }
+      // Pairwise exposure for the keeper centrality factor (§2.5.1): EVERY
+      // member pair, including transitive pairs below θ_dup. Recomputed from
+      // the canonical vectors so the below-threshold pairs are exact too.
+      const pairScores = [];
+      for (let i = 0; i < nodeIds.length; i += 1) {
+        for (let j = i + 1; j < nodeIds.length; j += 1) {
+          const left = vectorsById.get(nodeIds[i]);
+          const right = vectorsById.get(nodeIds[j]);
+          pairScores.push({
+            nodeA: nodeIds[i],
+            nodeB: nodeIds[j],
+            score: cosineSimilarity(left, right),
+          });
         }
       }
       groups.push({
@@ -235,6 +252,7 @@ function createNearDupFinderService({
         nodeIds,
         filePaths: nodeIds.map((nodeId) => buildDisplayPath(byId.get(nodeId), byId)),
         sizeBytes: nodeIds.map((nodeId) => Number(byId.get(nodeId)?.size) || 0),
+        pairScores,
       });
     }
     groups.sort((a, b) => b.score - a.score || a.nodeIds[0] - b.nodeIds[0]);

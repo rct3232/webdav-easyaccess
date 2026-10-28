@@ -949,6 +949,25 @@
     "suggestionsDismiss": "숨기기",
     "suggestionsEmpty": "정리할 항목이 없습니다.",
     "suggestionsExpiryNote": "수용하지 않은 제안은 만료 시까지 보관됩니다.",
+    "suggestionsKeep": "보관: {{name}} · {{basis}}",
+    "suggestionsKeepWhy": "왜 이 파일을 보관하나요?",
+    "suggestionsKeepScore": "그룹 상대 점수: {{score}}",
+    "suggestionsKeepFactorsLabel": "그룹 상대 요인",
+    "suggestionsKeepBasis": {
+      "Activity": "활동",
+      "Resolution": "해상도",
+      "Size": "용량",
+      "Name": "이름",
+      "Centrality": "중심성",
+      "Mixed": "복합",
+      "None": "뚜렷한 신호 없음"
+    },
+    "suggestionsKeepFactor": {
+      "Activity": "활동",
+      "Quality": "미디어 품질",
+      "Name": "이름 독창성",
+      "Centrality": "중심성"
+    },
     "suggestionsReason": {
       "ExactDup": "완전 중복",
       "NearDup": "유사 중복",

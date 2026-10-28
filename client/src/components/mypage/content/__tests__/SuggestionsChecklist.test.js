@@ -21,6 +21,32 @@ const row = (overrides = {}) => ({
   ...overrides,
 });
 
+const keepBlock = (overrides = {}) => ({
+  name: 'report.pdf',
+  relative_score: 0.74,
+  confidence: 'high',
+  basis: 'resolution',
+  factors: { activity: 0.9, quality: 1, name: 1, centrality: 0.5 },
+  unopened_30d: false,
+  score_version: 'v1',
+  ...overrides,
+});
+
+const nearRow = (overrides = {}) =>
+  row({
+    node_id: 202,
+    kind: 'near_dup',
+    path: '/testuser/docs/report v2.pdf',
+    size_bytes: 1024,
+    reason: {
+      kind: 'near_dup',
+      keep_node_id: 201,
+      score: 0.962,
+      keep: keepBlock(),
+    },
+    ...overrides,
+  });
+
 describe('SuggestionsChecklist', () => {
   it('renders unchecked checkbox rows and NO accept control at N=0 (absent, not disabled)', () => {
     renderWithProviders(
@@ -130,5 +156,84 @@ describe('SuggestionsChecklist', () => {
 
     expect(screen.getByText(/nothing to clean up/i)).toBeInTheDocument();
     expect(screen.queryByTestId('suggestions-accept')).not.toBeInTheDocument();
+  });
+
+  it('near-dup keep block: label + collapsed accessible "Why this keeper?" detail', async () => {
+    renderWithProviders(<SuggestionsChecklist suggestions={[nearRow()]} onAccept={jest.fn()} />);
+
+    expect(screen.getByText(/keep: report\.pdf · resolution/i)).toBeInTheDocument();
+    const why = screen.getByRole('button', { name: /why this keeper\?/i });
+    expect(why).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText(/group-relative score/i)).not.toBeInTheDocument();
+
+    await userEvent.click(why);
+
+    expect(why).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText(/group-relative score: 0\.74/i)).toBeInTheDocument();
+    expect(screen.getByText(/group-relative factors/i)).toBeInTheDocument();
+    for (const factor of ['activity', 'quality', 'name', 'centrality']) {
+      expect(screen.getByTestId(`keeper-factor-${factor}`)).toBeInTheDocument();
+    }
+    // no raw activity counts/timestamps in the detail
+    const detail = screen.getByTestId('keeper-detail-202');
+    expect(detail.textContent).not.toMatch(/opens|downloads|last seen|2026-|unopened/i);
+  });
+
+  it('legacy near-dup rows without reason.keep render neither the label nor the disclosure', () => {
+    renderWithProviders(
+      <SuggestionsChecklist
+        suggestions={[nearRow({ reason: { kind: 'near_dup', keep_node_id: 201, score: 0.962 } })]}
+        onAccept={jest.fn()}
+      />
+    );
+
+    expect(screen.queryByText(/keep:/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /why this keeper/i })).not.toBeInTheDocument();
+  });
+
+  it('exact-dup and rule rows never render keeper exposure', () => {
+    renderWithProviders(
+      <SuggestionsChecklist
+        suggestions={[
+          row(),
+          row({
+            node_id: 103,
+            kind: 'temp_pattern',
+            reason: { kind: 'temp_pattern', pattern: 'temp' },
+          }),
+        ]}
+        onAccept={jest.fn()}
+      />
+    );
+
+    expect(screen.queryByText(/keep:/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /why this keeper/i })).not.toBeInTheDocument();
+  });
+
+  it('en/ko keeper i18n keys mirror', () => {
+    // eslint-disable-next-line global-require
+    const en = require('../../../../locales/en.json');
+    // eslint-disable-next-line global-require
+    const ko = require('../../../../locales/ko.json');
+
+    const enKeep = en.mypage.suggestionsKeepBasis;
+    const koKeep = ko.mypage.suggestionsKeepBasis;
+    expect(Object.keys(koKeep).sort()).toEqual(Object.keys(enKeep).sort());
+    for (const key of Object.keys(enKeep)) {
+      expect(typeof koKeep[key]).toBe('string');
+      expect(koKeep[key].length).toBeGreaterThan(0);
+    }
+    for (const key of [
+      'suggestionsKeep',
+      'suggestionsKeepWhy',
+      'suggestionsKeepScore',
+      'suggestionsKeepFactorsLabel',
+    ]) {
+      expect(typeof en.mypage[key]).toBe('string');
+      expect(typeof ko.mypage[key]).toBe('string');
+    }
+    expect(Object.keys(ko.mypage.suggestionsKeepFactor).sort()).toEqual(
+      Object.keys(en.mypage.suggestionsKeepFactor).sort()
+    );
   });
 });

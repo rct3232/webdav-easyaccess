@@ -394,8 +394,10 @@ variant (LLM-free): temp patterns, stale screenshots, old installers, exact dupl
 fingerprint **first** (cosine-1.0 detection is redundant). Vector variant: near-duplicate groups
 at the ACTIVE embed model's profile `θ_dup` (EG2 reference set 0.955 —
 `docs/spec/server/infrastructure/llmPresets.md` §2.3; hash-twin members are excluded from the
-vector pass entirely), with keeper selection ("30 days unopened, low score") among the grouped
-members; **short-document exception** —
+vector pass entirely), with keeper selection by an LLM-free quality composite v1 among the
+grouped members (activity 0.45 / media quality 0.30 / name originality 0.15 / centrality 0.10,
+each normalized within the group; 30-days-unopened is a 0.25 activity penalty, never an
+exclusion; `docs/spec/server/services/dashboardService.md` §2.5.1); **short-document exception** —
 sentence-or-less files skip similarity near-dup and use the hash path. Dismiss is per row;
 unaccepted expire with retention; accepting is checked → trash as one undoable command — the
 checkbox _is_ the confirmation.

@@ -29,6 +29,9 @@
  *   Full per-user history projection for the generator dedupe/reconcile.
  * @property {(userId: number, id: number) => Promise<{ changes: number }>} dismiss
  *   `pending → dismissed`, user-scoped; 0 = unknown/foreign/non-pending.
+ * @property {(userId: number, id: number, reason: Object) => Promise<{ changes: number }>} updateReason
+ *   Reason-only refresh of a PENDING row; id/created_at/expires_at/state stay
+ *   untouched. 0 = unknown/foreign/non-pending (generator reconcile owns it).
  * @property {(tx, userId: number, nodeIds: number[], state: string) => Promise<Array<{ id: number, nodeId: number, kind: string }>>} listIdsByNodesTx
  * @property {(tx, { ids: number[], fromState: string, toState: string }) => Promise<{ changes: number }>} flipStatesTx
  *   State flip restricted to the id set AND the expected `fromState`.

@@ -244,6 +244,9 @@ upsertAutoParent references` across `server/` except the purge commit itself.
   persisted; image near-dup = caption-space distance (weaker vs reencode — accepted).
 - T4.3 e2e hermetic AI suite (in-process fake LLM server via adapter injection; scratch
   project port; smoke-list update) + degradation-matrix suite.
+- T4.4 dashboard capacity series (P4): `capacity_snapshots`-style storage + daily
+  scheduler + gateway `loadCapacitySeries()` + the Storage sparkline + tests. v1 keeps the
+  seam absent and the block omitted; no fabricated series.
 
 ### 7.1 Contract-spec references (mandatory)
 
@@ -2561,3 +2564,47 @@ disabled`) sourced from the new `llmAdapter.getRoleReadiness('embed')`; it is no
 - **Gates:** server `test:ci` 189 suites / 3309 tests (28 skip); client 188 / 2235;
   `docsStatePurity` 3/3; `playwright test --list` 256 tests. No repository/SQL change ⇒ PG
   leg N/A.
+
+## 31. Post-P3 remediation execution (2026-10-28)
+
+> Owner decisions: hysteresis **enabled with provisional offsets** (±0.02) and refined after
+> operation; `for-nodes` hides non-published rows from non-owners; capacity sparkline is **P4
+> (T4.4)**; embed-probe completeness + media-warning emit are **pre-merge (C3-A/C4-A)**; shared
+> enums are **promoted to code (D1-A)**; near-dup keeper quality ships with the v1 weights and
+> the confirmed exposure defaults. Each unit is a task branch → `ai-feature`; worktrees are
+> isolated; full gates run on the merged tip (task units run targeted suites only).
+
+### 31.1 Units (all `[wip]`)
+
+| Unit             | Branch / worktree                                   | Scope                                                                                                                                        |
+| ---------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| LLM readiness    | `fix/llm-probe-readiness` (wt-llm)                  | C3-A embed probe (dim/non-empty/non-degeneracy/pooling/positive control) + C4-A embed media warning (`partial`) + C6 hot registry sync/reset |
+| AI hooks         | `fix/ai-hooks-reeembed-derivatives` (wt-hooks)      | C1 content-change re-embed (hash-aware job reset) + derived tags wired at the four commit seams                                              |
+| Collections      | `fix/collections-touch-order-membership` (wt-colls) | C2 explicit unpin, C4 active-model similar sort, C7 dialect-safe activity fallback, for-nodes published filter for non-owners                |
+| Hysteresis       | `feature/membership-hysteresis` (wt-hyst)           | EG2 `membershipHysteresis { inDelta: 0.02, outDelta: -0.02 }` (provisional) + band tests/spec                                                |
+| Undo TX          | `fix/suggestion-undo-tx` (wt-undo)                  | tx-aware untrash/rename + retry convergence for suggestion accept undo (PG/WebDAV)                                                           |
+| Tag DDL          | `chore/remove-retired-tag-ddl` (wt-tagddl)          | remove `tag_embeddings`/`tag_parents` from 001 + parity tests/grep gate/docs (no big-bang script)                                            |
+| Docs             | `docs/contract-reconciliation` (wt-docs)            | D2 actions/api `file` writer, D3 ARCHITECTURE, D7 setup-wizard 6 steps, D8 remaining pointers; returns T4.4 draft                            |
+| Member of        | `feature/file-properties-member-of` (wt-memberof)   | D6 host+chips+navigation+tests                                                                                                               |
+| B keeper quality | `feature/near-dup-keeper-quality` (wt-b)            | B v1 scorer/exposure/reason-refresh/UI; no DDL                                                                                               |
+| BULK-010         | `test/p3-bulk-010` (wt-bulk)                        | dual core-flow batch-move undo E2E; coverage row planned→covered                                                                             |
+| Shared enums     | `refactor/shared-platform-enums` (wt-enums)         | D1-A Phase 1 constants + docs/tests; Phase 2 migration list follows after the units above merge                                              |
+
+### 31.2 B v1 decisions (confirmed)
+
+- Weights: Activity 0.45, Media Quality 0.30, Name 0.15, Centrality 0.10.
+- `low score` = `node_activity.score`; 30d unopened = raw activity penalty ×0.25 (not a gate).
+- Exact dups keep smallest node id; rule kinds unchanged; short-document exception unchanged.
+- Exposure: additive `reason.keep` (`name`, `relative_score`, `confidence`, `basis`, `factors`,
+  `unopened_30d`, `score_version:'v1'`); existing `keep_node_id`/`score` stay.
+- No legacy backfill; reason-only refresh for existing pending near-dup rows (id/expiry/state
+  stable). UI: `Keep: <name> · <basis>` + accessible “Why this keeper?” (group-relative score
+  and factor bars only in the detail).
+
+### 31.3 Merge/gate order
+
+`wt-colls`/`wt-hyst`/`wt-tagddl`/`wt-docs`/`wt-bulk`/`wt-memberof` may merge independently;
+`wt-undo` before `wt-b`; `wt-llm`/`wt-hooks` before the final full gate; `wt-enums` Phase 1
+after the code units (Phase 2 follows). Final gate: server/client `test:ci`, PG adapters for
+repository/DDL/undo units, dual E2E (collections/retrieval/ai + core-flow), docsStatePurity,
+prettier/eslint, release matrix before the single `ai-feature`→`dev` merge.

@@ -119,7 +119,11 @@ test('E2E-S3-TRASHADMIN-001: Empty trash purges all visible trashed items', asyn
   const folderNodeId = await resolveNodeId(request, token, `/${base}`);
   await uploadFileAt(request, token, folderNodeId, fileName, 'text/plain', textFixtureBuffer);
   await gotoFilesPath(page, request, `/${base}`);
-  await expect(fileItem(page, filePath)).toBeVisible();
+  // Full client boot on the parallel release matrix (3 workers, several scratch
+  // servers + embedding model) routinely exceeds the 15s default expect budget
+  // before the explorer issues its first listing; the assertion still fails on a
+  // real regression, it just gets the same first-paint budget as retrieval.
+  await expect(fileItem(page, filePath)).toBeVisible({ timeout: 60_000 });
 
   // Trash via the platform UI seam (desktop context menu / mobile action sheet).
   const deleteResponsePromise = page.waitForResponse(
@@ -134,7 +138,7 @@ test('E2E-S3-TRASHADMIN-001: Empty trash purges all visible trashed items', asyn
   await expect(fileItem(page, filePath)).toHaveCount(0);
 
   await page.goto('/files/__trash__');
-  await expect(fileItem(page, filePath)).toBeVisible({ timeout: 30_000 });
+  await expect(fileItem(page, filePath)).toBeVisible({ timeout: 60_000 });
 
   // Admin-only empty-trash icon button in the controls row; the confirm copy
   // must state that it purges ALL trashed items for ALL users.

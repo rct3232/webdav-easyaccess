@@ -2704,15 +2704,16 @@ _schema_migrations WHERE filename='001_initial_normalized_schema.sql';` then re-
 
 ### 31.8 Release matrix evidence (2026-10-28)
 
-Three full release-matrix attempts on the merged remediation tip. **No attempt is green**;
-the residual failures are host-capacity/transport effects, not reproducible product
-regressions (targeted reruns below).
+Four full release-matrix attempts on the merged remediation tip. Runs A–C are red for
+host-capacity/transport reasons (not reproducible product regressions — targeted reruns below);
+**Run D with `E2E_WORKERS=1` is GREEN and is the release evidence.**
 
-| Run          | Config                      | S3 (`test:e2e:release`)                            | WebDAV (`test:e2e:release:webdav`)   |
-| ------------ | --------------------------- | -------------------------------------------------- | ------------------------------------ |
-| A `19c1b880` | 3 workers                   | 238 passed / 3 failed / 7 skipped / 10 did not run | 39 passed / 1 failed / 1 did not run |
-| B `7593e6fc` | 3 workers                   | 250 passed / 1 failed / 7 skipped                  | 40 passed / 1 failed                 |
-| C `8396b23f` | 2 workers (`E2E_WORKERS=2`) | 238 passed / 2 failed / 6 skipped / 12 did not run | 34 passed / 2 failed / 5 did not run |
+| Run              | Config                         | S3 (`test:e2e:release`)                            | WebDAV (`test:e2e:release:webdav`)      |
+| ---------------- | ------------------------------ | -------------------------------------------------- | --------------------------------------- |
+| A `19c1b880`     | 3 workers                      | 238 passed / 3 failed / 7 skipped / 10 did not run | 39 passed / 1 failed / 1 did not run    |
+| B `7593e6fc`     | 3 workers                      | 250 passed / 1 failed / 7 skipped                  | 40 passed / 1 failed                    |
+| C `8396b23f`     | 2 workers (`E2E_WORKERS=2`)    | 238 passed / 2 failed / 6 skipped / 12 did not run | 34 passed / 2 failed / 5 did not run    |
+| **D `00881ada`** | **1 worker (`E2E_WORKERS=1`)** | **253 passed / 7 skipped / 260, rc=0 (26.8m)**     | **41 passed / 0 skipped, rc=0 (12.2m)** |
 
 - **Run A product regression (fixed):** `E2E-WEBDAV-ADMINCFG-004` — the admin warning card
   rendered healthy/not-configured `ai.*` tracker rows (C4-A added a healthy `ai.embed` row).
@@ -2734,10 +2735,12 @@ regressions (targeted reruns below).
   run where Enter was pressed on a focused/filled search box but **zero** `POST /api/search`
   reached that scratch server (the client absorbs transport failures and returns to browse).
 - **Targeted reruns on the same tip (all green):** webdav-admin-config `ADMINCFG-004` 1/1;
-  trash-admin desktop+mobile pair 2/2; trash-admin desktop solo 1/1; BULK-010 dual 2/2. The
-  full matrix must still be recorded on a host with CPU headroom (or `E2E_WORKERS=1` on this
-  one) before the single `ai-feature`→`dev` merge; inventory expectations stay 251/7/258 (S3)
-  and 41/0 (WebDAV).
+  trash-admin desktop+mobile pair 2/2; trash-admin desktop solo 1/1; BULK-010 dual 2/2.
+- **Release gate (Run D):** 260 S3 tests (253/7/260, skip budget 7 enforced, `--retries=0
+--fail-on-flaky-tests`) and 41 WebDAV tests all green; `E2E-TRASH-013` passed in both
+  projects (8.7 s / 9.1 s). Serial execution removes the host-capacity flakes that the 3- and
+  2-worker runs hit; the canonical 3-worker configuration remains unusable on this 6-core
+  runner, so the gate runs with `E2E_WORKERS=1` here.
 
 ### 31.9 Search cancel surface (2026-10-28)
 
@@ -2862,5 +2865,5 @@ snackbar and now has an explicit cancel surface (`§31.9`), so no search-side wo
 - **E2E:** `E2E-TRASH-013` (fault injection: job-status polling aborted, delete succeeds) targeted
   2/2 green on `s3-desktop` + `s3-mobile`; inventory re-pinned to S3 **253/7/260**, Core
   **144/3/147**, WebDAV unchanged 41/0. `playwright test --list` confirms 260 in 18 files.
-- **Not covered:** the full release matrix still needs a host with CPU headroom (§31.8); the PG
-  adapter leg is unaffected (no storage change).
+- **Release matrix:** GREEN at `E2E_WORKERS=1` on the merged tip `00881ada` — S3 253/7/260 and
+  WebDAV 41/0, rc=0 (§31.8, Run D). The PG adapter leg is unaffected (no storage change).

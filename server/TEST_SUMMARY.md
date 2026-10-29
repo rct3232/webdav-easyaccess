@@ -7,10 +7,14 @@ Summary of the test implementation for the Express.js server application. All te
 ## Test Statistics
 
 - **Total Test Suites**: 194 (sqlite `test:ci`, as of 2026-10-28 — post-P3 remediation + bulk polling resilience + model-free embed seam, including 2 skipped suites)
-- **Total Tests**: 3386 (3358 passed, 28 skipped)
+- **Total Tests**: pending reconciliation against the original 2026-10-28 `test:ci` output
 - **Pass Rate**: 100% of executed tests (0 failed) ✅
 - **Real-PostgreSQL adapter leg** (`test:ci:pg:adapters`): 31 suites / 471 passed, 1 skipped (472 total; recorded 2026-10-28 at `ai-feature` tip `309eb579` on a freshly recreated `webdav_test` DB)
 - **Execution Time**: Reported per run by `npm run test`
+
+> Count reconciliation: §32.1 of `PLAN.md` records 3354 passed + 28 skipped (3382 total),
+> while this summary previously carried 3386 in the header and 3381 in the conclusion.
+> Do not repin the total until the original test output is checked.
 
 > New/extended suites since the 2026-09-04 snapshot: `infrastructure/__tests__/trashSoftDeleteSchema.test.js` (new; registered on the PG adapter leg), extended `failSafeService` (pending_upload scan/repair) and `gcService` (retention categories: garbage/version/guarded/pending-live) suites. 2026-09-10: trash-schema DDL folded into `001_initial_normalized_schema.sql` (single-file chain) — removed 5 tests (4 converter table-rebuild tests in `sqliteSchemaInit`, the pre-fold sqlite in-place migration scenario in `trashSoftDeleteSchema`).
 
@@ -153,15 +157,14 @@ tiers only.
   — WebKit refuses the band-40 default 5060, see `docs/RCA_LOG.md` 2026-10-27),
   `s3-ai-desktop` 1 / 0 / 0 (pre-seeded `WEA_MODEL_DIR` weights resolved from the
   default `/tmp/opencode/delta-base/models`).
-- The jest tiers above are the orchestrator's exit-gate ownership, re-pinned
-  at the post-P3 remediation tip `309eb579`: server sqlite 194 suites / 3381
-  tests (3353 passed, 28 skipped), client 188 suites / 2245 tests (see
-  `client/TEST_SUMMARY.md`), real-PostgreSQL adapter leg 31 suites / 471 passed
-  - 1 skipped (`test:ci:pg:adapters`, fresh DB).
+- The jest tiers above are the orchestrator's exit-gate ownership: server sqlite
+  totals remain under reconciliation pending the original test output; client
+  189 suites / 2279 tests (see `client/TEST_SUMMARY.md`); real-PostgreSQL adapter
+  leg 31 suites / 471 passed + 1 skipped (`test:ci:pg:adapters`, fresh DB).
 
 ## Conclusion
 
-- 3381 tests across 194 suites (3353 passed / 28 skipped, 0 failed), as of 2026-10-28, sqlite `test:ci`, post-P3 remediation on `ai-feature` tip `309eb579`; real-PostgreSQL adapter leg `test:ci:pg:adapters`: 31 suites / 471 passed + 1 skipped, fresh DB, same tip
+- Server `test:ci` passed with 194 suites and 0 failed tests as of 2026-10-28; the exact pass/skip/total count is pending reconciliation against the original output. The real-PostgreSQL adapter leg `test:ci:pg:adapters` passed 31 suites / 471 passed + 1 skipped on a fresh DB.
 - Tests are colocated with source: domain routes/services/stores/policy under `domains/<x>/`, shared layer under `service/` and `store/`, plus `infrastructure/`, `middleware/`, `models/`, `utils/`
 - Route integration tests cover main API endpoints via Supertest
 - L2 repository conformance suites (store + permission repositories, executor) run against real sqlite and, on the adapter leg, real PostgreSQL

@@ -189,13 +189,13 @@ tiers only.
   `s3-ai-desktop` 1 / 0 / 0 (pre-seeded `WEA_MODEL_DIR` weights resolved from the
   default `/tmp/opencode/delta-base/models`).
 - The jest tiers above are the orchestrator's exit-gate ownership: this client
-  leg is re-pinned at the post-P3 remediation tip `309eb579` (188 suites / 2245
-  tests); the server sqlite and real-PostgreSQL snapshots live in
-  `server/TEST_SUMMARY.md` (194 suites / 3381 tests; PG 31 / 471 + 1 skipped).
+  leg is re-pinned after bulk-polling resilience (189 suites / 2279 tests); the
+  server sqlite total is under reconciliation in `server/TEST_SUMMARY.md`, while
+  the real-PostgreSQL adapter snapshot is 31 suites / 471 passed + 1 skipped.
 
 ## Conclusion
 
-- 2245 tests across 188 suites, 100% pass rate (as of 2026-10-28 — post-P3 remediation, `ai-feature` tip `309eb579`)
+- 2279 tests across 189 suites, 100% pass rate (as of 2026-10-28 — after bulk-polling resilience)
 - Tests are colocated with source under `components/`, `hooks/`, `pages/`, `services/`, `utils/`, `contexts/`
 - Coverage and integration goals documented
 - Test infrastructure and MSW setup in place (server created in `src/setupTests.js`)

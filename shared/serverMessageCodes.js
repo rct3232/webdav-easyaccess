@@ -71,6 +71,9 @@ const SERVER_ERROR_CODES = {
     configEnvSourcedProtected: P('serverErrors.admin', 'configEnvSourcedProtected'),
     reportNotFound: P('serverErrors.admin', 'reportNotFound'),
     repairNotAvailable: P('serverErrors.admin', 'repairNotAvailable'),
+    reembedRateLimited: P('serverErrors.admin', 'reembedRateLimited'),
+    reembedAlreadyActive: P('serverErrors.admin', 'reembedAlreadyActive'),
+    reembedModelUnavailable: P('serverErrors.admin', 'reembedModelUnavailable'),
   },
   share: {
     shareLinkNotFound: P('serverErrors.share', 'shareLinkNotFound'),

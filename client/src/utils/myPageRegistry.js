@@ -5,6 +5,7 @@ import {
   People as PeopleIcon,
   Settings as SettingsIcon,
   Palette as PaletteIcon,
+  SmartToy as SmartToyIcon,
 } from '@mui/icons-material';
 
 import AccountContent from '../components/mypage/content/AccountContent';
@@ -13,6 +14,7 @@ import UserManagementContent from '../components/mypage/content/UserManagementCo
 import SystemSettingsContent from '../components/mypage/content/SystemSettingsContent';
 import PreferencesContent from '../components/mypage/content/PreferencesContent';
 import CollectionDashboard from '../components/mypage/content/CollectionDashboard';
+import AiAdminContent from '../components/mypage/content/AiAdminContent';
 
 export const DEFAULT_MY_PAGE_CATEGORY = 'account';
 
@@ -49,6 +51,12 @@ const MY_PAGE_CATEGORY_META = [
     id: 'admin-settings',
     icon: SettingsIcon,
     labelKey: 'admin.systemSettings',
+    visibility: 'adminOnly',
+  },
+  {
+    id: 'admin-ai',
+    icon: SmartToyIcon,
+    labelKey: 'mypage.adminAiOps',
     visibility: 'adminOnly',
   },
   {
@@ -145,6 +153,15 @@ export function getMyPageContentDescriptor({
     };
   }
 
+  if (selectedCategory === 'admin-ai') {
+    return {
+      categoryIcon: getMyPageCategoryIcon(selectedCategory),
+      onBack,
+      ContentComponent: AiAdminContent,
+      contentProps: {},
+    };
+  }
+
   return {
     categoryIcon: null,
     onBack,
@@ -162,7 +179,11 @@ export function resolveMyPageCategory(categoryId, isAdmin) {
     return isAdmin ? 'admin-users' : DEFAULT_MY_PAGE_CATEGORY;
   }
 
-  if (categoryId === 'admin-users' || categoryId === 'admin-settings') {
+  if (
+    categoryId === 'admin-users' ||
+    categoryId === 'admin-settings' ||
+    categoryId === 'admin-ai'
+  ) {
     return isAdmin ? categoryId : DEFAULT_MY_PAGE_CATEGORY;
   }
 

@@ -753,6 +753,137 @@
       "probe_failed": "프로브 실패",
       "partial": "부분 동작",
       "ok": "정상"
+    },
+    "aiPanel": {
+      "title": "AI 운영",
+      "refresh": "새로 고침",
+      "retry": "다시 시도",
+      "loadFail": "AI 운영 현황을 불러오지 못했습니다.",
+      "on": "켜짐",
+      "off": "꺼짐",
+      "notInstrumented": "계측되지 않음",
+      "openSystemSettings": "시스템 설정 열기",
+      "openAiPanel": "AI 운영 열기",
+      "sections": {
+        "pipeline": "파이프라인 상태",
+        "cost": "비용 원장",
+        "evolution": "진화 거버넌스",
+        "models": "모델 레지스트리",
+        "coverage": "커버리지",
+        "gates": "게이트",
+        "launcher": "재임베딩 실행",
+        "journal": "설정 저널"
+      },
+      "gateKey": {
+        "AI_SEMANTIC_SEARCH_ENABLED": "시맨틱 검색",
+        "AI_NL_PARSE_ENABLED": "자연어 파싱",
+        "AI_EVOLUTION_ENABLED": "진화 사용",
+        "AI_EVOLUTION_NIGHTLY_ENABLED": "야간 진화",
+        "AI_EVOLUTION_CREATE_ENABLED": "컬렉션 생성",
+        "AI_MERGE_SUGGESTIONS_ENABLED": "병합 제안",
+        "AI_MERGE_ARBITER_ENABLED": "병합 중재",
+        "AI_EVOLUTION_INACTIVE_DAYS": "비활성 일수",
+        "AI_EVOLUTION_MIN_AGE_DAYS": "최소 경과 일수",
+        "AI_EVOLUTION_CREATE_RATE_DAYS": "생성 빈도 기간(일)",
+        "AI_ACTIVITY_HALF_LIFE_DAYS": "활동 반감기(일)",
+        "AI_USAGE_EVENT_RETENTION_DAYS": "사용 이벤트 보존(일)",
+        "ARCHIVE_RETENTION_DAYS": "아카이브 보존(일)",
+        "AI_SUGGESTION_RETENTION_DAYS": "제안 보존(일)"
+      },
+      "gates": {
+        "killSwitches": "킬 스위치",
+        "impact": "실시간 영향",
+        "saved": "설정을 저장했습니다.",
+        "saveFail": "설정을 저장하지 못했습니다."
+      },
+      "pipeline": {
+        "queue": {
+          "pending": "대기",
+          "running": "실행 중",
+          "done": "완료",
+          "failed": "실패",
+          "skipped": "건너뜀",
+          "cancelled": "취소됨"
+        },
+        "failed24h": "24시간 실패",
+        "failureRate": "24시간 실패율",
+        "failedJobs": "실패 작업",
+        "failedJobsDisplayOnly": "표시 전용 — 재시도와 포기는 제공되지 않습니다.",
+        "noFailedJobs": "실패한 작업이 없습니다.",
+        "nodeId": "노드",
+        "kind": "종류",
+        "generation": "세대",
+        "attempt": "시도",
+        "lastError": "마지막 오류",
+        "finishedAt": "완료 시각",
+        "readiness": "기능 준비 상태",
+        "breakerNotInstrumented": "브레이커 상태는 능동 관찰이 필요해 이 패널에서 폴링하지 않습니다."
+      },
+      "cost": {
+        "role": "역할",
+        "calls": "호출",
+        "inputChars": "입력 문자",
+        "cached": "캐시",
+        "degraded": "저하",
+        "failed429": "429",
+        "caps": "일일 한도 — 호출: {{calls}}, 토큰: {{tokens}} (0 = 무제한)",
+        "perUserNotInstrumented": "사용자별 상위 N은 계측되지 않습니다."
+      },
+      "evolution": {
+        "latestNightEval": "최근 야간 평가 #{{id}} ({{status}})",
+        "users": "사용자",
+        "collections": "컬렉션",
+        "mergeSuggested": "병합 제안",
+        "none": "야간 평가 보고서가 아직 없습니다.",
+        "pendingMerges": "대기 중인 병합 제안: {{count}}",
+        "notInstrumented": "생존 곡선, 병합 수락 시계열, 버전별 이력은 계측되지 않습니다."
+      },
+      "models": {
+        "role": "역할",
+        "active": "활성 모델",
+        "engine": "엔진",
+        "history": "이력 행",
+        "none": "없음",
+        "profile": "프로필 출처 — {{role}} 모델 {{model}}",
+        "calibrated": "보정: {{value}}"
+      },
+      "coverage": {
+        "embedded": "임베딩됨",
+        "missing": "누락",
+        "stale": "이전 공간",
+        "text": "텍스트 커버리지",
+        "media": "미디어 커버리지",
+        "unavailable": "활성 임베딩 모델이 등록될 때까지 커버리지를 계측하지 않습니다."
+      },
+      "launcher": {
+        "description": "하나의 속도 제한 실행이 누락/이전 공간 텍스트 노드와 미디어 커버리지 계획을 처리합니다. 진행 상황은 큐가 유일한 화면입니다.",
+        "model": "모델",
+        "generation": "세대",
+        "cooldown": "재시도 대기(초)",
+        "activeRun": "이전 재임베딩 실행에 아직 대기 중인 작업이 있습니다.",
+        "retryAfter": "실행 쿨다운 중입니다. {{seconds}}초 후에 다시 시도하세요.",
+        "previewCounts": "텍스트: {{text}} · 미디어: {{media}} · 합계: {{union}}",
+        "preview": "미리보기",
+        "launch": "재임베딩 실행",
+        "confirmTitle": "재임베딩 확인",
+        "confirmBody": "텍스트({{text}})와 미디어({{media}}) 커버리지 작업을 큐에 넣고 세대 카운터를 올리며 되돌리기 저널 한 행을 기록합니다. 계속할까요?",
+        "confirm": "실행",
+        "launchSuccess": "재임베딩을 시작했습니다: 세대 {{generation}}에 {{count}}개 작업이 대기열에 추가되었습니다.",
+        "launchFail": "재임베딩을 시작하지 못했습니다.",
+        "previewFail": "재임베딩 미리보기를 불러오지 못했습니다.",
+        "cancelPendingHint": "되돌리기는 대기 중인 작업만 취소합니다. 실행 중 작업은 끝까지 진행되며 지출된 제공자 비용은 환불되지 않습니다."
+      },
+      "probe": {
+        "action": "AI 역할 프로브",
+        "done": "프로브 완료: {{ok}}/{{total}}개 역할 통과.",
+        "fail": "AI 역할 프로브에 실패했습니다."
+      },
+      "journal": {
+        "empty": "설정 저널 행이 없습니다.",
+        "undo": "되돌리기",
+        "undoSuccess": "설정 저널 행을 되돌렸습니다.",
+        "undoFail": "설정 저널 행을 되돌리지 못했습니다."
+      }
     }
   },
   "migration": {
@@ -905,6 +1036,7 @@
     "messageLabel": "메시지",
     "review": "검토",
     "storage": "스토리지",
+    "adminAiOps": "AI 운영",
     "hygieneDuplicates": "완전 중복 파일",
     "hygieneDuplicatesMeta": "그룹 {{groups}}개 · 파일 {{files}}개 · {{size}} 정리 가능",
     "hygieneNearDuplicatesMeta": "유사 중복: 그룹 {{groups}}개 · 파일 {{files}}개",
@@ -1134,7 +1266,10 @@
       "repairUploadNotPending": "노드가 예상된 동기화 상태가 아닙니다.",
       "repairUploadBlobMissing": "대기 중인 블롭이 없어 완료할 수 없습니다.",
       "reportNotFound": "관리자 보고서를 찾을 수 없습니다.",
-      "repairNotAvailable": "이 보고서에 사용할 수 있는 복구 작업이 없습니다."
+      "repairNotAvailable": "이 보고서에 사용할 수 있는 복구 작업이 없습니다.",
+      "reembedRateLimited": "최근에 재임베딩을 실행했습니다. {{retry_after_seconds}}초 후에 다시 시도하세요.",
+      "reembedAlreadyActive": "재임베딩이 이미 진행 중입니다. 대기 중인 작업이 끝날 때까지 기다리세요.",
+      "reembedModelUnavailable": "활성 임베딩 모델이 등록되어 있지 않습니다."
     },
     "ai": {
       "notConfigured": "AI 기능이 구성되지 않았습니다. 관리자에게 문의하세요.",

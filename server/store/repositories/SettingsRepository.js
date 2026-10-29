@@ -15,6 +15,13 @@
  *   All settings rows as `{ [key]: value }`.
  * @property {(key: string, value: string) => Promise<{ success: true }>} set
  *   Upsert (INSERT … ON CONFLICT), updating `updated_at`.
+ * @property {(tx, key: string) => Promise<string|null>} getTx
+ *   Caller-owned-TX read (the launcher bump must observe its own writes).
+ * @property {(tx, key: string, value: string) => Promise<{ success: true }>} setTx
+ *   Caller-owned-TX upsert. `set` opens its own transaction, so nested config
+ *   journal/launcher writes must use this variant.
+ * @property {(tx, key: string) => Promise<{ changes: number }>} deleteTx
+ *   Caller-owned-TX delete (undo restores an unset previous value).
  * @property {() => Promise<Array<{ key: string, value: string, updated_at: any }>>} listRows
  *   Raw rows for the admin/config-sync surfaces (`updated_at` as the backend
  *   stores it — Date on PG, ISO-ish TEXT on sqlite; the facade reports it as-is).

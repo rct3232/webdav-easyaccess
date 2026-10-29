@@ -362,6 +362,7 @@ describe('AiJobsRepository conformance', () => {
       const row = await readRow(job.id);
       expect(row.status).toBe('failed');
       expect(row.attempt).toBe(i + 1);
+      expect(row.finished_at).toBeTruthy();
       const actual = new Date(row.next_retry_at).getTime();
       expect(actual).toBeGreaterThanOrEqual(before + expected[i] - 2000);
       expect(actual).toBeLessThanOrEqual(Date.now() + expected[i] + 2000);
@@ -444,11 +445,112 @@ describe('AiJobsRepository conformance', () => {
       { nodeId: nodeB.nodeId, kind: 'embed', generation: 1 },
     ]);
     expect(result.enqueued).toBe(2);
+    expect(result.ids).toHaveLength(2);
+    expect(result.ids.every((id) => Number.isInteger(id))).toBe(true);
 
     const { rows } = await dbQuery('SELECT COUNT(*) AS cnt FROM ai_jobs WHERE node_id = ?', [
       Number(nodeB.nodeId),
     ]);
     expect(Number(rows[0].cnt)).toBe(2);
+  });
+
+  it('enqueueManyTx returns the inserted ids inside a caller-owned TX and rolls back with it', async () => {
+    await clearJobs();
+    const node = await uniqueNode();
+    const txResult = await storage.getExecutor().transaction((tx) =>
+      repo.enqueueManyTx(tx, [
+        { nodeId: node.nodeId, kind: 'embed', generation: 1 },
+        { nodeId: node.nodeId, kind: 'features', generation: 1 },
+      ])
+    );
+    expect(txResult.enqueued).toBe(2);
+    expect(txResult.ids).toHaveLength(2);
+
+    const other = await uniqueNode();
+    await expect(
+      storage.getExecutor().transaction(async (tx) => {
+        await repo.enqueueManyTx(tx, [{ nodeId: other.nodeId, kind: 'embed', generation: 1 }]);
+        throw new Error('rollback');
+      })
+    ).rejects.toBeDefined();
+    const { rows } = await dbQuery('SELECT COUNT(*) AS cnt FROM ai_jobs WHERE node_id = ?', [
+      Number(other.nodeId),
+    ]);
+    expect(Number(rows[0].cnt)).toBe(0);
+  });
+
+  it('cancelPending cancels only pending rows and reports cancelled/skipped ids', async () => {
+    await clearJobs();
+    const pendingNode = await uniqueNode();
+    const runningNode = await uniqueNode();
+    const doneNode = await uniqueNode();
+    const pendingJob = await repo.enqueue(pendingNode.nodeId, 'embed', 1, 'hash-pending');
+    const runningJob = await repo.enqueue(runningNode.nodeId, 'embed', 1, 'hash-running');
+    const doneJob = await repo.enqueue(doneNode.nodeId, 'embed', 1, 'hash-done');
+
+    await repo.claimNext(); // pendingJob → running (claim order is id ASC)
+    await repo.claimNext(); // runningJob → running
+    await repo.claimNext(); // doneJob → running
+    await repo.markDone(doneJob.id);
+    // Re-arm the first row to pending through a content change.
+    await repo.enqueue(pendingNode.nodeId, 'embed', 1, 'hash-pending-2');
+
+    const result = await repo.cancelPending({
+      jobIds: [pendingJob.id, runningJob.id, doneJob.id, 999999999],
+    });
+    expect(result.cancelledIds).toEqual([Number(pendingJob.id)]);
+    expect(result.skippedIds).toEqual(
+      expect.arrayContaining([Number(runningJob.id), Number(doneJob.id), 999999999])
+    );
+    expect((await readRow(pendingJob.id)).status).toBe('cancelled');
+    expect((await readRow(runningJob.id)).status).toBe('running');
+    expect((await readRow(doneJob.id)).status).toBe('done');
+  });
+
+  it('cancel race: a claimed row wins — cancelPending reports 0 cancelled and the job finishes', async () => {
+    await clearJobs();
+    const node = await uniqueNode();
+    const job = await repo.enqueue(node.nodeId, 'embed', 1, 'hash-race');
+    const claimed = await repo.claimNext();
+    expect(claimed.id).toBe(Number(job.id));
+
+    const result = await repo.cancelPending({ jobIds: [job.id] });
+    expect(result.cancelledIds).toEqual([]);
+    expect(result.skippedIds).toEqual([Number(job.id)]);
+
+    await repo.markDone(job.id);
+    const row = await readRow(job.id);
+    expect(row.status).toBe('done');
+    expect(row.finished_at).toBeTruthy();
+  });
+
+  it('cancelPending marks pending rows terminal; cancelled is never claimed or retried', async () => {
+    await clearJobs();
+    const node = await uniqueNode();
+    const job = await repo.enqueue(node.nodeId, 'embed', 1, 'hash-cancel');
+    const result = await repo.cancelPending({ jobIds: [job.id, job.id] });
+    expect(result.cancelledIds).toEqual([Number(job.id)]);
+    expect(result.skippedIds).toEqual([]);
+
+    const row = await readRow(job.id);
+    expect(row.status).toBe('cancelled');
+    expect(row.finished_at).toBeTruthy();
+    await expect(repo.claimNext()).resolves.toBeNull();
+  });
+
+  it('countFailedSince/countFinishedSince/countActiveByIds read terminal/active state', async () => {
+    await clearJobs();
+    const nodeA = await uniqueNode();
+    const nodeB = await uniqueNode();
+    const failedJob = await repo.enqueue(nodeA.nodeId, 'embed', 1, 'hash-count-failed');
+    const pendingJob = await repo.enqueue(nodeB.nodeId, 'embed', 1, 'hash-count-pending');
+    await repo.claimNext();
+    await repo.markFailed(failedJob.id, 'count-boom');
+
+    const since = new Date(Date.now() - 60_000).toISOString();
+    await expect(repo.countFailedSince(since)).resolves.toBe(1);
+    await expect(repo.countFinishedSince(since)).resolves.toBe(1);
+    await expect(repo.countActiveByIds([failedJob.id, pendingJob.id])).resolves.toBe(1);
   });
 
   it('countByStatus totals match seeded fixtures of every status incl. skipped', async () => {

@@ -27,7 +27,7 @@ function probeStateNote(probed) {
   return probed ? 'probe-failed' : 'declared-not-probed';
 }
 
-function buildHook(node) {
+function buildHook(node, options = {}) {
   const enqueued = [];
   const hook = createNodeContentHook({
     aiJobsRepository: {
@@ -41,6 +41,7 @@ function buildHook(node) {
         return node;
       },
     },
+    ...options,
   });
   return { hook, enqueued };
 }
@@ -113,5 +114,39 @@ describe('nodeContentHook capability gates (effective capability set)', () => {
     const { hook, enqueued } = buildHook({ type: 'directory', name: 'folder' });
     await hook.onNodeContentCommitted(16, 'hash-16');
     expect(enqueued).toEqual([]);
+  });
+
+  it('generationFor resolves the current per-kind generation asynchronously', async () => {
+    publish('chat', 'chat', { probed: true, enabled: true });
+    const seen = [];
+    const { hook, enqueued } = buildHook(
+      { type: 'file', name: 'notes.txt' },
+      {
+        generationFor: async (kind) => {
+          seen.push(kind);
+          return kind === AI_JOB_KIND.FEATURES ? 4 : 3;
+        },
+      }
+    );
+
+    await hook.onNodeContentCommitted(17, 'hash-17');
+    expect(seen).toEqual([AI_JOB_KIND.EMBED, AI_JOB_KIND.FEATURES]);
+    expect(enqueued.map((job) => job.generation)).toEqual([3, 4]);
+  });
+
+  it('a generationFor failure falls back to the local default and still enqueues', async () => {
+    const { hook, enqueued } = buildHook(
+      { type: 'file', name: 'notes.txt' },
+      {
+        generation: 7,
+        generationFor: async () => {
+          throw new Error('settings down');
+        },
+      }
+    );
+    await hook.onNodeContentCommitted(18, 'hash-18');
+    expect(enqueued).toEqual([
+      { nodeId: 18, kind: AI_JOB_KIND.EMBED, generation: 7, contentHash: 'hash-18' },
+    ]);
   });
 });

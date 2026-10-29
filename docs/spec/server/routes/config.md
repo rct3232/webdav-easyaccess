@@ -16,7 +16,7 @@ Registry / resolver contracts: `docs/spec/server/infrastructure/configRegistry.m
 
 ### 2.1 File Path
 
-- **Source:** `server/domains/admin/routes/config.js` (new), mounted at `/api/admin` in `server/index.js`
+- **Source:** `server/domains/admin/routes/config.js` (new), mounted at `/api/admin` in `server/index.js`; it also mounts the AI governance router at `/ai` (`server/domains/admin/routes/ai.js`, final paths `/api/admin/ai/*`)
 - **Shared config-sync core:** `server/domains/admin/services/configSyncService.js` — `buildConfigSyncReport({ settings, envValueOf })` and `syncConfigSyncEnv({ settings, envValueOf })`; reused by the CLI `server/scripts/configSync.js`
 - **Resolver:** `server/infrastructure/configResolver.js` — `getSharedResolver().getEffectiveConfig()` / `.invalidateCache(keys)`
 - **Registry:** `server/infrastructure/configRegistry.js` — `getEntry(key)`, `isT0(key)`, `isTier(key, tier)`, `isSecret(key)`, `TIER`
@@ -97,6 +97,15 @@ Tier classification after a successful write:
 - **T2 key** → applied immediately (lazy runtime read).
 - **T1 key** → stored, **restart required** (boot-frozen snapshot).
 
+**Settings journal (curated AI governance keys):** writes to the curated non-secret AI
+keys (`AI_EVOLUTION_*`, `AI_MERGE_*`, activity/retention keys and the AI kill switches —
+`settingsJournalService.js` owns the list) go through
+`actionJournalStore.commitChange('settings', 'settings:<KEY>', …)` with the inverse
+`{ op: 'set-setting', key, value: <previous DB value | null> }`, so the value write and
+its rollback row commit in ONE TX. Secret keys are never journaled. Other keys keep the
+`Settings.set` path above. Undo restores the previous DB value (or deletes the row when
+the previous value was unset) and invalidates the resolver cache for that key.
+
 **After all writes:** `getSharedResolver().invalidateCache(changedKeys)` (only when at least one key was actually written).
 
 **200:**
@@ -130,6 +139,11 @@ Tier classification after a successful write:
 - `target` selects the probe; the remaining keys are the **pending values subset**. The
   server **merges them over the current effective config** (env → DB) before probing, so an
   unchanged masked secret falls back to the stored value.
+- `target: 'llm'` is also accepted (`{ role: 'chat' | 'vision' | 'asr' }`, optionally with
+  `baseUrl`/`apiKey`/`model` overrides). The route registers the `llm` probe target
+  (`ensureLlmProbeTarget()`) before `runProbe`, and resolves missing role credentials from
+  the config resolver — stored secrets never round-trip through the client. The probe
+  outcome lands in the matching `ai.<role>` tracker row.
 - Reuses the wizard probe machinery (`server/infrastructure/backendProbe.js`): `runProbe(target, payload)`.
 
 **200:**

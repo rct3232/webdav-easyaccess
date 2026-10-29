@@ -52,6 +52,10 @@ The collections/search/undo-feed/AI/dashboard surfaces (`docs/spec/server/routes
 
 Admin reports repair codes (`docs/spec/server/routes/admin.md` §2.2.6 — extend the existing `admin` domain; `en.json`/`ko.json` mirror is mandatory per the rules above): `admin.reportNotFound` (404 — unknown `admin_reports` row), `admin.repairNotAvailable` (400 — row/action without a registered repair dispatch), and the success message `serverMessages.admin.reportRepaired` (200 — dispatch completion).
 
+AI admin launcher codes (`docs/spec/server/routes/admin.md` §2.2.7 — same `admin` domain): `admin.reembedRateLimited` (429, `params: { retry_after_seconds }`), `admin.reembedAlreadyActive` (409 — the previous launch still has pending/running ids), and `admin.reembedModelUnavailable` (409 — no active embed model). The shared error envelope is unchanged; routes that map bare-string service errors MUST re-attach `params` because `mapServiceError` drops them.
+
+**Wire casing:** new admin AI endpoints return snake_case response fields (`node_id`, `last_error`, `retry_after_seconds`, `action_id`) while request bodies stay camelCase. Existing endpoints keep their current shape.
+
 ---
 
 ## Shared Constants

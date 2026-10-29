@@ -25,7 +25,8 @@ Target-contract spec.
   frame sampling, audio decode/windowing, ladder arithmetic, metadata-scoped
   `media_kind`) and `server/domains/ai/media/mediaBackfillScope.js` (media node
   classification, the shared caption/transcript corpus rule, coverage
-  classification and the admin re-embed plan)
+  classification and the admin re-embed plan); `domains/ai/textBackfillScope.js`
+  (live non-media coverage against the active embed model, `planTextBackfill`)
 - **Test files:** `server/domains/ai/__tests__/{jobService,embedPipeline,embedMediaPipeline,captionPipeline,asrPipeline,mediaDrainIntegration,mediaBackfillScope}.test.js`,
   `server/domains/ai/media/__tests__/mediaSampling.test.js`
 
@@ -95,10 +96,16 @@ Enqueue decision table (per node, at hook time):
   (job-row comparison — those tables have no content_hash column; lineage
   columns record the model, the job row records the content).
 - **generation:** per-kind integer (`embed|features|caption|asr` share one counter per
-  kind), default 1, stored in settings (`AI_GEN_<KIND>`); admin model change / backfill
-  launch increments the kind's generation and seeds `enqueueMany` over affected
-  nodes with `kind='backfill'` drivers. UNIQUE is per-generation so fresh work is forced
-  without colliding with history.
+  kind), default 1, stored in INTERNAL settings rows (`AI_GEN_<KIND>` — not registry keys
+  and not exposed on the config surface). The commit hook resolves the current counter per
+  kind through an async `generationFor(kind)` dependency (`server/domains/ai/
+generationSettings.js`); boot composition injects it. A read failure falls back to the
+  local default (logged, never throws into the committed caller). The admin re-embed
+  launcher bumps `embed|features|caption|asr` to the SAME next `N` inside its journal TX
+  (`N = max(current generations) + 1`) and seeds `embed` jobs for the text + media plan.
+  UNIQUE is per-generation so fresh work is forced without colliding with history.
+  `caption`/`asr` completion chains keep passing the CURRENT job's generation to the
+  chained `embed` enqueue, so a chain started under `N` stays in `N`.
 - The upload-hook path checks derived COLLECTION admission (definition evaluation)
   separately — that is collections domain, not this service; the only coupling is
   `touchMemberChange` on rule-admission.
@@ -203,6 +210,16 @@ stride sample ≤ `LLM_CHUNK_BUDGET` (default 4) chunks → embed ALL sampled ch
   - Media IO is transient: bytes are read through `blobStorageService.downloadBlob`,
     frames/windows live in a per-call `os.tmpdir()` workspace removed before the job
     returns, and nothing is persisted except the vectors.
+- **Text coverage & backfill scope (`textBackfillScope.js`):** read-only mirror of the media
+  scope for live NON-media file nodes. It enumerates the same scope roots (own subtree when
+  `userId` is set, every live root otherwise), classifies each node against the active embed
+  `modelId` (`embedded` when the pooled row is in the current space, `missing` when no row
+  exists, `stale_space` when the row belongs to another model), and buckets current-space
+  rows by `fulltext|chunk_pool|head|metadata_only` (unknown historical sources are kept in a
+  defensive `other` bucket). `missingIds`/`staleIds` are complete and id-ascending;
+  `sampleMissing`/`sampleStale` are bounded prefixes (default 20). `planTextBackfill`
+  returns `missing ∪ stale_space`, id-ascending, capped by `limit`, and enqueues nothing.
+  The module returns ids/counts only — never names, paths or contents.
 - **Media coverage & backfill scope (`media/mediaBackfillScope.js`):** read-only module
   behind the admin media-embed coverage card and its re-embed action. Node membership is
   `classifyMediaNode(node)` (shared `fileTypes` extension first, stored `filecache` mime as
@@ -238,12 +255,22 @@ stride sample ≤ `LLM_CHUNK_BUDGET` (default 4) chunks → embed ALL sampled ch
   through the shared drain catch (`markFailed` + store backoff), and a re-run after
   success finds no claimable row. The drain rides the embed role gate in
   `jobService.drainPass` and additionally requires the installed vectorStore seam —
-  absent (no active embed model / pre-boot) ⇒ the rows park untouched. The job remains
-  admin-launched and rate-limited: the unified re-embed action (initial coverage +
-  model-change full re-embed) owns generation bumps and seed enqueues, and a model
-  change enqueues nothing by itself. Its media half is the `planMediaBackfill` list above
-  (`missing` for the initial coverage pass, `stale_space` for the model-change
-  re-projection). No DDL column is added for the driver.
+  absent (no active embed model / pre-boot) ⇒ the rows park untouched. `backfill` is a
+  per-node shadow-rebuild driver only: the unified re-embed action (initial coverage +
+  model-change full re-embed) owns generation bumps and `embed` seed enqueues, and a
+  model change enqueues no bulk work by itself. The launcher's media half is the
+  `planMediaBackfill` list above (`missing` for the initial coverage pass, `stale_space`
+  for the model-change re-projection). No DDL column is added for the driver.
+- **Unified admin launcher:** `POST /api/admin/ai/reembed` (routes/admin.md §2.2.7) is the
+  only bulk enqueue. Under the global `ai-reembed-launcher` lock it derives a 15-minute
+  cooldown from the latest `settings:ai-reembed` journal row, refuses while the previous
+  launch still has pending/running ids (global single active), recomputes text + media
+  coverage inside the lock, bumps the four generation counters to one `N`, and seeds the
+  union plan as `embed` jobs through `enqueueManyTx` in the SAME TX that writes the
+  `settings`-domain `ai-reembed` journal row. The inverse is `cancel-ai-jobs` carrying the
+  seeded ids; undo cancels only still-`pending` rows (running jobs finish, spent provider
+  cost is not refunded, cancelled rows are never retried). There is no per-launch node cap
+  and no automatic model-change enqueue.
 - **Restart idempotence:** a job claimed but unfinished (process death) is re-armed by
   `recoverStaleRunning` (§2.3 step 2) and re-executes; because the pooled upsert REPLACES
   per node and `replaceChunks` deletes the incoming model space's set before insert, a
@@ -285,11 +312,14 @@ every consumer of `transcript` (embed ladder input, features input, near-dup) fi
 `media_kind='music'` out of doc-content paths; the transcript remains for display/search
 in its own lane. Then chains `enqueue(node,'embed',gen)` (V0 metadata_only when the
 transcript is `none`).
-**`backfill`:** admin-launched driver job (rate-limited; never auto-fires on model change): seeds `enqueueMany`
-per generation-bump and monitors progress via `countByModel`/`countByStatus`; the backfill
-job itself performs no provider calls. The SAME admin-launched action serves the initial
-coverage pass (first embedding sweep over an existing corpus) and a model-change full
-re-embed — one UI/UX surface, no distinct flow, no automatic bulk enqueue in either case.
+**`backfill`:** the vectorStore shadow-rebuild driver. It is enqueued by the embed
+pipeline on a model/space change (`shadow-rebuild:<nodeId>:<modelId>`) and performs no
+provider call. The unified admin launcher below seeds `embed` jobs (not `backfill` rows)
+for the text + media plan, bumps the generation counters, and monitors progress via
+`countByStatus`; `backfill` remains parked outside its driver use. The SAME admin-launched
+action serves the initial coverage pass (first embedding sweep over an existing corpus) and
+a model-change full re-embed — one UI/UX surface, no distinct flow, no automatic bulk
+enqueue in either case.
 
 ### 2.5 Budget breaker, usage counting, degraded flags
 
@@ -390,6 +420,17 @@ recoverable). The only user-facing code in this domain is thrown by llmAdapter c
       no-`userId` admin scope sees every root, samples are the id-ascending bounded prefixes
       and repeated calls are identical; `planMediaBackfill` returns `missing ∪ stale_space`
       id-ascending (capped by `limit`) and enqueues NO job
+- [ ] Generation wiring: the commit hook enqueues with the persisted `AI_GEN_<KIND>` value
+      (async `generationFor`), the launcher bumps all four to one next `N`, and a
+      caption/asr chained embed keeps the job's generation
+- [ ] Launcher: preview is deterministic and read-only; a second POST inside the 15-minute
+      window returns 429 with `retry_after_seconds`; a launch with the previous ids still
+      pending/running returns the active-run refusal; success journals one
+      `settings:ai-reembed` row and enqueue + generation bump commit atomically; undo
+      cancels only pending ids
+- [ ] Text coverage: live non-media file nodes classify embedded/missing/stale_space
+      against the active model, samples/ids are deterministic, and no name/path leaves the
+      admin payload
 - [ ] `ai_usage_daily` row for `(today,'embed')` increments `calls`/`input_chars` after a
       worker-run embed; breaker opens at `LLM_DAILY_CALL_CAP` and the kind stops claiming
 - [ ] Grep: zero `CacheAdapter`/`operationProgress` imports in `domains/ai/**`

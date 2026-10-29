@@ -63,8 +63,12 @@ acts), **`batch`** (the batch worker's move/copy command rows —
 terminal poll result, `routes/files.md`), **and `file`** (the dashboard cleanup-suggestion
 accept command — one `action='cleanup-accept'` row per accepted batch,
 `subject='file:suggestion-accept:<userId>:<timestamp>'`, item-level
-`{ op: 'restore-from-trash' }` inverses — `routes/dashboard.md` §2.4). `settings`/`sharing`/
-`tags`/`permissions` are enum-reserved with no writer yet. The `permissions` asymmetry applies:
+`{ op: 'restore-from-trash' }` inverses — `routes/dashboard.md` §2.4), **and `settings`**
+(curated non-secret AI governance config writes on `PUT /api/admin/config`, subject
+`settings:<KEY>`, inverse `set-setting`; the re-embed launcher's one
+`settings:ai-reembed` row, inverse `cancel-ai-jobs` with job ids — `routes/admin.md`
+§2.2.7). `sharing`/`tags`/`permissions` are enum-reserved with no writer yet. The
+`permissions` asymmetry applies:
 grant-undo = revoke is exposure-reduction and may be silent; revoke-undo = grant is
 exposure-expansion and is explicit-only.
 
@@ -208,6 +212,10 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
       undo restores the still-matching trashed nodes and flips their suggestion rows
       `accepted → pending` (per-item skips allowed); a requester with no accepts gets 200
       empty; `domain=nope` → 400 `actions.invalidDomain`
+- [ ] `domain=settings` lists the admin's curated config rows and the `ai-reembed` row;
+      undoing `set-setting` restores the previous DB value (or removes the row when the
+      previous value was unset) and invalidates the config-resolver cache; undoing
+      `cancel-ai-jobs` cancels only still-pending ids (running jobs report skipped)
 - [ ] Another user's action id → 404 on GET visibility and on undo
 - [ ] Tip undo → 200, row `status='undone'` + `undone_at`, effect reversed; second undo
       → 409 `actions.alreadyUndone`

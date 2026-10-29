@@ -857,6 +857,86 @@ export const handlers = [
     });
   }),
 
+  http.get(`${API_BASE}/admin/ai/summary`, () => {
+    return HttpResponse.json({
+      generated_at: new Date().toISOString(),
+      pipeline: {
+        queue: { pending: 0, running: 0, done: 0, failed: 0, skipped: 0, cancelled: 0, total: 0 },
+        failed_24h: 0,
+        finished_24h: 0,
+        failure_rate_24h: 0,
+        failed_jobs: [],
+        failed_jobs_display_only: true,
+        capabilities: [],
+        breaker_states: { instrumented: false, reason: 'active_observation_required' },
+      },
+      cost: {
+        day: new Date().toISOString().slice(0, 10),
+        roles: [],
+        caps: { call_cap: 0, token_cap: 0 },
+        per_user_top_n: { instrumented: false },
+      },
+      evolution: {
+        latest_night_eval: null,
+        pending_merge_suggestions: 0,
+        not_instrumented: ['survival_curves', 'merge_accept_series', 'per_version_history'],
+      },
+      models: { roles: [], profiles: [] },
+      coverage: {
+        available: false,
+        reason: 'model_unavailable',
+        model_id: null,
+        text: null,
+        media: null,
+      },
+      gates: { kill_switches: [], gates: [] },
+      launcher: {
+        available: false,
+        reason: 'model_unavailable',
+        retry_after_seconds: 0,
+        cooldown_seconds: 900,
+        active_jobs: 0,
+        active_model_id: null,
+        generations: { embed: 1, features: 1, caption: 1, asr: 1 },
+      },
+      not_instrumented: [
+        'survival_curves',
+        'merge_accept_series',
+        'per_version_history',
+        'per_user_top_n',
+      ],
+    });
+  }),
+
+  http.get(`${API_BASE}/admin/ai/reembed/preview`, () => {
+    return HttpResponse.json({
+      generated_at: new Date().toISOString(),
+      available: false,
+      reason: 'model_unavailable',
+      model_id: null,
+      generations: { embed: 1, features: 1, caption: 1, asr: 1 },
+      retry_after_seconds: 0,
+      coverage: { text: null, media: null },
+      plan: { text_count: 0, media_count: 0, union_count: 0 },
+    });
+  }),
+
+  http.post(`${API_BASE}/admin/ai/reembed`, () => {
+    return HttpResponse.json({
+      job_ids: [],
+      enqueued: 0,
+      generation: 2,
+      generations: { embed: 2, features: 2, caption: 2, asr: 2 },
+      model_id: null,
+      undo: { action_id: 0 },
+      retry_after_seconds: 900,
+    });
+  }),
+
+  http.get(`${API_BASE}/actions`, () => {
+    return HttpResponse.json({ actions: [] });
+  }),
+
   http.post(`${API_BASE}/admin/config/test`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
     if (

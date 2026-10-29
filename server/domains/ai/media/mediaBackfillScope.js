@@ -327,4 +327,9 @@ module.exports = {
   mediaFallbackCorpus,
   buildMediaBackfillScope,
   planMediaBackfill,
+  // Scope enumeration helpers reused by textBackfillScope (same live-root
+  // semantics, no duplicated traversal).
+  collectAllRootRows,
+  collectOwnRootRows,
+  readInBatches,
 };

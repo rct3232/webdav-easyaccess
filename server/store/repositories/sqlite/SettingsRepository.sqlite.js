@@ -56,6 +56,44 @@ module.exports = function createSqliteSettingsRepository(executor) {
       }
     },
 
+    async getTx(tx, key) {
+      try {
+        const { rows } = await tx.query(`SELECT value FROM settings WHERE key = ? LIMIT 1`, [
+          String(key),
+        ]);
+        if (rows.length === 0) return null;
+        return rows[0].value;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async setTx(tx, key, value) {
+      try {
+        await tx.run(
+          `INSERT INTO settings (key, value, updated_at)
+           VALUES (?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT (key)
+           DO UPDATE SET
+             value = EXCLUDED.value,
+             updated_at = CURRENT_TIMESTAMP`,
+          [String(key), String(value)]
+        );
+        return { success: true };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async deleteTx(tx, key) {
+      try {
+        const result = await tx.run('DELETE FROM settings WHERE key = ?', [String(key)]);
+        return { changes: result.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async listRows() {
       try {
         const { rows } = await executor.query(`SELECT key, value, updated_at FROM settings`);

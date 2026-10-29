@@ -20,6 +20,7 @@ The original monolithic `server/routes/admin.js` has been split into separate ro
 | userManagement | `server/domains/admin/routes/userManagement.js` | `/api/admin`                           | `server/domains/admin/routes/__tests__/admin.test.js`     |
 | settings       | `server/domains/admin/routes/settings.js`       | `/api/admin`, `/api/settings` (public) | `server/domains/admin/routes/__tests__/settings.test.js`  |
 | config         | `server/domains/admin/routes/config.js`         | `/api/admin`                           | `server/domains/admin/routes/__tests__/config.test.js`    |
+| ai             | `server/domains/admin/routes/ai.js`             | `/api/admin/ai` (mounted by config)    | `server/domains/admin/routes/__tests__/ai.test.js`        |
 | maintenance    | `server/domains/admin/routes/maintenance.js`    | `/api/admin`                           | `server/domains/admin/routes/__tests__/admin.test.js`     |
 | migration      | `server/domains/admin/routes/migration.js`      | `/api/admin`                           | `server/domains/admin/routes/__tests__/migration.test.js` |
 | reports        | `server/domains/admin/routes/reports.js`        | `/api/admin`                           | `server/domains/admin/routes/__tests__/reports.test.js`   |
@@ -110,6 +111,162 @@ completeness section `contentHashCompleteness` (`{ nullCount, checkedAt }`; `sta
 | GET    | `/reports`            | Token + Admin | Report list, newest first. Read-only; row-level repair actions are dispatched via `POST /reports/:id/repair` or reuse the existing §2.2.3 endpoints.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | GET    | `/reports/:id`        | Token + Admin | Single report row (same shape as the list entries); 404 when the row does not exist.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | POST   | `/reports/:id/repair` | Token + Admin | Action-dispatched row repair. `content_hash` is the only action that mutates the row: it requires a `failsafe` row carrying a `contentHashCompleteness` payload section, backfills ALL NULL `filecache.content_hash` (idempotent `WHERE content_hash IS NULL`; streams blob hashes per node; progress reflected on the row) and **returns the re-rendered row**. The `repair-sync` delegation (`{ nodeId, repairAction }`, §2.2.3 fail-safe repair core) and the `perm-delete` delegation (`{ nodeId }`, §2.2.3 permanent-delete purge core) **return the row unchanged** plus their `result` payload; the §2.2.3 cores' status codes pass through unchanged. Unknown/undispatchable rows ⇒ 404/400 per §2.4 reports. |
+
+#### 2.2.7 ai (`/api/admin/ai`)
+
+Admin AI governance surface (`AiAdminContent.md`) and the ONE rate-limited
+re-embed launcher. Service: `domains/admin/services/aiAdminService.js`; route
+module `domains/admin/routes/ai.js` mounted by the config module
+(`config.js`: `router.use('/ai', require('./ai'))`, final path `/api/admin/ai/*`).
+All rows require a valid JWT and the DB-backed admin role; responses are
+snake_case (request bodies camelCase where present). The surface never returns
+other users' file names, paths, queries or contents — aggregates and ids only —
+and never returns a raw secret.
+
+| Method | Path                  | Auth          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------ | --------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/ai/summary`         | Token + Admin | Polled operations snapshot: pipeline queue counts, 24 h failed count/rate, failed jobs (display-only), readiness tokens, today's `ai_usage_daily` per-role ledger + caps, evolution latest `night_eval` totals + pending merge count, model registry active/history rows + profile provenance, text/media coverage, curated config-backed gates with live impact counts, launcher availability/retry/generations, and the explicit `not_instrumented` list. |
+| GET    | `/ai/reembed/preview` | Token + Admin | Read-only deterministic text coverage + media coverage (counts and union plan count), current embed model id, per-kind generations and launcher `retry_after_seconds`. No enqueue and no names/paths.                                                                                                                                                                                                                                                       |
+| POST   | `/ai/reembed`         | Token + Admin | The ONE re-embed launcher. Under the global `ai-reembed-launcher` lock: 15-minute cooldown derived from the latest `settings:ai-reembed` journal row, global single-active guard, preview recomputed inside the lock, generation bump for `embed                                                                                                                                                                                                            | features | caption | asr`to the same`N`(internal`AI*GEN*<KIND>`settings, default 1),`enqueueMany`embed jobs for the text + media plan, and ONE settings-domain`ai-reembed`journal row whose inverse is`cancel-ai-jobs`carrying the job ids. Returns`{ job_ids, enqueued, generation, generations, model_id, undo: { action_id }, retry_after_seconds }`. 429 `serverErrors.admin.reembedRateLimited`with`params.retry_after_seconds`; 409 `serverErrors.admin.reembedAlreadyActive`/`serverErrors.admin.reembedModelUnavailable`. |
+
+Summary shape (all keys additive; IDs only where noted):
+
+```jsonc
+{
+  "generated_at": "2026-01-01T00:00:00.000Z",
+  "pipeline": {
+    "queue": {
+      "pending": 0,
+      "running": 0,
+      "done": 0,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "total": 0,
+    },
+    "failed_24h": 0,
+    "finished_24h": 0,
+    "failure_rate_24h": 0,
+    "failed_jobs": [
+      {
+        "id": 1,
+        "node_id": 2,
+        "kind": "embed",
+        "generation": 1,
+        "status": "failed",
+        "attempt": 1,
+        "last_error": "…",
+        "created_at": "…",
+        "started_at": "…",
+        "finished_at": "…",
+      },
+    ],
+    "failed_jobs_display_only": true,
+    "capabilities": [
+      {
+        "capability": "text_embed",
+        "declared": true,
+        "probed": true,
+        "enabled": true,
+        "role": "embed",
+        "note": null,
+        "reason": null,
+      },
+    ],
+    "breaker_states": { "instrumented": false, "reason": "active_observation_required" },
+  },
+  "cost": {
+    "day": "2026-01-01",
+    "roles": [
+      {
+        "role": "embed",
+        "calls": 0,
+        "input_chars": 0,
+        "cached": 0,
+        "degraded": 0,
+        "failed_429": 0,
+      },
+    ],
+    "caps": { "call_cap": 0, "token_cap": 0 },
+    "per_user_top_n": { "instrumented": false },
+  },
+  "evolution": {
+    "latest_night_eval": {
+      "id": 1,
+      "status": "ok",
+      "created_at": "…",
+      "passes": "full",
+      "totals": {},
+    },
+    "pending_merge_suggestions": 0,
+    "not_instrumented": ["survival_curves", "merge_accept_series", "per_version_history"],
+  },
+  "models": { "roles": [{ "role": "embed", "active": {}, "history": [] }], "profiles": [] },
+  "coverage": {
+    "available": true,
+    "model_id": 1,
+    "text": { "totals": { "files": 0, "embedded": 0, "missing": 0, "stale": 0 }, "by_source": {} },
+    "media": {
+      "totals": {},
+      "by_source": {},
+      "by_media_kind": {},
+      "by_capability": {},
+      "by_corpus": {},
+    },
+  },
+  "gates": {
+    "kill_switches": [
+      {
+        "key": "AI_EVOLUTION_ENABLED",
+        "value": "true",
+        "source": "default",
+        "impact": { "metric": "night_eval_users", "count": 0 },
+      },
+    ],
+    "gates": [
+      {
+        "key": "AI_EVOLUTION_INACTIVE_DAYS",
+        "value": "30",
+        "source": "default",
+        "impact": { "metric": "night_eval_users", "count": 0 },
+      },
+    ],
+  },
+  "launcher": {
+    "available": true,
+    "reason": null,
+    "retry_after_seconds": 0,
+    "cooldown_seconds": 900,
+    "active_jobs": 0,
+    "active_model_id": 1,
+    "generations": { "embed": 1, "features": 1, "caption": 1, "asr": 1 },
+  },
+  "not_instrumented": [
+    "survival_curves",
+    "merge_accept_series",
+    "per_version_history",
+    "per_user_top_n",
+    "degraded_input_histogram",
+  ],
+}
+```
+
+Rules:
+
+- `failed_jobs` is display-only in v1 (no retry/abandon action). `finished_at` is
+  written by `markFailed` so the 24 h window is DB-derived; `failure_rate_24h` is
+  `failed_24h / finished_24h` (0 when the denominator is 0).
+- Breaker states require active observation in the current adapter, so the panel
+  exposes readiness tokens (the published capability matrix) plus an explicit
+  `not_instrumented` marker instead of triggering provider work on a poll.
+- The degraded-input histogram uses `ai_usage_daily.degraded` when present and is
+  labelled `not_instrumented` when the adapter has not written it.
+- Gates are limited to the curated non-secret AI governance keys
+  (`AI_EVOLUTION_*`, `AI_MERGE_*`, activity/retention keys and the AI kill switches).
+  Impact counts derive from the latest `night_eval` totals and the live pending
+  merge-suggestion count; unavailable metrics are labelled, never fabricated.
+- Coverage is derived on read from live node/pooled/enrichment rows; no bookkeeping
+  table is written. No names/paths/queries leave the server.
 
 #### 2.2.5 config (`/api/admin`)
 
@@ -253,11 +410,11 @@ All P0 route rows have landed and moved to §2.2.6.
 - **(P0)** **`probeLlm` slot registration (plumbing only; the `target: 'llm'` route acceptance itself is the P1 row below):** `server/infrastructure/backendProbe.js` exposes `registerProbeTarget(target, handler)` + the reserved `PROBE_TARGET_LLM = 'llm'` slot. Registered handlers win over the built-in targets; an unregistered reserved slot keeps the existing 400 `serverErrors.setup.testFailed` "Unsupported target" behavior. The LLM probe suite (`llmAdapter.md` §2.3 `probeLlm()`) registers without editing `backendProbe.js`; probe outcomes land in the `ai.<role>` tracker rows (`backendHealth.md`).
 - **(P1)** `POST /config/test` accepts `target: 'llm'` with per-role pending values; outcome recorded to the backend-health tracker via the `probeLlm` slot (registered P0) and rendered as **per-role probe chips** by the admin config UI. Probe failure ≠ save failure (test-only endpoint semantics unchanged).
 - **(P1)** `GET /health` (`backends` snapshot) gains tracker rows: **`vectorOps: 'native' | 'fallback_js'`** — a **performance warning only, never an AI-feature gate** (fallback keeps every feature on) — and **`ai.<role>` probe states** (`embed`/`chat`: `not_configured | preparing(phase, progress) | probe_failed(reason) | partial | ok`; hot re-probe on config change). Consumed by the health card and the AI governance panel (P4); never exposed on the public health/`settings/public` surface beyond the existing `ai:{embed,chat}` booleans.
-- **(P1)** Unified re-embed/backfill admin action: ONE admin-launched, rate-limited driver
-  job (aiJobService.md §2.4 `backfill`) covers both the initial coverage pass over an
-  existing corpus and a post-model-change full re-embed — a single UI/UX surface; no
-  automatic bulk enqueue exists in either case. Route/panel placement lands with the AI
-  governance panel.
+- **(landed)** Unified re-embed/backfill admin action: ONE admin-launched, rate-limited
+  launcher (`POST /api/admin/ai/reembed`, §2.2.7) covers both the initial coverage pass
+  over an existing corpus and a post-model-change full re-embed — a single UI/UX surface;
+  no automatic bulk enqueue exists in either case. The launcher seeds the text + media
+  plan, bumps the four generation counters, and writes the settings-journal undo row.
 
 ### 3.3 Verification (appends §2.7)
 

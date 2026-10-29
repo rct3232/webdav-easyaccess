@@ -314,7 +314,7 @@ CREATE TABLE IF NOT EXISTS node_activity (
 CREATE TABLE IF NOT EXISTS action_journal (
   id BIGSERIAL PRIMARY KEY,
   domain TEXT NOT NULL
-    CHECK (domain IN ('collection', 'batch', 'settings', 'permissions', 'tags', 'file', 'sharing')),
+    CHECK (domain IN ('collection', 'batch', 'settings', 'permissions', 'file', 'sharing')),
   subject TEXT NOT NULL,
   subject_label TEXT DEFAULT NULL,
   actor TEXT NOT NULL,

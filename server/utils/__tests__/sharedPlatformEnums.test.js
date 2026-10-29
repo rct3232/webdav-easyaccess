@@ -73,6 +73,8 @@ describe('shared platform enums', () => {
   });
 
   it('JOURNAL_DOMAIN matches the action_journal.domain CHECK', () => {
+    expect(JOURNAL_DOMAIN.TAGS).toBeUndefined();
+
     expectEnum(
       JOURNAL_DOMAIN,
       {
@@ -80,11 +82,10 @@ describe('shared platform enums', () => {
         BATCH: 'batch',
         SETTINGS: 'settings',
         PERMISSIONS: 'permissions',
-        TAGS: 'tags',
         FILE: 'file',
         SHARING: 'sharing',
       },
-      ['ai', 'trash', 'dashboard', '']
+      ['ai', 'trash', 'dashboard', 'tags', '']
     );
   });
 

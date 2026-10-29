@@ -134,12 +134,11 @@ const JOURNAL_DOMAIN = {
   BATCH: 'batch',
   SETTINGS: 'settings',
   PERMISSIONS: 'permissions',
-  TAGS: 'tags',
   FILE: 'file',
   SHARING: 'sharing',
-  ALL: ['collection', 'batch', 'settings', 'permissions', 'tags', 'file', 'sharing'],
+  ALL: ['collection', 'batch', 'settings', 'permissions', 'file', 'sharing'],
   isValid: (domain) =>
-    ['collection', 'batch', 'settings', 'permissions', 'tags', 'file', 'sharing'].includes(domain),
+    ['collection', 'batch', 'settings', 'permissions', 'file', 'sharing'].includes(domain),
 };
 
 const LLM_ROLE = {

@@ -15,7 +15,7 @@
  * @property {string} kind one of `AI_JOB_KIND.ALL` (`shared/constants.js`);
  *   the `ai_jobs.kind` DDL CHECK is the persistence source of truth
  * @property {number} generation
- * @property {'pending'|'running'|'done'|'failed'|'skipped'} status
+ * @property {'pending'|'running'|'done'|'failed'|'skipped'|'cancelled'} status
  * @property {number} attempt
  * @property {string|null} nextRetryAt
  * @property {string|null} lastError
@@ -55,7 +55,7 @@
  * @property {(jobId) => Promise<AiJob|null>} getById
  * @property {(nodeId, opts?: {generation?: number}) => Promise<AiJob[]>} listByNode
  *   Per-file job history, id ASC; optional generation filter.
- * @property {() => Promise<{pending: number, running: number, done: number, failed: number, skipped: number}>} countByStatus
+ * @property {() => Promise<{pending: number, running: number, done: number, failed: number, skipped: number, cancelled: number}>} countByStatus
  * @property {(opts?: {limit?: number}) => Promise<AiJob[]>} listFailed
  *   Recent `failed` rows, newest first (default limit 50).
  *

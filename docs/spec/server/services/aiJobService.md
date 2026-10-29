@@ -309,8 +309,9 @@ role, calls, input_chars, cached, degraded, failed_429)` PK `(day,role)`); this 
   completed re-embed simply reports the rows under their new ladder source, with no
   bookkeeping table to reconcile.
 - Kill switches (pause semantics — a pause never destroys queued work silently): pausing enrichment (role/worker level) never destroys
-  queued work — `pending`/`failed` rows are untouched; the only sanctioned terminal
-  non-success states are `skipped` (data-driven) and admin-abandon (out of v1 API).
+  queued work — `pending`/`failed` rows are untouched; the sanctioned terminal non-success
+  states are `skipped` (data-driven), `cancelled` (admin cancel of pending rows), and
+  admin-abandon (out of v1 API).
 
 ### 2.6 Error surface
 

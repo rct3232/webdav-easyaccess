@@ -439,7 +439,7 @@ CREATE TABLE IF NOT EXISTS ai_jobs (
   generation INTEGER NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('embed', 'features', 'caption', 'asr', 'backfill')),
   status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'running', 'done', 'failed', 'skipped')),
+    CHECK (status IN ('pending', 'running', 'done', 'failed', 'skipped', 'cancelled')),
   attempt INTEGER NOT NULL DEFAULT 0,
   next_retry_at TIMESTAMPTZ DEFAULT NULL,
   last_error TEXT DEFAULT NULL,

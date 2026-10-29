@@ -200,7 +200,7 @@ module.exports = function createPostgresAiJobsRepository(executor) {
         const { rows } = await executor.query(
           'SELECT status, COUNT(*) AS cnt FROM ai_jobs GROUP BY status'
         );
-        const counts = { pending: 0, running: 0, done: 0, failed: 0, skipped: 0 };
+        const counts = { pending: 0, running: 0, done: 0, failed: 0, skipped: 0, cancelled: 0 };
         for (const row of rows) counts[String(row.status)] = Number(row.cnt);
         return counts;
       } catch (error) {

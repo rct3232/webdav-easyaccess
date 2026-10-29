@@ -72,6 +72,17 @@ describe('QueryParsesRepository conformance', () => {
     expect(Array.isArray(row.predicates)).toBe(true);
   });
 
+  it('malformed stored predicates map to null (SQLite raw-row case; postgres JSONB rejects malformed writes)', async () => {
+    if (repo.dialect !== 'sqlite') return;
+    await repo.recordEmbedding({ normalizedQuery: 'malformed predicates', vector: null });
+    await dbQuery('UPDATE query_parses SET predicates = ? WHERE normalized_query = ?', [
+      '{not-json',
+      'malformed predicates',
+    ]);
+    const row = await repo.get('malformed predicates');
+    expect(row.predicates).toBeNull();
+  });
+
   it('recordEmbedding on an existing key overwrites ONLY the vector (hit_count and created_at untouched)', async () => {
     const first = JSON.stringify({ space: 'v1|model:7', dim: 4, v: [1, 0, 0, 0] });
     const second = JSON.stringify({ space: 'v1|model:9', dim: 4, v: [0, 1, 0, 0] });

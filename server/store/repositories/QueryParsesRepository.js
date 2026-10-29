@@ -15,7 +15,8 @@
  * @property {string} normalizedQuery
  * @property {unknown} predicates parsed JSON value as stored (embed rows: the
  *   `[]` default; parse rows: the `{ grammar, atoms, vectorQuery }` envelope;
- *   malformed/absent ⇒ null)
+ *   absent ⇒ null; a malformed stored TEXT value — SQLite raw-row/legacy only,
+ *   since postgres JSONB rejects malformed writes — also maps to null)
  * @property {string|null} vector
  * @property {number} hitCount
  * @property {string} createdAt

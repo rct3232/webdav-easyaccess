@@ -5,8 +5,10 @@
  * §2.3 step 4 / §2.8 — the query-embed cache + the NL-parse predicate cache).
  * The JSONB column is mapped at the repository boundary: sqlite stores the
  * JSON string, postgres binds JSON — both twins return the PARSED JSON VALUE
- * verbatim (parse envelope object or array; malformed/absent ⇒ `null` — the
- * store is shape-agnostic, validation lives in the search leg).
+ * verbatim (parse envelope object or array; absent ⇒ `null`). A malformed
+ * stored TEXT value is a SQLite raw-row/legacy case (postgres JSONB rejects
+ * malformed input at write) and maps to `null`; the store is shape-agnostic,
+ * validation lives in the search leg.
  */
 
 /** Column-name → domain-field mapping shared verbatim by both dialects. */

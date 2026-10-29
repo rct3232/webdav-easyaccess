@@ -49,8 +49,11 @@ contains no SQL.
 string|null }`; an embed-first row carries the `[]` default (= never parsed). The
   sqlite twin binds the JSON string, postgres binds the JSONB value; both twins return
   the PARSED JSON value verbatim at the repository boundary — object or array, exactly
-  as stored (malformed/absent ⇒ `null`). The store is shape-agnostic: envelope
-  validation and cache-hit rules live in the search leg, never here.
+  as stored (absent ⇒ `null`). A malformed stored string is a SQLite-only read case:
+  PostgreSQL's JSONB column rejects malformed input at write time, so the postgres twin
+  never observes it. The shared mapper still maps a malformed string to `null` for
+  SQLite raw rows and legacy data. The store is shape-agnostic: envelope validation and
+  cache-hit rules live in the search leg, never here.
 - **`hit_count`:** incremented by exactly 1 per cache HIT and never by a write; a
   miss/re-embed leaves it unchanged.
 - **`created_at`:** database-generated on insert and left unchanged on overwrite.
@@ -75,7 +78,7 @@ string|null }`; an embed-first row carries the `[]` default (= never parsed). Th
 
 - [ ] `get` on an unknown key → `null`.
 - [ ] `recordEmbedding` inserts `vector` verbatim, `predicates` default `[]`, `hit_count` 0 and an ISO `created_at`.
-- [ ] `predicates` round-trips as the parsed JSON value on both dialects: array default `[]`, parse-envelope object verbatim, malformed stored string ⇒ `null`.
+- [ ] `predicates` round-trips as the parsed JSON value on both dialects: array default `[]`, parse-envelope object verbatim; a malformed stored string ⇒ `null` on the SQLite raw-row case (PostgreSQL JSONB rejects malformed input at write).
 - [ ] Overwriting an existing key via `recordEmbedding` changes ONLY `vector` (same `predicates`, same `hit_count`, same `created_at` instant).
 - [ ] `recordPredicates` writes ONLY `predicates` (existing row keeps its `vector` and `hit_count`; a parse-first insert leaves `vector` NULL).
 - [ ] `incrementHitCount` bumps by exactly 1 per call and reports `changes: 0` for an unknown key.

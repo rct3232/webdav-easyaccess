@@ -13,6 +13,7 @@ const {
   PARSE_MAX_TOKENS,
   buildParseSchema,
   buildParseMessages,
+  validateDelta,
   validateParseOutput,
   validateSessionState,
   buildParseEnvelope,
@@ -178,6 +179,125 @@ describe('nlParser — prompt (closed grammar, symbols only)', () => {
     expect([...atom.properties.type.enum].sort()).toEqual(['date', 'like', 'path', 'size', 'tag']);
     expect(typeof PARSE_MAX_TOKENS).toBe('number');
     expect(PARSE_MAX_TOKENS).toBeGreaterThan(0);
+  });
+});
+
+describe('nlParser — additive §2.9 delta output', () => {
+  it('ships an OPTIONAL closed delta object in the schema; predicates/vector_query stay required', () => {
+    const schema = buildParseSchema();
+    expect(schema.required.sort()).toEqual(['predicates', 'vector_query']);
+    expect(schema.properties.delta).toBeDefined();
+    expect(schema.properties.delta.type).toBe('object');
+    expect(schema.properties.delta.additionalProperties).toBe(false);
+    expect(Object.keys(schema.properties.delta.properties).sort()).toEqual([
+      '$ref',
+      'add',
+      'exclude',
+      'exclude_similar',
+      'replace',
+    ]);
+    expect(schema.properties.delta.properties.$ref.enum).toEqual(['latest']);
+  });
+
+  it('prompt documents the delta vocabulary and the literal-only $ref', () => {
+    const system = buildParseMessages({ normalizedQuery: 'and pdf' })[0];
+    expect(system.content).toContain('delta');
+    expect(system.content).toContain('"$ref":"latest"');
+    expect(system.content).toContain('exclude_similar');
+  });
+
+  it('canonicalizes add/replace/exclude through the shared grammar and preserves the wire flags', () => {
+    const result = validateParseOutput({
+      predicates: [],
+      vector_query: null,
+      delta: {
+        add: [{ type: 'path', value: 'downloads' }],
+        replace: [{ type: 'date', withinDays: 30 }],
+        exclude: [{ type: 'size', min: 1024 }],
+        exclude_similar: true,
+        $ref: 'latest',
+      },
+    });
+    expect(result).not.toBeNull();
+    expect(result.delta).toEqual({
+      add: [{ type: 'path', value: 'downloads', prefix: '/downloads' }],
+      replace: [{ type: 'date', withinDays: 30 }],
+      exclude: [{ type: 'size', min: 1024 }],
+      excludeSimilar: true,
+      ref: 'latest',
+    });
+  });
+
+  it('accepts an empty delta object and treats delta:null as absent', () => {
+    expect(validateParseOutput({ predicates: [], vector_query: null, delta: {} }).delta).toEqual({
+      add: [],
+      replace: [],
+      exclude: [],
+      excludeSimilar: false,
+      ref: null,
+    });
+    const nullDelta = validateParseOutput({
+      predicates: [],
+      vector_query: null,
+      delta: null,
+    });
+    expect(nullDelta).toEqual({ atoms: [], vectorQuery: null });
+  });
+
+  it('rejects invalid delta members ⇒ the WHOLE parse is unconstrained', () => {
+    const base = { predicates: [], vector_query: null };
+    expect(validateParseOutput({ ...base, delta: { add: 'size' } })).toBeNull();
+    expect(
+      validateParseOutput({ ...base, delta: { add: [{ type: 'mime', value: 'pdf' }] } })
+    ).toBeNull();
+    expect(
+      validateParseOutput({
+        ...base,
+        delta: { filter: [{ type: 'like' }] },
+      })
+    ).toBeNull();
+    expect(validateParseOutput({ ...base, delta: { exclude_similar: 'yes' } })).toBeNull();
+    expect(validateParseOutput({ ...base, delta: { $ref: 'sr1.cafecafecafecafe' } })).toBeNull();
+    // per-list cardinals: 4 tags overflow
+    expect(
+      validateParseOutput({
+        ...base,
+        delta: {
+          add: [
+            { type: 'tag', value: 'a' },
+            { type: 'tag', value: 'b' },
+            { type: 'tag', value: 'c' },
+            { type: 'tag', value: 'd' },
+          ],
+        },
+      })
+    ).toBeNull();
+    expect(validateDelta({ $ref: 'latest' })).not.toBeNull();
+  });
+
+  it('round-trips the canonical delta through the nl1 envelope and rejects a tampered delta', () => {
+    const delta = {
+      add: [{ type: 'size', min: 10485760 }],
+      replace: [],
+      exclude: [{ type: 'tag', value: 'draft' }],
+      excludeSimilar: true,
+      ref: 'latest',
+    };
+    const envelope = buildParseEnvelope([], null, delta);
+    expect(envelope).toMatchObject({ grammar: PARSE_ENVELOPE_GRAMMAR, delta });
+    expect(readParseEnvelope(envelope)).toEqual({
+      atoms: [],
+      vectorQuery: null,
+      delta,
+    });
+
+    const tampered = {
+      grammar: PARSE_ENVELOPE_GRAMMAR,
+      atoms: [],
+      vectorQuery: null,
+      delta: { add: [{ type: 'mime' }] },
+    };
+    expect(readParseEnvelope(tampered)).toBeNull();
   });
 });
 

@@ -33,11 +33,21 @@ const { ATOM_TYPES, parseDefinition } = require('../collections/definitionEngine
 /** Parse-envelope shape key (forward-discriminates future delta semantics). */
 const PARSE_ENVELOPE_GRAMMAR = 'nl1';
 /** Chat-output token budget for the single structured multi-output call. */
-const PARSE_MAX_TOKENS = 256;
+const PARSE_MAX_TOKENS = 512;
 /** Refined vector-query text cap — the request query cap (searchService.md §2.3 step 1). */
 const VECTOR_QUERY_MAX_LENGTH = 200;
 /** Closed-grammar cardinalities (field cardinals are fixed in the grammar up-front). */
 const MAX_ATOM_COUNTS = { path: 1, tag: 3, like: 1, date: 1, size: 1 };
+/** §2.9 delta member vocabulary (closed object; snake_case chat wire + camelCase cache envelope). */
+const DELTA_MEMBERS = [
+  'add',
+  'replace',
+  'exclude',
+  'exclude_similar',
+  'excludeSimilar',
+  '$ref',
+  'ref',
+];
 
 /**
  * Step-1 normalizer (NFKC, ASCII-case fold, whitespace collapse) — the single
@@ -61,8 +71,56 @@ function withinCardinalities(atoms) {
 }
 
 /**
+ * Canonicalize ONE delta atom list through the shared definition engine.
+ * @returns {Array|null} null = grammar/cardinality violation
+ */
+function canonicalizeDeltaList(value) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) return null;
+  try {
+    const parsed = parseDefinition({ kind: 'predicate', all_of: value });
+    if (!withinCardinalities(parsed.allOf)) return null;
+    return parsed.allOf;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * §2.9 delta validation: closed object, canonical atom lists, boolean
+ * `exclude_similar`, and `$ref` limited to the literal `"latest"` (the LLM
+ * never supplies a real reference). `null` is treated as absent.
+ * @returns {{ add: Array, replace: Array, exclude: Array, excludeSimilar: boolean, ref: string|null }|null}
+ */
+function validateDelta(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  for (const key of Object.keys(raw)) {
+    if (!DELTA_MEMBERS.includes(key)) return null;
+  }
+  const add = canonicalizeDeltaList(raw.add);
+  const replace = canonicalizeDeltaList(raw.replace);
+  const exclude = canonicalizeDeltaList(raw.exclude);
+  if (!add || !replace || !exclude) return null;
+  const rawExcludeSimilar = Object.prototype.hasOwnProperty.call(raw, 'excludeSimilar')
+    ? raw.excludeSimilar
+    : raw.exclude_similar;
+  let excludeSimilar = false;
+  if (rawExcludeSimilar !== undefined) {
+    if (typeof rawExcludeSimilar !== 'boolean') return null;
+    excludeSimilar = rawExcludeSimilar;
+  }
+  const rawRef = Object.prototype.hasOwnProperty.call(raw, 'ref') ? raw.ref : raw.$ref;
+  let ref = null;
+  if (rawRef !== undefined && rawRef !== null) {
+    if (rawRef !== 'latest') return null;
+    ref = 'latest';
+  }
+  return { add, replace, exclude, excludeSimilar, ref };
+}
+
+/**
  * Validate one chat-parse output against the closed shared grammar.
- * @returns {{ atoms: Array, vectorQuery: string|null } | null} null = unconstrained
+ * @returns {{ atoms: Array, vectorQuery: string|null, delta?: Object } | null} null = unconstrained
  */
 function validateParseOutput(json) {
   if (!json || typeof json !== 'object' || Array.isArray(json)) return null;
@@ -82,7 +140,12 @@ function validateParseOutput(json) {
     const text = normalizeQueryText(json.vector_query);
     if (text.length > 0 && text.length <= VECTOR_QUERY_MAX_LENGTH) vectorQuery = text;
   }
-  return { atoms, vectorQuery };
+  let delta;
+  if (json.delta !== undefined && json.delta !== null) {
+    delta = validateDelta(json.delta);
+    if (!delta) return null;
+  }
+  return { atoms, vectorQuery, ...(delta ? { delta } : {}) };
 }
 
 /**
@@ -107,7 +170,13 @@ function buildGrammarPrompt() {
     '- {"type":"like"} - at most 1 (liked files)',
     '- {"type":"date","withinDays":<int>} or {"type":"date","after":"<ISO date>","before":"<ISO date>"} - at most 1',
     '- {"type":"size","min":<bytes>,"max":<bytes>} - at most 1',
-    'Reply shape: {"predicates":[<atoms>],"vector_query":"<optional refined semantic text or null>"}.',
+    'Conversational delta (optional, for follow-ups on an existing result set):',
+    '- "delta":{"add":[<atom>]} appends a new field constraint;',
+    '- "delta":{"replace":[<atom>]} corrects an existing same-field slot;',
+    '- "delta":{"exclude":[<atom>]} subtracts matching rows (exclusion is a separate subtraction list, never a new atom type);',
+    '- "delta":{"exclude_similar":true} asks to drop near-duplicate results;',
+    '- "delta":{"$ref":"latest"} means "of those / those photos / this one"; $ref may ONLY be the literal "latest" - never a real reference string.',
+    'Reply shape: {"predicates":[<atoms>],"vector_query":"<optional refined semantic text or null>","delta":<optional delta object>}.',
     'Never include file names, ids, scores or permission data; predicate values are matched server-side.',
   ].join('\n');
 }
@@ -129,6 +198,24 @@ function buildParseMessages({ normalizedQuery, sessionAtoms = [] } = {}) {
   ];
 }
 
+/** One closed shared-grammar atom schema (reused by predicates + delta lists). */
+function buildAtomSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['type', 'value', 'withinDays', 'after', 'before', 'min', 'max'],
+    properties: {
+      type: { type: 'string', enum: ATOM_TYPES },
+      value: { type: ['string', 'null'] },
+      withinDays: { type: ['integer', 'null'] },
+      after: { type: ['string', 'null'] },
+      before: { type: ['string', 'null'] },
+      min: { type: ['number', 'null'] },
+      max: { type: ['number', 'null'] },
+    },
+  };
+}
+
 /** Schema-forced output shape (strict: closed objects, nullable optional fields). */
 function buildParseSchema() {
   return {
@@ -138,32 +225,31 @@ function buildParseSchema() {
     properties: {
       predicates: {
         type: 'array',
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['type', 'value', 'withinDays', 'after', 'before', 'min', 'max'],
-          properties: {
-            type: { type: 'string', enum: ATOM_TYPES },
-            value: { type: ['string', 'null'] },
-            withinDays: { type: ['integer', 'null'] },
-            after: { type: ['string', 'null'] },
-            before: { type: ['string', 'null'] },
-            min: { type: ['number', 'null'] },
-            max: { type: ['number', 'null'] },
-          },
-        },
+        items: buildAtomSchema(),
       },
       vector_query: { type: ['string', 'null'] },
+      delta: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          add: { type: 'array', items: buildAtomSchema() },
+          replace: { type: 'array', items: buildAtomSchema() },
+          exclude: { type: 'array', items: buildAtomSchema() },
+          exclude_similar: { type: 'boolean' },
+          $ref: { type: 'string', enum: ['latest'] },
+        },
+      },
     },
   };
 }
 
 /** The cache value written to `query_parses.predicates` (queryParsesStore.md §2.3). */
-function buildParseEnvelope(atoms, vectorQuery = null) {
+function buildParseEnvelope(atoms, vectorQuery = null, delta = null) {
   return {
     grammar: PARSE_ENVELOPE_GRAMMAR,
     atoms: Array.isArray(atoms) ? atoms : [],
     vectorQuery: vectorQuery || null,
+    ...(delta ? { delta } : {}),
   };
 }
 
@@ -179,9 +265,14 @@ function readParseEnvelope(value) {
   const validated = validateParseOutput({
     predicates: value.atoms,
     vector_query: typeof value.vectorQuery === 'string' ? value.vectorQuery : null,
+    ...(value.delta !== undefined ? { delta: value.delta } : {}),
   });
   if (!validated) return null;
-  return { ...validated, vectorQuery: validated.vectorQuery || null };
+  return {
+    atoms: validated.atoms,
+    vectorQuery: validated.vectorQuery || null,
+    ...(validated.delta ? { delta: validated.delta } : {}),
+  };
 }
 
 /** Normalize the several chat-client return shapes to one JSON object (or null). */
@@ -231,7 +322,7 @@ function createNlParser({ adapter, cache, log } = {}) {
     try {
       await cache.recordPredicates({
         normalizedQuery,
-        predicates: buildParseEnvelope(validated.atoms, validated.vectorQuery),
+        predicates: buildParseEnvelope(validated.atoms, validated.vectorQuery, validated.delta),
       });
     } catch {
       /* cache write is best-effort — never a correctness dependency */
@@ -279,10 +370,12 @@ module.exports = {
   PARSE_ENVELOPE_GRAMMAR,
   PARSE_MAX_TOKENS,
   MAX_ATOM_COUNTS,
+  DELTA_MEMBERS,
   normalizeQueryText,
   buildParseSchema,
   buildParseMessages,
   buildGrammarPrompt,
+  validateDelta,
   validateParseOutput,
   validateSessionState,
   buildParseEnvelope,

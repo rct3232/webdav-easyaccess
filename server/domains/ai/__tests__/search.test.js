@@ -506,7 +506,7 @@ describe('POST /api/search NL-parse wire states', () => {
     llmRuntime.__setMockAdapter(null);
   });
 
-  function createRouteNlAdapter({ chatOk = false, chatCalls = [] } = {}) {
+  function createRouteNlAdapter({ chatOk = false, chatCalls = [], chatJson = null } = {}) {
     const adapter = {
       chatCalls,
       roleConfigured: async (role) => role === 'embed' || (role === 'chat' && chatOk),
@@ -516,7 +516,7 @@ describe('POST /api/search NL-parse wire states', () => {
       adapter.chat = async (messages, opts) => {
         chatCalls.push({ messages, opts });
         return {
-          json: {
+          json: chatJson || {
             predicates: [{ type: 'size', min: 1048576 }],
             vector_query: null,
           },
@@ -616,5 +616,74 @@ describe('POST /api/search NL-parse wire states', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.predicates).toEqual([{ type: 'size', min: 1048576 }]);
+  });
+
+  it('chat + $ref:"latest" replays the base and adds the delta/session_predicates wire fields', async () => {
+    const ctx = await createUserWithRoot('nlrefdelta');
+    const baseFile = await fileNodeService.createFile(ctx.root.id, 'route-delta-base.txt');
+
+    // Base execution: chat OFF (embed-only) so no parse/delta keys.
+    llmRuntime.__setMockAdapter(createRouteNlAdapter({ chatOk: false }));
+    const base = await request(app)
+      .post('/api/search')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ query: 'route-delta-base' });
+    expect(base.status).toBe(200);
+    expect(base.body.name_matches.map((row) => row.node_id)).toEqual([baseFile.id]);
+    expect('predicates' in base.body).toBe(false);
+
+    llmRuntime.__setMockAdapter(
+      createRouteNlAdapter({
+        chatOk: true,
+        chatJson: {
+          predicates: [],
+          vector_query: null,
+          delta: { $ref: 'latest' },
+        },
+      })
+    );
+    const follow = await request(app)
+      .post('/api/search')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ query: 'of those route files', result_ref: base.body.result_ref });
+
+    expect(follow.status).toBe(200);
+    expect(follow.body.name_matches).toEqual(base.body.name_matches);
+    expect(follow.body.delta).toEqual({
+      add: [],
+      replace: [],
+      exclude: [],
+      exclude_similar: false,
+      $ref: 'latest',
+    });
+    expect(follow.body.session_predicates).toEqual([]);
+    expect(follow.body.predicates).toEqual([]);
+    expect(follow.body.result_ref).toMatch(/^sr1\.[0-9a-f]{16}$/);
+    expect(follow.body.result_ref).not.toBe(base.body.result_ref);
+  });
+
+  it('a malformed result_ref on a delta request never 4xxes — parser-free 200 shape', async () => {
+    llmRuntime.__setMockAdapter(
+      createRouteNlAdapter({
+        chatOk: true,
+        chatJson: {
+          predicates: [],
+          vector_query: null,
+          delta: { $ref: 'latest' },
+        },
+      })
+    );
+    const ctx = await createUserWithRoot('nlrefbad');
+    await fileNodeService.createFile(ctx.root.id, 'route-bad-ref.txt');
+
+    const res = await request(app)
+      .post('/api/search')
+      .set('Authorization', `Bearer ${ctx.token}`)
+      .send({ query: 'route bad ref', result_ref: 'not-a-ref' });
+
+    expect(res.status).toBe(200);
+    expect('predicates' in res.body).toBe(false);
+    expect('delta' in res.body).toBe(false);
+    expect('session_predicates' in res.body).toBe(false);
   });
 });

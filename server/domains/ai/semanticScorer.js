@@ -153,10 +153,15 @@ function createSemanticScorer({
   }
 
   /**
-   * §2.5a scoring seam: `{ userId, queryVec, segmentVecs, sampleFn }` →
-   * `[{ nodeId, score }]` sorted score desc then nodeId asc.
+   * §2.5a scoring seam: `{ userId, queryVec, segmentVecs, sampleFn, candidateIds? }`
+   * → `[{ nodeId, score }]` sorted score desc then nodeId asc.
+   *
+   * `candidateIds` is the §2.9 replay restriction: when present, the candidate
+   * cut/scoring universe is the intersection of that set with the requester's
+   * CURRENT visible set (ACL still wins). The dynamic baseline sample remains
+   * drawn from the full visible corpus, excluding the candidate set.
    */
-  async function score({ userId, segmentVecs, sampleFn }) {
+  async function score({ userId, segmentVecs, sampleFn, candidateIds = null }) {
     if (!Array.isArray(segmentVecs) || segmentVecs.length === 0) return [];
 
     // Cheap in-memory early-outs first (model identity + the gate's δ_base are
@@ -177,17 +182,25 @@ function createSemanticScorer({
     const visibleSet = new Set(visibleIds.map(Number));
     if (visibleSet.size === 0) return [];
 
+    // §2.9 replay restriction: ACL wins first, then the base-candidate universe.
+    let universe = visibleSet;
+    if (candidateIds) {
+      const restrict = candidateIds instanceof Set ? candidateIds : new Set(candidateIds);
+      universe = new Set(
+        [...restrict].map(Number).filter((id) => Number.isFinite(id) && visibleSet.has(id))
+      );
+      if (universe.size === 0) return [];
+    }
+
     const engine = resolveEngine(model.id, buildLoadRows(model.id));
 
-    // Step 1 — per-segment candidate cut: top-k per segment over the visible set.
-    const perSegmentRows = [];
-    const candidateIds = new Set();
+    // Step 1 — per-segment candidate cut: top-k per segment over the universe.
+    const candidateIdsFound = new Set();
     for (const segVec of segmentVecs) {
-      const rows = await engine.neighbors(segVec, kPerSegment, visibleSet);
-      perSegmentRows.push(rows);
-      for (const row of rows) candidateIds.add(Number(row.nodeId));
+      const rows = await engine.neighbors(segVec, kPerSegment, universe);
+      for (const row of rows) candidateIdsFound.add(Number(row.nodeId));
     }
-    if (candidateIds.size === 0) return [];
+    if (candidateIdsFound.size === 0) return [];
 
     // Step 2 — baseline sample: random visible ids, EXCLUDING the candidate set
     // (§2.3 step 6: an unrestricted sample contains the true top candidate often
@@ -198,7 +211,7 @@ function createSemanticScorer({
       const raw = await sampleFn(await resolveBaselineSampleDocs());
       sampleIds = (Array.isArray(raw) ? raw : [])
         .map(Number)
-        .filter((id) => Number.isFinite(id) && !candidateIds.has(id) && visibleSet.has(id));
+        .filter((id) => Number.isFinite(id) && !candidateIdsFound.has(id) && visibleSet.has(id));
     } catch {
       return [];
     }
@@ -206,7 +219,7 @@ function createSemanticScorer({
 
     // Step 3 — exact score pass over candidates ∪ sample (one call per segment,
     // k = the set size, so every scored node's exact per-segment score is known).
-    const scoreSet = new Set([...candidateIds, ...sampleSet]);
+    const scoreSet = new Set([...candidateIdsFound, ...sampleSet]);
     const segmentScoreMaps = [];
     for (const segVec of segmentVecs) {
       const rows = await engine.neighbors(segVec, scoreSet.size, scoreSet);
@@ -224,7 +237,7 @@ function createSemanticScorer({
       docScores.set(nodeId, Math.min(...segmentScoreMaps.map((map) => map.get(nodeId))));
     }
 
-    const candidateScores = [...candidateIds]
+    const candidateScores = [...candidateIdsFound]
       .map((nodeId) => ({ nodeId, score: docScores.get(nodeId) }))
       .filter((row) => Number.isFinite(row.score));
     if (candidateScores.length === 0) return [];

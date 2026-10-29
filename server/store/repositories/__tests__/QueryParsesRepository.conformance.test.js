@@ -83,6 +83,34 @@ describe('QueryParsesRepository conformance', () => {
     expect(row.predicates).toBeNull();
   });
 
+  it('listAll pages ascending by normalized_query without skips/duplicates', async () => {
+    for (const key of ['listall-c', 'listall-a', 'listall-d', 'listall-b']) {
+      await repo.recordEmbedding({
+        normalizedQuery: key,
+        vector: JSON.stringify({ space: 'v1|model:7', dim: 4, v: [1, 0, 0, 0] }),
+      });
+    }
+
+    const firstPage = await repo.listAll({ afterNormalizedQuery: 'listall-', limit: 2 });
+    expect(firstPage.map((row) => row.normalizedQuery)).toEqual(['listall-a', 'listall-b']);
+    const secondPage = await repo.listAll({
+      afterNormalizedQuery: firstPage[firstPage.length - 1].normalizedQuery,
+      limit: 2,
+    });
+    expect(secondPage.map((row) => row.normalizedQuery)).toEqual(['listall-c', 'listall-d']);
+    const beyond = await repo.listAll({
+      afterNormalizedQuery: secondPage[secondPage.length - 1].normalizedQuery,
+      limit: 2,
+    });
+    expect(beyond.filter((row) => row.normalizedQuery.startsWith('listall-'))).toEqual([]);
+    // The mapped row contract is the SAME as get(): hitCount/createdAt/vector.
+    expect(firstPage[0]).toMatchObject({
+      normalizedQuery: 'listall-a',
+      hitCount: 0,
+      vector: expect.any(String),
+    });
+  });
+
   it('recordEmbedding on an existing key overwrites ONLY the vector (hit_count and created_at untouched)', async () => {
     const first = JSON.stringify({ space: 'v1|model:7', dim: 4, v: [1, 0, 0, 0] });
     const second = JSON.stringify({ space: 'v1|model:9', dim: 4, v: [0, 1, 0, 0] });

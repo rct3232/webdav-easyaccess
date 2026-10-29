@@ -33,6 +33,9 @@
  *   a parse-first insert leaves vector NULL.
  * @property {(normalizedQuery: string) => Promise<{ changes: number }>} incrementHitCount
  *   Cache-hit accounting; `changes: 0` for an unknown key.
+ * @property {(opts?: { afterNormalizedQuery?: string|null, limit?: number }) => Promise<QueryParseRow[]>} listAll
+ *   Bounded keyset scan ascending by `normalized_query` (only the search leg's
+ *   restart replay-derivation fallback consumes it; never an unbounded read).
  *
  * @param {import('../../infrastructure/db/executor').DbExecutor} executor
  * @returns {QueryParsesRepository}

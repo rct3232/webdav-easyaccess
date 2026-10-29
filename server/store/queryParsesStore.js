@@ -40,4 +40,8 @@ async function incrementHitCount(normalizedQuery) {
   return getRepository().incrementHitCount(normalizedQuery);
 }
 
-module.exports = { get, recordEmbedding, recordPredicates, incrementHitCount };
+async function listAll(opts) {
+  return getRepository().listAll(opts);
+}
+
+module.exports = { get, recordEmbedding, recordPredicates, incrementHitCount, listAll };

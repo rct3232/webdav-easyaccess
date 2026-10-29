@@ -2783,3 +2783,33 @@ exit gate runs only after every active row above is closed.
 | §30.6 E future-route security precondition  | Confirmed as recorded; remains a standing precondition for any future collection-context route    |
 | `skip-budget.js` stale default comment      | Wave 0 unit                                                                                       |
 | Gate-count reconciliation                   | Resolves at the exit-gate run (D4)                                                                |
+
+### 33.6 T4.1 UI/UX rulings (owner, 2026-10-29)
+
+Owner rulings from the T4.1 UI/UX review; they bind the T4.1 docs-first specs
+(`docs/spec/server/routes/admin.md` panel surface, the new
+`docs/spec/client/components/mypage/content/AiAdminContent.md`). The PLAN.md T4.1 row text
+stays unchanged per the overlay convention — the "settings journal subscription" clause is
+refined by U4 below.
+
+- **U1 — single scroll with section anchors.** The panel stacks the §4.15 blocks in one
+  scrollable column with section headers (an in-tab summary strip anchors to each section);
+  the kill switches occupy a fixed top area. No content-level sub-tabs and no accordions —
+  the accordion is the settings idiom, not an operations-dashboard idiom.
+- **U2 — role split with the settings tab.** The five-state `ai.<role>` rows stay in the
+  SystemSettingsContent health card: the §4.12 contract, its CTA into `/api/admin/config` +
+  `probeLlm`, and the pinned E2E navigation path are preserved. The AI tab is the
+  operations/monitoring deep surface; the two surfaces cross-link each other and never
+  duplicate a full render.
+- **U3 — launcher flow: preview → confirm → health-tracked progress.** The launcher first
+  renders the deterministic `planMediaBackfill` scope as per-coverage-state counts, requires
+  one confirmation dialog (invariant 5), then hands progress tracking to the pipeline-health
+  block — the job queue is the single progress surface, with no parallel progress UI and no
+  orphan enqueues. The rate limit is surfaced in the launcher response.
+- **U4 — polling-based refresh.** Panel data refreshes by polling (the CollectionDashboard
+  `getActions` precedent); no new settings-domain pub-sub channel is built. The
+  settings-journal producer for gate-param/kill-switch changes (invariant 4) stays in scope
+  — it feeds the rollback feed consumed from `GET /api/actions`, not a push channel. U4
+  resolves the settings-journal semantics point deferred in §33.1; the capacity-snapshot row
+  shape, the fake-LLM harness injection mechanics, and the scratch E2E port entry remain
+  docs-first decisions.

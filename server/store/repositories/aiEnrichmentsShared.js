@@ -7,7 +7,7 @@
  *
  * Source of truth (DDL): server/store/postgresql/ddl/001_initial_normalized_schema.sql
  *
- * CONSTRAINED (PLAN.md §19 — Tag Layer Dissolution):
+ * CONSTRAINED (PLAN_EXECUTION.md §19 — Tag Layer Dissolution):
  * `ai_enrichments.tags` stores *free descriptive words* ONLY.
  * - No tag hierarchy, vector artifact, or tag alias code paths are
  *   permitted in this layer.

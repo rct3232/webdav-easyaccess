@@ -814,7 +814,7 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   member's undo toast had no label key.
 - **Diagnosis**: T0.5 shipped the `AddToCollectionMenu` component + repository/gateway seams
   but left the HOST wiring as the recorded wave-2 residual ("explorer `Add to collection` host
-  wiring" — PLAN.md §9 register); `FileManagerView` never passed `onAddToCollection` into the
+  wiring" — `PLAN_EXECUTION.md` §9 register); `FileManagerView` never passed `onAddToCollection` into the
   `interaction` bag, and `collections.undoAdded` (the toast key the flow needs) was absent from
   the en/ko locale mirror.
 - **Classification**: **Case A (Source Error)** — the implemented-and-specified surface

@@ -5,7 +5,8 @@
  *
  * `docs/spec/**` and `docs/features/**` carry decided/implemented STATE only.
  * Dated rulings, rationale, retracted proposals, task/phase provenance, and
- * design-doc pointers must live only in AI_FEATURE_PLAN.md / PLAN.md / POC.md.
+ * design-doc pointers must live only in AI_FEATURE_PLAN.md / PLAN.md /
+ * PLAN_EXECUTION.md / POC.md.
  * This test codifies the PLAN §8 mechanical sweep (previously a manual grep)
  * plus a §-pointer resolution check: every `§X.Y` citation in a scoped doc must
  * resolve to a numbered heading in a known reference document.
@@ -35,7 +36,7 @@ const FORBIDDEN_PATTERNS = [
   ['evidence-trail', /evidence trail/],
   ['pending-task-provenance', /\bpending T\d\b/],
   ['task-provenance', /\bT[0-4]\.\d+b?\b/],
-  ['design-doc-pointer', /\bAI_FEATURE_PLAN\b/, /PLAN\.md\b/],
+  ['design-doc-pointer', /\bAI_FEATURE_PLAN\b/, /\bPLAN(?:_[A-Za-z0-9]+)*\.md\b/, /\bPLAN\s+§/],
   ['rationale-theater', /would be theater/],
   ['decision-vocab', /\brulings?\b/],
   ['failure-direction-rationale', /failure direction|stays conservative|\bpoison\w*\b/],

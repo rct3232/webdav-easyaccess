@@ -5,11 +5,12 @@
 > execution plan** — separate workstreams, adopted decisions, out-of-graph defects. An entry
 > is written only after the owner has discussed and approved it; the discussion date is part
 > of the entry. This is NOT a catch-all: sub-work deferred from a planned task belongs in
-> `PLAN.md` (its landing task row / wave-ledger deferral register).
+> `PLAN.md` (its landing task row) or `PLAN_EXECUTION.md` (the wave-ledger deferral register).
 >
 > **Governance rule**: Spec/feature docs describe only the **current implemented/decided**
 > state and link spec docs only — never planning docs. Execution state and deferrals live
-> in `PLAN.md`; this tracker holds only owner-approved new requirements (see AGENTS.md §2.1).
+> in `PLAN.md` and `PLAN_EXECUTION.md`; this tracker holds only owner-approved new requirements
+> (see AGENTS.md §2.1).
 >
 > **Status legend**: `DEFERRED`, `DONE`
 

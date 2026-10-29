@@ -4,7 +4,7 @@
 > behavior specs (§4.x), schema (§5), rejections/extension points (§9–§10) live there —
 > **read it before implementing any task below; task rows reference its sections by number.**
 > This file carries the active task graph, binding conventions (§6–§8), and the
-> execution-ledger index; completed phase logs (§9–§32) live in
+> execution-ledger index; completed phase logs and execution plans (§9–§33) live in
 > [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md). Detailed product design remains in
 > `AI_FEATURE_PLAN.md`. Graduation status (2026-09-17, commits 34ee64c→76ae679): the §8
 > docs gate is DONE — `docs/features/collections-platform.md` + the full
@@ -12,15 +12,15 @@
 > evidence; update the current-state summary and annotate superseded snapshots instead
 > of deleting history.
 
-## Current status (2026-10-28)
+## Current status (2026-10-29)
 
 | Area                    | Status                   | Current disposition                                                                                                                                                                                                                                                                                                                 |
 | ----------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | P0–P3                   | `[done]`                 | Closed on `ai-feature`; see [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §§9, 28–30.                                                                                                                                                                                                                                                    |
-| P4 feature work         | `[open]`                 | T4.1 (admin re-embed launcher/tab), T4.3 (hermetic AI/media E2E and degradation matrix), and T4.4 (capacity series) remain. T4.2 overlaps the completed D2–D4 media work in [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §28.8; reconcile it as absorbed or state any remaining scope.                                                  |
+| P4 feature work         | `[open]`                 | Execution plan recorded in [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §33 (2026-10-29). Open units: T4.1 (admin AI panel + re-embed launcher), T4.3 (hermetic AI/media E2E + degradation matrix), T4.4 (capacity series), the §4.22 delta-semantics SQL leg (D3), and the Wave 0 cleanups. T4.2 is closed as absorbed by §28.8 D2–D4 with residue re-pointed (§33.1 D1). |
 | P4 bulk-poll resilience | `[done]`                 | T4.5–T4.10, T4.12, and T4.6b are recorded complete in [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §32.1; T4.11 was dropped; T4.13 gates are recorded green there.                                                                                                                                                                      |
-| Pre-merge carry-forward | `[open]`                 | AI_FEATURE_PLAN §4.22 delta-semantics SQL leg, hysteresis calibration, `JOURNAL_DOMAIN.TAGS` disposition, [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §30.6 D/E/L2, and the stale `skip-budget.js` comment remain tracked. §30.6 A/B/C/L1 and the L3 release soak are closed by later evidence.                                        |
-| Test-count pin          | `[needs-reconciliation]` | [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §32.1 records server 194/3382 and client 189/2279. `client/TEST_SUMMARY.md` is now aligned at 189/2279. `server/TEST_SUMMARY.md` records the unresolved difference between §32.1's 3382 and its earlier 3386/3381 pins; confirm the original run output before repinning the server total. |
+| Pre-merge carry-forward | `[open]`                 | Scheduled by [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §33: the §4.22 SQL leg is owned by P4 (D3), `JOURNAL_DOMAIN.TAGS` is ruled for removal (D2), §30.6 L2/E and the stale `skip-budget.js` comment ride Wave 0, and hysteresis calibration stays an owner-run measurement. §30.6 A/B/C/L1 and the L3 release soak are closed by later evidence. |
+| Test-count pin          | `[needs-reconciliation]` | [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §32.1 records server 194/3382 and client 189/2279. `client/TEST_SUMMARY.md` is now aligned at 189/2279. `server/TEST_SUMMARY.md` records the unresolved difference between §32.1's 3382 and its earlier 3386/3381 pins; confirm the original run output before repinning the server total. The pin resolves at the P4 exit-gate run per [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §33.1 D4. |
 | `ai-feature` → `dev`    | `[not merged]`           | Merge once, only after all active tasks in §7 and later task-bearing overlays are closed and the applicable gates pass.                                                                                                                                                                                                             |
 
 **Status convention:** `[todo]` = not started; `[wip]` = in progress; `[done]` = complete;
@@ -30,8 +30,9 @@ phase; `[dropped]` = no longer in scope; `[needs-decision]` = owner ruling requi
 state, not a task. Dated execution logs are point-in-time evidence; the latest closure record
 and this summary determine current status. Do not choose a test total without run evidence.
 
-**Open work detail:** [`PLAN_EXECUTION.md` §32.3](PLAN_EXECUTION.md#323-remaining-p4-and-pre-merge-work)
-keeps the accountable role and exit condition for each remaining item.
+**Open work detail:** the P4 execution plan (owner rulings, waves, gates) is
+[`PLAN_EXECUTION.md` §33](PLAN_EXECUTION.md); §32.3 remains the accountable-role and
+exit-condition record it supersedes.
 
 ## Branching & merge policy (binding — overrides AGENTS.md §2.2 step "merge to dev" for this workstream)
 
@@ -265,10 +266,10 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 
 - T4.1 admin AI tab (pipeline/cost/governance/models, impact-preview tuning, settings
   journal subscription) (§4.15).
-- T4.2 media ladder **[scope reconciliation required]** per §4.21 (revised 2026-10-08/14):
-  D2–D4 report the probes, direct-embed pipelines, fallbacks, and backfill scope as delivered
-  (`PLAN_EXECUTION.md` §28.8); mark this row absorbed if that closes the full contract, otherwise name the P4-only
-  residue. The original scope was **V0(ffprobe) + V1(image/video
+- T4.2 media ladder **[done — absorbed 2026-10-29, §33.1 D1]** per §4.21 (revised 2026-10-08/14):
+  D2–D4 delivered the probes, direct-embed pipelines, fallbacks, and backfill scope
+  (`PLAN_EXECUTION.md` §28.8); reconciled 2026-10-29 as absorbed with the residue re-pointed
+  to T4.1 (launcher/rate limit) and T4.3 (media E2E/degradation matrix). The original scope was **V0(ffprobe) + V1(image/video
   direct-embed) + V3(audio direct-embed + conditional ASR)** on the built-in q4 engine
   (batch-class on CPU; external GGUF+GPU server is the throughput override) + **V2(VLM
   captions)** as display/arbiter material and the media-caps-absent fallback — behind
@@ -370,6 +371,7 @@ Completed execution ledgers are preserved verbatim in
 | §16–§28  | Embedding adoption, built-in engine, tag dissolution, search UI/E2E, P1 waves, Wave C audit |
 | §29–§30  | P2 and P3 execution plans and exit gates                                                    |
 | §31–§32  | Post-P3 remediation, release evidence, bulk-polling resilience, remaining P4 work           |
+| §33      | P4 execution plan: owner rulings, waves, gates, §32.3 disposition                           |
 
 Section numbers are stable identifiers. Code comments and historical records may
 cite `PLAN §N`; for N ≥ 9, read the matching section in `PLAN_EXECUTION.md`.

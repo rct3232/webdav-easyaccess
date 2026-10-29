@@ -1,7 +1,8 @@
 # AI_FEATURE_PLAN.md — AI-Driven Storage: Design & Behavior Reference
 
-Companion to `PLAN.md` (task graph, conventions §6–§8 there). Task rows reference the
-sections below by §number; file:line anchors are verified seams in the current code.
+Companion to `PLAN.md` (active task graph, conventions §6–§8) and
+`PLAN_EXECUTION.md` (execution ledger §9–§32). Task rows reference the sections below
+by §number; file:line anchors are verified seams in the current code.
 
 ## 1. Purpose & framing
 
@@ -254,10 +255,10 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   servers remain valid provider overrides (and the GPU throughput path for media, since
   in-process media embed is batch-class: ~7 s/image on CPU). Distribution: a few-KB npm
   lockfile {repo, revision pin, files[]+sha256, dtype:'q4'}. **Provisioning is
-  provider-triggered, not per-boot-unconditional** (owner ruling 2026-10-15, PLAN §22):
+  provider-triggered, not per-boot-unconditional** (owner ruling 2026-10-15, `PLAN_EXECUTION.md` §22):
   it runs **BLOCKING at boot for a CONFIGURED boot while the built-in is the active embed
   provider** (no enabled remote embed override) — the first boot after the setup wizard is
-  just such an ordinary boot, no special event (PLAN §22-5) — and **in place when a remote
+  just such an ordinary boot, no special event (`PLAN_EXECUTION.md` §22-5) — and **in place when a remote
   override is cleared** — built-in activation is restart-free like every other LLM config
   (weights present ⇒ instant; absent ⇒ progress status card, role in `preparing` during the download
   per §4.12). Setup mode itself fetches NO bytes and the wizard NEVER waits on provisioning. A pre-provisioned `WEA_MODEL_DIR` ⇒ zero download attempts, zero network egress;
@@ -889,7 +890,7 @@ does work rules can't):
   prefilled recommendation + reason row on the §4.4 card (`sibling` → no card in v1,
   §9). It advises, never acts: user still presses Merge; no arbiter call is ever
   self-executing. ~~Chat off ⇒ band pairs simply get no recommendation (card still
-  appears, no preselection).~~ **SUPERSEDED by owner ruling R1 (2026-10-27, PLAN §30.2;
+  appears, no preselection).~~ **SUPERSEDED by owner ruling R1 (2026-10-27, `PLAN_EXECUTION.md` §30.2;
   provenance §12.15): the card gate stays Jaccard ≥ 0.7 in the LLM-free default —
   chat off ⇒ 0.55–0.7 band pairs get NO card; band pairs become cards ONLY via an
   arbiter verdict (chat configured).** **Input format is load-bearing (E7 PoC): the prompt MUST include the
@@ -1180,7 +1181,7 @@ the hot-apply rule §4.2), so a skipped step costs nothing and a mid-install con
 restart-free. The step also surfaces the embedded-engine provisioning status card — during
 the wizard it shows the waiting state ("begins at the next boot"); live per-file download
 progress and the ready / caps-off outcome belong to the first configured boot after the
-required restart (PLAN §22-5). Full config surface stays in admin
+required restart (`PLAN_EXECUTION.md` §22-5). Full config surface stays in admin
 (`/api/admin/config` + test + capability
 matrix, where an external embed server may be configured as an OVERRIDE replacing the
 built-in); wizard is a shortcut to the same rows. SETUP.md documents preset table;
@@ -1336,7 +1337,7 @@ P50 0.7527 (band overlap by design of the model's anisotropy, not a harness bug)
 percentile/rank re-anchoring, margin-based promotion, or accept 21%-recall θ_lo=0.92.
 **OWNER DECISION REQUIRED before T1.8 ships on EG2**; llmPresets thetaLo stays unresolved.
 **Q11 CLOSED 2026-10-16 BY DISSOLUTION** — parent hints/θ_lo/θ_tag retired entirely: tags
-are descriptive-only (§4.18, PLAN §19); no re-anchoring needed, no label battery needed,
+are descriptive-only (§4.18, `PLAN_EXECUTION.md` §19); no re-anchoring needed, no label battery needed,
 T1.8 withdrawn. The measurements above stand as the evidence trail.
 Quantization-cause hypothesis TESTED AND REJECTED (Q8_0 control re-run, 2026-10-08: class
 bands moved ≤0.008 vs Q4_K_XL, containment-P10/sibling-P90 gap persists at −0.096) — the
@@ -1364,7 +1365,7 @@ per-hardware latency verdict item is dropped with it (latency/serving-mode numbe
 informational profile fields). Precision-specific
 θ re-calibration is WITHDRAWN: ±0.02 same-space drift is tolerated by owner ruling, θ
 constants are single-set per model. Provisioning keeps **boot-blocking-with-CLI-progress
-trigger internals** (trigger SCOPE provider-triggered — PLAN §22); llm_models
+trigger internals** (trigger SCOPE provider-triggered — `PLAN_EXECUTION.md` §22); llm_models
 `engine/precision/model_revision` DDL
 additions ride the **big-bang migration at the `ai-feature`→`dev` deploy** (owner is the
 sole user — no compat path needed).
@@ -1374,13 +1375,13 @@ New open questions get appended here before/at their named task.
 
 > Contract specs (`docs/spec/**`, `docs/features/collections-platform.md`) carry decided/implemented
 > state ONLY. The decision process — dated rulings, rationale, rejected alternatives, register/task
-> provenance — lives here (design authority) and in PLAN §9–§15 (execution ledger: waves/branches/
+> provenance — lives here (design authority) and in `PLAN_EXECUTION.md` §9–§15 (execution ledger: waves/branches/
 > commits, verbatim owner records). Decisions already stated in §2–§9 are not restated — pointers
 > only. _amends_ marks body corrections applied when this ledger was compiled.
 
 ### 12.1 Sharing & grants (Path 1)
 
-- **Path 1 self-revocation** (owner ruling 2026-09-29, PLAN §10 P-1) _amends_ §3.2/§4.7/§5:
+- **Path 1 self-revocation** (owner ruling 2026-09-29, `PLAN_EXECUTION.md` §10 P-1) _amends_ §3.2/§4.7/§5:
   recipient exit = real grant revocation `DELETE /api/collections/:id/grants/me` (instant, no
   confirm — revoke is exposure REDUCTION, silent per the §4.11 asymmetry); labels unified with the
   file-sharing receiver term (EN "Revoke permission" / KO "권한 반납"); the view-local `hiddenIds`
@@ -1423,11 +1424,11 @@ New open questions get appended here before/at their named task.
 - **Seed at create, inside the mutation TX** (2026-10-01): create leaves exactly ONE cursor row
   for the creator ⇒ self-created collections never dot; a post-commit seed would leave partial
   state on rollback.
-- **Client localStorage visit heuristics retired** (2026-10-01, PLAN §11 FU-5): the
+- **Client localStorage visit heuristics retired** (2026-10-01, `PLAN_EXECUTION.md` §11 FU-5): the
   `created_at > stored-cursor` sidebar heuristic was REMOVED — the server cursor is the dot source.
   (Digest DELTA requests still ride a client-held per-collection visit stamp — `since` — owned by
   the listing host; the two cursors are distinct concerns.)
-- **Ruling B** (owner ruling 2026-10-02, PLAN §15 I1): the journaled revoke TX — owner-side revoke
+- **Ruling B** (owner ruling 2026-10-02, `PLAN_EXECUTION.md` §15 I1): the journaled revoke TX — owner-side revoke
   AND grantee self-revoke — deletes the grantee's cursor row ⇒ re-grant re-dots; undo-of-a-revoke
   restores the grant but NOT the cursor ⇒ undo-revoke re-dots too (owner-accepted boundary).
 - **Digest counts are display-truth approximations from live state**; the exact event-sourced
@@ -1435,7 +1436,7 @@ New open questions get appended here before/at their named task.
 
 ### 12.3 Listing, paging & ordering (Decision B)
 
-- **Decision B** (owner ruling 2026-09-29; verbatim record PLAN §10): member/liked listings ship
+- **Decision B** (owner ruling 2026-09-29; verbatim record `PLAN_EXECUTION.md` §10): member/liked listings ship
   the FULL row set in ONE response; retired `cursor`/`limit` params are IGNORED (never an error);
   `next_cursor` absent from the wire; the load-more button deleted; client display paging is the
   shared `useInfiniteScroll` 50+50 slice over server order. Rationale: fileManager precedent
@@ -1445,17 +1446,17 @@ New open questions get appended here before/at their named task.
   RETAINED under the ruling: the visit stamp ("the read IS the visit") and the `since` digest.
 - **Unpaginated at personal scale**: the collection card list (mirrors §3.1's "≤~20 rows" cluster
   precedent) and the journal feed (cap 200, newest-first, no cursor — mirrors the same stance).
-- **`id DESC` tie-break** (RCA 2026-09-23, PLAN §9 E2E batch): every timestamp-ordered listing
+- **`id DESC` tie-break** (RCA 2026-09-23, `PLAN_EXECUTION.md` §9 E2E batch): every timestamp-ordered listing
   ends in `id DESC` — a plan-dependent row order corrupts cursor-less full-set rendering.
 - **`include` tokens select ROW SETS** (RCA 2026-09-23): `include=archived` means the
   ARCHIVED-ONLY set; a `status` default never leaks into the query; archived rows never arrive
   twice.
 - Item ordering while `activity_score` is absent/all-zero falls through to timestamps then
-  `node_id` asc — behavior normed in §3.4; the T0.3/T0.6 staging behind it is PLAN §9 history.
+  `node_id` asc — behavior normed in §3.4; the T0.3/T0.6 staging behind it is `PLAN_EXECUTION.md` §9 history.
 
 ### 12.4 Likes
 
-- **Surface** (owner ruling 2026-09-29, PLAN §10 P-5): Likes = a Collections-section child row at
+- **Surface** (owner ruling 2026-09-29, `PLAN_EXECUTION.md` §10 P-5): Likes = a Collections-section child row at
   `/files/__collections__/liked`; the earlier top-level `__liked__` virtual root is REJECTED (§9).
 - **Separate `/api/file-likes` mount**: likes are per (user, node), not per collection, AND the
   collections router's `/:id` parameterized routes would shadow a `/likes` literal — the mount is
@@ -1490,7 +1491,7 @@ New open questions get appended here before/at their named task.
 - **One GET** feeds hygiene cards and the suggestion list (single dup pass, one round trip);
   **`/api/dashboard` is singular** (`/api/search` precedent — a personal surface, not a
   collection); empty storage / missing user root = ZEROS, never 404 (pull-overview stance §4.16).
-- **register (a)** (wave-2, PLAN §9): `search_hit` + list-entry-click recording rides a DEDICATED
+- **register (a)** (wave-2, `PLAN_EXECUTION.md` §9): `search_hit` + list-entry-click recording rides a DEDICATED
   `POST /api/search/click` (`action='open'`) — search-result opens are pure client navigation and
   no existing low-frequency endpoint exists to piggyback on; each other list wires its own
   recording point in its owning wave. `open` and `GET /versions/download` are DELIBERATELY not
@@ -1538,7 +1539,7 @@ New open questions get appended here before/at their named task.
   chrome — NOT a `FloatingSearchBar` input replacement; desktop = breadcrumb-row swap, mobile
   renders above the list (no breadcrumb row exists there); recent queries live in `sessionStorage`
   behind a tiny browser-storage adapter seam (`recentQueriesStorage`), cleared on logout.
-- Search-origin save-collection flattening + confirm-dialog copy ride T1.5 (PLAN §9 residuals).
+- Search-origin save-collection flattening + confirm-dialog copy ride T1.5 (`PLAN_EXECUTION.md` §9 residuals).
 
 ### 12.8 LLM config precedence (2026-10-02, code-confirmed)
 
@@ -1600,14 +1601,14 @@ New open questions get appended here before/at their named task.
   deliberately NOT one TX — watermark idempotency makes crash-recovery a no-op re-run and the
   ≤ 500-member sums keep the window negligible (§3.4).
 - **Preset manifest**: ~~no `image_embed` key anywhere (V1 retired — §9)~~ _amended
-  2026-10-08_: media embed capabilities REVIVED (owner, PLAN §16) — §4.21/§9 govern;
+  2026-10-08_: media embed capabilities REVIVED (owner, `PLAN_EXECUTION.md` §16) — §4.21/§9 govern;
   release-pending models ship
   as null values + `pending:true` and are NOT offered in the picker; the release-measurement
   checklist belongs to the release runbook (§10 Q10), not the product spec.
 
 ### 12.10 UI polish rulings (P/M/F/A series)
 
-Verbatim owner records live in PLAN §10–§12/§15; the decided states are in the owning specs.
+Verbatim owner records live in `PLAN_EXECUTION.md` §10–§12/§15; the decided states are in the owning specs.
 Consolidated rulings: one context-aware sort button, private menu deleted, ephemeral state (P-2);
 grid-parity cards — 2×2 previews (§12.1), file-parity click semantics with the chosen "card-local
 equivalent" 350 ms double-tap tracker, card menu loses `open`, selection bar = fixed set per
@@ -1652,7 +1653,7 @@ mirror), detail = inline 16 px before the name. `CardTile`/`ResponsiveCardGrid` 
 from the FileGrid\* JSX bodies with the original suites kept UNCHANGED as regression anchors (P-3)
 — the parity is the contract, the extraction is history.
 
-- TreeRow single-source ruling (PLAN §12, 2026-10-01) _amends_ the §6 client-layering note: the
+- TreeRow single-source ruling (`PLAN_EXECUTION.md` §12, 2026-10-01) _amends_ the §6 client-layering note: the
   collections tree rows share ONE row implementation with the file tree (level-based indent — the
   earlier per-surface `pl:3`/24 px pins retired, one indent idiom); padding equality alone had
   hidden a 24 px icon misalignment (ruling A follow-up); BaseFolderTreeItem name cells
@@ -1804,7 +1805,7 @@ only and never mutates manual `origin='user'` rows.
 
 ### 12.15 P3 NL-parse & merge-band rulings (2026-10-27)
 
-**R1 — merge band card gate (owner ruling 2026-10-27, PLAN §30.2; recorded at the parser
+**R1 — merge band card gate (owner ruling 2026-10-27, `PLAN_EXECUTION.md` §30.2; recorded at the parser
 docs step per the ruling's own assignment).** §4.19's `merge-arbiter` sentence "Chat off ⇒
 band pairs simply get no recommendation (card still appears, no preselection)" is RETIRED.
 The card gate stays **Jaccard ≥ 0.7** in the LLM-free default (evolution Pass 5 as shipped);

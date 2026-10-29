@@ -12,7 +12,7 @@ Summary of the test implementation for the Express.js server application. All te
 - **Real-PostgreSQL adapter leg** (`test:ci:pg:adapters`): 31 suites / 471 passed, 1 skipped (472 total; recorded 2026-10-28 at `ai-feature` tip `309eb579` on a freshly recreated `webdav_test` DB)
 - **Execution Time**: Reported per run by `npm run test`
 
-> Count reconciliation: §32.1 of `PLAN.md` records 3354 passed + 28 skipped (3382 total),
+> Count reconciliation: §32.1 of `PLAN_EXECUTION.md` records 3354 passed + 28 skipped (3382 total),
 > while this summary previously carried 3386 in the header and 3381 in the conclusion.
 > Do not repin the total until the original test output is checked.
 

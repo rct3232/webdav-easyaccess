@@ -77,9 +77,33 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
 - **Degradation-matrix suite:** one suite per §4.12 capability column — `None` (no adapter
   configured at all; the built-in embed engine suppressed by `WEA_SKIP_EMBED_MODEL=1` or by an
   absent lock/weights fixture ⇒ `roleConfigured('embed')` false), `embed` (fake embed only),
-  `embed+chat` (fake embed+chat) — and the
-  **None and embed columns must pass green with no real adapter present** (the
+  `embed+media` (fake media-capable embed), `embed+chat+vision` (fake embed+chat+vision) —
+  and the **None and embed columns must pass green with no real adapter present** (the
   "never-a-render-dependency" invariant, verified by construction).
+- **Fake-LLM E2E harness contract (T4.3 Wave 1):** `e2e/helpers/fakeLlm.ts` starts a
+  `node:http` listener inside the Playwright process on an ephemeral `127.0.0.1` port
+  (`listen(0)`) and serves root + `/v1` aliases for `POST /embeddings`,
+  `POST /chat/completions`, `GET /props`, and `GET /models`. It never receives a real
+  provider call and exposes counters (`embedCalls`/`kitCalls`/`mediaCalls`/`chatCalls`/
+  `visionCalls`) so a suite can prove the fake handled the traffic. `text-only` mode
+  silently drops media parts to a deterministic empty-basis vector (the known llama.cpp
+  failure mode); `media-capable` mode returns image/audio/video vectors that satisfy the
+  media positive controls; chat parse modes `parse-ok`/`parse-invalid` and a vision caption
+  fixture cover the parser/V2 legs. Conformance returns the checked-in
+  `eg2-reference-kit.json` vectors for the 24 kit strings (document prefix tolerated with
+  or without its trailing space), while ordinary text vectors are deterministic
+  bag-of-words unit vectors at dim 768 (non-constant, so the non-degeneracy probe and the
+  semantic scorer work).
+- **Harness injection + scratch slot:** the fake endpoint is injected through the scratch
+  sqlite `settings` table BEFORE the child server boots (`e2e/helpers/scratchSettings.ts`,
+  following `seedWebdavSettings`). `LLM_{EMBED,CHAT,VISION,ASR}_*` are `dbOnly`, so ambient
+  env can never select a provider; the scratch child env strips `WEA_SKIP_AI_WORKER` (the
+  worker is enabled by absence, never set to `'0'` — the seam is a truthy check) and sets
+  `WEA_SKIP_EMBED_MODEL=1` so the built-in engine never provisions, while a remote role
+  override still takes precedence. The matrix owns scratch slot `5021` in the API-only
+  `s3-ai-matrix-desktop` project: it uses `RequestContext` + direct sqlite reads, never a
+  `page`, so a pinned band mapping the slot to the browser-restricted `5061` cannot break
+  it. Each column gets its own scratch directory, S3 bucket, and server lifecycle.
 - **Parser legs (`parse.nl`):** verified hermetically by unit/integration suites with an
   adapter-injected fake chat (the same seam the fake-embed adapter uses) — RED targets: parse
   cache hit ⇒ zero chat calls, schema-checked grammar-constrained output, chat-off ⇒

@@ -199,6 +199,14 @@ const s3Hermetic: E2EProject[] = [
     baseURL: scratchBase(e2ePorts.scratchAi),
   },
   {
+    // API-only: RequestContext + direct sqlite reads, never `page` (band 40
+    // maps this slot to the browser-restricted 5061).
+    name: 's3-ai-matrix-desktop',
+    testMatch: /ai\.matrix\.spec\.ts$/,
+    use: desktopUse,
+    baseURL: scratchBase(e2ePorts.scratchAiMatrix),
+  },
+  {
     name: 's3-trash-admin-desktop',
     testMatch: /trash-admin\.spec\.ts$/,
     use: desktopUse,

@@ -45,6 +45,7 @@ export interface E2EPorts {
   scratchRetrieval: number;
   scratchRetrievalMobile: number;
   scratchAi: number;
+  scratchAiMatrix: number;
   webdav: number;
   pg: number;
   s3: number;

@@ -22,7 +22,7 @@
  *   4. `E2E_PORT_OFFSET` pins the band exactly (parallel-run scheduling);
  *      per-port `E2E_*_PORT` env vars override the effective ports last.
  *
- * BAND_STEP (20) must exceed the span of the scratch base ports (5002..5020)
+ * BAND_STEP (20) must exceed the span of the scratch base ports (5002..5021)
  * so two allocated bands can never overlap each other's slots.
  *
  * The module also regenerates `data/e2e-runtime.env` — a copy of the mode's
@@ -56,6 +56,9 @@ const PORT_BASES = {
   scratchRetrieval: 5015,
   scratchRetrievalMobile: 5020,
   scratchAi: 5016,
+  // API-only AI degradation-matrix slot (T4.3): no browser navigation, so the
+  // band-40 mapping onto the Chromium/WebKit restricted 5061 is safe.
+  scratchAiMatrix: 5021,
   webdav: 8090,
   pg: 5433,
   s3: 9010,
@@ -90,6 +93,7 @@ const PORT_ENV_OVERRIDES = {
   scratchRetrieval: 'E2E_SCRATCH_RETRIEVAL_PORT',
   scratchRetrievalMobile: 'E2E_SCRATCH_RETRIEVAL_MOBILE_PORT',
   scratchAi: 'E2E_SCRATCH_AI_PORT',
+  scratchAiMatrix: 'E2E_SCRATCH_AI_MATRIX_PORT',
   webdav: 'E2E_WEBDAV_PORT',
   pg: 'E2E_PG_PORT',
   s3: 'E2E_S3_PORT',

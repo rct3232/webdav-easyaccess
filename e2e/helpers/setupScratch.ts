@@ -70,6 +70,9 @@ const CONFIG_ENV_KEYS = [
   'WEBDAV_AUTH_TYPE',
   'WEA_MODEL_DIR',
   'WEA_SKIP_EMBED_MODEL',
+  // Ambient truthy values would silently disable the worker. The seam is a
+  // truthy check, so never set it to '0'; absence is the enabled state.
+  'WEA_SKIP_AI_WORKER',
   'JWT_SECRET',
   'JWT_EXPIRES_IN',
   'PORT',

@@ -5,7 +5,12 @@ import { DatabaseSync } from 'node:sqlite';
 
 import { APIRequestContext, expect, test } from '@playwright/test';
 
-import { createFakeLlmServer, type FakeLlmMode, type FakeLlmServer } from './helpers/fakeLlm';
+import {
+  createFakeLlmServer,
+  FAKE_PARSE_DELTA_MIN_BYTES,
+  type FakeLlmMode,
+  type FakeLlmServer,
+} from './helpers/fakeLlm';
 import { seedScratchSettings } from './helpers/scratchSettings';
 import {
   killScratch,
@@ -27,8 +32,9 @@ import { readTestFileFixture, uploadFileAt } from './helpers/files';
 import { TEST_FILES } from './fixtures/test-data';
 
 /**
- * E2E-S3-AI-003..007 — the §4.12 LLM capability degradation matrix (T4.3
- * Wave 1) over the in-process fake LLM harness.
+ * E2E-S3-AI-002..007 — the §4.12 LLM capability degradation matrix plus the
+ * `parse.nl` / §4.22 delta parser leg (T4.3 Wave 2) over the in-process fake
+ * LLM harness.
  *
  * API-ONLY by design: the project (`s3-ai-matrix-desktop`, scratch slot 5021)
  * uses `APIRequestContext` + direct sqlite reads and never touches `page`.
@@ -40,7 +46,9 @@ import { TEST_FILES } from './fixtures/test-data';
  *   None               — no LLM settings, built-in suppressed, worker enabled;
  *   embed              — fake text-only embed (semantic + V0 metadata_only);
  *   embed+media        — fake media-capable embed (image media_direct);
- *   embed+chat+vision  — fake embed + chat + vision (V2 caption → E1 chain).
+ *   embed+chat+vision  — fake embed + chat + vision (V2 caption → E1 chain);
+ *   embed+chat parser  — fake embed + chat: AI-002 parse cache, kill switch,
+ *                        invalid-output fallback, and the §4.22 delta leg.
  *
  * The fake endpoint is injected through pre-boot scratch sqlite `settings`
  * rows (`LLM_*` are dbOnly), so ambient env can never select a real provider.
@@ -88,8 +96,20 @@ const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 interface ColumnScratch {
   scratch: string;
   child: ChildProcess;
+  /** Scratch admin bearer — OPERATOR duties only (config changes). */
+  operatorToken: string;
   userToken: string;
   homeNodeId: number;
+}
+
+type PredicateAtom = Record<string, unknown>;
+
+interface DeltaInstruction {
+  add: PredicateAtom[];
+  replace: PredicateAtom[];
+  exclude: PredicateAtom[];
+  exclude_similar: boolean;
+  $ref: 'latest' | null;
 }
 
 interface SearchBody {
@@ -98,6 +118,9 @@ interface SearchBody {
   result_ref: string;
   counts: { name: number; semantic: number; total: number };
   semantic_unavailable_reason?: string;
+  predicates?: PredicateAtom[];
+  delta?: DeltaInstruction;
+  session_predicates?: PredicateAtom[];
 }
 
 function scratchScalar(
@@ -146,7 +169,7 @@ async function bootColumn(
   const operatorToken = await loginScratchAdmin(request, ADMIN_PASSWORD);
   const userToken = await ensureScratchRegularUser(request, operatorToken, USER_CREDS);
   const homeNodeId = await resolveNodeId(request, userToken, `/${USER_CREDS.username}`);
-  return { scratch, child, userToken, homeNodeId };
+  return { scratch, child, operatorToken, userToken, homeNodeId };
 }
 
 async function shutdownColumn(column: ColumnScratch | undefined): Promise<void> {
@@ -202,6 +225,45 @@ async function waitForVisionProbeSettled(fake: FakeLlmServer): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 250));
 }
 
+/** Wait until the one-shot chat probe has made its call. */
+async function waitForChatProbeSettled(fake: FakeLlmServer): Promise<void> {
+  await expect
+    .poll(() => fake.counters.chatCalls, { timeout: 60_000, intervals: [100, 250] })
+    .toBeGreaterThan(0);
+  // The publish follows the probe response; give it one event-loop turn.
+  await new Promise((resolve) => setTimeout(resolve, 250));
+}
+
+/**
+ * Hot T2 config write through the admin API (resolver cache invalidated by the
+ * route, so the next search observes the value — no TTL wait).
+ */
+async function setT2Config(
+  request: APIRequestContext,
+  operatorToken: string,
+  key: string,
+  value: string | boolean
+): Promise<void> {
+  const res = await request.put('/api/admin/config', {
+    headers: auth(operatorToken),
+    data: { values: { [key]: value } },
+  });
+  expect(res.status()).toBe(200);
+  const body = (await res.json()) as { applied: string[] };
+  expect(body.applied).toContain(key);
+}
+
+/** Read the stored `query_parses.predicates` cell for the normalized query. */
+function readParseCell(scratchDir: string, normalizedQuery: string): unknown {
+  const rows = scratchRows<{ predicates: string }>(
+    scratchDir,
+    'SELECT predicates FROM query_parses WHERE normalized_query = ?',
+    normalizedQuery
+  );
+  expect(rows).toHaveLength(1);
+  return JSON.parse(rows[0].predicates);
+}
+
 async function waitForJob(
   scratchDir: string,
   nodeId: number,
@@ -227,11 +289,12 @@ async function waitForJob(
 async function runSearch(
   request: APIRequestContext,
   token: string,
-  query: string
+  query: string,
+  resultRef?: string
 ): Promise<SearchBody> {
   const res = await request.post('/api/search', {
     headers: auth(token),
-    data: { query },
+    data: { query, ...(resultRef ? { result_ref: resultRef } : {}) },
     timeout: 90_000,
   });
   expect(res.status()).toBe(200);
@@ -510,5 +573,166 @@ test.describe('degradation matrix — embed+chat+vision column', () => {
     expect(pooled).toHaveLength(1);
     expect(pooled[0]).toMatchObject({ source: 'chunk_pool', dim: 768 });
     expect(fake!.counters.visionCalls).toBeGreaterThan(0);
+  });
+});
+
+test.describe('parser delta leg — fake embed+chat', () => {
+  let column: ColumnScratch | undefined;
+  let fake: FakeLlmServer | undefined;
+
+  test.beforeAll(async ({ request }, testInfo) => {
+    fake = await createFakeLlmServer({ mode: 'text-only', chatParseMode: 'parse-ok' });
+    column = await bootColumn(request, testInfo.project.name, 'parser', {
+      ...EMBED_SETTINGS(fake.baseUrl),
+      ...CHAT_SETTINGS(fake.baseUrl),
+    });
+    await waitForEmbedProbeSettled(fake, 'text-only');
+    expect(fake.counters.kitCalls).toBeGreaterThan(0);
+    await waitForChatProbeSettled(fake);
+    await waitForAiFlags(request, { embed: true, chat: true });
+  });
+
+  test.afterAll(async () => {
+    await fake?.close();
+    await shutdownColumn(column);
+  });
+
+  test('E2E-S3-AI-002: a parsed NL search caches its canonical atoms with zero replay chat calls, degrades silently on the kill switch and invalid output, and replays a $ref delta under the current ACL', async ({
+    request,
+  }) => {
+    const token = column!.userToken;
+    const scratch = column!.scratch;
+    const stamp = Date.now();
+
+    // Three documents so the delta/fallback queries have a deterministic,
+    // fully name-matched corpus (semantic rows dedup to empty in both the
+    // parser-free and invalid-output responses). Only the keep document is
+    // above the fake delta size floor.
+    const corpusToken = `harvestnotes${stamp}`;
+    const largeBody = DOC_BODY.repeat(20);
+    const smallBody = 'small harvest note';
+    const keepNodeId = await uploadText(
+      request,
+      token,
+      column!.homeNodeId,
+      `${corpusToken}-keep.txt`,
+      largeBody
+    );
+    const dropNodeId = await uploadText(
+      request,
+      token,
+      column!.homeNodeId,
+      `${corpusToken}-drop.txt`,
+      smallBody
+    );
+    const invalidNodeId = await uploadText(
+      request,
+      token,
+      column!.homeNodeId,
+      `${corpusToken}-invalid.txt`,
+      smallBody
+    );
+    for (const nodeId of [keepNodeId, dropNodeId, invalidNodeId]) {
+      await waitForJob(scratch, nodeId, 'embed', 'done');
+    }
+    fake!.resetCounters();
+
+    // (a) Parser-on first search: canonical predicates on the wire, the nl1
+    // envelope in query_parses.predicates, one chat call, no error.
+    const parserQuery = 'pdfs from last year over 10mb';
+    const expectedAtoms: PredicateAtom[] = [
+      { type: 'size', min: 10485760 },
+      { type: 'date', withinDays: 365 },
+    ];
+    const first = await runSearch(request, token, parserQuery);
+    expect(first.predicates).toEqual(expectedAtoms);
+    expect(first.delta).toBeUndefined();
+    expect(first.session_predicates).toBeUndefined();
+    expect(first.result_ref).toMatch(/^sr1\.[0-9a-f]{16}$/);
+    expect(fake!.counters.chatCalls).toBe(1);
+    expect(readParseCell(scratch, parserQuery)).toEqual({
+      grammar: 'nl1',
+      atoms: expectedAtoms,
+      vectorQuery: null,
+    });
+
+    // (b) Cache replay (case/whitespace variation normalizes to the same key):
+    // same signature, zero additional chat or embed calls, cache hit recorded.
+    const chatBeforeReplay = fake!.counters.chatCalls;
+    const embedBeforeReplay = fake!.counters.embedCalls;
+    const replay = await runSearch(request, token, `  ${parserQuery.toUpperCase()}  `);
+    expect(replay.predicates).toEqual(first.predicates);
+    expect(replay.result_ref).toBe(first.result_ref);
+    expect(fake!.counters.chatCalls).toBe(chatBeforeReplay);
+    expect(fake!.counters.embedCalls).toBe(embedBeforeReplay);
+    expect(
+      scratchRows<{ hit_count: number }>(
+        scratch,
+        'SELECT hit_count FROM query_parses WHERE normalized_query = ?',
+        parserQuery
+      )[0].hit_count
+    ).toBe(1);
+
+    // (c) Kill switch off: parser-free shape, zero parse calls.
+    await setT2Config(request, column!.operatorToken, 'AI_NL_PARSE_ENABLED', false);
+    const chatBeforeKillSwitch = fake!.counters.chatCalls;
+    const parserFree = await runSearch(request, token, corpusToken);
+    expect(parserFree.predicates).toBeUndefined();
+    expect(parserFree.delta).toBeUndefined();
+    expect(parserFree.session_predicates).toBeUndefined();
+    expect(fake!.counters.chatCalls).toBe(chatBeforeKillSwitch);
+    expect(parserFree.name_matches.map((row) => Number(row.node_id)).sort()).toEqual(
+      [keepNodeId, dropNodeId, invalidNodeId].sort()
+    );
+
+    // (d) Invalid fake output with the switch back on: byte-identical
+    // parser-free response and no parse envelope write (row keeps the []).
+    await setT2Config(request, column!.operatorToken, 'AI_NL_PARSE_ENABLED', true);
+    fake!.setChatParseMode('parse-invalid');
+    const chatBeforeInvalid = fake!.counters.chatCalls;
+    const invalid = await runSearch(request, token, corpusToken);
+    expect(invalid).toEqual(parserFree);
+    expect(JSON.stringify(invalid)).toBe(JSON.stringify(parserFree));
+    expect(fake!.counters.chatCalls).toBe(chatBeforeInvalid + 1);
+    expect(readParseCell(scratch, corpusToken)).toEqual([]);
+
+    // (e) §4.22 delta leg: the fake chat supplies $ref:"latest" + a size
+    // filter on the follow-up utterance; the base is re-executed under the
+    // current ACL and filtered deterministically.
+    fake!.setChatParseMode('parse-ok');
+    const base = await runSearch(request, token, corpusToken);
+    expect(base.result_ref).toMatch(/^sr1\.[0-9a-f]{16}$/);
+    expect(base.name_matches.map((row) => Number(row.node_id)).sort()).toEqual(
+      [keepNodeId, dropNodeId, invalidNodeId].sort()
+    );
+
+    fake!.setChatParseMode('parse-delta');
+    const deltaQuery = `only the ones over ${FAKE_PARSE_DELTA_MIN_BYTES} bytes ${stamp}`;
+    const delta = await runSearch(request, token, deltaQuery, base.result_ref);
+    const expectedDeltaAtom = { type: 'size', min: FAKE_PARSE_DELTA_MIN_BYTES };
+    expect(delta.delta).toEqual({
+      add: [expectedDeltaAtom],
+      replace: [],
+      exclude: [],
+      exclude_similar: false,
+      $ref: 'latest',
+    });
+    expect(delta.session_predicates).toEqual([expectedDeltaAtom]);
+    expect(delta.predicates).toEqual([]);
+    expect(delta.result_ref).toMatch(/^sr1\.[0-9a-f]{16}$/);
+    expect(delta.result_ref).not.toBe(base.result_ref);
+    expect(delta.name_matches.map((row) => Number(row.node_id))).toEqual([keepNodeId]);
+
+    // Deterministic replay: the cached delta envelope + registry material
+    // reproduce the same ref and rows with zero extra chat/embed calls.
+    const chatBeforeDeltaReplay = fake!.counters.chatCalls;
+    const embedBeforeDeltaReplay = fake!.counters.embedCalls;
+    const deltaReplay = await runSearch(request, token, deltaQuery, base.result_ref);
+    expect(deltaReplay.delta).toEqual(delta.delta);
+    expect(deltaReplay.session_predicates).toEqual(delta.session_predicates);
+    expect(deltaReplay.result_ref).toBe(delta.result_ref);
+    expect(deltaReplay.name_matches.map((row) => Number(row.node_id))).toEqual([keepNodeId]);
+    expect(fake!.counters.chatCalls).toBe(chatBeforeDeltaReplay);
+    expect(fake!.counters.embedCalls).toBe(embedBeforeDeltaReplay);
   });
 });

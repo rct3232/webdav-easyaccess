@@ -88,8 +88,9 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   `visionCalls`) so a suite can prove the fake handled the traffic. `text-only` mode
   silently drops media parts to a deterministic empty-basis vector (the known llama.cpp
   failure mode); `media-capable` mode returns image/audio/video vectors that satisfy the
-  media positive controls; chat parse modes `parse-ok`/`parse-invalid` and a vision caption
-  fixture cover the parser/V2 legs. Conformance returns the checked-in
+  media positive controls; chat parse modes `parse-ok`/`parse-invalid`/`parse-delta` and a
+  vision caption fixture cover the parser/V2 legs (the delta mode adds a deterministic size
+  floor for the `$ref:"latest"` replay leg). Conformance returns the checked-in
   `eg2-reference-kit.json` vectors for the 24 kit strings (document prefix tolerated with
   or without its trailing space), while ordinary text vectors are deterministic
   bag-of-words unit vectors at dim 768 (non-constant, so the non-degeneracy probe and the
@@ -107,8 +108,8 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
 - **Parser legs (`parse.nl`):** verified hermetically by unit/integration suites with an
   adapter-injected fake chat (the same seam the fake-embed adapter uses) — RED targets: parse
   cache hit ⇒ zero chat calls, schema-checked grammar-constrained output, chat-off ⇒
-  byte-identical parser-free response. The parser E2E case (`E2E-S3-AI-002`) rides the
-  fake-LLM harness (T4.3), not a dedicated scratch project.
+  byte-identical parser-free response. The parser E2E case (`E2E-S3-AI-002`, including the
+  `$ref` delta replay) rides the fake-LLM harness (T4.3), not a dedicated scratch project.
 - **Model-free test mode:** `WEA_SKIP_EMBED_MODEL` truthy (`1/true/yes/on`) suppresses
   the built-in embed weights check, provisioning, ONNX import, and boot probe; the embed
   role resolves `not_configured` with no `ai.embed` failure row. Non-AI E2E suites set it

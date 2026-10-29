@@ -26,17 +26,27 @@ import type { AddressInfo } from 'node:net';
  *   space). Ordinary text vectors are deterministic bag-of-words unit vectors
  *   at dim 768 — never constant, so the adapter's non-degeneracy probe and the
  *   semantic baseline gate work.
- * - Chat: `parse-ok` answers the probe with schema-valid JSON;
- *   `parse-invalid` returns non-JSON for the Wave 2 parser-degrade case.
- *   An image-bearing chat request returns the vision caption (V2), and a plain
- *   chat request returns different text.
+ * - Chat: `parse-ok` answers the probe with schema-valid JSON AND a valid
+ *   `parse.nl` payload (the probe only checks `tags`, the parser only checks
+ *   `predicates`/`vector_query`); `parse-invalid` returns non-JSON for the
+ *   parser-degrade case; `parse-delta` returns a `$ref:"latest"` delta that
+ *   adds the exported `FAKE_PARSE_DELTA_MIN_BYTES` size filter to the base
+ *   result set. An image-bearing chat request returns the vision caption (V2),
+ *   and a plain chat request returns different text.
  *
  * Counters let a suite prove the fake handled the traffic; no real provider is
  * ever configured.
  */
 
 export type FakeLlmMode = 'text-only' | 'media-capable';
-export type FakeChatParseMode = 'parse-ok' | 'parse-invalid';
+export type FakeChatParseMode = 'parse-ok' | 'parse-invalid' | 'parse-delta';
+
+/**
+ * Size floor carried by the `parse-delta` chat answer. The scratch spec sizes
+ * its corpus on either side of this threshold; the server applies the atom as
+ * a subtraction/intersection over both result sections.
+ */
+export const FAKE_PARSE_DELTA_MIN_BYTES = 1000;
 
 export interface FakeLlmCounters {
   embedCalls: number;
@@ -65,7 +75,28 @@ const QUERY_PREFIX = 'task: search result | query:';
 const KNOWN_PREFIXES = [DOCUMENT_PREFIX, QUERY_PREFIX];
 
 const IMAGE_CAPTION = 'A red bicycle leans against a brick wall in the sunlight.';
-const PLAIN_CHAT_ANSWER = JSON.stringify({ tags: ['golden', 'retriever'] });
+/**
+ * One answer satisfies BOTH chat consumers: the boot probe requires
+ * `tags: string[]`; the `parse.nl` leg requires `predicates` + optional
+ * `vector_query`. The parser ignores unknown top-level members.
+ */
+const PARSE_OK_ANSWER = JSON.stringify({
+  tags: ['golden', 'retriever'],
+  predicates: [
+    { type: 'size', min: 10485760 },
+    { type: 'date', withinDays: 365 },
+  ],
+  vector_query: null,
+});
+const PARSE_DELTA_ANSWER = JSON.stringify({
+  tags: ['golden', 'retriever'],
+  predicates: [],
+  vector_query: null,
+  delta: {
+    add: [{ type: 'size', min: FAKE_PARSE_DELTA_MIN_BYTES }],
+    $ref: 'latest',
+  },
+});
 const INVALID_CHAT_ANSWER = 'this is not schema-valid json';
 
 interface ReferenceKit {
@@ -335,7 +366,11 @@ export async function createFakeLlmServer(
                 role: 'assistant',
                 content:
                   answer ??
-                  (chatParseMode === 'parse-invalid' ? INVALID_CHAT_ANSWER : PLAIN_CHAT_ANSWER),
+                  (chatParseMode === 'parse-invalid'
+                    ? INVALID_CHAT_ANSWER
+                    : chatParseMode === 'parse-delta'
+                      ? PARSE_DELTA_ANSWER
+                      : PARSE_OK_ANSWER),
               },
               finish_reason: 'stop',
             },

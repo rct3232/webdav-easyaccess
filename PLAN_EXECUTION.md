@@ -2658,9 +2658,9 @@ E2E port entry.
 
 | Wave | Unit                                   | Branch                              | Scope                                                                                                                                                      | Deps  | Effort | Status    |
 | ---- | -------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------ | --------- |
-| 0    | CF skip-budget comment                 | `chore/skip-budget-comment`         | `e2e/reporters/skip-budget.js:12` default 6→7, comment-only; no runtime change without its own test                                                         | —     | XS     | `[todo]`  |
-| 0    | CF §30.6 L2 query-parses note          | `docs/query-parses-sqlite-note`     | record that malformed raw JSON is a sqlite-only read case (PostgreSQL JSONB rejects malformed data on write) in the query_parses persistence contract; optional focused sqlite raw-row + shared-mapper tests | — | S | `[todo]` |
-| 0    | CF §30.6 E precondition confirmation   | (docs commit; may ride the L2 unit) | confirm the `assertMemberConsumable` future-route precondition is recorded in the service contract; close the item as recorded                              | —     | XS     | `[todo]`  |
+| 0    | CF skip-budget comment                 | `chore/skip-budget-comment`         | `e2e/reporters/skip-budget.js:12` default 6→7, comment-only; no runtime change without its own test                                                         | —     | XS     | `[done]`  |
+| 0    | CF §30.6 L2 query-parses note          | `docs/query-parses-sqlite-note`     | record that malformed raw JSON is a sqlite-only read case (PostgreSQL JSONB rejects malformed data on write) in the query_parses persistence contract; optional focused sqlite raw-row + shared-mapper tests | — | S | `[done]` |
+| 0    | CF §30.6 E precondition confirmation   | (docs commit; may ride the L2 unit) | confirm the `assertMemberConsumable` future-route precondition is recorded in the service contract; close the item as recorded                              | —     | XS     | `[done]`  |
 | 1    | T4.4 capacity series                   | `feature/t44-capacity-series`       | full chain — see 33.3                                                                                                                                       | —     | M      | `[todo]`  |
 | 1    | T4.1 admin AI panel + launcher         | `feature/t41-admin-ai-panel`        | docs → endpoints → tab → launcher — see 33.3                                                                                                                | —     | L      | `[todo]`  |
 | 1    | T4.3 harness + degradation matrix      | `test/t43-fake-llm-harness`         | fake-LLM harness + per-column suites — see 33.3                                                                                                             | —     | M–L    | `[todo]`  |
@@ -2777,11 +2777,11 @@ exit gate runs only after every active row above is closed.
 | T4.3 hermetic AI/media E2E                  | Wave 1 harness unit + Wave 2 parser-E2E unit                                                      |
 | T4.4 capacity series                        | Wave 1 unit `feature/t44-capacity-series`                                                         |
 | §4.22 delta-semantics SQL leg               | Owned by P4 — Wave 2 unit (D3)                                                                    |
-| §30.6 L2 query-parses contract              | Wave 0 docs unit                                                                                  |
+| §30.6 L2 query-parses contract              | Closed — SQLite-only malformed-read wording + targeted mapper/raw-row tests (§33.7)               |
 | `JOURNAL_DOMAIN.TAGS` parity                | Ruled: remove (D2) — Wave 2 unit                                                                  |
 | P4 hysteresis calibration                   | Owner-run measurement, Wave 2                                                                     |
 | §30.6 E future-route security precondition  | Confirmed as recorded; remains a standing precondition for any future collection-context route    |
-| `skip-budget.js` stale default comment      | Wave 0 unit                                                                                       |
+| `skip-budget.js` stale default comment      | Closed — comment-only unit (§33.7)                                                                |
 | Gate-count reconciliation                   | Resolves at the exit-gate run (D4)                                                                |
 
 ### 33.6 T4.1 UI/UX rulings (owner, 2026-10-29)
@@ -2813,3 +2813,24 @@ refined by U4 below.
   resolves the settings-journal semantics point deferred in §33.1; the capacity-snapshot row
   shape, the fake-LLM harness injection mechanics, and the scratch E2E port entry remain
   docs-first decisions.
+
+### 33.7 Wave 0 closure (2026-10-29)
+
+- **skip-budget comment** — `e2e/reporters/skip-budget.js` now names the current default
+  budget (`7`); no runtime change. Branch `chore/skip-budget-comment`, merge `9da6b253`.
+- **§30.6 L2 query-parses contract** — `docs/spec/server/store/queryParsesStore.md` states
+  that malformed stored JSON is a SQLite raw-row/legacy read case: PostgreSQL JSONB rejects
+  malformed input at write, while the shared mapper defensively maps a malformed string to
+  `null`. Added `queryParsesShared.test.js` (mapper boundary) and a SQLite raw-row case in
+  `QueryParsesRepository.conformance.test.js`. Branch `docs/query-parses-sqlite-note`.
+- **§30.6 E precondition** — confirmed recorded in
+  `docs/spec/server/services/collectionShareService.md` §2.6: the download/preview bridge
+  paragraph names the `assertMemberConsumable` route-level pre-check and its 404-masquerade
+  rule, and §4 carries the verification scenario. No code change; the item is closed as
+  recorded and remains a standing precondition for any future collection-context file route.
+  Rides the L2 branch.
+- **Verification** — targeted `queryParsesShared` + `QueryParsesRepository` suites:
+  19/19 passed; `docsStatePurity`, eslint, and Prettier (source/spec files) passed. Full
+  local `test:ci`: server 194 passed + 1 skipped suite, 3365 passed + 28 skipped tests
+  (3393 total); client 189 suites / 2279 tests passed. The server total is recorded as
+  run evidence for the exit-gate reconciliation (D4), not as a new summary pin.

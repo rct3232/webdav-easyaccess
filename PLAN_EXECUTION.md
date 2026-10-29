@@ -2665,7 +2665,7 @@ scratch E2E port entry. The settings-journal push-vs-pull semantics is resolved 
 | 0    | CF skip-budget comment                 | `chore/skip-budget-comment`         | `e2e/reporters/skip-budget.js:12` default 6→7, comment-only; no runtime change without its own test                                                         | —     | XS     | `[done]`  |
 | 0    | CF §30.6 L2 query-parses note          | `docs/query-parses-sqlite-note`     | record that malformed raw JSON is a sqlite-only read case (PostgreSQL JSONB rejects malformed data on write) in the query_parses persistence contract; optional focused sqlite raw-row + shared-mapper tests | — | S | `[done]` |
 | 0    | CF §30.6 E precondition confirmation   | (docs commit; may ride the L2 unit) | confirm the `assertMemberConsumable` future-route precondition is recorded in the service contract; close the item as recorded                              | —     | XS     | `[done]`  |
-| 0.5  | Preceding DDL: cancelled AI job status | `chore/ai-job-cancelled-status`     | `001` `ai_jobs.status` + `cancelled`; docs/schema test; no dev migration script (dev DBs are ephemeral; the production migration is deployment-owned) — see 33.8 W7 | —     | XS     | `[todo]`  |
+| 0.5  | Preceding DDL: cancelled AI job status | `chore/ai-job-cancelled-status`     | `001` `ai_jobs.status` + `cancelled`; docs/schema test; no dev migration script (dev DBs are ephemeral; the production migration is deployment-owned) — see 33.8 W7 | —     | XS     | `[done]`  |
 | 1    | T4.4 storage usage series              | `feature/t44-storage-usage`         | `storage_usage_snapshots` + `object_map.size` + daily scheduler + gateway/UI — see 33.3/33.8 W2                                                  | 0.5   | M–L    | `[todo]`  |
 | 1    | T4.1 admin AI panel + launcher         | `feature/t41-admin-ai-panel`        | full text+media launcher + cancel-pending + config-backed gates; docs → endpoints → tab → launcher — see 33.3/33.8 W1/W5/W6 | 0.5   | L+     | `[todo]`  |
 | 1    | T4.3 harness + degradation matrix      | `test/t43-fake-llm-harness`         | fake embed+chat harness + per-column suites; AI-001 remains real EG2 — see 33.3/33.8 W3 | 0.5   | M–L    | `[todo]`  |
@@ -2811,7 +2811,7 @@ closed.
 | T4.2 media ladder                           | Closed as absorbed by §28.8 D2–D4; residue re-pointed to T4.1/T4.3 (D1)                            |
 | T4.3 hermetic AI/media E2E                  | Wave 1 harness unit + Wave 2 parser-E2E unit                                                      |
 | T4.4 storage usage series                   | Wave 1 unit `feature/t44-storage-usage`; `object_map.size` + `storage_usage_snapshots` (§33.8 W2) |
-| Preceding DDL: cancelled AI job status      | Wave 0.5 unit `chore/ai-job-cancelled-status` (§33.8 W7)                                          |
+| Preceding DDL: cancelled AI job status      | Closed — branch `chore/ai-job-cancelled-status` (§33.8 W7, §33.9)                                  |
 | §4.22 delta-semantics SQL leg               | Owned by P4 — Wave 2 unit (D3)                                                                    |
 | §30.6 L2 query-parses contract              | Closed — SQLite-only malformed-read wording + targeted mapper/raw-row tests (§33.7)               |
 | `JOURNAL_DOMAIN.TAGS` parity                | Ruled: remove (D2) — Wave 2 unit                                                                  |
@@ -2929,3 +2929,16 @@ refined by U4 below.
 - **W10 — T4.3 coverage/re-pin.** B-6 boot-step 8b coverage is closed by existing
   unit/boot evidence. Wave 1 records the new matrix rows/counts; Wave 2 owns the final
   AI-002 + inventory/skip-budget re-pin.
+
+### 33.9 Preceding DDL closure (2026-10-29)
+
+- **Branch** `chore/ai-job-cancelled-status`, commit `dfa6a51e`.
+- **Schema/contract** — `001` `ai_jobs.status` CHECK includes `cancelled`; both store twins
+  include `cancelled` in `countByStatus`; `aiJobsStore.md`/`aiJobService.md` status text
+  updated; the conformance suite pins terminal/not-claimable/not-failed behavior.
+- **Migration policy** — no feature-branch dev migration script; development/test DBs are
+  ephemeral. The production migration (existing-table CHECK/column changes + `object_map`
+  size backfill) remains deployment-owned.
+- **Verification** — targeted conformance 30/30; PG adapter leg 473 passed / 1 skipped;
+  full server `test:ci` 194 passed + 1 skipped suite, 3366 passed + 28 skipped; client
+  `test:ci` 189 suites / 2279 tests passed; `docsStatePurity`, eslint, and Prettier clean.

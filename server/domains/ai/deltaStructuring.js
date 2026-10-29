@@ -50,10 +50,11 @@ function normalizeRootPath(rootPath) {
 }
 
 function anchorPrefix(prefix, rootPath) {
-  if (!rootPath || rootPath === '/') return prefix;
-  if (prefix === rootPath || prefix.startsWith(`${rootPath}/`)) return prefix;
-  if (prefix === '/') return rootPath;
-  return `${rootPath}${prefix}`;
+  const normalized = prefix.startsWith('/') ? prefix : `/${prefix}`;
+  if (!rootPath || rootPath === '/') return normalized;
+  if (normalized === rootPath || normalized.startsWith(`${rootPath}/`)) return normalized;
+  if (normalized === '/') return rootPath;
+  return `${rootPath}${normalized}`;
 }
 
 /**
@@ -87,7 +88,11 @@ function hasPathAtoms(atoms) {
 function anchorAtoms(atoms, rootPath) {
   return atoms.map((atom) => {
     if (atom.type !== 'path') return atom;
-    return { ...atom, prefix: anchorPrefix(atom.prefix, rootPath) };
+    // `value` is the canonical source of truth: the shared definition engine
+    // re-derives `prefix` from it at evaluation time. Anchor both so a delta
+    // filter survives that re-parse (the parser supplies root-relative paths).
+    const value = anchorPrefix(atom.value, rootPath);
+    return { ...atom, value, prefix: anchorPrefix(atom.prefix, rootPath) };
   });
 }
 

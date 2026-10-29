@@ -6,6 +6,7 @@
  * provider, no clock.
  */
 const { structureDelta, anchorPrefix } = require('../deltaStructuring');
+const { parseDefinition } = require('../../collections/definitionEngine');
 
 const LATEST_REF = 'sr1.0123456789abcdef';
 
@@ -39,7 +40,7 @@ describe('deltaStructuring — add / replace / exclude merge rules', () => {
       baseAtoms: [{ type: 'path', value: 'old' }],
       rootPath: '/alice',
     });
-    expect(path.atoms).toEqual([{ type: 'path', value: 'new', prefix: '/alice/new' }]);
+    expect(path.atoms).toEqual([{ type: 'path', value: '/alice/new', prefix: '/alice/new' }]);
   });
 
   it('replace removes ALL same-type base atoms, then adds the replacement', () => {
@@ -133,13 +134,26 @@ describe('deltaStructuring — path anchoring + validation', () => {
       rootPath: '/alice',
     });
     expect(result.atoms).toEqual([
-      { type: 'path', value: '/downloads', prefix: '/alice/downloads' },
+      { type: 'path', value: '/alice/downloads', prefix: '/alice/downloads' },
     ]);
     const again = structureDelta({
       delta: { add: [{ type: 'path', value: '/alice/downloads' }] },
       rootPath: '/alice',
     });
     expect(again.atoms).toEqual([
+      { type: 'path', value: '/alice/downloads', prefix: '/alice/downloads' },
+    ]);
+  });
+
+  it('keeps the requester anchor when the shared grammar re-parses the atom', () => {
+    const result = structureDelta({
+      delta: { add: [{ type: 'path', value: 'downloads' }] },
+      rootPath: '/alice',
+    });
+    expect(result.atoms).toEqual([
+      { type: 'path', value: '/alice/downloads', prefix: '/alice/downloads' },
+    ]);
+    expect(parseDefinition({ kind: 'predicate', all_of: result.atoms }).allOf).toEqual([
       { type: 'path', value: '/alice/downloads', prefix: '/alice/downloads' },
     ]);
   });

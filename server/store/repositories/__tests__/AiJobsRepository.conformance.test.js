@@ -476,17 +476,41 @@ describe('AiJobsRepository conformance', () => {
       done: expect.any(Number),
       failed: expect.any(Number),
       skipped: expect.any(Number),
+      cancelled: expect.any(Number),
     });
+    expect(counts.cancelled).toBe(0);
     expect(counts.running).toBeGreaterThanOrEqual(1);
     expect(counts.done).toBeGreaterThanOrEqual(1);
     expect(counts.failed).toBeGreaterThanOrEqual(1);
     expect(counts.skipped).toBeGreaterThanOrEqual(1);
     expect(counts.pending).toBeGreaterThanOrEqual(1);
     const total = Number((await dbQuery('SELECT COUNT(*) AS cnt FROM ai_jobs')).rows[0].cnt);
-    expect(counts.pending + counts.running + counts.done + counts.failed + counts.skipped).toBe(
-      total
-    );
+    expect(
+      counts.pending +
+        counts.running +
+        counts.done +
+        counts.failed +
+        counts.skipped +
+        counts.cancelled
+    ).toBe(total);
     expect(running.id).toBe(Number(jobs[0].id));
+  });
+
+  it('cancelled is terminal: counted, never claimed, never listed as failed', async () => {
+    await clearJobs();
+    const node = await uniqueNode();
+    const job = await repo.enqueue(node.nodeId, 'embed', 1, 'hash-cancelled');
+    await dbRun("UPDATE ai_jobs SET status = 'cancelled', finished_at = ? WHERE id = ?", [
+      new Date().toISOString(),
+      Number(job.id),
+    ]);
+
+    const counts = await repo.countByStatus();
+    expect(counts.cancelled).toBe(1);
+    await expect(repo.claimNext()).resolves.toBeNull();
+    await expect(repo.listFailed()).resolves.toEqual([]);
+    await expect(repo.markDone(job.id)).resolves.toEqual({ changes: 0 });
+    expect((await readRow(job.id)).status).toBe('cancelled');
   });
 
   it('listFailed returns recent failed rows newest first and honors the limit', async () => {

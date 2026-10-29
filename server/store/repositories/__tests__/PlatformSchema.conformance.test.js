@@ -45,6 +45,7 @@ const EXPECTED_TABLES = [
   // §5 suggestions + admin reports
   'file_suggestions',
   'admin_reports',
+  'storage_usage_snapshots',
   // §5 AI foundation
   'llm_models',
   'collection_centroids',
@@ -149,6 +150,18 @@ describe('PlatformSchema conformance (§5 tables)', () => {
       'undone_at',
       'expires_at',
     ]) {
+      expect(columns).toContain(column);
+    }
+  });
+
+  it('object_map carries the nullable per-version size column', async () => {
+    const columns = await listColumns('object_map');
+    expect(columns).toContain('size');
+  });
+
+  it('storage_usage_snapshots carries the per-user daily series column set', async () => {
+    const columns = await listColumns('storage_usage_snapshots');
+    for (const column of ['user_id', 'day', 'bytes', 'created_at']) {
       expect(columns).toContain(column);
     }
   });

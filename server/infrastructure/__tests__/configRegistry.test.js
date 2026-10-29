@@ -362,6 +362,33 @@ describe('configRegistry', () => {
     });
   });
 
+  describe('storage-usage snapshots constants (dashboardService §2.2, maintenanceScheduler §3.7)', () => {
+    it('registers STORAGE_USAGE_RETENTION_DAYS as T2 dbOnly, non-secret, default 30', () => {
+      const entry = getEntry('STORAGE_USAGE_RETENTION_DAYS');
+      expect(entry).toBeDefined();
+      expect(entry.tier).toBe(TIER.T2);
+      expect(entry.dbOnly).toBe(true);
+      expect(entry.secret).toBe(false);
+      expect(entry.default).toBe(30);
+    });
+
+    it('registers the snapshot interval as a T2 dbOnly 24h default', () => {
+      expect(getEntry('STORAGE_USAGE_SNAPSHOT_INTERVAL_MS')).toMatchObject({
+        tier: TIER.T2,
+        dbOnly: true,
+        default: 86400000,
+      });
+    });
+
+    it('registers WEA_SKIP_STORAGE_USAGE_SNAPSHOT as the env-allowed test seam', () => {
+      expect(getEntry('WEA_SKIP_STORAGE_USAGE_SNAPSHOT')).toMatchObject({
+        tier: TIER.T2,
+        secret: false,
+      });
+      expect(getEntry('WEA_SKIP_STORAGE_USAGE_SNAPSHOT').dbOnly).toBeUndefined();
+    });
+  });
+
   it('contains every env var read under server/ (inventory check)', () => {
     const keys = CONFIG_ENTRIES.map((entry) => entry.key);
     for (const key of [

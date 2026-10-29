@@ -217,6 +217,9 @@ defaults are kept in parity by test).
 | `AI_SUGGESTION_EXPIRY_INTERVAL_MS`    | T2   | no     | `86400000` | suggestions expiry scheduler interval (`0` = disabled)                                                                           |
 | `AI_SUGGESTION_EXPIRY_BATCH`          | T2   | no     | `1000`     | bounded flip batch size per expiry pass                                                                                          |
 | `WEA_SKIP_SUGGESTION_EXPIRY`          | T2   | no     | —          | expiry scheduler test seam, env-allowed                                                                                          |
+| `STORAGE_USAGE_SNAPSHOT_INTERVAL_MS`  | T2   | no     | `86400000` | storage-usage capture interval (`0` = disabled, hot re-read — `maintenanceScheduler.md` §3.7)                                    |
+| `STORAGE_USAGE_RETENTION_DAYS`        | T2   | no     | `30`       | storage-usage snapshot retention (`0` = no prune)                                                                                |
+| `WEA_SKIP_STORAGE_USAGE_SNAPSHOT`     | T2   | no     | —          | storage-usage scheduler test seam, env-allowed                                                                                   |
 
 ---
 
@@ -241,3 +244,4 @@ defaults are kept in parity by test).
 - [ ] The §3.4 activity-constant keys (`AI_USAGE_W_*`, `AI_ACTIVITY_HALF_LIFE_DAYS`, `AI_USAGE_EVENT_RETENTION_DAYS`, `AI_NIGHTLY_ANCHOR_HOUR_UTC`, `ARCHIVE_RETENTION_DAYS`) are T2 `dbOnly` with the shipped defaults; `WEA_SKIP_ROLLUP_SCHEDULER` is T2 env-allowed (not dbOnly).
 - [ ] `ADMIN_REPORTS_RETENTION_DAYS` / `..._INTERVAL_MS` / `..._BATCH` are registered T2 `dbOnly`, non-secret, defaults `30` / `86400000` / `1000` (admin.md §2.2.6 scheduled retention); `WEA_SKIP_ADMIN_REPORTS_RETENTION` is the env-allowed test seam.
 - [ ] `AI_SUGGESTION_RETENTION_DAYS` / `AI_SUGGESTION_EXPIRY_INTERVAL_MS` / `AI_SUGGESTION_EXPIRY_BATCH` are registered T2 `dbOnly`, non-secret, defaults `30` / `86400000` / `1000` (`dashboardService.md` §2.2, `maintenanceScheduler.md` §3.6); `WEA_SKIP_SUGGESTION_EXPIRY` is the env-allowed test seam.
+- [ ] `STORAGE_USAGE_SNAPSHOT_INTERVAL_MS` / `STORAGE_USAGE_RETENTION_DAYS` are T2 `dbOnly`, non-secret, defaults `86400000` / `30` (`maintenanceScheduler.md` §3.7); `WEA_SKIP_STORAGE_USAGE_SNAPSHOT` is the env-allowed test seam.

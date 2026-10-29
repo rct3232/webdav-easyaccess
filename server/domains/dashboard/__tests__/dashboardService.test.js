@@ -19,6 +19,7 @@ const { createFileNodeService } = require('@server/service/fileNodeService');
 const composition = require('@server/service/composition');
 const dashboardService = require('@server/domains/dashboard/service');
 const fileSuggestionsStore = require('@server/store/fileSuggestionsStore');
+const storageUsageSnapshotsStore = require('@server/store/storageUsageSnapshotsStore');
 const aiEnrichmentsStore = require('@server/store/aiEnrichmentsStore');
 const llmModelsStore = require('@server/store/llmModelsStore');
 const embeddingsStore = require('@server/store/embeddingsStore');
@@ -741,5 +742,39 @@ describe('undo (accept command rows)', () => {
     expect(m1State).toBe('pending');
     expect(m2State).toBe('pending');
     void kept2;
+  });
+});
+
+describe('getStorageUsageSeries', () => {
+  it('returns an empty series below the two-point minimum', async () => {
+    const { user } = await storageUser('su-svc-one');
+    await storageUsageSnapshotsStore.upsertSnapshot({
+      userId: user.id,
+      day: '2032-01-01',
+      bytes: 7,
+    });
+
+    await expect(dashboardService.getStorageUsageSeries(user.id)).resolves.toEqual({ points: [] });
+  });
+
+  it('maps retained rows to day/bytes points in ascending day order', async () => {
+    const { user } = await storageUser('su-svc-two');
+    await storageUsageSnapshotsStore.upsertSnapshot({
+      userId: user.id,
+      day: '2032-02-02',
+      bytes: 20,
+    });
+    await storageUsageSnapshotsStore.upsertSnapshot({
+      userId: user.id,
+      day: '2032-02-01',
+      bytes: 10,
+    });
+
+    await expect(dashboardService.getStorageUsageSeries(user.id)).resolves.toEqual({
+      points: [
+        { day: '2032-02-01', bytes: 10 },
+        { day: '2032-02-02', bytes: 20 },
+      ],
+    });
   });
 });

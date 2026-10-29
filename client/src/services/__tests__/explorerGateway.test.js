@@ -74,6 +74,7 @@ jest.mock('../collectionsRepository', () => {
     'recordSearchClick',
     'getActions',
     'getFileSuggestions',
+    'getStorageUsageSeries',
     'acceptFileSuggestions',
     'dismissFileSuggestion',
   ];
@@ -714,6 +715,21 @@ describe('explorerGateway', () => {
         state: 'dismissed',
       });
       expect(repo.dismissFileSuggestion).toHaveBeenCalledWith(9);
+    });
+
+    it('loadStorageUsageSeries re-exports the repository series read (null on absorbed failure)', async () => {
+      const repo = require('../collectionsRepository');
+      const series = {
+        points: [
+          { day: '2026-10-01', bytes: 10 },
+          { day: '2026-10-02', bytes: 20 },
+        ],
+      };
+      repo.getStorageUsageSeries.mockResolvedValueOnce(series);
+      await expect(explorerGateway.loadStorageUsageSeries()).resolves.toBe(series);
+
+      repo.getStorageUsageSeries.mockResolvedValueOnce(null);
+      await expect(explorerGateway.loadStorageUsageSeries()).resolves.toBeNull();
     });
   });
 

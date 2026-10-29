@@ -43,15 +43,17 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 | Method | Path                   | Auth  | Description                                                                                                                      |
 | ------ | ---------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/`                    | Token | One-shot dashboard read: dup summary + persisted suggestion rows + trash summary; materializes pending rows as part of the read. |
+| GET    | `/storage-usage`       | Token | Per-user daily logical-storage series (fewer than two points ⇒ empty).                                                           |
 | POST   | `/suggestions/accept`  | Token | Accept selected rows → trash as ONE journaled command (owner-only, per-node result, undo pointer).                               |
 | POST   | `/suggestions/dismiss` | Token | Dismiss one persisted suggestion row (`pending → dismissed`).                                                                    |
 
 ### 2.3 Middleware Used
 
 - `authenticateToken`, `requireUser`, `requireNonAdmin` (per-router, in that order; domain layout per recentFiles precedent)
-- **Actor restriction (operator rule):** BOTH routes (GET `/` and POST `/suggestions/accept`)
-  respond **403 `serverErrors.collections.forbidden`** when the requester is an
-  ADMIN — the Storage dashboard is a non-admin-only personal-storage surface.
+- **Actor restriction (operator rule):** every route (GET `/`, GET `/storage-usage`, POST
+  `/suggestions/accept`, POST `/suggestions/dismiss`) responds **403
+  `serverErrors.collections.forbidden`** when the requester is an ADMIN — the Storage
+  dashboard is a non-admin-only personal-storage surface.
 - `setupModeGuardInstance` at mount (see §2.1)
 
 ### 2.4 Request/Response Spec
@@ -141,9 +143,9 @@ Field rules:
   node id — `dashboardService.md` §2.5.1); the keeper is never listed as a row — only group
   members beyond it persist. Near-dup rows additionally carry `reason.keep` (additive on
   new/re-materialized rows; no legacy backfill): `{ name (keeper basename only),
-  relative_score (0..1, group-relative), confidence high|medium|low, basis
-  activity|resolution|size|name|centrality|mixed|none, factors {activity,quality,name,
-  centrality}, unopened_30d, score_version:'v1' }` — raw activity counts/timestamps never
+relative_score (0..1, group-relative), confidence high|medium|low, basis
+activity|resolution|size|name|centrality|mixed|none, factors {activity,quality,name,
+centrality}, unopened_30d, score_version:'v1' }` — raw activity counts/timestamps never
   appear. Rule kinds (`'temp_pattern'`, `'stale_screenshot'`, `'old_installer'`) suggest the
   row's own file and carry `reason.pattern`/`reason.age_days`.
   Rows sort by KIND RANK — exact rows first, near-dup rows after, rule-pattern rows
@@ -166,6 +168,29 @@ Field rules:
   Empty trash ⇒ `{ item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: n }`.
 - No user root ⇒ `duplicates`/`suggestions` zero/empty, `trash` zeros (no error — the
   dashboard renders absent blocks per "zero/absent renders nothing").
+
+- **GET /storage-usage:** No query. Scope is always the requester's OWN snapshot rows
+  (`storage_usage_snapshots.user_id`) — the series is self-storage. 200:
+
+```json
+{
+  "points": [
+    { "day": "2025-10-01", "bytes": 1048576 },
+    { "day": "2025-10-02", "bytes": 2097152 }
+  ]
+}
+```
+
+Field rules:
+
+- `points` ascends by UTC `day` (`YYYY-MM-DD`); `bytes` is the captured logical-storage
+  total (live + trash subtree plus all active/history object versions in S3 mode; current
+  filecache bytes in WebDAV mode).
+- **Two-point minimum:** fewer than two retained snapshots returns `{ "points": [] }` —
+  the route never fabricates an intermediate point or exposes a one-point trend. The
+  client omits the sparkline block on an empty series.
+- The read is snapshot-only: it does not capture, backfill or compute storage on demand;
+  the daily scheduler owns writes and retention (`maintenanceScheduler.md` §3.7).
 
 - **POST /suggestions/accept:** Body `{ nodeIds: [ … ] }` (1–200, else 400
   `serverErrors.dashboard.emptyNodeIds`). Per node: requester must OWN the node
@@ -257,7 +282,9 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
 
 ### 2.6 Integration Test Scenarios
 
-- [ ] Unauthenticated → 401 on all three routes; setup-mode mount returns the guard response
+- [ ] Unauthenticated → 401 on all four routes; setup-mode mount returns the guard response
+- [ ] GET `/storage-usage` returns the requester's own rows ascending in snake_case;
+      another user's rows never appear; one row ⇒ `{ points: [] }`; admin ⇒ 403
 - [ ] GET returns snake_case-only fields; two hashed copies + one unique + two NULL-hash
       identical rows → `group_count 1`, one suggestion row (the higher node_id, `keep_node_id`
       = lower), NULL rows appear in NO count and NO row; every listed row carries `id`,

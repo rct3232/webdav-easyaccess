@@ -297,6 +297,22 @@ const CONFIG_ENTRIES = Object.freeze([
     dbOnly: true,
   },
   { key: 'WEA_SKIP_SUGGESTION_EXPIRY', tier: TIER.T2, secret: false },
+  // ── Storage-usage snapshots (dashboardService §2.2, maintenanceScheduler §3.7) ──
+  {
+    key: 'STORAGE_USAGE_SNAPSHOT_INTERVAL_MS',
+    tier: TIER.T2,
+    secret: false,
+    default: 86400000,
+    dbOnly: true,
+  },
+  {
+    key: 'STORAGE_USAGE_RETENTION_DAYS',
+    tier: TIER.T2,
+    secret: false,
+    default: 30,
+    dbOnly: true,
+  },
+  { key: 'WEA_SKIP_STORAGE_USAGE_SNAPSHOT', tier: TIER.T2, secret: false },
   { key: 'WEA_SKIP_ROLLUP_SCHEDULER', tier: TIER.T2, secret: false },
 ]);
 

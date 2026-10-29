@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS object_map (
   id BIGSERIAL PRIMARY KEY,
   file_node_id BIGINT NOT NULL REFERENCES file_nodes(id) ON DELETE CASCADE,
   s3_key TEXT DEFAULT NULL,
+  size BIGINT DEFAULT NULL,
   storage_backend TEXT NOT NULL DEFAULT 's3' CHECK (storage_backend IN ('s3', 'webdav')),
   version_number INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'history', 'orphaned')),
@@ -356,6 +357,20 @@ CREATE TABLE IF NOT EXISTS admin_reports (
 );
 
 CREATE INDEX IF NOT EXISTS admin_reports_kind_created_idx ON admin_reports (kind, created_at DESC);
+
+-- -----------------------------------------------------------
+-- §5 Storage usage series (P4)
+-- -----------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS storage_usage_snapshots (
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day TEXT NOT NULL,
+  bytes BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, day)
+);
+
+CREATE INDEX IF NOT EXISTS storage_usage_snapshots_day_idx ON storage_usage_snapshots (day);
 
 -- -----------------------------------------------------------
 -- §5 AI foundation (P1–P4). llm_models is declared BEFORE every

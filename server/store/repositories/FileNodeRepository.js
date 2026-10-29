@@ -36,15 +36,22 @@
  * @property {(descendantId) => Promise<Array<{ ancestorId: number, depth: number }>>} getAncestorChain
  * @property {(ancestorId, descendantId) => Promise<boolean>} isAncestor
  * @property {(userId) => Promise<Object|null>} getUserRootNode
- * @property {(fileNodeId, s3Key, status) => Promise<{ changes: number }>} upsertObjectMap
- * @property {(fileNodeId, s3Key, status) => Promise<{ changes: number }>} insertObject
+ * @property {(fileNodeId, s3Key, status, size?: number|null) => Promise<{ changes: number }>} upsertObjectMap
+ * @property {(fileNodeId, s3Key, status, size?: number|null) => Promise<{ changes: number }>} insertObject
  * @property {(fileNodeId) => Promise<Object|null>} getActiveObject
  * @property {(fileNodeId) => Promise<Array<Object>>} getObjectMapByNode
  * @property {(ancestorId) => Promise<Array<Object>>} getObjectMapBySubtree
  * @property {(fileNodeId) => Promise<Array<Object>>} getVersionsByNode
  * @property {(fileNodeId, cap) => Promise<{ changes: number }>} evictVersionsBeyondCap
  * @property {(s3Key) => Promise<Object|null>} getObjectMapByS3Key
- * @property {(s3Key) => Promise<{ changes: number }>} activateObject
+ * @property {(s3Key, size?: number|null) => Promise<{ changes: number }>} activateObject
+ *   `size` is coalesced onto the row: omitting it keeps any already-known size.
+ * @property {(ancestorId: number, opts?: { includeVersions?: boolean }) => Promise<{ bytes: number, itemCount: number, nullSizeCount: number }>} summarizeSubtreeStorageUsage
+ *   Logical-storage aggregate over the subtree (live + trash; no `deleted_at`
+ *   filter). `includeVersions` (S3 mode) sums `object_map.size` over
+ *   active/history versions; false (WebDAV mode) sums `filecache.size` over
+ *   file rows. `nullSizeCount` reports rows without a known size so callers
+ *   can skip a partial snapshot.
  * @property {(s3Key) => Promise<{ changes: number }>} orphanObject
  * @property {(s3Key) => Promise<{ changes: number }>} demoteActiveToHistory
  * @property {(id) => Promise<{ changes: number }>} reactivateObjectMapRow

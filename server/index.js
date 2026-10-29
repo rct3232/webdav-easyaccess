@@ -509,6 +509,7 @@ async function runBoot() {
             startAdminReportsRetentionScheduler,
             runFileSuggestionsExpiry,
             startFileSuggestionsExpiryScheduler,
+            startStorageUsageSnapshotScheduler,
           } = require('./infrastructure/maintenanceScheduler');
           const { getUsageService } = require('./infrastructure/usageService');
           const composition = getComposition();
@@ -540,6 +541,7 @@ async function runBoot() {
               console.error('File-suggestions expiry on startup failed:', err.message)
             );
           startFileSuggestionsExpiryScheduler();
+          startStorageUsageSnapshotScheduler();
           if (computeSetupStatus(process.env).setup_complete) {
             const { startAiWorker } = require('./domains/ai/jobService');
             startAiWorker()

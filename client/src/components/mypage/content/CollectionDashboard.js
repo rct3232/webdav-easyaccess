@@ -4,10 +4,10 @@
  * Blocks (render order = contract): hygiene cards (pull-overview deep-links,
  * NEVER an action center), system-changes journal feed (30d rows, undo +
  * cascade), my-collections status (counts + grants with inline revoke + the
- * merge/archive feed subset), SuggestionsChecklist, capacity sparkline (the
- * series seam is absent ⇒ the block is omitted entirely). Zero/absent data
- * hides blocks (absent-not-disabled); every read rides the failure-absorbing
- * gateway seams.
+ * merge/archive feed subset), SuggestionsChecklist, storage-usage sparkline
+ * (fewer than two persisted points ⇒ the block is omitted entirely).
+ * Zero/absent data hides blocks (absent-not-disabled); every read rides the
+ * failure-absorbing gateway seams.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -93,7 +93,7 @@ const CollectionDashboard = ({ user, onNavigate, onUndo, onMessage, gateway }) =
   const [actions, setActions] = useState([]);
   const [collections, setCollections] = useState([]);
   const [grants, setGrants] = useState({});
-  const [capacitySeries, setCapacitySeries] = useState(null);
+  const [storageUsageSeries, setStorageUsageSeries] = useState(null);
 
   useEffect(() => {
     setTitle(t('mypage.storage'));
@@ -121,10 +121,10 @@ const CollectionDashboard = ({ user, onNavigate, onUndo, onMessage, gateway }) =
     );
     setGrants(Object.fromEntries(grantPairs));
 
-    if (typeof resolvedGateway.loadCapacitySeries === 'function') {
-      setCapacitySeries(await resolvedGateway.loadCapacitySeries());
+    if (typeof resolvedGateway.loadStorageUsageSeries === 'function') {
+      setStorageUsageSeries(await resolvedGateway.loadStorageUsageSeries());
     } else {
-      setCapacitySeries(null);
+      setStorageUsageSeries(null);
     }
   }, [resolvedGateway]);
 
@@ -438,9 +438,9 @@ const CollectionDashboard = ({ user, onNavigate, onUndo, onMessage, gateway }) =
         </Box>
       ) : null}
 
-      {capacitySeries &&
-      Array.isArray(capacitySeries.points) &&
-      capacitySeries.points.length > 0 ? (
+      {storageUsageSeries &&
+      Array.isArray(storageUsageSeries.points) &&
+      storageUsageSeries.points.length >= 2 ? (
         <Box component="section">
           <Typography variant="h6" sx={{ mb: 1 }}>
             {t('mypage.capacityTitle')}
@@ -456,12 +456,15 @@ const CollectionDashboard = ({ user, onNavigate, onUndo, onMessage, gateway }) =
               fill="none"
               stroke="currentColor"
               points={(() => {
-                const max = Math.max(...capacitySeries.points.map((p) => Number(p.bytes) || 0), 1);
-                return capacitySeries.points
+                const max = Math.max(
+                  ...storageUsageSeries.points.map((p) => Number(p.bytes) || 0),
+                  1
+                );
+                return storageUsageSeries.points
                   .map((point, index) => {
                     const x =
-                      capacitySeries.points.length > 1
-                        ? (index / (capacitySeries.points.length - 1)) * 100
+                      storageUsageSeries.points.length > 1
+                        ? (index / (storageUsageSeries.points.length - 1)) * 100
                         : 0;
                     return `${x},${24 - ((Number(point.bytes) || 0) / max) * 24}`;
                   })

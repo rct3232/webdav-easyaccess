@@ -3,7 +3,7 @@
  * Blocks per docs/spec/client/components/mypage/content/CollectionDashboard.md §2.3
  * + §2.3.1 as-built seams: hygiene cards (deep-link, never action center),
  * system-changes journal feed (undo + cascade), my-collections status,
- * SuggestionsChecklist, capacity sparkline (absent ⇒ omitted).
+ * SuggestionsChecklist, storage-usage sparkline (fewer than two points ⇒ omitted).
  * IO flows exclusively through the injected gateway seam (failure-absorbing
  * repository shapes — the component sees fallbacks, never rejections).
  */
@@ -54,6 +54,7 @@ function makeGateway(overrides = {}) {
     loadCollections: jest.fn().mockResolvedValue({ collections: [] }),
     getGrants: jest.fn().mockResolvedValue({ grants: [] }),
     revokeGrant: jest.fn().mockResolvedValue({ revoked: true }),
+    loadStorageUsageSeries: jest.fn().mockResolvedValue(null),
     acceptFileSuggestions: jest.fn().mockResolvedValue({
       trashed: [],
       rejected_not_owned: [],
@@ -83,7 +84,7 @@ describe('CollectionDashboard — block assembly', () => {
     // all-zero feeds: no hygiene cards, no journal section
     expect(screen.queryByText(/exact duplicates/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/system changes/i)).not.toBeInTheDocument();
-    // capacity series seam absent ⇒ sparkline block omitted entirely
+    // no snapshot data ⇒ sparkline block omitted entirely
     expect(screen.queryByText(/storage over time/i)).not.toBeInTheDocument();
   });
 
@@ -99,6 +100,60 @@ describe('CollectionDashboard — block assembly', () => {
     await waitFor(() => expect(screen.getByTestId('collection-dashboard')).toBeInTheDocument());
     expect(screen.queryByText(/exact duplicates/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/purged in/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('CollectionDashboard — storage-usage sparkline', () => {
+  const series = (points) => ({ points });
+
+  it('renders the sparkline when the seam returns at least two points', async () => {
+    const gateway = makeGateway({
+      loadStorageUsageSeries: jest.fn().mockResolvedValue(
+        series([
+          { day: '2026-10-01', bytes: 100 },
+          { day: '2026-10-02', bytes: 200 },
+        ])
+      ),
+    });
+
+    renderDashboard({ gateway });
+
+    await waitFor(() => expect(screen.getByText(/storage over time/i)).toBeInTheDocument());
+    expect(screen.getByTestId('capacity-sparkline')).toBeInTheDocument();
+    expect(gateway.loadStorageUsageSeries).toHaveBeenCalled();
+  });
+
+  it('omits the block for a single point (no fabricated trend)', async () => {
+    const gateway = makeGateway({
+      loadStorageUsageSeries: jest
+        .fn()
+        .mockResolvedValue(series([{ day: '2026-10-01', bytes: 100 }])),
+    });
+
+    renderDashboard({ gateway });
+
+    await waitFor(() => expect(gateway.loadStorageUsageSeries).toHaveBeenCalled());
+    expect(screen.queryByTestId('capacity-sparkline')).not.toBeInTheDocument();
+    expect(screen.queryByText(/storage over time/i)).not.toBeInTheDocument();
+  });
+
+  it('omits the block when the absorbed read falls back to null', async () => {
+    const gateway = makeGateway({ loadStorageUsageSeries: jest.fn().mockResolvedValue(null) });
+
+    renderDashboard({ gateway });
+
+    await waitFor(() => expect(gateway.loadStorageUsageSeries).toHaveBeenCalled());
+    expect(screen.queryByTestId('capacity-sparkline')).not.toBeInTheDocument();
+  });
+
+  it('omits the block when the gateway does not expose the seam', async () => {
+    const gateway = makeGateway();
+    delete gateway.loadStorageUsageSeries;
+
+    renderDashboard({ gateway });
+
+    await waitFor(() => expect(gateway.getFileSuggestions).toHaveBeenCalled());
+    expect(screen.queryByTestId('capacity-sparkline')).not.toBeInTheDocument();
   });
 });
 

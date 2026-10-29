@@ -81,13 +81,13 @@ describe('DDL Smoke Test', () => {
       }
     });
 
-    it('creates exactly 36 tables (core + full §5 platform schema)', async () => {
+    it('creates exactly 37 tables (core + full §5 platform schema)', async () => {
       const rows = await all(
         db,
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
       );
 
-      expect(rows.length).toBe(36);
+      expect(rows.length).toBe(37);
 
       const expectedTables = [
         // Core (pre-platform)
@@ -121,6 +121,7 @@ describe('DDL Smoke Test', () => {
         // §5 suggestions + admin reports
         'file_suggestions',
         'admin_reports',
+        'storage_usage_snapshots',
         // §5 AI foundation
         'llm_models',
         'collection_centroids',
@@ -213,6 +214,29 @@ describe('DDL Smoke Test', () => {
 
       const sizeCol = info.find((c) => c.name === 'size');
       expect(sizeCol.type).toBe('INTEGER');
+    });
+
+    it('maps BIGINT to nullable INTEGER for object_map.size', async () => {
+      const info = await all(db, 'PRAGMA table_info(object_map)');
+
+      const sizeCol = info.find((c) => c.name === 'size');
+      expect(sizeCol.type).toBe('INTEGER');
+      expect(sizeCol.notnull).toBe(0);
+    });
+
+    it('maps storage_usage_snapshots bytes to INTEGER and keeps the (user_id, day) PK', async () => {
+      const info = await all(db, 'PRAGMA table_info(storage_usage_snapshots)');
+      const bytes = info.find((c) => c.name === 'bytes');
+      expect(bytes.type).toBe('INTEGER');
+      expect(bytes.notnull).toBe(1);
+      expect(
+        info
+          .filter((c) => c.pk > 0)
+          .map((c) => c.name)
+          .sort()
+      ).toEqual(['day', 'user_id']);
+      const indexes = await all(db, 'PRAGMA index_list(storage_usage_snapshots)');
+      expect(indexes.some((index) => index.name === 'storage_usage_snapshots_day_idx')).toBe(true);
     });
 
     it('maps TIMESTAMPTZ to TEXT for users.created_at', async () => {

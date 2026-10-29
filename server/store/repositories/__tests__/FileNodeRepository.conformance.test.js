@@ -1040,6 +1040,100 @@ describe('FileNodeRepository conformance', () => {
     });
   });
 
+  describe('summarizeSubtreeStorageUsage (storage usage series)', () => {
+    async function makeTree(prefix) {
+      const root = await repo.createNode(null, uniqueName(`${prefix}-root`), 'directory');
+      const folder = await repo.createNode(root.id, uniqueName(`${prefix}-folder`), 'directory');
+      const fileA = await repo.createNode(folder.id, uniqueName(`${prefix}-a`), 'file');
+      const fileB = await repo.createNode(root.id, uniqueName(`${prefix}-b`), 'file');
+      const fileC = await repo.createNode(root.id, uniqueName(`${prefix}-c`), 'file');
+      const outside = await repo.createNode(null, uniqueName(`${prefix}-out`), 'file');
+      await repo.insertAncestorRows([
+        { ancestorId: root.id, descendantId: root.id, depth: 0 },
+        { ancestorId: root.id, descendantId: folder.id, depth: 1 },
+        { ancestorId: folder.id, descendantId: folder.id, depth: 0 },
+        { ancestorId: root.id, descendantId: fileA.id, depth: 2 },
+        { ancestorId: folder.id, descendantId: fileA.id, depth: 1 },
+        { ancestorId: fileA.id, descendantId: fileA.id, depth: 0 },
+        { ancestorId: root.id, descendantId: fileB.id, depth: 1 },
+        { ancestorId: fileB.id, descendantId: fileB.id, depth: 0 },
+        { ancestorId: root.id, descendantId: fileC.id, depth: 1 },
+        { ancestorId: fileC.id, descendantId: fileC.id, depth: 0 },
+        { ancestorId: outside.id, descendantId: outside.id, depth: 0 },
+      ]);
+      return { root, folder, fileA, fileB, fileC, outside };
+    }
+
+    it('S3 mode sums active+history object sizes across live and trashed rows (no deleted_at filter)', async () => {
+      const { root, fileA, fileB, fileC, outside } = await makeTree('fn-sus-s3-tree');
+      const insertObject = (nodeId, key, version, status, size) =>
+        dbRun(
+          `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status, size)
+           VALUES (?, ?, 's3', ?, ?, ?)`,
+          [Number(nodeId), key, version, status, size]
+        );
+
+      await insertObject(fileA.id, uniqueName('fn-sus-s3-a1'), 1, 'active', 100);
+      await insertObject(fileA.id, uniqueName('fn-sus-s3-a2'), 2, 'history', 50);
+      await insertObject(fileB.id, uniqueName('fn-sus-s3-b1'), 1, 'active', 200);
+      await insertObject(fileB.id, uniqueName('fn-sus-s3-b2'), 2, 'pending', 999);
+      await insertObject(fileB.id, uniqueName('fn-sus-s3-b3'), 3, 'orphaned', 888);
+      await insertObject(fileC.id, uniqueName('fn-sus-s3-c1'), 1, 'active', 300);
+      await insertObject(outside.id, uniqueName('fn-sus-s3-out'), 1, 'active', 777);
+      await repo.markSubtreeDeleted([fileC.id]);
+
+      await expect(repo.summarizeSubtreeStorageUsage(root.id)).resolves.toEqual({
+        bytes: 650,
+        itemCount: 4,
+        nullSizeCount: 0,
+      });
+
+      // A NULL size on a counted version marks the series incomplete.
+      await insertObject(fileB.id, uniqueName('fn-sus-s3-b4'), 4, 'active', null);
+      await expect(
+        repo.summarizeSubtreeStorageUsage(root.id, { includeVersions: true })
+      ).resolves.toEqual({
+        bytes: 650,
+        itemCount: 5,
+        nullSizeCount: 1,
+      });
+    });
+
+    it('WebDAV mode sums current filecache sizes over file rows (live + trash), reporting missing rows', async () => {
+      const { root, folder, fileA, fileB, fileC, outside } = await makeTree('fn-sus-wd-tree');
+      await repo.upsertCache(fileA.id, 10, 'text/plain', null);
+      await repo.upsertCache(fileB.id, 20, 'text/plain', null);
+      await repo.upsertCache(folder.id, 500, 'text/plain', null); // directories never count
+      await repo.upsertCache(outside.id, 900, 'text/plain', null);
+      await repo.markSubtreeDeleted([fileB.id]);
+
+      await expect(
+        repo.summarizeSubtreeStorageUsage(root.id, { includeVersions: false })
+      ).resolves.toEqual({
+        bytes: 30,
+        itemCount: 3,
+        nullSizeCount: 1, // fileC has no filecache row
+      });
+
+      await repo.upsertCache(fileC.id, 40, 'text/plain', null);
+      await expect(
+        repo.summarizeSubtreeStorageUsage(root.id, { includeVersions: false })
+      ).resolves.toEqual({
+        bytes: 70,
+        itemCount: 3,
+        nullSizeCount: 0,
+      });
+    });
+
+    it('reports zeros for an unknown subtree root', async () => {
+      await expect(repo.summarizeSubtreeStorageUsage(999999999)).resolves.toEqual({
+        bytes: 0,
+        itemCount: 0,
+        nullSizeCount: 0,
+      });
+    });
+  });
+
   describe('search surface (T0.11 — searchNodesByName / sampleVisibleNodeIds)', () => {
     /**
      * ACL scoping mirrors the fileService listing parity rule

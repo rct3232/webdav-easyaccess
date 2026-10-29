@@ -501,9 +501,16 @@ function createFileService(options = {}) {
         effectiveS3Key = await blobStorageService.duplicateBlob(activeS3Key);
       }
 
+      // Read the source cache once for both size-bearing writes (object_map
+      // row + mirrored filecache): the COW blob is byte-identical.
+      const sourceCache = _fileNodesStore ? await _fileNodesStore.getCache(nodeId) : null;
       const newFile = await fileNodeService.createFile(destinationParentNodeId, targetName);
       const copiedNodeId = newFile.id;
-      await blobStorageService.linkObject(copiedNodeId, effectiveS3Key);
+      await blobStorageService.linkObject(
+        copiedNodeId,
+        effectiveS3Key,
+        sourceCache ? Number(sourceCache.size) : null
+      );
       // A copy is immediately usable and migratable: mirror the S3 upload
       // lifecycle end-state ('active') instead of leaving the new node
       // pending_upload, which would drop it from s3→webdav migration snapshots
@@ -516,17 +523,14 @@ function createFileService(options = {}) {
       // The SOURCE content_hash travels with it — the copy is the same bytes
       // (aiJobService.md §2.2: reuse, never recompute).
       let copiedContentHash = null;
-      if (_fileNodesStore) {
-        const sourceCache = await _fileNodesStore.getCache(nodeId);
-        if (sourceCache) {
-          copiedContentHash = sourceCache.content_hash ?? null;
-          await _fileNodesStore.upsertCache(
-            copiedNodeId,
-            Number(sourceCache.size),
-            sourceCache.mime_type,
-            copiedContentHash
-          );
-        }
+      if (sourceCache) {
+        copiedContentHash = sourceCache.content_hash ?? null;
+        await _fileNodesStore.upsertCache(
+          copiedNodeId,
+          Number(sourceCache.size),
+          sourceCache.mime_type,
+          copiedContentHash
+        );
       }
 
       // Post-commit enrichment hook (Seam 3: Copy) — the hook applies the

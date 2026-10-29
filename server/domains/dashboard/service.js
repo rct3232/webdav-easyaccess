@@ -14,6 +14,7 @@
  */
 const { createFileNodesStore } = require('../../store/fileNodesStore');
 const fileSuggestionsStore = require('../../store/fileSuggestionsStore');
+const storageUsageSnapshotsStore = require('../../store/storageUsageSnapshotsStore');
 const actionJournalStore = require('../../store/actionJournalStore');
 const aiEnrichmentsStore = require('../../store/aiEnrichmentsStore');
 const usageStore = require('../../store/usageStore');
@@ -431,6 +432,20 @@ async function getDashboardSummary(userId) {
 }
 
 /**
+ * Per-user daily storage-usage series (`GET /api/dashboard/storage-usage`).
+ * Rows ascend by UTC day; fewer than two points returns an empty series —
+ * a single snapshot is not a trend and the client omits the block
+ * (routes/dashboard.md §2.4).
+ * @param {number|string} userId
+ * @returns {Promise<{ points: Array<{ day: string, bytes: number }> }>}
+ */
+async function getStorageUsageSeries(userId) {
+  const rows = await storageUsageSnapshotsStore.listForUser(Number(userId));
+  if (!Array.isArray(rows) || rows.length < 2) return { points: [] };
+  return { points: rows.map((row) => ({ day: row.day, bytes: row.bytes })) };
+}
+
+/**
  * Accept checked suggestion rows → trash, journaled as ONE `file`-domain
  * command row (dashboardService.md §2.2/§2.6; routes/dashboard.md §2.4).
  * Rows flip `pending → accepted` inside the command TX; the response carries
@@ -556,6 +571,7 @@ module.exports = {
   resolveTrashRetentionDays,
   resolveSuggestionRetentionDays,
   getDashboardSummary,
+  getStorageUsageSeries,
   materializeSuggestions,
   acceptSuggestions,
   dismissSuggestion,

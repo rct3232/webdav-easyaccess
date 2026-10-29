@@ -158,6 +158,27 @@ next to the existing ones, after migrationGate/init like the GC scheduler.
 - Boot calls `runFileSuggestionsExpiry()` once (fire-and-forget, same posture as §3.4) and
   starts the periodic scheduler; both gated by the same skip seam.
 
+### 3.7 Storage-usage snapshots (daily per-user series)
+
+- `runStorageUsageSnapshot({ userStore?, fileNodesStore?, snapshotsStore?, now?, retentionDays?, lockManager?, log?, storageMode? })`
+  is ONE capture + retention pass. It holds the `storage-usage-snapshot` lock
+  (`lockManager.acquireLock`, TTL 30 min, `waitMs: 0`); a held lock ⇒
+  `{ captured: 0, skipped: 'locked' }`. For every NON-ADMIN user with a root node it calls
+  `fileNodesStore.summarizeSubtreeStorageUsage(root.id, { includeVersions })` and upserts
+  `{ userId, day: <UTC YYYY-MM-DD>, bytes }` into `storage_usage_snapshots` (same-day
+  overwrite keeps `created_at`). `includeVersions` is true in S3 mode (all active/history
+  object versions) and false in WebDAV mode (current filecache rows). A non-zero
+  `nullSizeCount` skips THAT user with a warning — a partial series is never persisted.
+  After capture it prunes rows with `day < today − STORAGE_USAGE_RETENTION_DAYS` (UTC;
+  `0` = no prune). Returns `{ captured, skippedUsers, pruned, day }`. DB failures reject to
+  the caller (the scheduler logs; idempotent upserts make the retry safe).
+- `startStorageUsageSnapshotScheduler({ ...same seams })` returns `null` under
+  `WEA_SKIP_STORAGE_USAGE_SNAPSHOT` or when `STORAGE_USAGE_SNAPSHOT_INTERVAL_MS`
+  (T2/dbOnly, default `86400000`, `0` = disabled) is non-positive; otherwise it re-arms a
+  `setTimeout` at the resolved interval (hot read per arm) and logs failures without
+  throwing. There is **no boot-time capture** — the first point lands at the first tick;
+  `server/index.js` wires only the scheduler start call.
+
 ## 4. Verification Scenarios
 
 - [ ] Existing: GC interval 0/unset ⇒ no timer; `WEA_SKIP_GC_SCHEDULER` ⇒ no timer;
@@ -172,6 +193,11 @@ next to the existing ones, after migrationGate/init like the GC scheduler.
       `AI_SUGGESTION_EXPIRY_BATCH` chunks under the `file-suggestions-expiry` lock
       (`NULL` `expires_at` exempt), returns `locked` skips, and the scheduler re-arms at
       `AI_SUGGESTION_EXPIRY_INTERVAL_MS` (0 = disabled, `WEA_SKIP_SUGGESTION_EXPIRY` seam)
+- [ ] Storage-usage snapshot: one row per non-admin user with a root under the
+      `storage-usage-snapshot` lock; NULL sizes skip that user with a warning; WebDAV mode
+      aggregates current filecache bytes; the scheduler re-arms at
+      `STORAGE_USAGE_SNAPSHOT_INTERVAL_MS` (`0` = disabled,
+      `WEA_SKIP_STORAGE_USAGE_SNAPSHOT` seam) and never captures at boot
 - [ ] Rollup order: events rolled BEFORE the 90d roll-off deletes; a forced
       rollup failure aborts the roll-off (journal-expire/tombstone-purge legs skipped too,
       retried next anchor)

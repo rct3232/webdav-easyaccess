@@ -40,6 +40,7 @@ import {
   dismissFileSuggestion,
   getActions,
   getFileSuggestions,
+  getStorageUsageSeries,
   revokeGrant,
   revokeOwnGrant,
   runSearch,
@@ -280,6 +281,10 @@ export { undoAction };
 // repository absorbed-read/mutation shapes pass through verbatim.
 export { getActions, getFileSuggestions, acceptFileSuggestions, dismissFileSuggestion };
 
+// Storage-usage series read (`GET /api/dashboard/storage-usage`; T4.4):
+// absorbed failure ⇒ null so the dashboard omits the sparkline block.
+export const loadStorageUsageSeries = () => getStorageUsageSeries();
+
 // -- File likes (T0.5; §2.6 file-likes group) — the fileLikesRepository       //
 // absorbed-read fallback ({ liked: [] }), payload ∥ null mutation and         //
 // notify-after-real-success fan-out pass through unchanged.                   //
@@ -392,6 +397,7 @@ const explorerGateway = {
   // Actions feed + Storage dashboard (T0.10 — §2.6 dashboard group)
   getActions,
   getFileSuggestions,
+  loadStorageUsageSeries,
   acceptFileSuggestions,
   dismissFileSuggestion,
   // File likes (§2.6 file-likes group)

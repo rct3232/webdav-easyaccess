@@ -354,7 +354,7 @@ module.exports = function createSqliteFileNodeRepository(executor) {
       }
     },
 
-    async upsertObjectMap(fileNodeId, s3Key, status) {
+    async upsertObjectMap(fileNodeId, s3Key, status, size = null) {
       try {
         // DEF-11: the previous active row becomes managed history (not orphaned).
         await executor.run(
@@ -367,9 +367,15 @@ module.exports = function createSqliteFileNodeRepository(executor) {
         );
         const versionNumber = Number(verRes.rows[0].next_ver);
         const res = await executor.run(
-          `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
-           VALUES (?, ?, 's3', ?, ?)`,
-          [Number(fileNodeId), String(s3Key), versionNumber, String(status)]
+          `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status, size)
+           VALUES (?, ?, 's3', ?, ?, ?)`,
+          [
+            Number(fileNodeId),
+            String(s3Key),
+            versionNumber,
+            String(status),
+            size == null ? null : Number(size),
+          ]
         );
         return { changes: res.changes };
       } catch (error) {
@@ -420,12 +426,12 @@ module.exports = function createSqliteFileNodeRepository(executor) {
       }
     },
 
-    async insertObject(fileNodeId, s3Key, status) {
+    async insertObject(fileNodeId, s3Key, status, size = null) {
       try {
         const res = await executor.run(
-          `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
-           VALUES (?, ?, 's3', 1, ?)`,
-          [Number(fileNodeId), String(s3Key), String(status)]
+          `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status, size)
+           VALUES (?, ?, 's3', 1, ?, ?)`,
+          [Number(fileNodeId), String(s3Key), String(status), size == null ? null : Number(size)]
         );
         return { changes: res.changes };
       } catch (error) {
@@ -485,11 +491,12 @@ module.exports = function createSqliteFileNodeRepository(executor) {
       }
     },
 
-    async activateObject(s3Key) {
+    async activateObject(s3Key, size = null) {
       try {
         const res = await executor.run(
-          `UPDATE object_map SET status = 'active' WHERE s3_key = ? AND status = 'pending'`,
-          [String(s3Key)]
+          `UPDATE object_map SET status = 'active', size = COALESCE(?, size)
+            WHERE s3_key = ? AND status = 'pending'`,
+          [size == null ? null : Number(size), String(s3Key)]
         );
         return { changes: res.changes };
       } catch (error) {
@@ -786,6 +793,44 @@ module.exports = function createSqliteFileNodeRepository(executor) {
           itemCount: Number(row.item_count ?? 0),
           totalBytes: Number(row.total_bytes ?? 0),
           oldestDeletedAt: toIsoString(row.oldest_deleted_at ?? null),
+        };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    // Storage-usage aggregate (dashboardService §2.2): live + trash bytes of a
+    // subtree. S3 mode counts every active/history object version; WebDAV mode
+    // counts the current filecache row of each file. No `deleted_at` filter —
+    // trash is part of the user's logical storage. NULL sizes are reported so
+    // the caller can skip a partial series.
+    async summarizeSubtreeStorageUsage(ancestorId, { includeVersions = true } = {}) {
+      try {
+        const { rows } = includeVersions
+          ? await executor.query(
+              `SELECT COALESCE(SUM(om.size), 0) AS total_bytes,
+                      COUNT(*) AS item_count,
+                      COALESCE(SUM(CASE WHEN om.size IS NULL THEN 1 ELSE 0 END), 0) AS null_size_count
+                 FROM object_map om
+                 JOIN node_ancestors a ON a.descendant_id = om.file_node_id
+                WHERE a.ancestor_id = ? AND om.status IN ('active', 'history')`,
+              [Number(ancestorId)]
+            )
+          : await executor.query(
+              `SELECT COALESCE(SUM(fc.size), 0) AS total_bytes,
+                      COUNT(n.id) AS item_count,
+                      COALESCE(SUM(CASE WHEN fc.size IS NULL THEN 1 ELSE 0 END), 0) AS null_size_count
+                 FROM file_nodes n
+                 JOIN node_ancestors a ON a.descendant_id = n.id
+                 LEFT JOIN filecache fc ON fc.file_node_id = n.id
+                WHERE a.ancestor_id = ? AND n.type = 'file'`,
+              [Number(ancestorId)]
+            );
+        const row = rows[0] || {};
+        return {
+          bytes: Number(row.total_bytes ?? 0),
+          itemCount: Number(row.item_count ?? 0),
+          nullSizeCount: Number(row.null_size_count ?? 0),
         };
       } catch (error) {
         throw mapDatabaseError(error);

@@ -67,6 +67,7 @@ function createFileNodesStore() {
     getCache: (...args) => repo.getCache(...args),
     listSubtreeCacheRows: (...args) => repo.listSubtreeCacheRows(...args),
     summarizeTrashedSubtree: (...args) => repo.summarizeTrashedSubtree(...args),
+    summarizeSubtreeStorageUsage: (...args) => repo.summarizeSubtreeStorageUsage(...args),
     countCacheRowsWithNullContentHash: (...args) => repo.countCacheRowsWithNullContentHash(...args),
     listCacheRowsWithNullContentHash: (...args) => repo.listCacheRowsWithNullContentHash(...args),
     setCacheContentHash: (...args) => repo.setCacheContentHash(...args),

@@ -138,7 +138,7 @@ runtime guard.
 ### 2.5 PostgreSQL v2 Schema Contract
 
 When backend is `postgresql`, storage connects to the normalized schema used by all store modules:
-`users`, `settings`, `file_nodes`, `object_map`, `filecache`, `node_ancestors`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`.
+`users`, `settings`, `file_nodes`, `object_map`, `filecache`, `node_ancestors`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`, plus the §5 platform tables (collections/usage/journal/suggestions/admin-reports/storage-usage/AI foundation).
 
 Canonical source for table definitions, constraints, and indexes is the ordered DDL chain:
 

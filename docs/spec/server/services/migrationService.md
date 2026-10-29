@@ -121,7 +121,7 @@ metadata), while the physical I/O path is trash-aware.
    and other failures are not retried.
 4. `key = uuid`.
 5. `destBlobStore.uploadBlob(key, buf)` — flat UUID key, no directory structure.
-6. `upsertObjectMap(nodeId, key, 'active')` (`storage_backend='s3'`, `s3_key=UUID`).
+6. `upsertObjectMap(nodeId, key, 'active', buf.length)` (`storage_backend='s3'`, `s3_key=UUID`, per-version size).
 7. Upsert filecache `{ size, mime, content_hash: sha256(buf) }`.
 8. **`updateSyncStatus(nodeId, 'active')`** — a webdav-native node was left `pending_upload` at create
    time; after a successful copy it is set `active` so post-cutover (S3-mode) state matches the S3
@@ -165,7 +165,7 @@ metadata), while the physical I/O path is trash-aware.
 - [ ] Round-trip WebDAV→S3→WebDAV: all content hashes equal, tree preserved
 - [ ] S3 destination is flat (UUID keys only, no directories); WebDAV destination preserves structure and mkdirs ancestors
 - [ ] dry-run writes nothing (destination store count `0`, DB unchanged, no `object_map` flips)
-- [ ] apply writes the expected `object_map` state per direction: webdav→s3 upserts `(s3, key, active)` and sets `sync_status='active'`; s3→webdav flips `storage_backend='webdav'` inline while preserving `s3_key`
+- [ ] apply writes the expected `object_map` state per direction: webdav→s3 upserts `(s3, key, active, bytes)` and sets `sync_status='active'`; s3→webdav flips `storage_backend='webdav'` inline while preserving `s3_key`
 - [ ] webdav-source snapshot: a native webdav file (no `object_map` row, `sync_status='pending_upload'`) is enumerated and copied; the synthesized activeObject is `{ s3_key: null, storage_backend: 'webdav' }`
 - [ ] webdav-source snapshot: a node with a preserved active `s3_key` (prior migration) is skipped on rerun (resume marker), while native files are still copied
 - [ ] webdav-source snapshot: file nodes with `sync_status='orphaned_node'` are excluded
@@ -176,7 +176,7 @@ metadata), while the physical I/O path is trash-aware.
 - [ ] idempotent: full rerun → `0` copied
 - [ ] error isolation: a failing node doesn't stop the run; errors reported
 - [ ] a source download interrupted by a recognized transport failure is retried once; a
-  missing blob or non-transport source error is not retried
+      missing blob or non-transport source error is not retried
 - [ ] partial-blob safety: an unfinished destination blob (size mismatch) is not treated as complete
 - [ ] `onProgress` called after each node with the documented shape
 - [ ] `mode='apply'` blocks writes when the internal dry-run pass fails

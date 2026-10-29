@@ -1,4 +1,4 @@
-# PLAN_EXECUTION.md — AI-Driven Storage: Execution Ledger (§9–§32)
+# PLAN_EXECUTION.md — AI-Driven Storage: Execution Ledger (§9–§33)
 
 > Historical execution ledger split from [PLAN.md](PLAN.md) on 2026-10-29.
 > Current status, active tasks, and binding conventions live in [PLAN.md](PLAN.md).
@@ -2617,3 +2617,169 @@ P4 phase open.
 3386 and 3381 pins conflict with the 3382 total recorded here. Check the original server run
 output before choosing a canonical total; retain the reported gate result but do not repin a
 different number without that evidence.
+
+## 33. P4 execution plan — admin, scale, and pre-merge closure (2026-10-29)
+
+> Execution-ledger overlay for §7 P4 (T4.1–T4.4) and the pre-merge carry-forward items of
+> §32.3. Task rows and definitions stay unchanged in PLAN.md §7; this section carries the
+> binding owner rulings, the wave plan, and the verification gates. Docs-first (AGENTS §2.1)
+> applies per task; every task branch merges into `ai-feature` only; `dev` stays untouched
+> until the §33 exit gate. §32.3 remains the accountable-role record this plan supersedes;
+> its rows are not rewritten — the disposition table in §33.5 is the current state.
+
+### 33.1 Binding decisions (owner rulings, 2026-10-29)
+
+- **D1 — T4.2 is recorded `[done]`: absorbed.** §28.8 D2–D4 delivered the §4.21 contract:
+  media capability probes with positive controls (D2), the `media_direct` ladder + V2
+  caption/transcript fallback + V0 `metadata_only` (D3), and the shared fallback-corpus rule
+  + coverage classification + deterministic re-embed scope planning (D4). The residue is
+  re-pointed, not residual scope: the backfill launcher + rate limit belong to **T4.1**;
+  media E2E + the degradation matrix belong to **T4.3**; Ollama/other-dialect presets stay
+  recorded as not-shipped (OpenAI-compatible llama.cpp only); the seed θ `0.62` is covered by
+  the release measurement under the hysteresis-calibration item. The PLAN.md T4.2 row flips
+  to absorbed in the same commit that records §33.
+- **D2 — `JOURNAL_DOMAIN.TAGS` is removed.** One unit edits all four parity points together:
+  `shared/constants.js`, the `001` DDL CHECK, `docs/shared-contracts.md`, and
+  `server/utils/__tests__/sharedPlatformEnums.test.js`. RED-first: flip the parity test to
+  expect absence, then remove. The `001` edit uses the standing checksum one-liner recovery.
+- **D3 — the §4.22 delta-semantics SQL leg is implemented in P4** (Wave 2). The grammar
+  contract stays frozen (`add|replace|exclude|$ref`, `nl1` envelope); no negation handling is
+  invented parser-side (§30.6 D — any negation needs a grammar ruling, tracked separately if
+  encountered).
+- **D4 — the server test-count pin (3382 vs 3386/3381) resolves at the P4 exit gate run**,
+  from fresh canonical output — no archaeology and no repin without run evidence.
+
+Design points deliberately left to each task's docs-first step (resolved there, not here):
+the settings-journal push-vs-pull semantics (no `settings`-domain writer exists today), the
+capacity-snapshot row shape, the fake-LLM harness injection mechanics, and the new scratch
+E2E port entry.
+
+### 33.2 Wave plan
+
+| Wave | Unit                                   | Branch                              | Scope                                                                                                                                                      | Deps  | Effort | Status    |
+| ---- | -------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------ | --------- |
+| 0    | CF skip-budget comment                 | `chore/skip-budget-comment`         | `e2e/reporters/skip-budget.js:12` default 6→7, comment-only; no runtime change without its own test                                                         | —     | XS     | `[todo]`  |
+| 0    | CF §30.6 L2 query-parses note          | `docs/query-parses-sqlite-note`     | record that malformed raw JSON is a sqlite-only read case (PostgreSQL JSONB rejects malformed data on write) in the query_parses persistence contract; optional focused sqlite raw-row + shared-mapper tests | — | S | `[todo]` |
+| 0    | CF §30.6 E precondition confirmation   | (docs commit; may ride the L2 unit) | confirm the `assertMemberConsumable` future-route precondition is recorded in the service contract; close the item as recorded                              | —     | XS     | `[todo]`  |
+| 1    | T4.4 capacity series                   | `feature/t44-capacity-series`       | full chain — see 33.3                                                                                                                                       | —     | M      | `[todo]`  |
+| 1    | T4.1 admin AI panel + launcher         | `feature/t41-admin-ai-panel`        | docs → endpoints → tab → launcher — see 33.3                                                                                                                | —     | L      | `[todo]`  |
+| 1    | T4.3 harness + degradation matrix      | `test/t43-fake-llm-harness`         | fake-LLM harness + per-column suites — see 33.3                                                                                                             | —     | M–L    | `[todo]`  |
+| 2    | T4.3 parser E2E + inventory re-pin     | `test/t43-parser-e2e`               | `E2E-S3-AI-002` over the harness; `docs/E2E_COVERAGE_PLAN.md` inventory + skip-budget expected-skips re-pin ("smoke-list update")                           | W1.3  | S–M    | `[todo]`  |
+| 2    | §4.22 SQL leg (D3)                     | `feature/search-delta-sql`          | delta structuring + `$ref` binding + SQL/vectorStore execution                                                                                              | —     | L      | `[todo]`  |
+| 2    | D2 execution                           | `chore/remove-tags-journal-domain`  | TAGS removal across the four parity points                                                                                                                  | —     | S      | `[todo]`  |
+| 2    | hysteresis calibration                 | (owner-run, no branch)              | re-measure the provisional ±0.02 offsets against operational data (§31.1/§31.6); results ship in the profile + recorded here                                | —     | owner  | `[todo]`  |
+| 3    | P4 exit gate                           | `ai-feature`                        | gates of 33.4 + count re-pin (D4) + closure log → single `ai-feature`→`dev` merge                                                                           | all   | —      | `[todo]`  |
+
+**Merge order:** Wave 0 units land immediately and in parallel (no overlap). The three Wave 1
+units are mutually independent and dispatch in parallel. Wave 2 units follow their deps. The
+exit gate runs only after every active row above is closed.
+
+### 33.3 Task graph (each task lists objective / inputs / outputs / verification / deps)
+
+- **T4.4 — Dashboard capacity series.** Objective: a daily storage capacity series with the
+  Storage sparkline; v1 keeps the seam absent and the block omitted when no data exists — no
+  fabricated series. Inputs: §4.16 sparkline rule; the scheduler template
+  (`startAdminReportsRetentionScheduler`/`startFileSuggestionsExpiryScheduler` shape in
+  `server/infrastructure/maintenanceScheduler.js`); the already-implemented client seam
+  (`CollectionDashboard.js:96` duck-typed `loadCapacitySeries`, sparkline render at
+  :446–470, unit pin "seam absent ⇒ block omitted", E2E negative pins in
+  `e2e/collections.spec.ts`). Outputs: `capacity_snapshots` added to
+  `001_initial_normalized_schema.sql` + AI_FEATURE_PLAN §5 (checksum one-liner applies);
+  `CapacitySnapshotsRepository` sqlite/postgres twins + conformance suite; store facade;
+  daily scheduler (`WEA_SKIP_CAPACITY_SNAPSHOT` skip seam, hot interval resolution,
+  cross-replica lock, `server/index.js` composition wiring); gateway `loadCapacitySeries()`
+  (swallow failures → `null`, per the collectionsRepository convention); sparkline
+  wire-through + seam-present client test cases. Verify: server+client `test:ci`,
+  `test:ci:pg:adapters` (new repository), conformance suite, scheduler test,
+  `docsStatePurity`. Docs-first: create `docs/spec/server/store/capacitySnapshotsStore.md`;
+  update `docs/spec/server/infrastructure/maintenanceScheduler.md`,
+  `docs/spec/client/services/explorerGateway.md`,
+  `docs/spec/client/components/mypage/content/CollectionDashboard.md`. Deps: none.
+
+- **T4.1 — Admin AI panel + re-embed launcher.** Objective: the §4.15 governance tab inside
+  the MyPage admin area + the ONE rate-limited re-embed action (initial coverage and
+  model-change). Inputs: §4.15 panel contract (pipeline health — queue depth, 24h fail/429
+  rates, breaker states, failed-jobs table; `ai_usage_daily` cost ledger + budget caps +
+  per-user top-N; evolution governance — rule hit-rate, survival curves, merge-accept %,
+  gate params with live impact counts + rollback via settings journal; model registry —
+  model_id/dim per role, per-version distribution, the three `ai_enrichments` lineages +
+  media-embed coverage filters; degraded-input histogram; kill switches; aggregates-and-ids
+  only, never other users' file names/queries/contents; constants provenance display), the
+  existing executor (`planMediaBackfill`, §28.8 D4 — "the executor now exists"), the
+  `myPageRegistry.js` admin-tab pattern (`admin-users`/`admin-settings`), the
+  `AdminReportsContent`/`adminService` patterns, invariant 4 (journal-with-inverse) and
+  invariant 5 (one confirmation dialog for user-triggered destructive actions). Outputs:
+  admin-domain routes + service (read existing AI stores; new repositories only if
+  docs-first demands); the rate-limited launcher POST wiring plan → enqueue with rate
+  limiting, one confirmation dialog, and a journal row; a `settings`-domain journal producer
+  for gate-param/kill-switch changes (rides `action_journal` infra — writers-list extension
+  pinned at docs-first); client `admin-ai` registry category + `AiAdminContent` +
+  `adminService` seams; impact-preview = server-computed live impact counts (no client-side
+  math). Verify: route/service tests, client component/hook tests, `docsStatePurity`,
+  grep-gate (zero `CacheAdapter|operationProgress`). Docs-first:
+  `docs/spec/server/routes/admin.md` panel surface (§4.15 assigns it to this step); new
+  `docs/spec/client/components/mypage/content/AiAdminContent.md` + hook spec;
+  `docs/shared-contracts.md` snake_case response note. Deps: none (parallel-safe with T4.3).
+
+- **T4.3 — Hermetic AI/media E2E + degradation matrix.** Objective: a fake-LLM harness
+  (in-process, injected via the adapter's role config — never a real provider) + one suite
+  per §4.12 capability column + the parser E2E case. Inputs: `docs/TESTING_STRATEGY.md` AI
+  tiers (None/embed/embed+chat columns; None and embed must pass green with no real adapter
+  present); the `E2E-S3-AI-001` hermetic precedent (`e2e/ai.spec.ts`, scratch :5016 via
+  `scripts/lib/e2e-band.cjs`, `WEA_MODEL_DIR` pre-seeded EG2 weights); unit-level fake
+  precedents (`server/domains/setup/__tests__/setup.test.js` fake `/v1` over `node:http`,
+  the llmAdapter `createClient` DI seam); §30.5 (the `E2E-AI-002` parser case rides this
+  harness). Outputs: the harness + a new scratch port entry in `scripts/lib/e2e-band.cjs`
+  (next free band slot after `scratchAi: 5016`); degradation suites including the media
+  capability-absent fallback legs (V2 caption→E1, V0 `metadata_only`); the `E2E-S3-AI-002`
+  parser case (parse envelope → search over the fake endpoint); `docs/E2E_COVERAGE_PLAN.md`
+  inventory + skip-budget expected-skips re-pin. Verify: new suites green; `playwright test
+  --list` count re-pinned; None/embed columns green with no real adapter present.
+  Docs-first: TESTING_STRATEGY harness-contract details (injection mechanics + port);
+  E2E_COVERAGE_PLAN rows (`E2E-S3-AI-002` planned → in-flight; the degradation-matrix
+  deferral row resolves). Deps: the parser case depends on the harness unit.
+
+- **§4.22 SQL leg (D3).** Objective: server-side execution of parsed deltas. Inputs: the
+  frozen grammar contract (`PARSE_ENVELOPE_GRAMMAR = 'nl1'`,
+  `server/domains/ai/nlParser.js`); the §4.22 owner table (structuring + `$ref` binding =
+  rule table; rerun/intersect/exclude-similar = SQL + vectorStore; ACL = `fileNodesStore`
+  final-stage joins); current state — a request `result_ref` is accepted and ignored
+  (`search.test.js:317`). Outputs: rule-table delta structuring, `$ref` → latest-signature
+  binding, rerun/intersect/exclude-similar execution, updated
+  `docs/spec/server/services/searchService.md` + `docs/spec/server/routes/search.md`.
+  Verify: service tests + E2E over the T4.3 harness; grammar unchanged (additive only).
+  Deps: none hard; sequenced in Wave 2 to keep Wave 1 fully parallel.
+
+- **D2 execution — TAGS removal.** Objective: the dead enum value gone. Outputs:
+  `shared/constants.js` (`TAGS` out of the enum + `ALL`), the `001` DDL CHECK, the
+  `docs/shared-contracts.md` enum list, and the `sharedPlatformEnums.test.js` parity
+  assertions, edited together. Verify: server `test:ci` incl. the parity suite. RED-first:
+  flip the parity test to expect absence, then remove. Deps: none.
+
+### 33.4 Verification gates
+
+- `npm run test:ci` (server + client) on every unit; `test:ci:pg:adapters` for the T4.4
+  repository twins; `docsStatePurity` (runs inside server CI); CI grep-gates for
+  `domains/(collections|ai)/**` and new stores (zero `CacheAdapter|operationProgress`).
+- Degradation matrix: the None and embed columns pass green with no real adapter present;
+  the embed+chat column runs over the fake-LLM harness.
+- Exit gate (Wave 3): the full release matrix in both legs (model-free + model-on, §31.8
+  discipline), the canonical server test-count re-pin (D4), the §33 execution-log closure,
+  and the §33.5/PLAN.md status flips — then the single `ai-feature`→`dev` merge via the
+  normal PR flow.
+
+### 33.5 §32.3 disposition after this plan
+
+| §32.3 item                                  | Disposition                                                                                       |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| T4.1 admin AI surface and re-embed launcher | Wave 1 unit `feature/t41-admin-ai-panel`                                                          |
+| T4.2 media ladder                           | Closed as absorbed by §28.8 D2–D4; residue re-pointed to T4.1/T4.3 (D1)                            |
+| T4.3 hermetic AI/media E2E                  | Wave 1 harness unit + Wave 2 parser-E2E unit                                                      |
+| T4.4 capacity series                        | Wave 1 unit `feature/t44-capacity-series`                                                         |
+| §4.22 delta-semantics SQL leg               | Owned by P4 — Wave 2 unit (D3)                                                                    |
+| §30.6 L2 query-parses contract              | Wave 0 docs unit                                                                                  |
+| `JOURNAL_DOMAIN.TAGS` parity                | Ruled: remove (D2) — Wave 2 unit                                                                  |
+| P4 hysteresis calibration                   | Owner-run measurement, Wave 2                                                                     |
+| §30.6 E future-route security precondition  | Confirmed as recorded; remains a standing precondition for any future collection-context route    |
+| `skip-budget.js` stale default comment      | Wave 0 unit                                                                                       |
+| Gate-count reconciliation                   | Resolves at the exit-gate run (D4)                                                                |

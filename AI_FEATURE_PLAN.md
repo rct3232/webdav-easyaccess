@@ -1870,3 +1870,16 @@ harness.
   `AI_NL_PARSE_ENABLED:false`, or ANY parse failure ⇒ the response is byte-identical to the
   parser-free §2.4 shapes; the parse failure is a silent fallback to vector+name search,
   never an error to the user.
+
+### 12.16 Hysteresis calibration timing (2026-10-30)
+
+**Owner ruling 2026-10-30 (P4 closeout):** the hysteresis band ships with the provisional EG2
+profile values `membershipHysteresis = { inDelta: 0.02, outDelta: -0.02 }`. Calibration to
+operational data is deferred until after the P4 feature set is deployed, because
+pre-deployment production data does not contain the collections/embeddings schema or any
+evolution/reconcile history. The post-release measurement uses at least two dated database
+snapshots taken after nightly reconcile passes, compares stored-member/non-member score
+distributions and membership flips, and updates the profile and execution ledger with the
+measured offsets. The provisional values are the first release artifact, not a runtime
+calibration path; the §4.15 release-artifact discipline and the no-runtime-calibration rule
+remain unchanged.

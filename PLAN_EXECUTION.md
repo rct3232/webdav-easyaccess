@@ -2660,20 +2660,20 @@ scratch E2E port entry. The settings-journal push-vs-pull semantics is resolved 
 
 ### 33.2 Wave plan
 
-| Wave | Unit                                   | Branch                              | Scope                                                                                                                                                                                                        | Deps | Effort | Status   |
-| ---- | -------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | ------ | -------- |
-| 0    | CF skip-budget comment                 | `chore/skip-budget-comment`         | `e2e/reporters/skip-budget.js:12` default 6→7, comment-only; no runtime change without its own test                                                                                                          | —    | XS     | `[done]` |
-| 0    | CF §30.6 L2 query-parses note          | `docs/query-parses-sqlite-note`     | record that malformed raw JSON is a sqlite-only read case (PostgreSQL JSONB rejects malformed data on write) in the query_parses persistence contract; optional focused sqlite raw-row + shared-mapper tests | —    | S      | `[done]` |
-| 0    | CF §30.6 E precondition confirmation   | (docs commit; may ride the L2 unit) | confirm the `assertMemberConsumable` future-route precondition is recorded in the service contract; close the item as recorded                                                                               | —    | XS     | `[done]` |
-| 0.5  | Preceding DDL: cancelled AI job status | `chore/ai-job-cancelled-status`     | `001` `ai_jobs.status` + `cancelled`; docs/schema test; no dev migration script (dev DBs are ephemeral; the production migration is deployment-owned) — see 33.8 W7                                          | —    | XS     | `[done]` |
-| 1    | T4.4 storage usage series              | `feature/t44-storage-usage`         | `storage_usage_snapshots` + `object_map.size` + daily scheduler + gateway/UI — see 33.3/33.8 W2; merged `5d306d17`                                                                                           | 0.5  | M–L    | `[done]` |
-| 1    | T4.1 admin AI panel + launcher         | `feature/t41-admin-ai-panel`        | full text+media launcher + cancel-pending + config-backed gates; docs → endpoints → tab → launcher — see 33.3/33.8 W1/W5/W6; merged `12d32e87`                                                               | 0.5  | L+     | `[done]` |
-| 1    | T4.3 harness + degradation matrix      | `test/t43-fake-llm-harness`         | fake embed+chat harness + per-column suites; AI-001 remains real EG2 — see 33.3/33.8 W3; merged `8a5df061`                                                                                                   | 0.5  | M–L    | `[done]` |
-| 2    | T4.3 parser E2E + inventory re-pin     | `test/t43-parser-e2e`               | `E2E-S3-AI-002` over the harness; `docs/E2E_COVERAGE_PLAN.md` inventory + skip-budget expected-skips re-pin ("smoke-list update"); merged `7c3c1833`                                                         | W1.3 | S–M    | `[done]` |
-| 2    | §4.22 SQL leg (D3)                     | `feature/search-delta-sql`          | delta structuring + `$ref` binding + SQL/vectorStore execution; merged `50cab252` (path-anchor fix `c33e74b2`)                                                                                               | —    | L      | `[done]` |
-| 2    | D2 execution                           | `chore/remove-tags-journal-domain`  | TAGS removal across the four parity points; merged `b57a4c98`                                                                                                                                                | —    | S      | `[done]` |
-| 2    | hysteresis calibration                 | (owner-run, no branch)              | re-measure the provisional ±0.02 offsets against operational data (§31.1/§31.6); results ship in the profile + recorded here                                                                                 | —    | owner  | `[open]` |
-| 3    | P4 exit gate                           | `ai-feature`                        | gates of 33.4 + count re-pin (D4) + closure log → single `ai-feature`→`dev` merge; code/gates complete, dev merge waits on the owner-run hysteresis row                                                      | all  | —      | `[open]` |
+| Wave | Unit                                   | Branch                              | Scope                                                                                                                                                                                                        | Deps | Effort | Status       |
+| ---- | -------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | ------ | ------------ |
+| 0    | CF skip-budget comment                 | `chore/skip-budget-comment`         | `e2e/reporters/skip-budget.js:12` default 6→7, comment-only; no runtime change without its own test                                                                                                          | —    | XS     | `[done]`     |
+| 0    | CF §30.6 L2 query-parses note          | `docs/query-parses-sqlite-note`     | record that malformed raw JSON is a sqlite-only read case (PostgreSQL JSONB rejects malformed data on write) in the query_parses persistence contract; optional focused sqlite raw-row + shared-mapper tests | —    | S      | `[done]`     |
+| 0    | CF §30.6 E precondition confirmation   | (docs commit; may ride the L2 unit) | confirm the `assertMemberConsumable` future-route precondition is recorded in the service contract; close the item as recorded                                                                               | —    | XS     | `[done]`     |
+| 0.5  | Preceding DDL: cancelled AI job status | `chore/ai-job-cancelled-status`     | `001` `ai_jobs.status` + `cancelled`; docs/schema test; no dev migration script (dev DBs are ephemeral; the production migration is deployment-owned) — see 33.8 W7                                          | —    | XS     | `[done]`     |
+| 1    | T4.4 storage usage series              | `feature/t44-storage-usage`         | `storage_usage_snapshots` + `object_map.size` + daily scheduler + gateway/UI — see 33.3/33.8 W2; merged `5d306d17`                                                                                           | 0.5  | M–L    | `[done]`     |
+| 1    | T4.1 admin AI panel + launcher         | `feature/t41-admin-ai-panel`        | full text+media launcher + cancel-pending + config-backed gates; docs → endpoints → tab → launcher — see 33.3/33.8 W1/W5/W6; merged `12d32e87`                                                               | 0.5  | L+     | `[done]`     |
+| 1    | T4.3 harness + degradation matrix      | `test/t43-fake-llm-harness`         | fake embed+chat harness + per-column suites; AI-001 remains real EG2 — see 33.3/33.8 W3; merged `8a5df061`                                                                                                   | 0.5  | M–L    | `[done]`     |
+| 2    | T4.3 parser E2E + inventory re-pin     | `test/t43-parser-e2e`               | `E2E-S3-AI-002` over the harness; `docs/E2E_COVERAGE_PLAN.md` inventory + skip-budget expected-skips re-pin ("smoke-list update"); merged `7c3c1833`                                                         | W1.3 | S–M    | `[done]`     |
+| 2    | §4.22 SQL leg (D3)                     | `feature/search-delta-sql`          | delta structuring + `$ref` binding + SQL/vectorStore execution; merged `50cab252` (path-anchor fix `c33e74b2`)                                                                                               | —    | L      | `[done]`     |
+| 2    | D2 execution                           | `chore/remove-tags-journal-domain`  | TAGS removal across the four parity points; merged `b57a4c98`                                                                                                                                                | —    | S      | `[done]`     |
+| 2    | hysteresis calibration                 | (owner-run, no branch)              | deferred post-release by owner ruling 2026-10-30 (§33.11): provisional ±0.02 ships as the first release artifact; re-measure after evolution/reconcile produces operational data                             | —    | owner  | `[deferred]` |
+| 3    | P4 exit gate                           | `ai-feature`                        | gates of 33.4 + count re-pin (D4) + pre-closure record §33.11; final closure + single `ai-feature`→`dev` merge await owner go-ahead                                                                          | all  | —      | `[wip]`      |
 
 **Merge order:** Wave 0 units land immediately and in parallel. The preceding DDL unit
 (`chore/ai-job-cancelled-status`) lands first. T4.4, T4.1, and T4.3 then dispatch in parallel
@@ -2805,20 +2805,20 @@ closed.
 
 ### 33.5 §32.3 disposition after this plan
 
-| §32.3 item                                  | Disposition                                                                                                               |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| T4.1 admin AI surface and re-embed launcher | Closed — `feature/t41-admin-ai-panel`, merged `12d32e87` (§33.10)                                                         |
-| T4.2 media ladder                           | Closed as absorbed by §28.8 D2–D4; residue re-pointed to T4.1/T4.3 (D1)                                                   |
-| T4.3 hermetic AI/media E2E                  | Closed — harness `8a5df061` + parser/delta E2E `7c3c1833` (§33.10)                                                        |
-| T4.4 storage usage series                   | Closed — `feature/t44-storage-usage`, merged `5d306d17`; `object_map.size` + `storage_usage_snapshots` (§33.8 W2, §33.10) |
-| Preceding DDL: cancelled AI job status      | Closed — branch `chore/ai-job-cancelled-status` (§33.8 W7, §33.9)                                                         |
-| §4.22 delta-semantics SQL leg               | Closed — `feature/search-delta-sql`, merged `50cab252` + path-anchor fix `c33e74b2` (§33.10)                              |
-| §30.6 L2 query-parses contract              | Closed — SQLite-only malformed-read wording + targeted mapper/raw-row tests (§33.7)                                       |
-| `JOURNAL_DOMAIN.TAGS` parity                | Closed — removal `16878077`, merged `b57a4c98` (§33.10)                                                                   |
-| P4 hysteresis calibration                   | **Open** — owner-run measurement; needs operational data, no code deliverable                                             |
-| §30.6 E future-route security precondition  | Confirmed as recorded; remains a standing precondition for any future collection-context route                            |
-| `skip-budget.js` stale default comment      | Closed — comment-only unit (§33.7)                                                                                        |
-| Gate-count reconciliation                   | Closed — fresh exit-gate run pinned in §33.10 (D4)                                                                        |
+| §32.3 item                                  | Disposition                                                                                                                                      |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| T4.1 admin AI surface and re-embed launcher | Closed — `feature/t41-admin-ai-panel`, merged `12d32e87` (§33.10)                                                                                |
+| T4.2 media ladder                           | Closed as absorbed by §28.8 D2–D4; residue re-pointed to T4.1/T4.3 (D1)                                                                          |
+| T4.3 hermetic AI/media E2E                  | Closed — harness `8a5df061` + parser/delta E2E `7c3c1833` (§33.10)                                                                               |
+| T4.4 storage usage series                   | Closed — `feature/t44-storage-usage`, merged `5d306d17`; `object_map.size` + `storage_usage_snapshots` (§33.8 W2, §33.10)                        |
+| Preceding DDL: cancelled AI job status      | Closed — branch `chore/ai-job-cancelled-status` (§33.8 W7, §33.9)                                                                                |
+| §4.22 delta-semantics SQL leg               | Closed — `feature/search-delta-sql`, merged `50cab252` + path-anchor fix `c33e74b2` (§33.10)                                                     |
+| §30.6 L2 query-parses contract              | Closed — SQLite-only malformed-read wording + targeted mapper/raw-row tests (§33.7)                                                              |
+| `JOURNAL_DOMAIN.TAGS` parity                | Closed — removal `16878077`, merged `b57a4c98` (§33.10)                                                                                          |
+| P4 hysteresis calibration                   | **Deferred post-release** — owner ruling 2026-10-30 (§33.11); provisional ±0.02 ships first, re-measured after operational evolution data exists |
+| §30.6 E future-route security precondition  | Confirmed as recorded; remains a standing precondition for any future collection-context route                                                   |
+| `skip-budget.js` stale default comment      | Closed — comment-only unit (§33.7)                                                                                                               |
+| Gate-count reconciliation                   | Closed — fresh exit-gate run pinned in §33.10 (D4)                                                                                               |
 
 ### 33.6 T4.1 UI/UX rulings (owner, 2026-10-29)
 
@@ -2987,9 +2987,36 @@ refined by U4 below.
 - **P4 coverage:** T4.4 storage-usage series; T4.1 admin AI panel + full text/media launcher +
   cancel-pending; T4.3 hermetic matrix + AI-002 parser/delta E2E; D3 §4.22 SQL leg; D2 tag
   domain removal. T4.2 remains absorbed (§33.1 D1); per-user top-N stays deferred (W4).
-- **Remaining owner item:** hysteresis calibration (§33.1 D1/§33.2) is still `[open]`; it
-  requires operational data and has no code deliverable. The single `ai-feature`→`dev`
-  release merge stays pending that row even though every code unit and gate above is green.
+- **Hysteresis disposition:** owner ruling 2026-10-30 moved the calibration to post-release
+  (§33.11). The provisional offsets ship as the first release artifact; no code unit or
+  pre-merge gate remains blocked on it. The exit gate stays `[wip]` until the owner calls
+  the final closure; no `ai-feature`→`dev` merge has been performed.
 - **Deployment note:** production migration remains deployment-owned (existing-table
   CHECK/column changes, `object_map.size` backfill). Development/test DBs are ephemeral;
   editing `001` uses the standing checksum-recovery one-liner.
+
+### 33.11 P4 pre-closure snapshot — hysteresis deferred post-release (2026-10-30)
+
+- **Owner ruling (2026-10-30):** the pre-merge hysteresis measurement cannot run against
+  current production because production does not yet contain the AI platform schema or any
+  evolution/reconcile history. The owner selected the post-release calibration path:
+  - ship the provisional EG2 profile offsets `{ inDelta: 0.02, outDelta: -0.02 }` as the
+    first release artifact;
+  - keep the hysteresis row `[deferred]`, not `[open]`, and do not block the P4 exit gate
+    on it;
+  - re-measure after the platform has run evolution/reconcile on operational data and
+    update `presets.js` + this ledger with the measured values.
+- **Post-release measurement trigger:** after `ai-feature` is deployed and at least two
+  nightly reconcile passes have produced membership state, capture two or more dated
+  database snapshots (PostgreSQL `pg_dump -Fc` or SQLite `.backup`) into
+  `/tmp/opencode/hysteresis/incoming/`. The measurement compares stored-member /
+  non-member score distributions and membership flips across snapshots, then chooses
+  `inDelta`/`outDelta` and records the evidence in a new dated ledger section.
+- **Pre-closure state:** every P4 code unit and gate in §33.4 is green (server 202/3465
+  passed tests, client 191/2304, PG 32/492+1 skipped; default/WebDAV release matrix green;
+  `docsStatePurity`, lint, and grep gates clean). The P4 exit gate remains `[wip]` and the
+  single `ai-feature`→`dev` merge remains unperformed, awaiting the owner's explicit
+  go-ahead. No production migration has been run from this branch.
+- **Artifact inventory for the pre-closure review:** `docs/E2E_COVERAGE_PLAN.md` carries the
+  P1–P4 E2E rows; the phase-by-phase case inventory requested for the exit-gate review is
+  recorded in the session report (not duplicated in this ledger).

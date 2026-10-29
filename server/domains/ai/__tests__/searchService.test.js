@@ -2,13 +2,20 @@
  * searchService unit tests (P0 name section; domain object + thrown bare codes).
  * @see docs/spec/server/services/searchService.md
  */
-const { createTestDatabase, createAuthenticatedTestUser, dbQuery } = require('@server/test-utils');
+const {
+  createTestDatabase,
+  createAuthenticatedTestUser,
+  grantTestPermissionByNodeId,
+  dbQuery,
+} = require('@server/test-utils');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
+const permissionStore = require('@server/store/permissionStore');
 const llmModelsStore = require('@server/store/llmModelsStore');
 const embeddingsStore = require('@server/store/embeddingsStore');
 const { createSearchService } = require('../searchService');
 const { initVectorStore, resetVectorStore, getVectorStore } = require('../vectorStoreRuntime');
+const { createResultRefRegistry } = require('../resultRefRegistry');
 
 let dbCleanup;
 let fileNodeService;
@@ -1080,5 +1087,389 @@ describe('searchService NL-parse leg — session predicate state', () => {
     expect(adapter.chatCalls).toHaveLength(1);
     const userMessage = adapter.chatCalls[0].messages[adapter.chatCalls[0].messages.length - 1];
     expect(userMessage.content).toBe('bad state row');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §2.9 delta semantics — replay binding, merge rules, filters, fallbacks
+// ---------------------------------------------------------------------------
+
+async function setFileSize(nodeId, size) {
+  await createFileNodesStore().upsertCache(Number(nodeId), Number(size), null, null);
+}
+
+/** Deterministic scorer: returns the supplied ids, honoring candidateIds. */
+function createDeltaScorer(ids, scoreFor) {
+  return jest.fn(async ({ candidateIds = null }) => {
+    const universe = candidateIds ? [...candidateIds] : ids;
+    return universe.map((nodeId, index) => ({
+      nodeId: Number(nodeId),
+      score: scoreFor ? scoreFor(Number(nodeId), index) : 0.9 - index * 0.01,
+    }));
+  });
+}
+
+function createDeltaService({
+  adapter,
+  scorer,
+  llmModelsStore: models = { getActiveByRole: async () => ({ id: 7, provider: 'embedded' }) },
+  resultRefRegistry,
+  usageService,
+  embeddingsStore: embeddings,
+} = {}) {
+  return createSearchService({
+    usageService: usageService || createUsageServiceFake(),
+    configResolver: defaultConfigResolver,
+    llmAdapter: adapter,
+    llmModelsStore: models,
+    provisioner: { loadLock: () => ({ repo: 'org/embed-model', revision: 'rev-1' }) },
+    semanticScorer: scorer,
+    ...(resultRefRegistry ? { resultRefRegistry } : {}),
+    ...(embeddings ? { embeddingsStore: embeddings } : {}),
+  });
+}
+
+const REF_ONLY_REPLY = {
+  predicates: [],
+  vector_query: null,
+  delta: { $ref: 'latest' },
+};
+
+describe('searchService §2.9 delta — $ref replay', () => {
+  it('re-executes the base name+semantic sections under current ACL and emits additive delta fields', async () => {
+    const ctx = await createUserWithRoot();
+    const nameHit = await fileNodeService.createFile(ctx.root.id, 'delta-base-notes.txt');
+    const semA = await fileNodeService.createFile(ctx.root.id, 'red-photo.txt');
+    const semB = await fileNodeService.createFile(ctx.root.id, 'blue-photo.txt');
+    const scorer = createDeltaScorer([semA.id, semB.id]);
+    const baseAdapter = createFakeNlAdapter({ configuredRoles: ['embed'] });
+    const base = await createDeltaService({ adapter: baseAdapter, scorer }).search(ctx.user.id, {
+      query: 'delta-base',
+    });
+    expect(base.nameMatches.map((row) => row.nodeId)).toEqual([nameHit.id]);
+    expect(base.semantic.map((row) => row.nodeId)).toEqual([semA.id, semB.id]);
+
+    const followAdapter = createFakeNlAdapter({ chatReply: REF_ONLY_REPLY });
+    const usageService = createUsageServiceFake();
+    const follow = await createDeltaService({
+      adapter: followAdapter,
+      scorer,
+      usageService,
+    }).search(ctx.user.id, {
+      query: 'and those ones',
+      resultRef: base.resultRef,
+    });
+
+    expect(follow.nameMatches).toEqual(base.nameMatches);
+    expect(follow.semantic).toEqual(base.semantic);
+    expect(follow.delta).toEqual({
+      add: [],
+      replace: [],
+      exclude: [],
+      excludeSimilar: false,
+      ref: 'latest',
+    });
+    expect(follow.sessionPredicates).toEqual([]);
+    expect(follow.predicates).toEqual([]);
+    expect(follow.resultRef).toMatch(/^sr1\.[0-9a-f]{16}$/);
+    expect(follow.resultRef).not.toBe(base.resultRef);
+    expect(followAdapter.chatCalls).toHaveLength(1);
+    expect(followAdapter.embedCalls).toHaveLength(0);
+
+    // Exactly one usage row per RETURNED node (internal base pass never logs).
+    await flushUsageEvents();
+    expect(usageService.recordEvent.mock.calls).toHaveLength(3);
+  });
+
+  it('a ref-only rerun is deterministic: same inputs ⇒ same fresh ref, zero extra provider calls', async () => {
+    const ctx = await createUserWithRoot();
+    const file = await fileNodeService.createFile(ctx.root.id, 'replay-stable.txt');
+    const scorer = createDeltaScorer([], () => 0.9);
+    const base = await createDeltaService({
+      adapter: createFakeNlAdapter({ configuredRoles: ['embed'] }),
+      scorer,
+    }).search(ctx.user.id, { query: 'replay-stable' });
+    expect(base.nameMatches.map((row) => row.nodeId)).toEqual([file.id]);
+
+    const followAdapter = createFakeNlAdapter({ chatReply: REF_ONLY_REPLY });
+    const service = createDeltaService({ adapter: followAdapter, scorer });
+    const first = await service.search(ctx.user.id, {
+      query: 'those files',
+      resultRef: base.resultRef,
+    });
+    const second = await service.search(ctx.user.id, {
+      query: 'those files',
+      resultRef: base.resultRef,
+    });
+
+    expect(second.resultRef).toBe(first.resultRef);
+    expect(second).toEqual(first);
+    expect(followAdapter.chatCalls).toHaveLength(1); // second parse is cached
+    expect(followAdapter.embedCalls).toHaveLength(0); // base vectors are cached
+  });
+
+  it('derives a plain base ref from query_parses after a registry miss (restart fallback)', async () => {
+    const ctx = await createUserWithRoot();
+    const query = `restart-derive-${Date.now()}`;
+    const file = await fileNodeService.createFile(ctx.root.id, `${query}.txt`);
+    const scorer = createDeltaScorer([], () => 0.9);
+    const baseRegistry = createResultRefRegistry();
+    const base = await createDeltaService({
+      adapter: createFakeNlAdapter({ configuredRoles: ['embed'] }),
+      scorer,
+      resultRefRegistry: baseRegistry,
+    }).search(ctx.user.id, { query });
+    expect(base.nameMatches.map((row) => row.nodeId)).toEqual([file.id]);
+
+    const followAdapter = createFakeNlAdapter({ chatReply: REF_ONLY_REPLY });
+    const follow = await createDeltaService({
+      adapter: followAdapter,
+      scorer,
+      resultRefRegistry: createResultRefRegistry(), // simulate a fresh process
+    }).search(ctx.user.id, { query: 'of those', resultRef: base.resultRef });
+
+    expect(follow.nameMatches.map((row) => row.nodeId)).toEqual([file.id]);
+    expect(follow.delta).toMatchObject({ ref: 'latest' });
+    expect(followAdapter.embedCalls).toHaveLength(0);
+  });
+
+  it('different base refs produce different delta signatures (no collision)', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'collision-alpha.txt');
+    await fileNodeService.createFile(ctx.root.id, 'collision-beta.txt');
+    const scorer = createDeltaScorer([], () => 0.9);
+    const baseService = createDeltaService({
+      adapter: createFakeNlAdapter({ configuredRoles: ['embed'] }),
+      scorer,
+    });
+    const baseA = await baseService.search(ctx.user.id, { query: 'collision-alpha' });
+    const baseB = await baseService.search(ctx.user.id, { query: 'collision-beta' });
+    const follow = createDeltaService({
+      adapter: createFakeNlAdapter({ chatReply: REF_ONLY_REPLY }),
+      scorer,
+    });
+
+    const deltaA = await follow.search(ctx.user.id, {
+      query: 'those ones',
+      resultRef: baseA.resultRef,
+    });
+    const deltaB = await follow.search(ctx.user.id, {
+      query: 'those ones',
+      resultRef: baseB.resultRef,
+    });
+
+    expect(deltaA.resultRef).not.toBe(deltaB.resultRef);
+  });
+});
+
+describe('searchService §2.9 delta — merge filters', () => {
+  it('add filters BOTH sections (size atom)', async () => {
+    const ctx = await createUserWithRoot();
+    const bigName = await fileNodeService.createFile(ctx.root.id, 'filter-add-big.bin');
+    const smallName = await fileNodeService.createFile(ctx.root.id, 'filter-add-small.bin');
+    const bigSem = await fileNodeService.createFile(ctx.root.id, 'red-filter.bin');
+    const smallSem = await fileNodeService.createFile(ctx.root.id, 'blue-filter.bin');
+    await setFileSize(bigName.id, 5000);
+    await setFileSize(smallName.id, 100);
+    await setFileSize(bigSem.id, 5000);
+    await setFileSize(smallSem.id, 100);
+
+    const scorer = createDeltaScorer([bigSem.id, smallSem.id]);
+    const base = await createDeltaService({
+      adapter: createFakeNlAdapter({ configuredRoles: ['embed'] }),
+      scorer,
+    }).search(ctx.user.id, { query: 'filter-add' });
+    expect(base.nameMatches).toHaveLength(2);
+    expect(base.semantic).toHaveLength(2);
+
+    const adapter = createFakeNlAdapter({
+      chatReply: {
+        predicates: [{ type: 'size', min: 1000 }],
+        vector_query: null,
+        delta: { add: [{ type: 'size', min: 1000 }], $ref: 'latest' },
+      },
+    });
+    const result = await createDeltaService({ adapter, scorer }).search(ctx.user.id, {
+      query: 'only the big ones',
+      resultRef: base.resultRef,
+    });
+
+    expect(result.nameMatches.map((row) => row.nodeId)).toEqual([bigName.id]);
+    expect(result.semantic.map((row) => row.nodeId)).toEqual([bigSem.id]);
+    expect(result.sessionPredicates).toEqual([{ type: 'size', min: 1000 }]);
+    expect(result.delta.add).toEqual([{ type: 'size', min: 1000 }]);
+  });
+
+  it('exclude is a SUBTRACTION pass over the replay result', async () => {
+    const ctx = await createUserWithRoot();
+    const keep = await fileNodeService.createFile(ctx.root.id, 'exclude-keep.bin');
+    const drop = await fileNodeService.createFile(ctx.root.id, 'exclude-drop.bin');
+    await setFileSize(keep.id, 100);
+    await setFileSize(drop.id, 5000);
+    const scorer = createDeltaScorer([], () => 0.9);
+    const base = await createDeltaService({
+      adapter: createFakeNlAdapter({ configuredRoles: ['embed'] }),
+      scorer,
+    }).search(ctx.user.id, { query: 'exclude-' });
+    expect(base.nameMatches).toHaveLength(2);
+
+    const adapter = createFakeNlAdapter({
+      chatReply: {
+        predicates: [],
+        vector_query: null,
+        delta: { exclude: [{ type: 'size', min: 1000 }], $ref: 'latest' },
+      },
+    });
+    const result = await createDeltaService({ adapter, scorer }).search(ctx.user.id, {
+      query: 'not the big one',
+      resultRef: base.resultRef,
+    });
+
+    expect(result.nameMatches.map((row) => row.nodeId)).toEqual([keep.id]);
+    expect(result.sessionPredicates).toEqual([]);
+    expect(result.delta.exclude).toEqual([{ type: 'size', min: 1000 }]);
+  });
+
+  it('replace removes the same-type session slot before adding (non-reference delta)', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'replace-slot.txt');
+    const adapter = createFakeNlAdapter({
+      chatReply: {
+        predicates: [{ type: 'date', withinDays: 3650 }],
+        vector_query: null,
+        delta: { replace: [{ type: 'date', withinDays: 3650 }] },
+      },
+    });
+    const result = await createDeltaService({
+      adapter,
+      scorer: createDeltaScorer([], () => 0.9),
+    }).search(ctx.user.id, {
+      query: 'replace the date',
+      predicates: [{ type: 'date', withinDays: 30 }],
+    });
+
+    expect(result.predicates).toEqual([{ type: 'date', withinDays: 3650 }]);
+    expect(result.delta.replace).toEqual([{ type: 'date', withinDays: 3650 }]);
+    expect(result.sessionPredicates).toEqual([{ type: 'date', withinDays: 3650 }]);
+    expect(result.delta.ref).toBeNull();
+  });
+
+  it('exclude_similar drops the lower-ranked near-duplicate at the profile θ_dup', async () => {
+    const ctx = await createUserWithRoot();
+    const first = await fileNodeService.createFile(ctx.root.id, 'similar-a.txt');
+    const second = await fileNodeService.createFile(ctx.root.id, 'similar-b.txt');
+    const seededEmbeddings = {
+      getByNodeIds: async (nodeIds) =>
+        nodeIds.map((nodeId) => ({
+          nodeId: Number(nodeId),
+          modelId: 7,
+          dim: 4,
+          vector: '1,0,0,0',
+          source: 'head',
+          contentHash: `similar-${nodeId}`,
+        })),
+    };
+
+    const models = { getActiveByRole: async () => ({ id: 7, provider: 'embedded' }) };
+    const scorer = createDeltaScorer([], () => 0.9);
+    const base = await createDeltaService({
+      adapter: createFakeNlAdapter({ configuredRoles: ['embed'] }),
+      scorer,
+      llmModelsStore: models,
+    }).search(ctx.user.id, { query: 'similar-' });
+    expect(base.nameMatches.map((row) => row.nodeId)).toEqual([first.id, second.id]);
+
+    const adapter = createFakeNlAdapter({
+      chatReply: {
+        predicates: [],
+        vector_query: null,
+        delta: { exclude_similar: true, $ref: 'latest' },
+      },
+    });
+    const result = await createDeltaService({
+      adapter,
+      scorer,
+      llmModelsStore: models,
+      embeddingsStore: seededEmbeddings,
+    }).search(ctx.user.id, { query: 'drop the similar ones', resultRef: base.resultRef });
+
+    expect(result.nameMatches.map((row) => row.nodeId)).toEqual([first.id]);
+    expect(result.delta.excludeSimilar).toBe(true);
+  });
+
+  it('drops a node whose ACL grant was revoked between turns (replay re-checks current ACL)', async () => {
+    const owner = await createUserWithRoot();
+    const requester = await createUserWithRoot();
+    const shared = await fileNodeService.createFile(owner.root.id, 'revoked-delta-file.txt');
+    await grantTestPermissionByNodeId({
+      userId: requester.user.id,
+      fileNodeId: shared.id,
+      permission: 'read',
+    });
+
+    const scorer = createDeltaScorer([], () => 0.9);
+    const base = await createDeltaService({
+      adapter: createFakeNlAdapter({ configuredRoles: ['embed'] }),
+      scorer,
+    }).search(requester.user.id, { query: 'revoked-delta' });
+    expect(base.nameMatches.map((row) => row.nodeId)).toEqual([shared.id]);
+
+    await permissionStore.revoke(requester.user.id, shared.id);
+
+    const result = await createDeltaService({
+      adapter: createFakeNlAdapter({ chatReply: REF_ONLY_REPLY }),
+      scorer,
+    }).search(requester.user.id, {
+      query: 'of those',
+      resultRef: base.resultRef,
+    });
+
+    expect(result.nameMatches).toEqual([]);
+    expect(result.semantic).toEqual([]);
+  });
+});
+
+describe('searchService §2.9 delta — silent structural fallbacks', () => {
+  it('an unknown/malformed result_ref never 4xxes and returns the parser-free shape', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'fallback-ref.txt');
+    const scorer = createDeltaScorer([], () => 0.9);
+
+    for (const ref of ['not-a-ref', 'sr1.0000000000000000', undefined]) {
+      const adapter = createFakeNlAdapter({ chatReply: REF_ONLY_REPLY });
+      const result = await createDeltaService({ adapter, scorer }).search(ctx.user.id, {
+        query: 'fallback ref query',
+        resultRef: ref,
+      });
+      expect(result.delta).toBeUndefined();
+      expect(result.sessionPredicates).toBeUndefined();
+      expect(result.predicates).toBeUndefined();
+      expect(result.nameMatches.map((row) => row.nodeId)).toEqual(expect.any(Array));
+    }
+  });
+
+  it('a space-mismatched ref falls back silently instead of replaying across model spaces', async () => {
+    const ctx = await createUserWithRoot();
+    await fileNodeService.createFile(ctx.root.id, 'space-mismatch.txt');
+    const scorer = createDeltaScorer([], () => 0.9);
+    const base = await createDeltaService({
+      adapter: createFakeNlAdapter({ configuredRoles: ['embed'] }),
+      scorer,
+      llmModelsStore: { getActiveByRole: async () => ({ id: 7, provider: 'embedded' }) },
+    }).search(ctx.user.id, { query: 'space-mismatch' });
+
+    const adapter = createFakeNlAdapter({ chatReply: REF_ONLY_REPLY, modelId: 8 });
+    const result = await createDeltaService({
+      adapter,
+      scorer,
+      llmModelsStore: { getActiveByRole: async () => ({ id: 8, provider: 'embedded' }) },
+    }).search(ctx.user.id, {
+      query: 'of those',
+      resultRef: base.resultRef,
+    });
+
+    expect(result.delta).toBeUndefined();
+    expect(result.predicates).toBeUndefined();
+    expect(result.nameMatches.map((row) => row.nodeId)).toEqual(expect.any(Array));
   });
 });

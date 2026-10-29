@@ -28,6 +28,7 @@
 | `recordEmbedding`   | `({ normalizedQuery, vector, predicates? }) => Promise<{ changes: number }>` | INSERT … ON CONFLICT (normalized_query) DO UPDATE SET `vector = excluded.vector`; overwrites NOTHING else (`predicates` / `hit_count` / `created_at` untouched).                                                   |
 | `recordPredicates`  | `({ normalizedQuery, predicates }) => Promise<{ changes: number }>`          | INSERT … ON CONFLICT (normalized_query) DO UPDATE SET `predicates = excluded.predicates`; overwrites NOTHING else (`vector` / `hit_count` / `created_at` untouched); inserts a parse-first row with NULL `vector`. |
 | `incrementHitCount` | `(normalizedQuery) => Promise<{ changes: number }>`                          | Cache-hit accounting; `changes: 0` for an unknown key.                                                                                                                                                             |
+| `listAll`           | `({ afterNormalizedQuery?, limit? }) => Promise<QueryParseRow[]>`            | Bounded keyset scan (`normalized_query > after`, ascending) used ONLY by the search leg's restart replay-derivation fallback; no unbounded/full-table reads.                                                       |
 
 The facade dispatches to the twin selected by `storage.getExecutor().dialect` and
 contains no SQL.
@@ -46,7 +47,10 @@ contains no SQL.
   verbatim.
 - **`predicates`:** the NL-parse cache (searchService.md §2.8). The parse leg writes the
   parse envelope `{ grammar: "nl1", atoms: [ …shared-grammar atoms… ], vectorQuery:
-string|null }`; an embed-first row carries the `[]` default (= never parsed). The
+string|null, delta?: Object }`; the optional `delta` is the §2.9 canonical instruction
+  (`{ add, replace, exclude, excludeSimilar, ref }`) preserved verbatim through the cache
+  and re-validated on read (an invalid delta is a parse MISS). An embed-first row carries
+  the `[]` default (= never parsed). The
   sqlite twin binds the JSON string, postgres binds the JSONB value; both twins return
   the PARSED JSON value verbatim at the repository boundary — object or array, exactly
   as stored (absent ⇒ `null`). A malformed stored string is a SQLite-only read case:
@@ -82,4 +86,6 @@ string|null }`; an embed-first row carries the `[]` default (= never parsed). Th
 - [ ] Overwriting an existing key via `recordEmbedding` changes ONLY `vector` (same `predicates`, same `hit_count`, same `created_at` instant).
 - [ ] `recordPredicates` writes ONLY `predicates` (existing row keeps its `vector` and `hit_count`; a parse-first insert leaves `vector` NULL).
 - [ ] `incrementHitCount` bumps by exactly 1 per call and reports `changes: 0` for an unknown key.
+- [ ] `listAll` returns rows ascending by `normalized_query`, honors `limit`, and keyset-paginates with `afterNormalizedQuery` (no duplicate/skipped rows at a page boundary).
+- [ ] The nl1 parse envelope preserves the optional canonical `delta` member verbatim (including `excludeSimilar`/`ref`) on both dialects.
 - [ ] Normalized-text keys are byte-exact: distinct spellings are distinct rows; repeated writes keep one row per key (embed and parse writes share the ONE row).

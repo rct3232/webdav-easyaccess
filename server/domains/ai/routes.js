@@ -53,6 +53,20 @@ function serializeSearch(result) {
     // EXACTLY when the parse leg applied; absent, the response stays
     // byte-identical to the parser-free shape.
     ...(result.predicates !== undefined ? { predicates: result.predicates } : {}),
+    // §2.9 delta header (additive): present exactly when a parsed delta was
+    // applied. `session_predicates` is the effective merged atom set.
+    ...(result.delta !== undefined
+      ? {
+          delta: {
+            add: result.delta.add,
+            replace: result.delta.replace,
+            exclude: result.delta.exclude,
+            exclude_similar: result.delta.excludeSimilar === true,
+            $ref: result.delta.ref ?? null,
+          },
+          session_predicates: result.sessionPredicates,
+        }
+      : {}),
   };
 }
 
@@ -64,9 +78,10 @@ router.post(
     try {
       const result = await searchService.search(req.user.full.id, {
         // `result_ref`/`predicates` are the snake_case request fields
-        // (routes spec §2.4.2 Decision — the replay token, accepted and
-        // ignored; the session predicate state is grammar-validated by the
-        // service and discarded silently when malformed).
+        // (routes spec §2.4.2 Decision — the replay token is bound only when
+        // the parsed delta says `$ref:"latest"`; the session predicate state
+        // is grammar-validated by the service and discarded silently when
+        // malformed).
         query: req.body?.query,
         resultRef: req.body?.result_ref,
         predicates: req.body?.predicates,

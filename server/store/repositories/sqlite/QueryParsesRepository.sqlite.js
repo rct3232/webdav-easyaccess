@@ -65,5 +65,28 @@ module.exports = function createSqliteQueryParsesRepository(executor) {
         throw mapDatabaseError(error);
       }
     },
+
+    /**
+     * Bounded keyset scan for the search leg's restart replay-derivation
+     * fallback (searchService.md §2.4/§2.9). Ascending by the primary key so
+     * `afterNormalizedQuery` pages never skip/duplicate rows.
+     */
+    async listAll({ afterNormalizedQuery = null, limit = 500 } = {}) {
+      const size =
+        Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : 500;
+      try {
+        const { rows } = await executor.query(
+          `SELECT normalized_query, predicates, vector, hit_count, created_at
+             FROM query_parses
+            WHERE normalized_query > ?
+            ORDER BY normalized_query ASC
+            LIMIT ?`,
+          [String(afterNormalizedQuery ?? ''), size]
+        );
+        return rows.map(mapQueryParseRow);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
   };
 };

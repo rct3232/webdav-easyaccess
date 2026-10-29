@@ -1966,7 +1966,7 @@ describe('copyFile — S3 mode', () => {
     expect(aclService.checkFolderPermission).toHaveBeenCalledWith(1, 20, 'write');
     expect(blobStorageService.getActiveS3Key).toHaveBeenCalledWith(10);
     expect(fileNodeService.createFile).toHaveBeenCalledWith(20, 'copy.txt');
-    expect(blobStorageService.linkObject).toHaveBeenCalledWith(50, 'key-original');
+    expect(blobStorageService.linkObject).toHaveBeenCalledWith(50, 'key-original', null);
     // A copy is immediately usable and migratable — never left pending_upload.
     expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(50, 'active');
     expect(blobStorageService.duplicateBlob).not.toHaveBeenCalled();
@@ -2000,7 +2000,7 @@ describe('copyFile — S3 mode', () => {
     const result = await service.copyFile(10, 20, 'copy.txt', 1, { id: 1 });
 
     expect(blobStorageService.duplicateBlob).toHaveBeenCalledWith('key-shared');
-    expect(blobStorageService.linkObject).toHaveBeenCalledWith(51, 'key-copy');
+    expect(blobStorageService.linkObject).toHaveBeenCalledWith(51, 'key-copy', null);
     expect(fileNodeService.updateSyncStatus).toHaveBeenCalledWith(51, 'active');
     expect(result).toMatchObject({ sourceNodeId: 10, copiedNodeId: 51 });
   });
@@ -2065,6 +2065,7 @@ describe('copyFile — S3 mode', () => {
 
     expect(fileNodesStore.getCache).toHaveBeenCalledWith(10);
     expect(fileNodesStore.upsertCache).toHaveBeenCalledWith(53, 2048, 'text/plain', null);
+    expect(blobStorageService.linkObject).toHaveBeenCalledWith(53, 'key-cow', 2048);
   });
 
   it('skips the cache mirror without crashing when the source has no filecache row', async () => {

@@ -311,7 +311,8 @@ Creates a copy of a source file in the destination directory. Copy semantics dif
 2. Resolve source blob key: `blobStorageService.getActiveS3Key(nodeId)`. If null (no active object), throw error — nothing to copy.
 3. Check sharing: count how many file_nodes currently reference this s3_key via `blobStorageService.countActiveObjectsByS3Key(s3Key)`.
    - If count === 1 (exclusive ownership): create new file_node + INSERT new object_map row referencing the SAME s3_key with status='active'. Zero-copy, instant.
-   - If count > 1 (shared blob): call `blobStorageService.duplicateBlob(s3Key)` to download-and-upload a private copy under a new key, then link it via `blobStorageService.linkObject(newCopiedNodeId, newS3Key)`.
+   - If count > 1 (shared blob): call `blobStorageService.duplicateBlob(s3Key)` to download-and-upload a private copy under a new key, then link it via `blobStorageService.linkObject(newCopiedNodeId, newS3Key, sourceCacheSize)`.
+   - Both arms pass the SOURCE filecache size (when present) so the copy's `object_map.size` feeds the storage-usage series without a remote probe.
 4. After linking the blob, set the copied node to `fileNodeService.updateSyncStatus(copiedNodeId, 'active')`. A copy is immediately usable and migratable — it must not stay on the repository `pending_upload` default, because s3→webdav migration snapshots enumerate only `sync_status='active'` file nodes (`migrationService.md`), and a `pending_upload` copy would be dropped from the destination at cutover.
 5. Mirror the source cache metadata: read the source `filecache` row via `fileNodesStore.getCache(nodeId)`; when present, write the copied node's cache via `fileNodesStore.upsertCache(copiedNodeId, cache.size, cache.mime_type, null)` — the COW blob is byte-identical to the source, so the copy's listing size/mime match without any remote probe. A source without a cache row is skipped (copy renders null size, same legacy shape).
 6. New file node uses `newName` param; name conflict → numeric suffix via `createFile` behavior.
@@ -687,7 +688,7 @@ Complete checklist of testable behaviors per method, organized to drive the test
 
 ### copyFile — S3 mode
 
-- [ ] Zero-copy when source blob exclusively owned (countActiveObjectsByS3Key === 1): new file_node + object_map row referencing same s3_key with status='active'
+- [ ] Zero-copy when source blob exclusively owned (countActiveObjectsByS3Key === 1): new file_node + object_map row referencing same s3_key with status='active' and the source size
 - [ ] Duplicates blob via duplicateBlob when source s3_key shared by multiple nodes: downloads, re-uploads under new key, links copy to new key
 - [ ] Ends the copied node at `sync_status='active'` via updateSyncStatus after the link (never left `pending_upload`)
 - [ ] Mirrors the source filecache row onto the copied node (`getCache` → `upsertCache(copiedNodeId, size, mimeType, null)`) so the copy lists a real size instead of 0

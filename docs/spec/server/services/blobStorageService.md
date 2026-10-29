@@ -82,7 +82,7 @@ Finalizes an upload: transitions object_map from pending→active and writes fil
 | size     | number | yes      | Content length in bytes                |
 | mimeType | string | yes      | MIME type of the uploaded content      |
 
-**DB operations:** `activateObject(s3Key)` + `upsertCache(fileNodeId, size, mimeType, null)`
+**DB operations:** `activateObject(s3Key, size)` + `upsertCache(fileNodeId, size, mimeType, null)` — the size is coalesced onto the object_map row (per-version history size for the storage-usage series)
 
 **WebDAV mode:** throws `'completeUpload is not applicable in WebDAV mode'`
 
@@ -109,7 +109,7 @@ Overwrites a file's content: uploads new blob, demotes the previous active mappi
 
 **Returns:** string — new s3Key (S3 mode)
 
-**Operations:** `blobStore.uploadBlob(newS3Key, buffer)` → `upsertObjectMap(fileNodeId, newS3Key, 'active')` (demotes the node's previous active row to `status='history'` and inserts the new mapping at `MAX(version_number) + 1`, avoiding the `UNIQUE(file_node_id, version_number)` collision); delegates to `uploadToWebdav(fileNodeId, buffer)` (WebDAV).
+**Operations:** `blobStore.uploadBlob(newS3Key, buffer)` → `upsertObjectMap(fileNodeId, newS3Key, 'active', buffer.length)` (demotes the node's previous active row to `status='history'` and inserts the new mapping at `MAX(version_number) + 1`, avoiding the `UNIQUE(file_node_id, version_number)` collision); delegates to `uploadToWebdav(fileNodeId, buffer)` (WebDAV).
 
 > **Note:** this method is not used by the production upload/overwrite flow — route-level overwrites go through `uploadService.overwriteFile` (S3) or `uploadToWebdav` directly (WebDAV). It is retained as a service-level primitive.
 
@@ -156,7 +156,7 @@ Links an existing s3_key to a file node as active.
 | fileNodeId | number | yes      | ID of the file node |
 | s3Key      | string | yes      | The s3_key to link  |
 
-**Operations:** `fileNodesStore.insertObject(fileNodeId, s3Key, 'active')`
+**Operations:** `fileNodesStore.insertObject(fileNodeId, s3Key, 'active', size)` — the caller passes the source filecache size for a copy (omitted ⇒ NULL)
 
 **WebDAV mode:** throws `'linkObject is not applicable in WebDAV mode'`
 
@@ -257,20 +257,20 @@ Uploads blob via WebDAV path. Guards on node existence.
 
 ## 4. Dual-Backend Dispatch Table
 
-| Operation                 | S3 Mode                                                                                                 | WebDAV Mode                                                                                               |
-| ------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| prepareUpload             | demote old active → `history` + INSERT pending + cap eviction (`evictVersionsBeyondCap`) → return s3Key | returns null (no-op)                                                                                      |
-| completeUpload            | UPDATE active + filecache                                                                               | throws 'completeUpload is not applicable in WebDAV mode'                                                  |
-| downloadBlob              | blobStore.downloadBlob(s3Key)                                                                           | delegates to downloadBlobWebdav                                                                           |
-| overwriteBlob             | upload new blob → upsertObjectMap (demote prev → `history` + insert next version) → return newKey       | delegates to uploadToWebdav                                                                               |
-| getActiveS3Key            | active s3_key or null                                                                                   | always null                                                                                               |
-| countActiveObjectsByS3Key | COUNT active object_map rows by s3_key                                                                  | returns 0                                                                                                 |
-| duplicateBlob             | blobStore.copyBlob(source, newKey) → newKey                                                             | throws 'duplicateBlob is not applicable in WebDAV mode'                                                   |
-| linkObject                | INSERT object_map (file_node_id, s3_key, 'active')                                                      | throws 'linkObject is not applicable in WebDAV mode'                                                      |
-| ensureExclusiveBlob       | write barrier: if countActiveObjectsByS3Key > 1, split shared blob before mutation                      | returns null                                                                                              |
-| uploadToWebdav            | n/a                                                                                                     | resolve path → blobStore.uploadBlob(path, buffer) → upsertCache                                           |
-| downloadBlobWebdav        | n/a                                                                                                     | resolve path (guard node) → blobStore.downloadBlob(path) or null                                          |
-| createDirectoryWebdav     | returns null (no-op)                                                                                    | resolve path → blobStore.createDirectory(path) (recursive MKCOL); on failure mark orphaned_node + rethrow |
+| Operation                 | S3 Mode                                                                                                                | WebDAV Mode                                                                                               |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| prepareUpload             | demote old active → `history` + INSERT pending + cap eviction (`evictVersionsBeyondCap`) → return s3Key                | returns null (no-op)                                                                                      |
+| completeUpload            | UPDATE active (status + size) + filecache                                                                              | throws 'completeUpload is not applicable in WebDAV mode'                                                  |
+| downloadBlob              | blobStore.downloadBlob(s3Key)                                                                                          | delegates to downloadBlobWebdav                                                                           |
+| overwriteBlob             | upload new blob → upsertObjectMap (demote prev → `history` + insert next version with `buffer.length`) → return newKey | delegates to uploadToWebdav                                                                               |
+| getActiveS3Key            | active s3_key or null                                                                                                  | always null                                                                                               |
+| countActiveObjectsByS3Key | COUNT active object_map rows by s3_key                                                                                 | returns 0                                                                                                 |
+| duplicateBlob             | blobStore.copyBlob(source, newKey) → newKey                                                                            | throws 'duplicateBlob is not applicable in WebDAV mode'                                                   |
+| linkObject                | INSERT object_map (file_node_id, s3_key, 'active', size?)                                                              | throws 'linkObject is not applicable in WebDAV mode'                                                      |
+| ensureExclusiveBlob       | write barrier: if countActiveObjectsByS3Key > 1, split shared blob before mutation                                     | returns null                                                                                              |
+| uploadToWebdav            | n/a                                                                                                                    | resolve path → blobStore.uploadBlob(path, buffer) → upsertCache                                           |
+| downloadBlobWebdav        | n/a                                                                                                                    | resolve path (guard node) → blobStore.downloadBlob(path) or null                                          |
+| createDirectoryWebdav     | returns null (no-op)                                                                                                   | resolve path → blobStore.createDirectory(path) (recursive MKCOL); on failure mark orphaned_node + rethrow |
 
 ---
 
@@ -321,7 +321,8 @@ garbage). New rows are inserted at `version_number = MAX(version_number) + 1` fo
 - [ ] prepareUpload returns null (WebDAV mode)
 - [ ] prepareUpload demotes the previous active row to `history` before inserting new pending
 - [ ] prepareUpload evicts oldest `history` rows beyond `GC_VERSION_MAX_PER_NODE` (cap 0 = unbounded no-op; active row untouched)
-- [ ] completeUpload transitions pending→active and writes filecache metadata
+- [ ] completeUpload transitions pending→active, writes the blob size onto the object_map row, and writes filecache metadata
+- [ ] ensureExclusiveBlob/linkObject preserve the source size on the duplicated/linked object_map row
 - [ ] completeUpload throws in WebDAV mode
 - [ ] downloadBlob with active object returns buffer matching uploaded content
 - [ ] downloadBlob with no active object returns null

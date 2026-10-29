@@ -183,12 +183,12 @@ describe('initSqliteSchema integration', () => {
     }
   });
 
-  it('creates exactly 36 tables (core + full §5 platform schema)', async () => {
+  it('creates exactly 37 tables (core + full §5 platform schema)', async () => {
     const rows = await queryDb(
       db,
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
     );
-    expect(rows.length).toBe(36);
+    expect(rows.length).toBe(37);
 
     const expectedTables = [
       // Core (pre-platform)
@@ -222,6 +222,7 @@ describe('initSqliteSchema integration', () => {
       // §5 suggestions + admin reports
       'file_suggestions',
       'admin_reports',
+      'storage_usage_snapshots',
       // §5 AI foundation
       'llm_models',
       'collection_centroids',
@@ -269,6 +270,32 @@ describe('initSqliteSchema integration', () => {
     const info = await queryDb(db, 'PRAGMA table_info(filecache)');
     const col = info.find((c) => c.name === 'size');
     expect(col.type).toBe('INTEGER');
+  });
+
+  it('object_map.size is a nullable INTEGER (per-version blob size)', async () => {
+    const info = await queryDb(db, 'PRAGMA table_info(object_map)');
+    const col = info.find((c) => c.name === 'size');
+    expect(col).toBeDefined();
+    expect(col.type).toBe('INTEGER');
+    expect(col.notnull).toBe(0);
+    expect([null, 'NULL']).toContain(col.dflt_value);
+  });
+
+  it('storage_usage_snapshots carries the user/day PK, bytes, created_at and day index', async () => {
+    const info = await queryDb(db, 'PRAGMA table_info(storage_usage_snapshots)');
+    expect(info.map((c) => c.name)).toEqual(
+      expect.arrayContaining(['user_id', 'day', 'bytes', 'created_at'])
+    );
+    expect(info.find((c) => c.name === 'bytes').type).toBe('INTEGER');
+    expect(info.find((c) => c.name === 'bytes').notnull).toBe(1);
+    expect(
+      info
+        .filter((c) => c.pk > 0)
+        .map((c) => c.name)
+        .sort()
+    ).toEqual(['day', 'user_id']);
+    const indexes = await queryDb(db, 'PRAGMA index_list(storage_usage_snapshots)');
+    expect(indexes.some((index) => index.name === 'storage_usage_snapshots_day_idx')).toBe(true);
   });
 
   it('foreign keys are preserved on file_nodes.parent_id', async () => {
@@ -326,7 +353,7 @@ describe('initSqliteSchema({ path }) file-database leg', () => {
           .all();
         const names = rows.map((r) => r.name).sort();
 
-        expect(names.length).toBe(36);
+        expect(names.length).toBe(37);
         expect(names).toContain('locks');
         expect(names).toContain('collections');
         expect(names).toContain('admin_reports');

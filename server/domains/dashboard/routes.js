@@ -70,6 +70,23 @@ router.get(
   })
 );
 
+// GET /api/dashboard/storage-usage — per-user daily logical-storage series.
+// Fewer than two persisted snapshots returns `{ points: [] }` (no partial
+// or fabricated trend — routes/dashboard.md §2.4).
+router.get(
+  '/storage-usage',
+  authenticateToken,
+  requireUser,
+  requireNonAdmin,
+  asyncHandler(async (req, res) => {
+    try {
+      res.json(await dashboardService.getStorageUsageSeries(req.user.full.id));
+    } catch (e) {
+      throw mapServiceError(e, ERROR_MAP);
+    }
+  })
+);
+
 // POST /api/dashboard/suggestions/accept — checked rows -> trash as ONE
 // journaled command (routes/dashboard.md §2.4); the response carries the
 // undo pointer, undo executes via POST /api/actions/:id/undo.

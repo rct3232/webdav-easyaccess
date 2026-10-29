@@ -293,7 +293,7 @@ function createFailSafeService({
         });
       }
       await withTx(async () => {
-        await fileNodesStore.activateObject(pendingRow.s3_key);
+        await fileNodesStore.activateObject(pendingRow.s3_key, head.contentLength);
         await fileNodesStore.upsertCache(
           nodeId,
           head.contentLength,

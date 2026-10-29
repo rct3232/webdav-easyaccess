@@ -26,6 +26,7 @@ import {
   recordSearchClick,
   getActions,
   getFileSuggestions,
+  getStorageUsageSeries,
   acceptFileSuggestions,
   dismissFileSuggestion,
   notifyEvolutionHint,
@@ -401,6 +402,25 @@ describe('getActions / getFileSuggestions / acceptFileSuggestions (T0.10)', () =
     get.mockRejectedValueOnce(new Error('Network error'));
 
     await expect(getFileSuggestions()).resolves.toEqual({ suggestions: [] });
+  });
+
+  it('getStorageUsageSeries returns the series payload verbatim', async () => {
+    const payload = {
+      points: [
+        { day: '2026-10-01', bytes: 10 },
+        { day: '2026-10-02', bytes: 20 },
+      ],
+    };
+    get.mockResolvedValueOnce({ data: payload });
+
+    await expect(getStorageUsageSeries()).resolves.toEqual(payload);
+    expect(get).toHaveBeenCalledWith('/dashboard/storage-usage');
+  });
+
+  it('getStorageUsageSeries absorbs failures into null (sparkline omitted)', async () => {
+    get.mockRejectedValueOnce(new Error('Network error'));
+
+    await expect(getStorageUsageSeries()).resolves.toBeNull();
   });
 
   it('acceptFileSuggestions posts the camelCase body and notifies on real success', async () => {

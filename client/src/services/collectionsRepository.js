@@ -431,6 +431,17 @@ export const getFileSuggestions = async () => {
 };
 
 /**
+ * Per-user daily storage-usage series (GET /api/dashboard/storage-usage).
+ * The server already enforces the two-point minimum; absorbed failure
+ * returns `null` so the dashboard omits the sparkline block (no fabricated
+ * or partial series — routes/dashboard.md §2.4).
+ * @returns {Promise<{ points: Array<{ day: string, bytes: number }> } | null>}
+ */
+export const getStorageUsageSeries = async () => {
+  return absorbRead('/dashboard/storage-usage', null);
+};
+
+/**
  * Accept checked suggestion rows → trash as ONE journaled command (POST
  * /api/dashboard/suggestions/accept, camelCase body). The response carries
  * `undo: { action_id }` for the undo toast (routes/dashboard.md §2.4).

@@ -210,7 +210,7 @@ function createMigrationService({
       if (buf == null) throw new Error('Source blob not found');
       const key = crypto.randomUUID();
       await dst.uploadBlob(key, buf);
-      await fileNodesStore.upsertObjectMap(node.id, key, 'active');
+      await fileNodesStore.upsertObjectMap(node.id, key, 'active', buf.length);
       const cache = await fileNodesStore.getCache(node.id);
       await fileNodesStore.upsertCache(
         node.id,

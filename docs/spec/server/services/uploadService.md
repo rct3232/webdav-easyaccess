@@ -45,7 +45,7 @@ Creates a new file: TX1 creates node + pending blob mapping → S3 PUT uploads c
 
 1. **TX1:** `fileNodeService.createFile(parentNodeId, name)` + `blobStorageService.prepareUpload(nodeId)` — creates node with sync_status='pending_upload' and object_map entry with status='pending'
 2. **S3 PUT:** `blobStore.uploadBlob(s3Key, buffer)` — outside transaction boundary
-3. **TX2:** `blobStorageService.completeUpload(s3Key, size, mimeType)` + `fileNodeService.updateSyncStatus(nodeId, 'active')` — transitions pending→active, writes filecache
+3. **TX2:** `blobStorageService.completeUpload(s3Key, size, mimeType)` + `fileNodeService.updateSyncStatus(nodeId, 'active')` — transitions pending→active (carrying the per-version size), writes filecache
 
 **Failure rollback (steps 2–3):** steps 2 and 3 run inside one `try`; on ANY failure after TX1
 committed, the just-created node is rolled back via `fileNodeService.deleteNode(nodeId)` (CASCADE
@@ -142,7 +142,7 @@ blob is absent). The scan is strictly read-only.
 
 | Action             | Preconditions                                                            | Effect                                                                                                                                                                                                                                                              |
 | ------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `complete`         | pending row + blob present (else 409)                                    | `activateObject(pending.s3_key)`, `upsertCache(nodeId, blob.contentLength, blob.contentType, null)` and node → `active` inside one TX — mirrors `blobStorageService.completeUpload` using blob HEAD metadata                                                        |
+| `complete`         | pending row + blob present (else 409)                                    | `activateObject(pending.s3_key, blob.contentLength)`, `upsertCache(nodeId, blob.contentLength, blob.contentType, null)` and node → `active` inside one TX — mirrors `blobStorageService.completeUpload` using blob HEAD metadata                                    |
 | `restore-previous` | a `history` (fallback legacy `orphaned`) last-good row exists (else 409) | In one TX: `reactivateObjectMapRow(lastGood.id)` (guard `status IN ('history','orphaned')`), pending v\_{k+1} row deleted (`deleteObjectMapRows`), node → `active`. Outside the TX the pending blob is deleted best-effort; the last-good blob B_k is never touched |
 | `delete`           | —                                                                        | Pending blob deleted best-effort, then `fileNodeService.deleteNode` removes the node tree (object_map/filecache rows cascade). A last-good blob, if any, becomes untracked and is left to GC Tier 2                                                                 |
 | `auto`             | —                                                                        | Policy: overwrite residue (`history`/`orphaned` row present) → `restore-previous`; new-file residue with blob present → `complete`; new-file residue without blob → `delete`                                                                                        |

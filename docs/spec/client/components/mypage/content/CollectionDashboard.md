@@ -4,11 +4,11 @@ Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surfa
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                                                   |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | `Storage` MyPage content component: hygiene cards (deep-link, never an action center), system-changes journal feed (30d, undo + cascade), my-collections status, SuggestionsChecklist block, capacity sparkline. Also owns the `myPageRegistry` entry contract for the new categories (§2.5). |
-| Used in            | MyPage via `getMyPageContentDescriptor` (`storage` category)                                                                                                                                                                                                                                  |
-| Related components | SuggestionsChecklist, MyPageContentPanel, ConfirmDialog (cascade), useUndoToast (undo execution reuse), PageHeaderContext                                                                                                                                                                     |
+| Item               | Description                                                                                                                                                                                                                                                                                        |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | `Storage` MyPage content component: hygiene cards (deep-link, never an action center), system-changes journal feed (30d, undo + cascade), my-collections status, SuggestionsChecklist block, storage-usage sparkline. Also owns the `myPageRegistry` entry contract for the new categories (§2.5). |
+| Used in            | MyPage via `getMyPageContentDescriptor` (`storage` category)                                                                                                                                                                                                                                       |
+| Related components | SuggestionsChecklist, MyPageContentPanel, ConfirmDialog (cascade), useUndoToast (undo execution reuse), PageHeaderContext                                                                                                                                                                          |
 
 ---
 
@@ -36,7 +36,7 @@ Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surfa
 2. **System-changes feed (journal)** — `GET /api/actions` rows (30d, `snake_case` verbatim): `subject_label` + `action` → i18n label map (`mypage.journalAction.${action}`), `actor: "system"` → `auto` tag, `created_at` formatted. Per row: `undo_available` + `is_tip` → undo button; non-tip → cascade-confirm dialog with `params.laterChanges` count then re-post; `not recoverable` badge for report-only rows (permanent delete/empty-trash parity contract); `status:'undone'` → strikethrough label, no action. `payload` never fetched/needed (feed contract).
 3. **My-collections status** — counts (active/archived), grants received/granted (revoke inline = `DELETE /:id/grants`, instant), recent merge/archive facts from the feed subset with undo (same row renderer).
 4. **Suggestions** — `SuggestionsChecklist` block (its spec owns the accept protocol).
-5. **Capacity sparkline** — ONLY a sparkline, no insight prose. Seam `loadCapacitySeries()` returns `{ points: [{ day, bytes }] }`; absent ⇒ block omitted entirely. **v1 state:** the gateway does not implement `loadCapacitySeries()`, so the seam is absent and the block is always omitted — no capacity data is persisted or read.
+5. **Storage-usage sparkline** — ONLY a sparkline, no insight prose. Seam `loadStorageUsageSeries()` (`explorerGateway.md` §2.6) returns `{ points: [{ day, bytes }] }` from `GET /api/dashboard/storage-usage`; the block renders ONLY when at least two points exist. Absent data, an absorbed read failure (`null`) or a one-point series ⇒ block omitted entirely (the server already applies the two-point minimum; the client never fabricates a point). The retained `data-testid="capacity-sparkline"` and `mypage.capacityTitle` key are stable identifiers for the Storage sparkline.
 
 #### 2.3.1 Data seams
 
@@ -98,7 +98,7 @@ Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surfa
 - [ ] Non-tip undo opens cascade dialog showing `laterChanges` count BEFORE re-posting with `confirmCascade: true`.
 - [ ] Permanent-delete rows show `not recoverable` badge and no undo button.
 - [ ] `storage` category renders for non-admins only (hidden / never invoked for admins — operator rule); `admin-ai` only for admins and carries the 4-state chip.
-- [ ] Missing capacity/dup data hides blocks (no spinners-forever, no placeholder prose).
+- [ ] Missing storage-usage/dup data hides blocks (no spinners-forever, no placeholder prose); one series point also hides the sparkline.
 
 ### 2.8 Edge Cases
 

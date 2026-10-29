@@ -707,8 +707,8 @@ test('E2E-S3-COLLECTION-009: Storage dashboard renders the collection journal fe
     .filter({ hasText: name });
   await expect(undoneRow.first()).toBeVisible({ timeout: 10_000 });
 
-  // P0 expectation: no AI surfaces — no capacity sparkline (series seam
-  // absent) and no suggestion checkboxes (`semantic` key absent).
+  // No AI surfaces — no storage-usage sparkline (no snapshot data in this
+  // workspace) and no suggestion checkboxes (`semantic` key absent).
   await expect(page.getByTestId('capacity-sparkline')).toHaveCount(0);
   await expect(page.getByTestId('suggestion-checkbox')).toHaveCount(0);
 });
@@ -1559,8 +1559,8 @@ test('E2E-S3-COLLECTION-023: the persisted cleanup-suggestion checklist accepts 
     expect(after.suggestions.some((row) => row.node_id === dup.nodeId)).toBe(false);
   }).toPass({ timeout: 10_000 });
 
-  // (f) AI-block gate audit (§4.12): embed unconfigured ⇒ no capacity sparkline
-  //     (series seam absent) and no near-dup surfaces on the dashboard.
+  // (f) AI-block gate audit (§4.12): embed unconfigured ⇒ no storage-usage
+  //     sparkline (no snapshot data) and no near-dup surfaces on the dashboard.
   await expect(page.getByTestId('capacity-sparkline')).toHaveCount(0);
   await expect(page.getByText(/near[- ]duplicate/i)).toHaveCount(0);
 

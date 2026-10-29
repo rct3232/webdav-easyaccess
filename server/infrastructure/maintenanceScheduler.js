@@ -478,6 +478,187 @@ function startAdminReportsRetentionScheduler({
   return timer;
 }
 
+// ── Storage-usage snapshots (maintenanceScheduler.md §3.7) ────────────────
+
+const STORAGE_USAGE_SNAPSHOT_LOCK_NAME = 'storage-usage-snapshot';
+const STORAGE_USAGE_SNAPSHOT_LOCK_TTL_MS = 30 * 60 * 1000;
+const DEFAULT_STORAGE_USAGE_SNAPSHOT_INTERVAL_MS = DAY_MS;
+const DEFAULT_STORAGE_USAGE_RETENTION_DAYS = 30;
+
+function shouldSkipStorageUsageSnapshot() {
+  const skip = (process.env.WEA_SKIP_STORAGE_USAGE_SNAPSHOT || '').toLowerCase();
+  return ['1', 'true', 'yes', 'on'].includes(skip);
+}
+
+function resolveStorageUsageSnapshotIntervalMs() {
+  const { getSharedResolver } = require('./configResolver');
+  const raw = Number(getSharedResolver().getConfigSync('STORAGE_USAGE_SNAPSHOT_INTERVAL_MS'));
+  if (!Number.isFinite(raw)) return DEFAULT_STORAGE_USAGE_SNAPSHOT_INTERVAL_MS;
+  return raw > 0 ? raw : 0;
+}
+
+function resolveStorageUsageRetentionDays() {
+  const { getSharedResolver } = require('./configResolver');
+  const raw = Number(getSharedResolver().getConfigSync('STORAGE_USAGE_RETENTION_DAYS'));
+  return Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_STORAGE_USAGE_RETENTION_DAYS;
+}
+
+function resolveStorageUsageStorageMode(injected) {
+  if (injected) return injected;
+  const { getComposition } = require('../service/composition');
+  return getComposition().fileStorageMode;
+}
+
+function utcDay(clockMs) {
+  return new Date(clockMs).toISOString().slice(0, 10);
+}
+
+/**
+ * ONE daily storage-usage capture + retention prune. Every non-admin user
+ * with a root contributes one UTC-day snapshot of their live + trash subtree
+ * (all active/history object versions in S3 mode, current filecache rows in
+ * WebDAV mode). A user with any NULL size is skipped with a warning — a
+ * partial series is never persisted. Runs under the cross-replica lock; a
+ * held lock returns `{ captured: 0, skipped: 'locked' }`. DB failures reject
+ * to the caller (the scheduler logs and retries next interval).
+ *
+ * @param {Object} [opts]
+ * @param {Object} [opts.userStore] user store facade
+ * @param {Object} [opts.fileNodesStore] file-nodes store facade
+ * @param {Object} [opts.snapshotsStore] storageUsageSnapshotsStore facade
+ * @param {() => number|Date} [opts.now] clock seam
+ * @param {number} [opts.retentionDays] override (tests); default hot config
+ * @param {Object} [opts.lockManager] lock seam (tests)
+ * @param {Object} [opts.log] logger seam
+ * @param {'s3'|'webdav'} [opts.storageMode] override (tests); default composition
+ * @returns {Promise<{captured: number, skippedUsers?: number, pruned?: number, day?: string, skipped?: string}>}
+ */
+async function runStorageUsageSnapshot({
+  userStore,
+  fileNodesStore,
+  snapshotsStore,
+  now = Date.now,
+  retentionDays,
+  lockManager,
+  log,
+  storageMode,
+} = {}) {
+  const logger = log || console;
+  const days =
+    retentionDays === undefined ? resolveStorageUsageRetentionDays() : Number(retentionDays);
+  const clock = Number(now());
+  const day = utcDay(Number.isFinite(clock) ? clock : Date.now());
+  const users = userStore || require('../store/userStore');
+  const nodes = fileNodesStore || require('../store/fileNodesStore');
+  const snapshots = snapshotsStore || require('../store/storageUsageSnapshotsStore');
+  const includeVersions = resolveStorageUsageStorageMode(storageMode) !== 'webdav';
+
+  const locks = lockManager || require('./lockManager');
+  let lock = null;
+  try {
+    try {
+      lock = await locks.acquireLock(STORAGE_USAGE_SNAPSHOT_LOCK_NAME, {
+        ttlMs: STORAGE_USAGE_SNAPSHOT_LOCK_TTL_MS,
+        waitMs: 0,
+      });
+    } catch (err) {
+      if (err && err.code === 'LOCK_TIMEOUT') return { captured: 0, skipped: 'locked' };
+      throw err;
+    }
+
+    let captured = 0;
+    let skippedUsers = 0;
+    const allUsers = await users.findAll();
+    // eslint-disable-next-line no-restricted-syntax
+    for (const user of allUsers) {
+      if (Number(user.is_admin) === 1) continue;
+      // eslint-disable-next-line no-await-in-loop
+      const root = await nodes.getUserRootNode(Number(user.id));
+      if (!root) continue;
+      // eslint-disable-next-line no-await-in-loop
+      const summary = await nodes.summarizeSubtreeStorageUsage(root.id, { includeVersions });
+      if (Number(summary.nullSizeCount) > 0) {
+        skippedUsers += 1;
+        if (typeof logger.warn === 'function') {
+          logger.warn(
+            `[storage-usage-snapshot] user ${user.id} skipped: ${summary.nullSizeCount} row(s) without size`
+          );
+        }
+        continue;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await snapshots.upsertSnapshot({
+        userId: Number(user.id),
+        day,
+        bytes: summary.bytes,
+      });
+      captured += 1;
+    }
+
+    let pruned = 0;
+    if (Number.isFinite(days) && days > 0) {
+      const cutoff = utcDay((Number.isFinite(clock) ? clock : Date.now()) - days * DAY_MS);
+      const result = await snapshots.deleteOlderThan(cutoff);
+      pruned = Number(result && result.changes) || 0;
+    }
+
+    if (captured > 0 && typeof logger.log === 'function') {
+      logger.log(`[storage-usage-snapshot] captured ${captured} user(s), pruned ${pruned} row(s)`);
+    }
+    return { captured, skippedUsers, pruned, day };
+  } finally {
+    if (lock && typeof lock.release === 'function') await lock.release();
+  }
+}
+
+/**
+ * Periodic storage-usage capture schedule. `null` under the skip seam or
+ * interval 0. Re-arms with the hot interval at fire time; failures log and
+ * retry. The first capture lands at the first tick — never at boot.
+ */
+function startStorageUsageSnapshotScheduler({
+  userStore,
+  fileNodesStore,
+  snapshotsStore,
+  now,
+  retentionDays,
+  lockManager,
+  log,
+  storageMode,
+  intervalMs,
+} = {}) {
+  if (shouldSkipStorageUsageSnapshot()) return null;
+  const resolveInterval = () =>
+    intervalMs !== undefined && Number.isFinite(Number(intervalMs))
+      ? Number(intervalMs)
+      : resolveStorageUsageSnapshotIntervalMs();
+  const initial = resolveInterval();
+  if (!initial || initial <= 0) return null;
+
+  let timer = null;
+  const tick = async () => {
+    try {
+      await runStorageUsageSnapshot({
+        userStore,
+        fileNodesStore,
+        snapshotsStore,
+        now,
+        retentionDays,
+        lockManager,
+        log,
+        storageMode,
+      });
+    } catch (err) {
+      console.error('Scheduled storage-usage snapshot failed:', err.message);
+    } finally {
+      const next = resolveInterval();
+      if (next > 0) timer = setTimeout(tick, next);
+    }
+  };
+  timer = setTimeout(tick, initial);
+  return timer;
+}
+
 // ── File-suggestions expiry (§4.17 retention leg / maintenanceScheduler.md §3.6) ──
 
 const SUGGESTION_EXPIRY_LOCK_NAME = 'file-suggestions-expiry';
@@ -615,6 +796,11 @@ module.exports = {
   resolveAdminReportsRetentionBatch,
   runAdminReportsRetention,
   startAdminReportsRetentionScheduler,
+  shouldSkipStorageUsageSnapshot,
+  resolveStorageUsageSnapshotIntervalMs,
+  resolveStorageUsageRetentionDays,
+  runStorageUsageSnapshot,
+  startStorageUsageSnapshotScheduler,
   shouldSkipSuggestionExpiry,
   resolveSuggestionExpiryIntervalMs,
   resolveSuggestionExpiryBatch,

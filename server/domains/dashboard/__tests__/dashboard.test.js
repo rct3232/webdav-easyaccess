@@ -20,6 +20,7 @@ const {
   grantTestPermissionByNodeId,
 } = require('@server/test-utils');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
+const storageUsageSnapshotsStore = require('@server/store/storageUsageSnapshotsStore');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const composition = require('@server/service/composition');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
@@ -524,5 +525,75 @@ describe('GET /api/dashboard — vector near-dup block', () => {
     expect(res.status).toBe(200);
     expect(res.body).not.toHaveProperty('near_duplicates');
     expect(res.body.suggestions.every((row) => row.kind === 'exact_dup')).toBe(true);
+  });
+});
+
+// -- GET /storage-usage ------------------------------------------------------
+
+describe('GET /api/dashboard/storage-usage', () => {
+  it('rejects unauthenticated reads with 401', async () => {
+    const res = await request(app).get('/api/dashboard/storage-usage');
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects admin requesters with 403 (non-admin personal surface)', async () => {
+    const { token } = await createAuthenticatedTestUser({
+      username: `dashsu-adm-${Date.now()}`,
+      isAdmin: true,
+    });
+    const res = await request(app)
+      .get('/api/dashboard/storage-usage')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(403);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.collections.forbidden);
+  });
+
+  it('returns the requester own rows ascending, snake_case-only, when at least two exist', async () => {
+    const mine = await storageUser('su-series');
+    const other = await storageUser('su-other');
+    // insert newest-first to prove the repository/route ordering
+    await storageUsageSnapshotsStore.upsertSnapshot({
+      userId: mine.user.id,
+      day: '2031-02-02',
+      bytes: 222,
+    });
+    await storageUsageSnapshotsStore.upsertSnapshot({
+      userId: mine.user.id,
+      day: '2031-02-01',
+      bytes: 111,
+    });
+    await storageUsageSnapshotsStore.upsertSnapshot({
+      userId: other.user.id,
+      day: '2031-02-01',
+      bytes: 999,
+    });
+
+    const res = await request(app)
+      .get('/api/dashboard/storage-usage')
+      .set('Authorization', `Bearer ${mine.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      points: [
+        { day: '2031-02-01', bytes: 111 },
+        { day: '2031-02-02', bytes: 222 },
+      ],
+    });
+  });
+
+  it('returns an empty series when fewer than two points exist (no partial trend)', async () => {
+    const mine = await storageUser('su-one');
+    await storageUsageSnapshotsStore.upsertSnapshot({
+      userId: mine.user.id,
+      day: '2031-03-01',
+      bytes: 42,
+    });
+
+    const res = await request(app)
+      .get('/api/dashboard/storage-usage')
+      .set('Authorization', `Bearer ${mine.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ points: [] });
   });
 });

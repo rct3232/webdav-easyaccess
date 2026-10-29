@@ -281,6 +281,11 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
   triggers re-embed backfill job (rate-limited). The admin-launched re-embed and the
   initial-coverage backfill (first embedding pass over an existing corpus) are THE SAME
   admin action — one UI/UX surface, no automatic bulk enqueue in either case (2026-10-20).
+  The launcher bumps the per-kind generation and seeds the affected nodes; the media half
+  is the `planMediaBackfill` coverage plan. The action is cancellable: a pending `ai_jobs`
+  row enters the terminal `cancelled` state and the journal entry carries a
+  `cancel-ai-jobs` inverse. Running jobs finish, already-spent provider cost is not
+  refunded, and cancelled jobs are not retried automatically.
   Existing vector math keeps working from DB
   data after un-configuring an LLM; only NEW enrichment stops (queue backlog visible in
   admin). This is deliberate: enrichment dependency, not runtime dependency.
@@ -504,9 +509,12 @@ Inputs: node_activity, likes, embeddings. Passes:
 5. **Merge candidates** → §4.4 rows (this is the only "proposal" output).
 6. **Auto-pin** (§4.9b).
    Naming via templateNamer (§4.10). Every act = `action_journal` row(s) via commit API (§4.11).
-   All thresholds are T2 hot settings (configRegistry T2/dbOnly precedent
-   `configRegistry.js:68`; resolver `configResolver.js:73-163` 5s TTL) — editable from admin
-   tuning panel (§4.15) with live impact-count preview. Global switches:
+   Config-backed product gates (the `AI_EVOLUTION_*` / `AI_MERGE_*` registry keys and the
+   activity constants in §3.4) are T2 hot settings (configRegistry T2/dbOnly precedent
+   `configRegistry.js:68`; resolver `configResolver.js:73-163` 5s TTL) — editable from the
+   admin tuning panel (§4.15) with live impact-count preview. Hardcoded evolution product
+   thresholds (create/merge geometry and profile fallbacks) are release-time constants:
+   they are not exposed in the admin panel/API and are not runtime-editable. Global switches:
    `AI_EVOLUTION_ENABLED` (pauses acts, keeps rendering), nightly-batch pause, create-pause,
    trigger mode. Kill switch semantics: pause never destroys queued work silently.
 
@@ -707,17 +715,24 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 
 ### 4.15 Admin AI governance panel (tab within mypage admin area)
 
-Pipeline health (queue depth, 24h fail/429 rates, breaker states, failed-jobs table w/
-retry/abandon), cost ledger (`ai_usage_daily` per-role rollup; daily budget caps; per-user
-top-N), evolution governance (rule hit-rate, survival curves, merge-accept %, gate params
-with live impact counts + rollback via settings journal, tombstone-suppressed vs
-regenerated-anyway counters §4.9/Q1), model registry (model_id/dim per
-role, per-version embedding distribution, **three ai_enrichments lineages — features/caption/
-asr model coverage filters for backfill scoping (Q6)** + media-embed coverage (which nodes
-carry `media_direct` vectors vs which fell back — V1/V3 rows, backfill scoping),
-backfill launcher with rate limit — the ONE admin action serving both the initial coverage
-pass and a model-change full re-embed, §4.2),
-degraded-input histogram (overlength stats), kill switches (§4.9). Privacy boundary:
+Pipeline health (queue depth, 24h fail/429 rates where the stored state supports them,
+breaker states, failed-jobs table display-only in v1 — no manual retry/abandon), cost
+ledger (`ai_usage_daily` per-role rollup; daily budget caps; per-user top-N is NOT
+instrumented in v1 and is deferred to a follow-up accounting unit), evolution governance
+(rule hit-rate, survival curves, merge-accept %, and tombstone/regeneration counters
+where the existing reports and journals support them; missing series are labelled
+`not instrumented`, never fabricated; only config-backed gate params with live impact
+counts + rollback via the settings journal; hardcoded evolution thresholds are not
+exposed), model registry (model_id/dim per role — dim is runtime/profile-derived, never a
+`llm_models` column; current vs stale embedding distribution; **three ai_enrichments
+lineages — features/caption/asr model coverage filters for backfill scoping (Q6)** +
+media-embed coverage (which nodes carry `media_direct` vectors vs which fell back —
+V1/V3 rows, backfill scoping); backfill launcher with rate limit — the ONE admin action
+serving both the initial coverage pass and a model-change full re-embed, covering text
+nodes plus the media coverage plan, with one confirmation dialog and a cancel-pending
+journal inverse, §4.2), degraded-input histogram (overlength stats; the stored counter is
+used only when the adapter records it, otherwise labelled not instrumented), kill
+switches (§4.9). Privacy boundary:
 aggregates and ids
 only — never file names/queries/contents of other users. **Constants provenance
 (2026-09-16 decision, extended 2026-10-08): every numeric constant the AI passes (cos
@@ -739,7 +754,8 @@ re-embeds everything on change; class (b) is caught by probe shape/positive-cont
 Embed-model adoption checklist (profile constants to measure before a model ships): text
 near-dup band (θ_dup), unrelated floor/dynamic baseline spread, image/audio/video near-dup
 bands, mutual-kNN tier edges, char/token factor, media chunk costs — latency/serving-mode
-figures are recorded in the profile as informational fields, never ship gates).**
+figures are recorded in the profile as informational fields, never ship gates). The
+hardcoded evolution product gates (§4.9) are not part of this provenance surface.**
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/infrastructure/llmPresets.md`, `docs/spec/server/routes/admin.md (panel surface lands with T4.1 docs step)`
 
@@ -756,8 +772,10 @@ descriptor branch. Blocks: hygiene cards (exact/near dups count + reclaimable GB
   threshold variants; checked rows only, accept→trash; command-unit undo §4.11 ships with
   T3.3 — the P0 surface accepts un-journaled, trash-restore is the undo, report toast without
   an Undo button (§12.5)**).
-  Capacity sparkline only — no personal-insight prose
-  (rejected scope).
+  Storage usage sparkline only — no personal-insight prose (rejected scope). The series is
+  per-user logical storage usage (live + trash + all active/history object versions),
+  written daily to `storage_usage_snapshots`; no data ⇒ the block is omitted. Version
+  history is S3-mode only, so WebDAV deployments graph current+trash bytes.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/client/components/mypage/content/CollectionDashboard.md`, `docs/spec/client/hooks/useMyPageController.md`, `docs/spec/client/pages/MyPage.md`
 
@@ -1192,8 +1210,9 @@ Contract specs (binding, MUST read before implementing this section): `docs/spec
 ## 5. Schema (PG-canonical; sqlite via transpiler). Single-file DDL: ALL §5 tables (P0–P4)
 
 live in `server/store/postgresql/ddl/001_initial_normalized_schema.sql`; the numbered chain
-resumes at `002_…` only after the platform merge. Dev-DB checksum recovery and the manual
-prod migration at the `ai-feature`→`dev` merge/deploy — see PLAN §6 DDL policy.
+resumes at `002_…` only after the platform merge. The `001` file is edited directly while
+development DBs are ephemeral; the manual production migration at the `ai-feature`→`dev`
+merge/deploy is deployment-owned and is not tracked as feature-branch schema history.
 
 All: snake*case, TEXT+CHECK enums, `created_at TIMESTAMPTZ DEFAULT NOW()`, indexes
 `<table>*<purpose>`.
@@ -1264,14 +1283,21 @@ asr_model_id→llm_models, probe JSONB, truncated, media_kind, updated_at)` — 
   (objects/scene/relations) arrive as v2 rows or a side table at demand time; no v1
   implementation of extended keys.
 - `ai_jobs(id, node_id→CASCADE, generation, kind CHECK(embed|features|caption|asr|backfill),
-status CHECK(pending|running|done|failed|skipped), attempt, next_retry_at, last_error,
-content_hash, created_at, started_at, finished_at, UNIQUE(node,kind,generation))`;
-  idx(status,next_retry_at)
+status CHECK(pending|running|done|failed|skipped|cancelled), attempt, next_retry_at,
+last_error, content_hash, created_at, started_at, finished_at,
+UNIQUE(node,kind,generation))`; idx(status,next_retry_at) — `cancelled` is terminal and
+  never claimable; only admin launcher cancels pending rows.
 - `ai_usage_daily(day TEXT, role, calls, input_chars, cached, degraded, failed_429,
 PK(day,role))`
 - `query_parses(normalized_query PK, predicates JSONB, vector TEXT NULL, hit_count,
 created_at)` — NL cache + E2 query-embed cache; the normalized signature doubles as
   §4.22's `result_ref` key (no separate table)
+- `storage_usage_snapshots(user_id→users→CASCADE, day TEXT, bytes BIGINT NOT NULL,
+created_at, PK(user_id,day))` — per-user daily storage-usage series (§4.16); one row per
+  user/day, 30-day retention. `bytes` includes live + trash + all active/history object
+  versions; pending/orphaned objects are excluded.
+- `object_map.size BIGINT NULL` — per-version blob size for the §4.16 series; new writes
+  populate it, the production migration backfills existing rows.
 - `filecache.content_hash` populated in place (column exists, no DDL change).
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/store/ (collections/fileLikes/actionJournal/aiJobs/embeddings/embeddingsChunk/aiTag)`, `docs/spec/server/routes/ (collections/search/actions/admin)`

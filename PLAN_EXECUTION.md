@@ -45,7 +45,7 @@
     `app.use('/api/dashboard', setupModeGuardInstance, require('./domains/dashboard/routes'));`.
     PG leg REQUIRED for the new repository surface (conformance block shipped; `test:ci:pg:adapters`
     not run here — no e2e container in the task env). Deferred by spec: `dismissFileSuggestion` +
-    persisted suggestion ids (T3.3), capacity-series seam (later task — block omitted), dup-finder
+    persisted suggestion ids (T3.3), storage-usage series seam (later task — block omitted), dup-finder
     dedicated-view deep link (the card scrolls to the suggestions block in P0).
     Gates (targeted): server 27 suites / 447 pass + locale-mirror 12; client 20 suites / 238 pass;
     eslint/prettier clean.
@@ -2273,7 +2273,7 @@ disabled`) sourced from the new `llmAdapter.getRoleReadiness('embed')`; it is no
 ## 31. Post-P3 remediation execution (2026-10-28)
 
 > Owner decisions: hysteresis **enabled with provisional offsets** (±0.02) and refined after
-> operation; `for-nodes` hides non-published rows from non-owners; capacity sparkline is **P4
+> operation; `for-nodes` hides non-published rows from non-owners; storage-usage sparkline is **P4
 > (T4.4)**; embed-probe completeness + media-warning emit are **pre-merge (C3-A/C4-A)**; shared
 > enums are **promoted to code (D1-A)**; near-dup keeper quality ships with the v1 weights and
 > the confirmed exposure defaults. Each unit is a task branch → `ai-feature`; worktrees are
@@ -2608,7 +2608,7 @@ P4 phase open.
 | T4.1 admin AI surface and re-embed launcher | `[open]`                 | P4 orchestrator; assign the implementation owner at dispatch | Deliver the admin AI surface and rate-limited re-embed action, including initial coverage/model-change use (§28.9, §30.5).                                                |
 | T4.2 media ladder                           | `[needs-reconciliation]` | P4 orchestrator                                              | D2–D4 already report the media probes, pipelines, fallback, and backfill scope delivered (§28.8). Mark T4.2 absorbed by those units or state the remaining P4-only scope. |
 | T4.3 hermetic AI/media E2E                  | `[open]`                 | P4 E2E owner; assign at dispatch                             | Add the fake-LLM/degradation matrix and E2E-AI-002 parser case (§30.5).                                                                                                   |
-| T4.4 capacity series                        | `[open]`                 | P4 dashboard owner; assign at dispatch                       | Add capacity snapshots, daily scheduler, gateway series, Storage sparkline, and their specs/tests (§7, §7.1).                                                             |
+| T4.4 capacity series → storage usage (§33.8 W2) | `[open]`             | P4 dashboard owner; assign at dispatch                       | Add per-user `storage_usage_snapshots` (live + trash + version history via `object_map.size`), daily scheduler, gateway series, Storage sparkline, and their specs/tests (§7, §7.1, §33.8 W2). |
 | §4.22 delta-semantics SQL leg               | `[deferred]`             | Search/parser owner; assign with the task                    | Apply the parsed predicate delta semantics without inventing grammar beyond the shared contract (§30.5).                                                                  |
 | §30.6 L2 query-parses contract              | `[open]`                 | T3.4 docs owner / orchestrator                               | State that malformed raw JSON is a sqlite-only read case; PostgreSQL JSONB rejects malformed data on write. Add optional focused tests (§30.6).                           |
 | `JOURNAL_DOMAIN.TAGS` parity                | `[needs-decision]`       | Project owner                                                | Decide whether to retain or remove the unused enum value; if removed, change the shared constant and DDL CHECK together (§31.5).                                          |
@@ -2654,9 +2654,9 @@ different number without that evidence.
   from fresh canonical output — no archaeology and no repin without run evidence.
 
 Design points deliberately left to each task's docs-first step (resolved there, not here):
-the settings-journal push-vs-pull semantics (no `settings`-domain writer exists today), the
-capacity-snapshot row shape, the fake-LLM harness injection mechanics, and the new scratch
-E2E port entry.
+the storage-usage snapshot row shape, the fake-LLM harness injection mechanics, and the new
+scratch E2E port entry. The settings-journal push-vs-pull semantics is resolved by U4
+(polling; no settings pub-sub).
 
 ### 33.2 Wave plan
 
@@ -2665,83 +2665,107 @@ E2E port entry.
 | 0    | CF skip-budget comment                 | `chore/skip-budget-comment`         | `e2e/reporters/skip-budget.js:12` default 6→7, comment-only; no runtime change without its own test                                                         | —     | XS     | `[done]`  |
 | 0    | CF §30.6 L2 query-parses note          | `docs/query-parses-sqlite-note`     | record that malformed raw JSON is a sqlite-only read case (PostgreSQL JSONB rejects malformed data on write) in the query_parses persistence contract; optional focused sqlite raw-row + shared-mapper tests | — | S | `[done]` |
 | 0    | CF §30.6 E precondition confirmation   | (docs commit; may ride the L2 unit) | confirm the `assertMemberConsumable` future-route precondition is recorded in the service contract; close the item as recorded                              | —     | XS     | `[done]`  |
-| 1    | T4.4 capacity series                   | `feature/t44-capacity-series`       | full chain — see 33.3                                                                                                                                       | —     | M      | `[todo]`  |
-| 1    | T4.1 admin AI panel + launcher         | `feature/t41-admin-ai-panel`        | docs → endpoints → tab → launcher — see 33.3                                                                                                                | —     | L      | `[todo]`  |
-| 1    | T4.3 harness + degradation matrix      | `test/t43-fake-llm-harness`         | fake-LLM harness + per-column suites — see 33.3                                                                                                             | —     | M–L    | `[todo]`  |
+| 0.5  | Preceding DDL: cancelled AI job status | `chore/ai-job-cancelled-status`     | `001` `ai_jobs.status` + `cancelled`; docs/schema test; no dev migration script (dev DBs are ephemeral; the production migration is deployment-owned) — see 33.8 W7 | —     | XS     | `[todo]`  |
+| 1    | T4.4 storage usage series              | `feature/t44-storage-usage`         | `storage_usage_snapshots` + `object_map.size` + daily scheduler + gateway/UI — see 33.3/33.8 W2                                                  | 0.5   | M–L    | `[todo]`  |
+| 1    | T4.1 admin AI panel + launcher         | `feature/t41-admin-ai-panel`        | full text+media launcher + cancel-pending + config-backed gates; docs → endpoints → tab → launcher — see 33.3/33.8 W1/W5/W6 | 0.5   | L+     | `[todo]`  |
+| 1    | T4.3 harness + degradation matrix      | `test/t43-fake-llm-harness`         | fake embed+chat harness + per-column suites; AI-001 remains real EG2 — see 33.3/33.8 W3 | 0.5   | M–L    | `[todo]`  |
 | 2    | T4.3 parser E2E + inventory re-pin     | `test/t43-parser-e2e`               | `E2E-S3-AI-002` over the harness; `docs/E2E_COVERAGE_PLAN.md` inventory + skip-budget expected-skips re-pin ("smoke-list update")                           | W1.3  | S–M    | `[todo]`  |
 | 2    | §4.22 SQL leg (D3)                     | `feature/search-delta-sql`          | delta structuring + `$ref` binding + SQL/vectorStore execution                                                                                              | —     | L      | `[todo]`  |
 | 2    | D2 execution                           | `chore/remove-tags-journal-domain`  | TAGS removal across the four parity points                                                                                                                  | —     | S      | `[todo]`  |
 | 2    | hysteresis calibration                 | (owner-run, no branch)              | re-measure the provisional ±0.02 offsets against operational data (§31.1/§31.6); results ship in the profile + recorded here                                | —     | owner  | `[todo]`  |
 | 3    | P4 exit gate                           | `ai-feature`                        | gates of 33.4 + count re-pin (D4) + closure log → single `ai-feature`→`dev` merge                                                                           | all   | —      | `[todo]`  |
 
-**Merge order:** Wave 0 units land immediately and in parallel (no overlap). The three Wave 1
-units are mutually independent and dispatch in parallel. Wave 2 units follow their deps. The
-exit gate runs only after every active row above is closed.
+**Merge order:** Wave 0 units land immediately and in parallel. The preceding DDL unit
+(`chore/ai-job-cancelled-status`) lands first. T4.4, T4.1, and T4.3 then dispatch in parallel
+off that commit. T4.4 is the only remaining `001` editor; T4.1 and T4.3 do not edit `001`.
+Wave 2 units follow their deps. The exit gate runs only after every active row above is
+closed.
 
 ### 33.3 Task graph (each task lists objective / inputs / outputs / verification / deps)
 
-- **T4.4 — Dashboard capacity series.** Objective: a daily storage capacity series with the
-  Storage sparkline; v1 keeps the seam absent and the block omitted when no data exists — no
-  fabricated series. Inputs: §4.16 sparkline rule; the scheduler template
+- **Preceding DDL — cancelled AI job status.** Objective: make `cancelled` a terminal
+  `ai_jobs` status before T4.1/T4.4 start. Outputs: the `001` `ai_jobs.status` CHECK gains
+  `cancelled`; `aiJobsStore.md`/`aiJobService.md` status docs and a schema/conformance
+  assertion. No dev migration script: development DBs are ephemeral and the production
+  migration/backfill is deployment-owned. Deps: none.
+
+- **T4.4 — Dashboard storage usage series.** Objective: a per-user daily storage-usage
+  series with the Storage sparkline. `bytes` covers the user's live + trash subtree and all
+  active/history object versions; pending/orphaned objects are excluded. Version history is
+  S3-only; WebDAV graphs current+trash bytes. No data ⇒ the block is omitted; no fabricated
+  series. Inputs: §4.16 storage-usage rule; the scheduler template
   (`startAdminReportsRetentionScheduler`/`startFileSuggestionsExpiryScheduler` shape in
-  `server/infrastructure/maintenanceScheduler.js`); the already-implemented client seam
-  (`CollectionDashboard.js:96` duck-typed `loadCapacitySeries`, sparkline render at
-  :446–470, unit pin "seam absent ⇒ block omitted", E2E negative pins in
-  `e2e/collections.spec.ts`). Outputs: `capacity_snapshots` added to
-  `001_initial_normalized_schema.sql` + AI_FEATURE_PLAN §5 (checksum one-liner applies);
-  `CapacitySnapshotsRepository` sqlite/postgres twins + conformance suite; store facade;
-  daily scheduler (`WEA_SKIP_CAPACITY_SNAPSHOT` skip seam, hot interval resolution,
-  cross-replica lock, `server/index.js` composition wiring); gateway `loadCapacitySeries()`
-  (swallow failures → `null`, per the collectionsRepository convention); sparkline
-  wire-through + seam-present client test cases. Verify: server+client `test:ci`,
+  `server/infrastructure/maintenanceScheduler.js`); the client seam
+  (`CollectionDashboard.js:96` duck-typed `loadCapacitySeries`, renamed to
+  `loadStorageUsageSeries` in the T4.4 docs-first step; sparkline render at :446–470, unit
+  pin "seam absent ⇒ block omitted", E2E negative pins in `e2e/collections.spec.ts`);
+  `object_map`/`filecache` size data. Outputs:
+  `storage_usage_snapshots` + `object_map.size` added to
+  `001_initial_normalized_schema.sql` + AI_FEATURE_PLAN §5; `StorageUsageSnapshotsRepository`
+  sqlite/postgres twins + conformance suite; store facade; storage-usage aggregate query
+  (active+history, trash included, no `deleted_at` filter); daily scheduler
+  (`WEA_SKIP_STORAGE_USAGE_SNAPSHOT` skip seam, hot interval resolution, cross-replica lock, no
+  boot-time capture; first point next daily tick, `server/index.js` composition wiring);
+  `object_map.size` population on new writes (the production migration owns existing-row
+  backfill); gateway `loadStorageUsageSeries()` (swallow failures → `null`); sparkline
+  wire-through + seam-present client test cases. Policy: UTC `YYYY-MM-DD`, 30-day
+  retention, 2-point minimum, null size ⇒ skip + warning. Verify: server+client `test:ci`,
   `test:ci:pg:adapters` (new repository), conformance suite, scheduler test,
-  `docsStatePurity`. Docs-first: create `docs/spec/server/store/capacitySnapshotsStore.md`;
-  update `docs/spec/server/infrastructure/maintenanceScheduler.md`,
+  `docsStatePurity`, DDL exact-list tests. Docs-first: create
+  `docs/spec/server/store/storageUsageSnapshotsStore.md`; update
+  `docs/spec/server/routes/dashboard.md`,
+  `docs/spec/server/infrastructure/maintenanceScheduler.md`,
+  `docs/spec/server/infrastructure/configRegistry.md`, `docs/api.md`,
   `docs/spec/client/services/explorerGateway.md`,
-  `docs/spec/client/components/mypage/content/CollectionDashboard.md`. Deps: none.
+  `docs/spec/client/components/mypage/content/CollectionDashboard.md`. Deps: preceding DDL.
 
-- **T4.1 — Admin AI panel + re-embed launcher.** Objective: the §4.15 governance tab inside
-  the MyPage admin area + the ONE rate-limited re-embed action (initial coverage and
-  model-change). Inputs: §4.15 panel contract (pipeline health — queue depth, 24h fail/429
-  rates, breaker states, failed-jobs table; `ai_usage_daily` cost ledger + budget caps +
-  per-user top-N; evolution governance — rule hit-rate, survival curves, merge-accept %,
-  gate params with live impact counts + rollback via settings journal; model registry —
-  model_id/dim per role, per-version distribution, the three `ai_enrichments` lineages +
-  media-embed coverage filters; degraded-input histogram; kill switches; aggregates-and-ids
-  only, never other users' file names/queries/contents; constants provenance display), the
-  existing executor (`planMediaBackfill`, §28.8 D4 — "the executor now exists"), the
-  `myPageRegistry.js` admin-tab pattern (`admin-users`/`admin-settings`), the
-  `AdminReportsContent`/`adminService` patterns, invariant 4 (journal-with-inverse) and
-  invariant 5 (one confirmation dialog for user-triggered destructive actions). Outputs:
-  admin-domain routes + service (read existing AI stores; new repositories only if
-  docs-first demands); the rate-limited launcher POST wiring plan → enqueue with rate
-  limiting, one confirmation dialog, and a journal row; a `settings`-domain journal producer
-  for gate-param/kill-switch changes (rides `action_journal` infra — writers-list extension
-  pinned at docs-first); client `admin-ai` registry category + `AiAdminContent` +
-  `adminService` seams; impact-preview = server-computed live impact counts (no client-side
-  math). Verify: route/service tests, client component/hook tests, `docsStatePurity`,
+- **T4.1 — Admin AI panel + full text+media launcher.** Objective: the §4.15 governance tab
+  inside the MyPage admin area + the ONE rate-limited, cancellable re-embed action covering
+  text nodes and the media coverage plan. Hardcoded evolution gates are not exposed; only
+  config-backed gates are editable. Per-user top-N is deferred. Inputs: §4.15 panel contract
+  (existing pipeline/cost/evolution/model data; missing series labelled `not instrumented`;
+  failed jobs display-only; kill switches; aggregates-and-ids only, never other users' file
+  names/queries/contents; profile-constant provenance), the existing
+  `planMediaBackfill` plus a new text-node coverage query, `AI_GEN_<KIND>` generation
+  settings, the preceding DDL's `ai_jobs.status='cancelled'`, the `myPageRegistry.js`
+  admin-tab pattern, the `AdminReportsContent`/`adminService` patterns, invariant 4 and
+  invariant 5. Outputs: admin-domain routes + service; launcher preview → one confirmation
+  dialog → rate-limited enqueue (global one active, 15-minute cooldown, `retry_after_seconds`;
+  no per-launch node cap); generation bump + hook wiring; `enqueueMany` job ids +
+  `cancelPending({ jobIds })`; `settings`-domain `ai-reembed` journal row with a
+  `cancel-ai-jobs` inverse and “Cancel pending jobs” partial-undo copy; failed jobs
+  display-only; config-backed gate editing + live impact counts; settings journal covers AI
+  gate/kill-switch config changes plus the launcher row (never secrets); `AiAdminContent` +
+  `adminService` seams. Verify:
+  route/service tests, client component/hook tests, cancel race tests, `docsStatePurity`,
   grep-gate (zero `CacheAdapter|operationProgress`). Docs-first:
-  `docs/spec/server/routes/admin.md` panel surface (§4.15 assigns it to this step); new
+  `docs/spec/server/routes/admin.md` panel surface; new
   `docs/spec/client/components/mypage/content/AiAdminContent.md` + hook spec;
-  `docs/shared-contracts.md` snake_case response note. Deps: none (parallel-safe with T4.3).
+  `docs/spec/server/store/aiJobsStore.md`, `docs/spec/server/services/aiJobService.md`,
+  `docs/spec/server/store/actionJournalStore.md`, `docs/spec/server/routes/actions.md`,
+  `docs/shared-contracts.md` snake_case response note. Deps: preceding DDL; parallel with
+  T4.3/T4.4.
 
-- **T4.3 — Hermetic AI/media E2E + degradation matrix.** Objective: a fake-LLM harness
-  (in-process, injected via the adapter's role config — never a real provider) + one suite
-  per §4.12 capability column + the parser E2E case. Inputs: `docs/TESTING_STRATEGY.md` AI
-  tiers (None/embed/embed+chat columns; None and embed must pass green with no real adapter
-  present); the `E2E-S3-AI-001` hermetic precedent (`e2e/ai.spec.ts`, scratch :5016 via
-  `scripts/lib/e2e-band.cjs`, `WEA_MODEL_DIR` pre-seeded EG2 weights); unit-level fake
-  precedents (`server/domains/setup/__tests__/setup.test.js` fake `/v1` over `node:http`,
-  the llmAdapter `createClient` DI seam); §30.5 (the `E2E-AI-002` parser case rides this
-  harness). Outputs: the harness + a new scratch port entry in `scripts/lib/e2e-band.cjs`
-  (next free band slot after `scratchAi: 5016`); degradation suites including the media
-  capability-absent fallback legs (V2 caption→E1, V0 `metadata_only`); the `E2E-S3-AI-002`
-  parser case (parse envelope → search over the fake endpoint); `docs/E2E_COVERAGE_PLAN.md`
-  inventory + skip-budget expected-skips re-pin. Verify: new suites green; `playwright test
-  --list` count re-pinned; None/embed columns green with no real adapter present.
-  Docs-first: TESTING_STRATEGY harness-contract details (injection mechanics + port);
-  E2E_COVERAGE_PLAN rows (`E2E-S3-AI-002` planned → in-flight; the degradation-matrix
-  deferral row resolves). Deps: the parser case depends on the harness unit.
+- **T4.3 — Hermetic fake-embed AI/media E2E + degradation matrix.** Objective: a fake
+  embed+chat harness (local `node:http` in the Playwright process, injected through the
+  scratch DB role config; never a real provider) + one suite per §4.12 capability column.
+  The matrix is weightless: fake embed must pass the EG2 conformance kit; AI-001 remains the
+  single real-EG2 fidelity case; AI-002 uses fake embed+chat and lives in a separate
+  file/describe so AI-001's model-free skip cannot swallow it. Inputs:
+  `docs/TESTING_STRATEGY.md` AI tiers; the `E2E-S3-AI-001` precedent (`e2e/ai.spec.ts`,
+  scratch :5016); the fake `/v1` precedent in
+  `server/domains/setup/__tests__/setup.test.js`; the llmAdapter role config. Outputs: the
+  fake server + new scratch port `5021` (API-only; band 40 is 5061, browser-restricted);
+  strip `WEA_SKIP_AI_WORKER` in the scratch child env; degradation suites including media
+  capability-absent fallback legs (V2 caption→E1, V0 `metadata_only`); AI-002 parser case
+  remains Wave 2 (harness-ready); `docs/E2E_COVERAGE_PLAN.md` Wave 1 rows. No skip-budget
+  change in Wave 1. B-6 boot-step 8b
+  coverage is closed by the existing unit/boot evidence. Verify: new suites green;
+  `playwright test --list` count recorded; None/embed/embed+chat columns green with no real
+  adapter present. Docs-first: TESTING_STRATEGY harness-contract details (injection
+  mechanics + port); E2E_COVERAGE_PLAN rows (AI-002 stays planned until Wave 2; the
+  degradation-matrix deferral row resolves); Wave 2 owns the final AI-002/inventory
+  re-pin. Deps: preceding DDL (base only); parser case depends on the harness unit.
 
 - **§4.22 SQL leg (D3).** Objective: server-side execution of parsed deltas. Inputs: the
   frozen grammar contract (`PARSE_ENVELOPE_GRAMMAR = 'nl1'`,
@@ -2765,8 +2789,15 @@ exit gate runs only after every active row above is closed.
 - `npm run test:ci` (server + client) on every unit; `test:ci:pg:adapters` for the T4.4
   repository twins; `docsStatePurity` (runs inside server CI); CI grep-gates for
   `domains/(collections|ai)/**` and new stores (zero `CacheAdapter|operationProgress`).
+- Preceding DDL: `001` is edited directly; development DBs are ephemeral. The production
+  migration (existing-table CHECK/column changes + `object_map` size backfill) is a
+  deployment-owned script, not a feature-branch deliverable.
+- T4.4 storage-usage policy: per-user bytes include live + trash + active/history object
+  versions; version history is S3-only (WebDAV = current+trash); UTC day, 30-day retention,
+  2-point minimum, null size ⇒ skip + warning.
 - Degradation matrix: the None and embed columns pass green with no real adapter present;
-  the embed+chat column runs over the fake-LLM harness.
+  the embed+chat column runs over the fake-LLM harness; AI-001 remains the only real-EG2
+  case.
 - Exit gate (Wave 3): the full release matrix in both legs (model-free + model-on, §31.8
   discipline), the canonical server test-count re-pin (D4), the §33 execution-log closure,
   and the §33.5/PLAN.md status flips — then the single `ai-feature`→`dev` merge via the
@@ -2779,7 +2810,8 @@ exit gate runs only after every active row above is closed.
 | T4.1 admin AI surface and re-embed launcher | Wave 1 unit `feature/t41-admin-ai-panel`                                                          |
 | T4.2 media ladder                           | Closed as absorbed by §28.8 D2–D4; residue re-pointed to T4.1/T4.3 (D1)                            |
 | T4.3 hermetic AI/media E2E                  | Wave 1 harness unit + Wave 2 parser-E2E unit                                                      |
-| T4.4 capacity series                        | Wave 1 unit `feature/t44-capacity-series`                                                         |
+| T4.4 storage usage series                   | Wave 1 unit `feature/t44-storage-usage`; `object_map.size` + `storage_usage_snapshots` (§33.8 W2) |
+| Preceding DDL: cancelled AI job status      | Wave 0.5 unit `chore/ai-job-cancelled-status` (§33.8 W7)                                          |
 | §4.22 delta-semantics SQL leg               | Owned by P4 — Wave 2 unit (D3)                                                                    |
 | §30.6 L2 query-parses contract              | Closed — SQLite-only malformed-read wording + targeted mapper/raw-row tests (§33.7)               |
 | `JOURNAL_DOMAIN.TAGS` parity                | Ruled: remove (D2) — Wave 2 unit                                                                  |
@@ -2806,17 +2838,18 @@ refined by U4 below.
   operations/monitoring deep surface; the two surfaces cross-link each other and never
   duplicate a full render.
 - **U3 — launcher flow: preview → confirm → health-tracked progress.** The launcher first
-  renders the deterministic `planMediaBackfill` scope as per-coverage-state counts, requires
-  one confirmation dialog (invariant 5), then hands progress tracking to the pipeline-health
-  block — the job queue is the single progress surface, with no parallel progress UI and no
-  orphan enqueues. The rate limit is surfaced in the launcher response.
+  renders the deterministic `planMediaBackfill` scope as per-coverage-state counts plus the
+  text coverage counts (§33.8 W1), requires one confirmation dialog (invariant 5), then
+  hands progress tracking to the pipeline-health block — the job queue is the single
+  progress surface, with no parallel progress UI and no orphan enqueues. The rate limit is
+  surfaced in the launcher response.
 - **U4 — polling-based refresh.** Panel data refreshes by polling (the CollectionDashboard
   `getActions` precedent); no new settings-domain pub-sub channel is built. The
   settings-journal producer for gate-param/kill-switch changes (invariant 4) stays in scope
   — it feeds the rollback feed consumed from `GET /api/actions`, not a push channel. U4
-  resolves the settings-journal semantics point deferred in §33.1; the capacity-snapshot row
-  shape, the fake-LLM harness injection mechanics, and the scratch E2E port entry remain
-  docs-first decisions.
+  resolves the settings-journal semantics point deferred in §33.1; the storage-usage
+  snapshot row shape, the fake-LLM harness injection mechanics, and the scratch E2E port
+  entry remain docs-first decisions.
 
 ### 33.7 Wave 0 closure (2026-10-29)
 
@@ -2841,3 +2874,58 @@ refined by U4 below.
   (`test:ci:pg:adapters`) passed 31 suites / 472 tests (1 skipped). The server total is
   recorded as run evidence for the exit-gate reconciliation (D4), not as a new summary
   pin.
+
+### 33.8 Wave 1 scope rulings (owner, 2026-10-29)
+
+- **W1 — T4.1 launcher is the full text+media re-embed.** The ONE admin action covers the
+  initial coverage pass and a model-change re-embed over text nodes plus the media coverage
+  plan (`planMediaBackfill` is the media half). The preview shows both text and media
+  coverage; generation bump + seed enqueue are the launcher's job. U3's media-only preview
+  wording is extended accordingly.
+- **W2 — T4.4 is storage usage, not capacity.** The series is per-user logical storage
+  usage: live + trash subtree plus all active/history object versions. `object_map.size` is
+  added (new writes populate it; production migration backfills existing rows).
+  `storage_usage_snapshots(user_id, day, bytes, created_at)` is UTC `YYYY-MM-DD`, one row per
+  user/day, 30-day retention, 2-point minimum, no boot-time capture. Pending/orphaned
+  objects are excluded; version history is S3-only, so WebDAV graphs current+trash bytes.
+  Null size ⇒ skip the snapshot for that user + warning (never a partial series).
+- **W3 — T4.3 matrix is weightless fake embed+chat.** `None`/`embed`/`embed+chat` use fake
+  roles; AI-001 remains the single real-EG2 fidelity case; AI-002 uses fake embed+chat in a
+  separate file/describe. New scratch port 5021 is API-only (band 40 = 5061 is
+  browser-restricted). `WEA_SKIP_AI_WORKER` is stripped from the scratch child env. No
+  Wave 1 skip-budget change.
+- **W4 — Per-user top-N is deferred.** T4.1 shows the global `ai_usage_daily` per-role
+  ledger plus `not instrumented` for per-user top-N. A separate post-T4.4 accounting unit
+  owns `ai_usage_user_daily`, adapter `userId` propagation, job owner attribution, and the
+  top-N API.
+- **W5 — T4.1 cancels pending jobs.** `ai_jobs.status` gains the terminal `cancelled`
+  state. The launcher journals a `settings`-domain `ai-reembed` row with a
+  `cancel-ai-jobs` inverse carrying job ids; `enqueueMany` returns the enqueued ids and
+  `cancelPending({ jobIds })` cancels only `pending` rows. Running jobs finish; spent
+  provider cost is not refunded; cancelled jobs are not retried. Failed jobs remain
+  display-only in v1 (no retry/abandon UI).
+- **W6 — Hardcoded evolution gates are hidden.** The admin panel/API exposes only
+  config-backed gates (`AI_EVOLUTION_*`, `AI_MERGE_*`, activity/retention keys) with live
+  impact counts + settings-journal rollback. Hardcoded create/merge thresholds and profile
+  fallbacks stay release-time constants and are not shown. The model-registry constants
+  block keeps per-model profile/release provenance only. Settings journaling covers AI
+  gate/kill-switch config changes plus the launcher `ai-reembed` audit row; secret values are
+  never written to `action_journal`.
+- **W7 — Preceding DDL.** `chore/ai-job-cancelled-status` lands first and edits `001`
+  directly (`ai_jobs.status` CHECK + docs/schema test). Development DBs are ephemeral, so
+  there is no feature-branch dev migration/backfill script; the production migration
+  (existing-table CHECK/column changes + `object_map` size backfill) is deployment-owned.
+  T4.4 is the only remaining `001` editor; T4.1/T4.3 do not edit `001` after the preceding
+  DDL.
+- **W8 — T4.1 panel completeness.** v1 shows existing data and labels missing series
+  `not instrumented`: 24h fail uses `markFailed`'s `finished_at` (small code
+  instrumentation); the degraded histogram uses the adapter's `degraded` counter when it is
+  written. Survival curves, merge-accept time series, per-version history, and per-user
+  top-N are not instrumented in v1. No fabricated values.
+- **W9 — Launcher defaults.** One global active launcher, 15-minute cooldown,
+  `retry_after_seconds` in the response, no per-launch node cap. The journal uses the
+  `settings` domain; cancel targets job ids, never a whole generation. Failed jobs are
+  display-only.
+- **W10 — T4.3 coverage/re-pin.** B-6 boot-step 8b coverage is closed by existing
+  unit/boot evidence. Wave 1 records the new matrix rows/counts; Wave 2 owns the final
+  AI-002 + inventory/skip-budget re-pin.

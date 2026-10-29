@@ -287,8 +287,9 @@ runs everything (archive/purge are time-based — nightly is the backbone). Pass
    merge-survivor acceptance, restore) invisibly pins, with an unpin chip; reads/views/likes do not
    count; pinned collections escape auto-archive/purge forever; other origins never auto-archive.
 
-Names via §4.10; acts journaled (§4.11); thresholds are hot admin settings with live impact
-previews (§4.15); pauses stop acts without destroying queued work. The **merge metric is
+Names via §4.10; acts journaled (§4.11); config-backed gates are hot admin settings with live
+impact previews (§4.15), while hardcoded product thresholds are release-time constants and are
+not exposed; pauses stop acts without destroying queued work. The **merge metric is
 containment-safe**: on bounded materialized sets, size ratio ≥ 0.7 **and** Jaccard ≥ 0.7, with
 centroid similarity prefiltering only; subset pairs (`Spain ⊂ Europe`) must not merge, near-equal
 pairs (`Europe`, `Europe trip`) must pass. Hierarchy proposals are out of scope.
@@ -366,15 +367,19 @@ Raw settings listings (plaintext secrets) never drive display — masked, purpos
 
 ### 4.15 Admin AI governance panel
 
-An admin tab: pipeline health (queue, failure/rate-limit rates, breakers, failed jobs with
-retry/abandon); cost ledger (per-role daily rollup, caps, per-user top-N); evolution governance
-(hit rates, survival curves, merge-accept rate, gate parameters with live impact counts and
-journaled rollback, tombstone counters); model registry (per-role model/dimension, per-version
-distribution, backfill launcher across the feature/caption/transcript lineages); degraded-input
-histogram; kill switches. Privacy: aggregates and identifiers only — never users' names, queries,
-or contents. **Constants provenance**: every numeric AI constant is a **release artifact measured
+An admin tab: pipeline health (queue, failure/rate-limit rates, breakers, failed jobs
+display-only — no manual retry/abandon); cost ledger (per-role daily rollup, caps; per-user
+top-N is not instrumented in v1); evolution governance (hit rates, survival curves,
+merge-accept rate, config-backed gate parameters with live impact counts and journaled
+rollback, tombstone counters; missing series are labelled not instrumented); model registry
+(per-role model/dimension, current-vs-stale distribution, backfill launcher across the
+feature/caption/transcript lineages); degraded-input histogram; kill switches. The launcher
+covers text nodes plus the media coverage plan, is rate-limited, and supports cancelling
+pending jobs. Privacy: aggregates and identifiers only — never users' names, queries, or
+contents. **Constants provenance**: every numeric AI constant is a **release artifact measured
 by the project on its own reference set**, shipped per model profile and displayed with provenance
-— there is no runtime calibration and no dataset ships to end users.
+— there is no runtime calibration and no dataset ships to end users. Hardcoded evolution
+product gates are not part of the panel surface.
 
 ### 4.16 User dashboard `Storage`
 
@@ -383,9 +388,11 @@ suggestion count) deep-linking into the action context — a pull-overview, not 
 30-day system-changes feed with undo; collections status (grants, merges, archives with undo); and
 the suggestions checklist — every row carries a checkbox, and the only accept control is
 `Accept selected (N)` (checked → trash, command-unit undo per §4.11; no per-file or threshold-specific
-variants). Capacity sparkline only; no insight prose. Non-admin-only: the dashboard is
-a personal-storage surface — `/api/dashboard` is server-gated 403 for the ADMIN actor and the MyPage
-section never renders for admins (§3.2 operator rule).
+variants). Storage usage sparkline only; no insight prose. The series is per-user logical
+storage usage (live + trash + all active/history object versions); version history is S3-mode
+only, so WebDAV graphs current+trash bytes. No data ⇒ the block is omitted. Non-admin-only: the
+dashboard is a personal-storage surface — `/api/dashboard` is server-gated 403 for the ADMIN actor
+and the MyPage section never renders for admins (§3.2 operator rule).
 
 ### 4.17 Cleanup and duplicate suggestions
 

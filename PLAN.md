@@ -17,7 +17,8 @@
 | Area                    | Status                   | Current disposition                                                                                                                                                                                                                                                                                                                 |
 | ----------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | P0–P3                   | `[done]`                 | Closed on `ai-feature`; see [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §§9, 28–30.                                                                                                                                                                                                                                                    |
-| P4 feature work         | `[open]`                 | Execution plan recorded in [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §33 (2026-10-29). Open units: T4.1 (admin AI panel + re-embed launcher), T4.3 (hermetic AI/media E2E + degradation matrix), T4.4 (capacity series), and the §4.22 delta-semantics SQL leg (D3). Wave 0 cleanups are closed (§33.7). T4.2 is closed as absorbed by §28.8 D2–D4 with residue re-pointed (§33.1 D1). |
+| P4 feature work         | `[open]`                 | Execution plan recorded in [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §33 (2026-10-29); Wave 1 decisions recorded in §33.8. Open units: T4.1 (admin AI panel + text+media launcher + cancel), T4.3 (hermetic fake-embed AI/media E2E + degradation matrix), T4.4 (storage usage series), and the §4.22 delta-semantics SQL leg (D3). Per-user top-N is deferred to a post-T4.4 unit. Wave 0 cleanups are closed (§33.7). T4.2 is closed as absorbed by §28.8 D2–D4 with residue re-pointed (§33.1 D1). |
+| P4 Wave 1 decisions    | `[done]`                 | Owner rulings recorded in [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §33.8: full text+media launcher; storage usage with trash + version history; fake-embed matrix; `cancelled` job status + cancel-pending inverse; hardcoded gates hidden; preceding DDL branch. |
 | P4 bulk-poll resilience | `[done]`                 | T4.5–T4.10, T4.12, and T4.6b are recorded complete in [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §32.1; T4.11 was dropped; T4.13 gates are recorded green there.                                                                                                                                                                      |
 | Pre-merge carry-forward | `[open]`                 | Scheduled by [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §33: the §4.22 SQL leg is owned by P4 (D3), `JOURNAL_DOMAIN.TAGS` is ruled for removal (D2), and hysteresis calibration stays an owner-run measurement. Wave 0 closed the §30.6 L2 query-parses contract, confirmed the §30.6 E precondition, and fixed the stale `skip-budget.js` comment (§33.7); §30.6 A/B/C/L1 and the L3 release soak are closed by later evidence. |
 | Test-count pin          | `[needs-reconciliation]` | [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §32.1 records server 194/3382 and client 189/2279. `client/TEST_SUMMARY.md` is now aligned at 189/2279. `server/TEST_SUMMARY.md` records the unresolved difference between §32.1's 3382 and its earlier 3386/3381 pins; confirm the original run output before repinning the server total. The pin resolves at the P4 exit-gate run per [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §33.1 D4. |
@@ -67,15 +68,17 @@ service.js, __tests__/}`; route handlers via `asyncHandler`; service throws bare
 test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   `storage.getExecutor()`. **DDL policy**: the ENTIRE §5 schema — every table, P0–P4, AI
   included — lives in `001_initial_normalized_schema.sql` (single source of truth); the
-  numbered chain resumes at `002_…` only after the platform merge. No ALTERs of existing
-  tables. Single-file ownership keeps cross-file FK ordering (declare `llm_models` before
-  `collection_centroids`) and parallel-branch DDL conflicts moot; the file stays
-  `convertPostgresToSqlite`-compatible. The file is checksum-tracked: an edited
-  already-applied file fails boot fast by design — recovery is the standing one-liner
-  (`DELETE FROM _schema_migrations WHERE
-  filename='001_initial_normalized_schema.sql'`, then boot re-applies; every statement is
-  `IF NOT EXISTS`, so pre-existing tables no-op). Operational/prod DB is migrated manually
-  at the single `ai-feature`→`dev` merge/deploy. TEXT+CHECK enums,
+  numbered chain resumes at `002_…` only after the platform merge. No ALTERs in the tracked
+  `001` file. Single-file ownership keeps cross-file FK ordering (declare `llm_models` before
+  `collection_centroids`); one DDL owner lands at a time (Wave 1 uses the preceding
+  `chore/ai-job-cancelled-status` unit before T4.1/T4.4/T4.3 dispatch). The file stays
+  `convertPostgresToSqlite`-compatible. Development DBs are ephemeral, so `001` is edited
+  directly there. The file is checksum-tracked: an edited already-applied file fails boot
+  fast by design — the standing one-liner (`DELETE FROM _schema_migrations WHERE
+  filename='001_initial_normalized_schema.sql'`, then boot re-applies) is a recovery escape
+  hatch, not a migration path; existing-table CHECK/column changes are applied by the
+  deployment-owned production migration at the single `ai-feature`→`dev` merge/deploy.
+  TEXT+CHECK enums,
   `<table>_<purpose>` indexes,
   `created_at/updated_at TIMESTAMPTZ DEFAULT NOW()`. **Derived vector artifacts (pgvector
   shadow table, sqlite vec0 virtual table) are created/managed by the vectorStore adapter —
@@ -264,8 +267,9 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 
 ### P4 — Admin & scale
 
-- T4.1 admin AI tab (pipeline/cost/governance/models, impact-preview tuning, settings
-  journal subscription) (§4.15).
+- T4.1 admin AI tab (pipeline/cost/governance/models, config-backed gate impact preview,
+  settings journal) + the ONE full text+media re-embed launcher (rate-limited, confirm
+  dialog, cancel-pending inverse; hardcoded gates hidden) (§4.15, §33.8).
 - T4.2 media ladder **[done — absorbed 2026-10-29, §33.1 D1]** per §4.21 (revised 2026-10-08/14):
   D2–D4 delivered the probes, direct-embed pipelines, fallbacks, and backfill scope
   (`PLAN_EXECUTION.md` §28.8); reconciled 2026-10-29 as absorbed with the residue re-pointed
@@ -278,11 +282,13 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   freeze: transcript + probe meta only — no genre/desc (E13), escape-prompt mandatory,
   `media_kind=music` transcript excluded from content scoring; frames/transients never
   persisted; image near-dup = caption-space distance (weaker vs reencode — accepted).
-- T4.3 e2e hermetic AI suite (in-process fake LLM server via adapter injection; scratch
-  project port; smoke-list update) + degradation-matrix suite.
-- T4.4 dashboard capacity series (P4): `capacity_snapshots`-style storage + daily
-  scheduler + gateway `loadCapacitySeries()` + the Storage sparkline + tests. v1 keeps the
-  seam absent and the block omitted; no fabricated series.
+- T4.3 e2e hermetic AI suite (in-process fake embed+chat via adapter injection; AI-001
+  remains the real-EG2 case; scratch project port; smoke-list update) + degradation-matrix
+  suite.
+- T4.4 dashboard storage usage series (P4): per-user daily `storage_usage_snapshots`
+  (live + trash + version history via `object_map.size`), daily scheduler, gateway
+  `loadStorageUsageSeries()`, and the Storage sparkline + tests. No data ⇒ the block is
+  omitted; no fabricated series.
 
 ### 7.1 Contract-spec references (mandatory)
 
@@ -315,9 +321,10 @@ infrastructure specs live under `docs/spec/server/`.
 - T3.4 `docs/spec/`services/searchService.md, routes/search.md, hooks/useSearchResults.md
 - T3.5 `docs/spec/`store/actionJournalStore.md, hooks/{useFileOperations,useUndoToast}.md
 - T3.6 `docs/spec/`routes/collections.md, services/collectionsService.md
-- T4.1/T4.2/T4.3 `docs/spec/`infrastructure/{llmPresets,llmAdapter}.md, services/aiJobService.md, routes/admin.md, docs/SETUP.md + testing: docs/TESTING_STRATEGY.md (AI tiers)
-- T4.4 docs-first adds the capacity-series contract: `docs/spec/server/store/capacitySnapshotsStore.md`
-  (new), `docs/spec/server/infrastructure/maintenanceScheduler.md`,
+- T4.1/T4.2/T4.3 `docs/spec/`infrastructure/{llmPresets,llmAdapter}.md, services/aiJobService.md, routes/admin.md, store/aiJobsStore.md, store/actionJournalStore.md, routes/actions.md, client/components/mypage/content/AiAdminContent.md, docs/SETUP.md + testing: docs/TESTING_STRATEGY.md (AI tiers)
+- T4.4 docs-first adds the storage-usage contract: `docs/spec/server/store/storageUsageSnapshotsStore.md`
+  (new), `docs/spec/server/routes/dashboard.md`, `docs/spec/server/infrastructure/maintenanceScheduler.md`,
+  `docs/spec/server/infrastructure/configRegistry.md`, `docs/api.md`,
   `docs/spec/client/services/explorerGateway.md`, and
   `docs/spec/client/components/mypage/content/CollectionDashboard.md`.
 - T4.5–T4.10 `docs/spec/client/hooks/useBulkOperations.md`,

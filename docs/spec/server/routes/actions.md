@@ -56,15 +56,14 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 **Wire casing (CODING_STYLE.md Express Patterns):** responses snake_case; request bodies camelCase
 (`confirmCascade`). Route param `:id` is the numeric `action_id`.
 
-**Journal domains enum:** `collection | batch | settings | permissions | tags |
-file | sharing`. **Writers = `collection`** (all silent/merge/settings-adjacent
+**Journal domains enum:** `collection | batch | settings | permissions | file | sharing`. **Writers = `collection`** (all silent/merge/settings-adjacent
 acts), **`batch`** (the batch worker's move/copy command rows —
 `services/batchOperationService.md` §5.4; their undo pointer also travels on the bulk-job
 terminal poll result, `routes/files.md`), **and `file`** (the dashboard cleanup-suggestion
 accept command — one `action='cleanup-accept'` row per accepted batch,
 `subject='file:suggestion-accept:<userId>:<timestamp>'`, item-level
 `{ op: 'restore-from-trash' }` inverses — `routes/dashboard.md` §2.4). `settings`/`sharing`/
-`tags`/`permissions` are enum-reserved with no writer yet. The `permissions` asymmetry applies:
+`permissions` are enum-reserved with no writer yet. The `permissions` asymmetry applies:
 grant-undo = revoke is exposure-reduction and may be silent; revoke-undo = grant is
 exposure-expansion and is explicit-only.
 

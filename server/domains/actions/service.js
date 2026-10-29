@@ -22,7 +22,7 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 const { JOURNAL_DOMAIN } = require('@webdav-easyaccess/shared/constants');
 
 // Journal domains enum (§5 schema CHECK; routes/actions.md §2.4) — mirrors the
-// `action_journal.domain` CHECK, TAGS included (no writer yet).
+// `action_journal.domain` CHECK.
 
 // Fixed feed window + cap (routes.md §2.4 decisions: 30d listing horizon,
 // cap 200, no cursor — personal scale).

@@ -1246,7 +1246,7 @@ member_count, updated_at, PK(collection_id,model_id))` — model_id is the MODEL
   (user,created)
 - `node_activity(user_id, node_id, opens, downloads, previews, search_hits, last_seen_at,
 likes, score REAL NOT NULL DEFAULT 0 (§3.4 item accumulator), updated_at, PK(pair))`
-- `action_journal(id, domain CHECK(collection|batch|settings|permissions|tags|file|sharing),
+- `action_journal(id, domain CHECK(collection|batch|settings|permissions|file|sharing),
 subject TEXT, subject_label TEXT, actor, action, payload JSONB, chain_seq, status
 CHECK(applied|undone|expired), created_at, undone_at, expires_at)`;
   UNIQUE(domain,subject,chain_seq); NO FKs.

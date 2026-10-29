@@ -2837,5 +2837,7 @@ refined by U4 below.
 - **Verification** — targeted `queryParsesShared` + `QueryParsesRepository` suites:
   19/19 passed; `docsStatePurity`, eslint, and Prettier (source/spec files) passed. Full
   local `test:ci`: server 194 passed + 1 skipped suite, 3365 passed + 28 skipped tests
-  (3393 total); client 189 suites / 2279 tests passed. The server total is recorded as
-  run evidence for the exit-gate reconciliation (D4), not as a new summary pin.
+  (3393 total); client 189 suites / 2279 tests passed; the PostgreSQL adapter leg
+  (`test:ci:pg:adapters`) passed 31 suites / 472 tests (1 skipped). The server total is
+  recorded as run evidence for the exit-gate reconciliation (D4), not as a new summary
+  pin.

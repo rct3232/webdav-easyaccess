@@ -2250,6 +2250,10 @@ D belongs to the §4.22 P4 parser scope; E remains a future-route security preco
 `skip-budget.js` default-count comment is a separate E2E-infrastructure cleanup. P3 remains
 closed; these items do not reopen its feature verdict.
 
+**Wave 0 closure (2026-10-29):** L2 is closed by the SQLite-only wording and the
+mapper/raw-row tests; the `skip-budget.js` default comment is aligned. E remains a standing
+precondition for any future collection-context file route. See §33.7.
+
 ### 30.7 Search semantic-availability wire (2026-10-28)
 
 - **Contract:** `POST /api/search` no longer emits `semantic_available`. The `semantic`
@@ -2822,7 +2826,8 @@ refined by U4 below.
   that malformed stored JSON is a SQLite raw-row/legacy read case: PostgreSQL JSONB rejects
   malformed input at write, while the shared mapper defensively maps a malformed string to
   `null`. Added `queryParsesShared.test.js` (mapper boundary) and a SQLite raw-row case in
-  `QueryParsesRepository.conformance.test.js`. Branch `docs/query-parses-sqlite-note`.
+  `QueryParsesRepository.conformance.test.js`. Branch `docs/query-parses-sqlite-note`,
+  merge `05885290`.
 - **§30.6 E precondition** — confirmed recorded in
   `docs/spec/server/services/collectionShareService.md` §2.6: the download/preview bridge
   paragraph names the `assertMemberConsumable` route-level pre-check and its 404-masquerade

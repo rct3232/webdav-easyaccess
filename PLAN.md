@@ -3,11 +3,30 @@
 > **Design authority: `AI_FEATURE_PLAN.md`.** Invariants (§2), domain model & lifecycles (§3),
 > behavior specs (§4.x), schema (§5), rejections/extension points (§9–§10) live there —
 > **read it before implementing any task below; task rows reference its sections by number.**
-> This file carries only: work units + deps + verification + binding conventions (§6–§8).
-> Graduation status (2026-09-17, commits 34ee64c→76ae679): the §8 docs gate is DONE —
+> This file carries the task graph, binding conventions (§6–§8), and an append-only execution
+> ledger; detailed product design remains in `AI_FEATURE_PLAN.md`. Graduation status
+> (2026-09-17, commits 34ee64c→76ae679): the §8 docs gate is DONE —
 > `docs/features/collections-platform.md` + the full `docs/spec/**` contract suite are
-> published and binding. This graph stays as the execution ledger (work units + deps +
-> verification); it no longer shrinks.
+> published and binding. Preserve completed execution evidence; update the current-state
+> summary and annotate superseded snapshots instead of deleting history.
+
+## Current status (2026-10-28)
+
+| Area                    | Status                   | Current disposition                                                                                                                                                                                                                                                                        |
+| ----------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P0–P3                   | `[done]`                 | Closed on `ai-feature`; see §§9, 28–30.                                                                                                                                                                                                                                                    |
+| P4 feature work         | `[open]`                 | T4.1 (admin re-embed launcher/tab), T4.3 (hermetic AI/media E2E and degradation matrix), and T4.4 (capacity series) remain. T4.2 overlaps the completed D2–D4 media work in §28.8; reconcile it as absorbed or state any remaining scope.                                                  |
+| P4 bulk-poll resilience | `[done]`                 | T4.5–T4.10, T4.12, and T4.6b are recorded complete in §32.1; T4.11 was dropped; T4.13 gates are recorded green there.                                                                                                                                                                      |
+| Pre-merge carry-forward | `[open]`                 | §4.22 delta-semantics SQL leg, hysteresis calibration, `JOURNAL_DOMAIN.TAGS` disposition, §30.6 D/E/L2, and the stale `skip-budget.js` comment remain tracked. §30.6 A/B/C/L1 and the L3 release soak are closed by later evidence.                                                        |
+| Test-count pin          | `[needs-reconciliation]` | §32.1 records server 194/3382 and client 189/2279. `client/TEST_SUMMARY.md` is now aligned at 189/2279. `server/TEST_SUMMARY.md` records the unresolved difference between §32.1's 3382 and its earlier 3386/3381 pins; confirm the original run output before repinning the server total. |
+| `ai-feature` → `dev`    | `[not merged]`           | Merge once, only after all active tasks in §7 and later task-bearing overlays are closed and the applicable gates pass.                                                                                                                                                                    |
+
+**Status convention:** `[todo]` = not started; `[wip]` = in progress; `[done]` = complete;
+`[open]` = approved work remains; `[deferred]` = intentionally carried to a later trigger or
+phase; `[dropped]` = no longer in scope; `[needs-decision]` = owner ruling required; and
+`[needs-reconciliation]` = records or scope disagree. `[not merged]` describes the release
+state, not a task. Dated execution logs are point-in-time evidence; the latest closure record
+and this summary determine current status. Do not choose a test total without run evidence.
 
 ## Branching & merge policy (binding — overrides AGENTS.md §2.2 step "merge to dev" for this workstream)
 
@@ -15,8 +34,9 @@
   `chore/…` derived from `ai-feature`).
 - Every task branch merges back into **`ai-feature` only**. Direct merges of this
   workstream's branches into `dev` are FORBIDDEN.
-- **`ai-feature` → `dev` merge happens exactly once, when every §7 task is complete** and
-  the verification gates (§6/§8) have passed; it follows the normal PR flow. Until then
+- **`ai-feature` → `dev` merge happens exactly once, when every active task in §7 and its
+  later execution-plan overlays is complete** and the applicable verification gates (§6/§8)
+  have passed; it follows the normal PR flow. Until then
   `ai-feature` may merge/pull FROM `dev` (sync direction dev→ai-feature only).
 - Rationale: the platform is one coherent capability shipped as one unit (P0 has user-
   visible surfaces; half-merged states leave UI without endpoints and vice versa).
@@ -54,7 +74,9 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   `created_at/updated_at TIMESTAMPTZ DEFAULT NOW()`. **Derived vector artifacts (pgvector
   shadow table, sqlite vec0 virtual table) are created/managed by the vectorStore adapter —
   never part of the tracked DDL chain (§4.13).** **sqlite driver: `node:sqlite` (Node ≥24
-  floor, replaces `sqlite3` npm inside `db/sqliteExecutor.js` only — T0.12); vec0 integer
+  floor; T0.12 replaces the `sqlite3` driver across the executor/storage, metadata-migration,
+  schema-init, and metadata-presence call sites, not only `db/sqliteExecutor.js` — see the
+  scope correction in §9); vec0 integer
   PKs bind via BigInt; experimental-warning tolerated per §4.13.**
 - **Error codes**: `SERVER_ERROR_CODES` nested under camelCase domain key → full i18n key
   `serverErrors.collections.<key>` / `serverErrors.ai.<key>`; client `en.json`+`ko.json`
@@ -140,9 +162,11 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - T0.11 server-wide **name search** + results-mode UI + two-section rendering with
   client-side highlight (LLM-free §4.6 stage; semantic section lands as P1 add-on).
   Search results wire `search_hit`/list-entry-click recording (register (a)).
-- T0.12 **sqliteExecutor driver migration** `sqlite3` npm → `node:sqlite` (Node ≥24 floor;
-  confined to the seam per §6; behavior suite green on both drivers; BigInt PK binding
-  convention documented) — prerequisite for T1.4 native sqlite vector path.
+- T0.12 **SQLite driver migration** `sqlite3` npm → `node:sqlite` (Node ≥24 floor; covers
+  `db/sqliteExecutor.js`, `store/storage.js`, `metadataMigrationService.js`,
+  `sqliteSchemaInit.js`, and `metadataPresence.js` per the scope correction in §9; behavior
+  suite green on both drivers; BigInt PK binding convention documented) — prerequisite for
+  T1.4 native sqlite vector path.
 
 ### P1 — Embeddings + semantic search
 
@@ -157,14 +181,14 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   objects) + local positive-control probe + `llm_models.engine/precision/model_revision`
   (DDL 001 edited here; live/prod DB moves by the BIG-BANG script at the §6 merge/deploy —
   owner is the sole user, no compat path) + caps-off-on-failure path (§4.12).
-- T1.0b Dead tag-surface purge (rides §19 dissolution): delete `tag_embeddings`/
-  `tag_parents` DDL rows (big-bang script), the 11 zero-caller facade/repo methods
-  (aiTagStore §2.1 purge-state note), their conformance scenarios, and llmPresets/
-  profile θ_lo remnants; grep-gate `no tag_embeddings|tag_parents|getTagVectors|
-upsertAutoParent references` across `server/` except the purge commit itself.
-  RED-first: flip aiTagStore §2.6 grep assertions to expect absence, then delete.
-  **DONE 2026-10-28:** the two DDL definitions were removed directly from 001 (no big-bang
-  script) and the parity/grep docs updated — merge `e704cc71`, log §31.5.
+- T1.0b Dead tag-surface purge (rides §19 dissolution): remove the 11 zero-caller
+  facade/repo methods (aiTagStore §2.1), their conformance scenarios, and llmPresets/profile
+  θ_lo remnants; the retired table definitions were removed directly from
+  `001_initial_normalized_schema.sql` (no big-bang script, per §31.5). Grep-gate runtime code
+  for zero `tag_embeddings|tag_parents|getTagVectors|upsertAutoParent` references; explicit
+  DDL-parity and absence-assertion tests are allowed to name the retired symbols. RED-first:
+  flip aiTagStore §2.6 assertions to expect absence, then delete. **DONE 2026-10-28:** merge
+  `e704cc71`, log §31.5.
 - T1.1 LLM adapter (T2-hot: per-call config resolution, re-probe on change, restart-free
   §4.2) + budgets/breaker + startup probe + preset manifest & preset×capability probe-matrix
   verification (declared≠probed ⇒ capability off + admin warning, §4.23) + **EG2 model-pin
@@ -196,11 +220,11 @@ upsertAutoParent references` across `server/` except the purge commit itself.
   predicates stay as-is from P0/T0.9.
 - T1.9 media direct-embed pipeline (V1/V3 revived, owner 2026-10-08; §4.20 E1-M/§4.21,
   deps T1.1–T1.4): media-capability probes with positive controls (§4.23.2), §4.3 media
-  chunk ladder (19 s audio windows / frame sampling under server ub), `media_direct`
-  source rows + segment chunks, V2 caption-fallback path when media capability absent,
-  backfill scope for media rows. Gated release-measurement of profile constants
-  (§4.15 adoption checklist, Q10) rides the release runbook (`docs/SETUP.md`), NOT product
-  code (§12.9 preset rule).
+  chunk ladder (audio windows use the provider/model-window formula; video samples at 1 fps
+  under the applicable model window), `media_direct` source rows + segment chunks, V2
+  caption-fallback path when media capability is absent, and media-row backfill scope. Gated
+  release measurement of profile constants (§4.15 adoption checklist, Q10) rides the release
+  runbook (`docs/SETUP.md`), not product code (§12.9 preset rule).
 
 ### P2 — Silent evolution
 
@@ -222,9 +246,10 @@ upsertAutoParent references` across `server/` except the purge commit itself.
 - T3.2 sharing: grants, live resolution, publish pipeline/modes, cross-leak rule, viewer
   chip, grant UI in props tabs, leave (§4.7). Cross-user writes move `is_tip` to
   per-subject server-side computation (register (e)).
-- T3.3 `file_suggestions` rule variant + accept/undo (θ_dup 0.97, short-doc cosine
-  exception, §4.17); dashboard AI-block appears when embed configured (§4.12); vector
-  variant rides T1.7.
+- T3.3 `file_suggestions` rule variant + accept/undo (`thetaDup` is read from the active
+  profile; EG2 is 0.955, not the superseded generic 0.97), short-doc cosine exception,
+  §4.17; dashboard AI-block appears when embed is configured (§4.12); vector variant rides
+  T1.7.
 - T3.4 NL parser (chat) → shared predicate grammar + `query_parses` cache. Output contract
   must be additively extendable to §4.22 delta semantics (`add|replace|exclude|$ref`)
   without redefinition — conversation itself is NOT a task here.
@@ -235,7 +260,10 @@ upsertAutoParent references` across `server/` except the purge commit itself.
 
 - T4.1 admin AI tab (pipeline/cost/governance/models, impact-preview tuning, settings
   journal subscription) (§4.15).
-- T4.2 media ladder per §4.21 (revised 2026-10-08/14): **V0(ffprobe) + V1(image/video
+- T4.2 media ladder **[scope reconciliation required]** per §4.21 (revised 2026-10-08/14):
+  D2–D4 report the probes, direct-embed pipelines, fallbacks, and backfill scope as delivered
+  (§28.8); mark this row absorbed if that closes the full contract, otherwise name the P4-only
+  residue. The original scope was **V0(ffprobe) + V1(image/video
   direct-embed) + V3(audio direct-embed + conditional ASR)** on the built-in q4 engine
   (batch-class on CPU; external GGUF+GPU server is the throughput override) + **V2(VLM
   captions)** as display/arbiter material and the media-caps-absent fallback — behind
@@ -255,8 +283,9 @@ upsertAutoParent references` across `server/` except the purge commit itself.
 **Every task below MUST be implemented against its contract specs — read them first; a
 mismatch with §7.1 files is a bug in whichever side is newer (docs-first: fix the spec in
 the same PR).** AI_FEATURE_PLAN.md sections carry their own "Contract specs" lines; this
-map is the task-row view. All §7.1 spec files now exist (written by the §8 docs gate,
-2026-09-17) — they are the binding contract specs. Path prefixes are implicit:
+map is the task-row view. The original §7.1 contract-spec set was written by the §8 docs
+gate (2026-09-17); later task overlays add their spec references below, with new contracts
+created in the task's docs-first step. Path prefixes are implicit:
 component/hook/service/page specs live under `docs/spec/client/`; route/store/service/
 infrastructure specs live under `docs/spec/server/`.
 
@@ -281,6 +310,15 @@ infrastructure specs live under `docs/spec/server/`.
 - T3.5 `docs/spec/`store/actionJournalStore.md, hooks/{useFileOperations,useUndoToast}.md
 - T3.6 `docs/spec/`routes/collections.md, services/collectionsService.md
 - T4.1/T4.2/T4.3 `docs/spec/`infrastructure/{llmPresets,llmAdapter}.md, services/aiJobService.md, routes/admin.md, docs/SETUP.md + testing: docs/TESTING_STRATEGY.md (AI tiers)
+- T4.4 docs-first adds the capacity-series contract: `docs/spec/server/store/capacitySnapshotsStore.md`
+  (new), `docs/spec/server/infrastructure/maintenanceScheduler.md`,
+  `docs/spec/client/services/explorerGateway.md`, and
+  `docs/spec/client/components/mypage/content/CollectionDashboard.md`.
+- T4.5–T4.10 `docs/spec/client/hooks/useBulkOperations.md`,
+  `docs/spec/client/components/file-manager/FileOperationProgress.md`,
+  `docs/features/client-ui.md`; T4.6b `docs/spec/server/routes/files.md`;
+  T4.12 `docs/E2E_COVERAGE_PLAN.md` + `docs/TESTING_STRATEGY.md`; T4.13
+  `docs/TEST_GIT_GUIDE.md` (release-gate procedure). T4.11 is dropped.
 
 ## 8. Docs gate (per phase, before code — AGENTS §2.1)
 
@@ -675,7 +713,8 @@ FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existin
 - **§11 follow-up 2 (2026-10-01, owner ruling):** ArchiveNode count badge removed (M-1
   purity — the sidebar shows no numeric counts): `archiveCount` state/prop/`Badge` and its
   second `mine,archived` fetch deleted from the tree path; parity specs updated.
-- **§11 follow-up 3 (2026-10-01, owner decisions — F4 report follow-up):** the two list-only
+- **§11 follow-up 3 (2026-10-01, owner decisions — F4 report follow-up):** the report-only
+  inventory is recorded in the F4 entry of the follow-up batch below.
 - **§11 follow-up 4 (2026-10-01, owner badge round):** card badges split by pin kind — auto-pin = PushPin+AutoAwesome
   composite (click unpin), user pin = plain PushPin (new `collectionsUserPin` key, click unpin, testid
   `card-userpin-chip-*`); received marker on cards switched to the generic `Share` glyph and the TREE's
@@ -919,11 +958,14 @@ Doc changes in this changeset (docs-first step; no product code):
 Release-runbook obligation before shipping the model (§4.15 checklist / Q10): re-measure on
 the dev reference set — text near-dup θ_dup, unrelated-floor spread, image/audio/video
 near-dup bands, mutual-kNN tier edges (0.82/0.86/0.80/0.72 were caption-space measures),
-tag θ_lo/ortho band (measured in §6.5 — feature since dissolved, §19), char→token factor (1.7 was bge-m3), media token rates/segment windows,
+char→token factor (1.7 was bge-m3), media token rates/segment windows,
 query-embed latency profile (informational — the <100 ms class gate is deleted by the §20
 owner ruling 2026-10-15). E3 recall@20
 must be re-run with TRUE image queries (no captions) against the wedding ground-truth tree
 before the caption-path 0.829 baseline is replaced.
+
+The former tag θ_lo/orthogonality measurement is not an active release obligation after the
+tag layer was dissolved; its PoC result remains historical evidence (§19).
 
 Open probe gaps explicitly not closed by this decision: interleaved text+media fusion
 untested on llama.cpp serving; native video input needs `-ub ≥2048` on the server (owner
@@ -2295,11 +2337,12 @@ gates: full server **179 suites / 3,093 tests pass (28 skipped)**; PG Collection
 and UsageRepository 10/10 conformance; `docsStatePurity` green; eslint/prettier clean. The
 Wave-4 exit gate above closes the phase.
 
-**T2.2 exit (2026-10-26):** all silent-evolution passes are merged — triggers/scheduler/report,
+**Historical T2.2 intermediate snapshot** (before T2.3 closure; superseded by the T2.1–T2.5
+closeout above): all silent-evolution passes were merged — triggers/scheduler/report,
 reconcile, create, split, merge candidates, auto-pin reconcile. Final gates: full server
 **179 suites / 3,073 tests pass (28 skipped)**; PG CollectionsRepository 33/33 and
 UsageRepository 10/10 conformance; `docsStatePurity` green; eslint/prettier clean. Archive/purge
-and item activity ordering remain T2.3.
+and item activity ordering were still T2.3 work at that intermediate point.
 
 ## 30. P3 execution plan — proposals, sharing, subscriptions (owner-adjudicated 2026-10-27)
 
@@ -2539,21 +2582,22 @@ full-matrix re-pin, and the §30.6 defer-audit residuals below.
 > the audit's wording. P3's feature rows stay closed; these are post-gate residuals for the
 > pre-dev-merge remediation and P4, not a reopening of the P3 exit gate.
 
-| ID  | Audit item                                           | Verified state                                                                                                                                                                                                                                                                                                                                        | Disposition / owner                                                                                                                                                                                             | Verification gate                                              |
-| --- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| A   | E2E-BULK-010 (batch move undo toast)                 | **Real gap.** `docs/E2E_COVERAGE_PLAN.md:418` is `planned`; no `E2E-BULK-010` spec/test exists; `core-flow.shared.spec.ts` carries BULK-001..004/006/007 only. T3.5's exit-gate E2E batch covered collections 021–025 + retrieval/ai, not BULK-010.                                                                                                   | Add `test/p3-bulk-010`: dual `core-flow.shared` case — two-item move → completion toast → Undo → source re-listed, destination removed; flip the row `planned → covered`. Owner: P3 residual (pre-dev-merge).   | `core-flow.shared` both platforms green; coverage row updated. |
-| B   | near-dup "30d unopened + low score" keeper heuristic | **Real scope simplification, owner-unreported.** `AI_FEATURE_PLAN.md:769` names the heuristic; code/spec/tests pin deterministic smallest-node-id keep (`nearDupFinderService.js:212`; `nearDupFinderService.md:27`; `dashboardService.md:72,75`; tests `nearDupFinderService.test.js:102`, `dashboardService.test.js:95`). No owner decision record. | Owner decision: (a) accept deterministic keep for v1 (current; record in AI_FEATURE_PLAN §12/spec) or (b) add the heuristic as a P4 enhancement. No code change until the ruling.                               | Decision recorded; if (b), rule + tests + spec.                |
-| C   | pending-count "publish_mode != auto" wording         | **Real doc ambiguity, not a code bug.** `routes/collections.md:246-247` said keyed on `publish_mode != auto`; `collectionShareService.md:75` says owner-only count of `published=false` rows; code counts all parked rows (`shareService.js:148-155`), test `collectionShareService.test.js:220-236`.                                                 | **DECIDED 2026-10-28:** count all parked rows regardless of `publish_mode` (current behavior; no unpublished member is hidden). Route/service specs amended; auto-mode legacy-parked-row regression test added. | Docs/code agree; route + service tests updated.                |
-| D   | parse.nl v1 negation absent                          | **Intentional v1 scope, owner visibility missing.** `AI_FEATURE_PLAN.md:1827-1828` says "no negation, no any_of"; `searchService.md:266` restates; `ATOM_TYPES` is path/tag/like/date/size only; the parser imports the shared grammar.                                                                                                               | No P3 code change. Record in P4 §4.22 delta-semantics; any negation needs a grammar decision, never a parser-side invention.                                                                                    | P4 §4.22 scope note.                                           |
-| E   | `assertMemberConsumable` bridge waiting              | **Intentional v1 boundary.** Function implemented/tested (`shareService.js:308-322`; `collectionShareService.test.js:699-853`); no files-domain route carries collection context in v1 (`collectionShareService.md:141`).                                                                                                                             | No code change. Track as a precondition: any future collection-context preview/download route MUST call the pre-check; add to the P4 security note.                                                             | Future-route review checklist.                                 |
-| L1  | 024 grantee "tab absence" leg                        | **Coverage-plan overclaim; unit coverage real.** E2E 024 only asserts the owner Sharing tab (`collections.spec.ts:1614`); the grantee leg uses the card-menu revoke and never opens the properties dialog. Unit test `CollectionPropertiesDialog.test.js:140-145` covers grantee tab absence.                                                         | Amend the 024 coverage row to "unit-covered; browser leg optional"; optionally add the browser leg in P4.                                                                                                       | Coverage-row wording; optional E2E leg.                        |
-| L2  | query_parses malformed-string PG untestable          | **Test-scope nuance.** Spec `queryParsesStore.md:52,78` promises malformed stored string ⇒ `null`; PG binds `::jsonb` and rejects malformed at write, so the branch is sqlite/raw-row only. No malformed case exists in the conformance suite.                                                                                                        | Clarify the spec bullet ("sqlite raw-row only; PG JSONB rejects at write") and optionally add a sqlite-only raw-row test + shared-mapper unit test.                                                             | Spec wording + optional sqlite test.                           |
-| L3  | `E2E_EXPECTED_SKIPS` 6→7 full matrix re-pin          | **Known deferred release evidence.** `E2E_COVERAGE_PLAN.md:229` pins 249/7/256; `:252` defers the full default-gate re-pin to the release run; `package.json:24` uses 7; `skip-budget.js:11-12` comment still says default 6.                                                                                                                         | P4-release event: run `npm run test:e2e:release` (+ WebDAV) on the merged tip, record actual 249/7/256, fix the skip-budget comment.                                                                            | Release run green + evidence line.                             |
+| ID  | Audit item                                           | Verified state                                                                                                                                                                                                                                                                                        | Disposition / owner                                                                                                                                                                                           | Verification gate                                               |
+| --- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| A   | E2E-BULK-010 (batch move undo toast)                 | **Real gap at audit time.** `docs/E2E_COVERAGE_PLAN.md` was `planned`; no test existed.                                                                                                                                                                                                               | **CLOSED (§31.1, §31.6):** dual core-flow case merged as `2a933ecb`, targeted 2/2; coverage row is covered.                                                                                                   | `core-flow.shared` both platforms green; coverage row covered.  |
+| B   | near-dup "30d unopened + low score" keeper heuristic | **Open at audit time.** The audit found a deterministic keeper where the design plan named a quality heuristic.                                                                                                                                                                                       | **CLOSED (§31.1–§31.2):** v1 keeper scorer, weights, exposure, reason refresh, and UI shipped in `303bd702`; the v1 policy is recorded in §31.2.                                                              | Scorer/spec/tests and v1 decision recorded.                     |
+| C   | pending-count "publish_mode != auto" wording         | **Real doc ambiguity, not a code bug.** `routes/collections.md:246-247` said keyed on `publish_mode != auto`; `collectionShareService.md:75` says owner-only count of `published=false` rows; code counts all parked rows (`shareService.js:148-155`), test `collectionShareService.test.js:220-236`. | **CLOSED (2026-10-28):** count all parked rows regardless of `publish_mode`; route/service specs and auto-mode regression test were updated.                                                                  | Docs/code agree; route + service tests updated.                 |
+| D   | parse.nl v1 negation absent                          | **Intentional v1 scope, owner visibility missing.** `AI_FEATURE_PLAN.md:1827-1828` says "no negation, no any_of"; `searchService.md:266` restates; `ATOM_TYPES` is path/tag/like/date/size only; the parser imports the shared grammar.                                                               | No P3 code change. Record in P4 §4.22 delta-semantics; any negation needs a grammar decision, never a parser-side invention.                                                                                  | P4 §4.22 scope note.                                            |
+| E   | `assertMemberConsumable` bridge waiting              | **Intentional v1 boundary.** Function implemented/tested (`shareService.js:308-322`; `collectionShareService.test.js:699-853`); no files-domain route carries collection context in v1 (`collectionShareService.md:141`).                                                                             | No code change. Track as a precondition: any future collection-context preview/download route MUST call the pre-check; add to the P4 security note.                                                           | Future-route review checklist.                                  |
+| L1  | 024 grantee "tab absence" leg                        | **Coverage-plan overclaim at audit time; unit coverage real.** The E2E browser leg asserts the owner tab; the grantee tab absence is unit-covered.                                                                                                                                                    | **CLOSED:** the coverage row now states that grantee tab absence is unit-covered; browser coverage remains optional.                                                                                          | Coverage-plan wording; unit test remains the behavior pin.      |
+| L2  | query_parses malformed-string PG untestable          | **Open documentation nuance.** The spec still promises malformed stored string ⇒ `null`; PG binds `::jsonb` and rejects malformed input at write, so only sqlite/raw-row can exercise that branch.                                                                                                    | **OPEN / pre-merge:** clarify the spec as sqlite raw-row only (PG JSONB rejects malformed input at write); optionally add sqlite raw-row and shared-mapper tests. Owner: T3.4 docs maintainer / orchestrator. | Spec wording; optional sqlite and mapper tests.                 |
+| L3  | `E2E_EXPECTED_SKIPS` 6→7 full matrix re-pin          | **Release evidence is now present** in §§31.8 and 32.1: embedded S3 253/7/260; model-free S3 252/8/260; WebDAV 41/0. The stale `skip-budget.js` comment still says the default is 6.                                                                                                                  | **Release soak CLOSED.** Track the stale reporter comment as a separate small cleanup; owner: E2E infrastructure maintainer.                                                                                  | Full matrix green at `E2E_WORKERS=1`; comment cleanup separate. |
 
-**Remediation order.** (1) A + L1/L2 doc corrections (test/docs; independent); (2) C owner
-decision + docs; (3) L3 release run; (4) B/D/E owner decisions or P4 scope notes. A, C (docs
-clarification), and L2 are pre-dev-merge residuals; B/D/E/L1/L3 remain P4 carry-forward. None of these rows changes the
-P3 feature verdict — they are the honest tail of the phase.
+**Current disposition (updated 2026-10-28):** A/B/C/L1 and the L3 release soak are closed by
+the evidence cited above and later sections. L2 remains a pre-dev-merge documentation cleanup;
+D belongs to the §4.22 P4 parser scope; E remains a future-route security precondition. The
+`skip-budget.js` default-count comment is a separate E2E-infrastructure cleanup. P3 remains
+closed; these items do not reopen its feature verdict.
 
 ### 30.7 Search semantic-availability wire (2026-10-28)
 
@@ -2607,21 +2651,22 @@ disabled`) sourced from the new `llmAdapter.getRoleReadiness('embed')`; it is no
   stable). UI: `Keep: <name> · <basis>` + accessible “Why this keeper?” (group-relative score
   and factor bars only in the detail).
 
-### 31.3 Shared enums Phase 2 migration queue
+### 31.3 Shared enums Phase 2 migration record (completed)
 
 **DONE (merge `309eb579`):** the server consumers now use the shared constants for
 publish/grant/journal/LLM roles and collection origin/status plus merge/file suggestion
 states; the intentional setup `chat|vision|asr` subset and `status:'all'` filter pseudo-value
 stay local. The migration list below is retained as the change record.
 
-Phase 1 shipped the constants only; no server call site consumes them yet. The follow-up
-branch (`refactor/shared-enum-consumers`, queued after the code units merge) replaces the
-local arrays/literals with the shared constants:
+**Historical Phase 2 starting state:** Phase 1 had shipped the constants without server
+consumers. The follow-up branch (`refactor/shared-enum-consumers`) replaced the local
+arrays/literals with the shared constants. The checklist below is a completed change record,
+not a queue of remaining work:
 
 - `collections/service.js:49` `VALID_PUBLISH_MODES` → `PUBLISH_MODE`
 - `collections/shareService.js:28` `VALID_GRANT_ROLES` → `GRANT_ROLE`
-- `actions/service.js:24-33` `JOURNAL_DOMAINS` → `JOURNAL_DOMAIN` (keep the dead-but-shipped
-  `TAGS` value until the 001 CHECK edit; remove both together or not at all)
+- `actions/service.js:24-33` `JOURNAL_DOMAINS` → `JOURNAL_DOMAIN` (`TAGS` remains a separate
+  DDL/constant parity decision; see §31.5)
 - `infrastructure/adapters/llm/index.js:39` `ROLES` → `LLM_ROLE`
 - `collections/evolutionService.js:1737` merge-state subset → `MERGE_SUGGESTION_STATE`
   (exclude `DISMISSED`; do not use `ALL` blindly)
@@ -2675,13 +2720,18 @@ _schema_migrations WHERE filename='001_initial_normalized_schema.sql';` then re-
   skips auto-pin for that request; grantee `for-nodes` chips now omit unpublished rows;
   WebDAV undo retry is idempotent but a new name collision can still require a manual move;
   B keeps short-document members keeper-eligible, does not backfill legacy rows, and keeper
-  flips churn rows; BULK-010 raises the E2E inventory 256→258 (release matrix re-pin still
-  required); tag DDL changed the 001 checksum (local DB reset note in §31.5).
-- **Still open:** the release-matrix soak on the merged tip; `JOURNAL_DOMAIN.TAGS` parity
-  decision; P4 hysteresis calibration and the remaining P4 carry-forward items. The jest/PG
-  tiers are green on the merged tip (§31.7).
+  flips churn rows; BULK-010 raised the E2E inventory 256→258 (the release re-pin was pending
+  at this snapshot; later inventory and soak evidence are in §§31.8 and 32.1); tag DDL changed
+  the 001 checksum (local DB reset note in §31.5).
+- **Open at this snapshot:** the release-matrix soak, `JOURNAL_DOMAIN.TAGS` parity decision,
+  P4 hysteresis calibration, and remaining P4 work. The release soak was later completed in
+  §31.8; the other items remain tracked in the Current status section.
 
-### 31.7 Final integration gates — remediation tip (2026-10-28)
+### 31.7 Integration-gate snapshot before release soak (2026-10-28)
+
+This is a point-in-time snapshot before Run D in §31.8. Its counts and pending-release
+statement are historical; the later release evidence and T4.5–T4.13 results are recorded in
+§§31.8 and 32.1.
 
 - **Merged tip:** `309eb579` (`ai-feature`). All eleven remediation units plus enums Phase 2
   are merged; task worktrees are removed.
@@ -2692,10 +2742,9 @@ _schema_migrations WHERE filename='001_initial_normalized_schema.sql';` then re-
 - **Targeted:** shared-enum Phase 2 24 suites / 531; B server 115 + client 30; collections/
   conformance/presets 390; undo/dashboard/fileNodes 89; Member of client 177; LLM 136;
   AI hooks 51; tag DDL sqlite 50 + real PG 18; BULK-010 dual E2E 2/2.
-- **E2E inventory:** `playwright test --list` **258 tests in 18 files**; BULK-010 registered
-  under both s3 projects and its targeted dual run is green. The **full release matrix
-  (`test:e2e:release` + WebDAV, expected 251/7/258) is NOT yet run** — it remains the release
-  event gate, not a claim of this pass.
+- **E2E inventory at this snapshot:** `playwright test --list` **258 tests in 18 files**;
+  BULK-010 registered under both s3 projects and its targeted dual run is green. The full
+  release matrix had not yet run at this point; Run D later closed it in §31.8.
 - **Docs:** `docsStatePurity` green; prettier clean on touched files; `TEST_SUMMARY` re-pinned
   to server 194/3381, client 188/2245, PG 31/471+1; E2E coverage inventory updated to 251/7/258
   (Core 142/3/145).
@@ -2708,12 +2757,16 @@ Four full release-matrix attempts on the merged remediation tip. Runs A–C are 
 host-capacity/transport reasons (not reproducible product regressions — targeted reruns below);
 **Run D with `E2E_WORKERS=1` is GREEN and is the release evidence.**
 
-| Run              | Config                         | S3 (`test:e2e:release`)                            | WebDAV (`test:e2e:release:webdav`)      |
+| Run              | Config                         | S3 (command used at run time)                      | WebDAV (`test:e2e:release:webdav`)      |
 | ---------------- | ------------------------------ | -------------------------------------------------- | --------------------------------------- |
 | A `19c1b880`     | 3 workers                      | 238 passed / 3 failed / 7 skipped / 10 did not run | 39 passed / 1 failed / 1 did not run    |
 | B `7593e6fc`     | 3 workers                      | 250 passed / 1 failed / 7 skipped                  | 40 passed / 1 failed                    |
 | C `8396b23f`     | 2 workers (`E2E_WORKERS=2`)    | 238 passed / 2 failed / 6 skipped / 12 did not run | 34 passed / 2 failed / 5 did not run    |
 | **D `00881ada`** | **1 worker (`E2E_WORKERS=1`)** | **253 passed / 7 skipped / 260, rc=0 (26.8m)**     | **41 passed / 0 skipped, rc=0 (12.2m)** |
+
+> Gate-name note (2026-10-28 split): the embedded default command used for the D row is now
+> `test:e2e:release:embed`. `test:e2e:release` exports `WEA_SKIP_EMBED_MODEL=1` and intentionally
+> skips `E2E-S3-AI-001` (252/8/260); `test:e2e:release:all` keeps the embedded default leg.
 
 - **Run A product regression (fixed):** `E2E-WEBDAV-ADMINCFG-004` — the admin warning card
   rendered healthy/not-configured `ai.*` tracker rows (C4-A added a healthy `ai.embed` row).
@@ -2757,15 +2810,16 @@ host-capacity/transport reasons (not reproducible product regressions — target
 - **Tests:** client 188 suites / **2261** tests, rc=0 (new: 8 hook cancel cases, 4 bar cases,
   3 button cases); `docsStatePurity` green (removed the `T4.1` task marker accidentally added to
   `SystemSettingsContent.md` in `7593e6fc`); prettier/eslint clean on touched files.
-- **Not covered:** no new E2E case (the interaction is client-unit covered; a full-matrix re-pin
-  remains the pending release event).
+- **E2E:** no new case was added because the interaction is client-unit covered. The full-matrix
+  re-pin was pending when this note was recorded and was later completed in §31.8.
 
 ## 32. P4 plan — bulk-job polling resilience (2026-10-28)
 
 Scope: the bulk-operation polling gap exposed by the release-matrix traces. The search-side
 error surface is **dropped** (owner decision 2026-10-28: the existing 5 s snackbar stays, and
-Enter while pending stays an inert no-op — no persistent row, no hint). Plan only; no task below
-is executed yet.
+Enter while pending stays an inert no-op — no persistent row, no hint). The policy and task
+descriptions below preserve the original plan; implementation and gate status are recorded in
+§32.1–§32.2.
 
 **Evidence.** (a) `useBulkOperations` polls with `setInterval(400)` and a bare
 `catch { console.error }` (`useBulkOperations.js:303`, twin at `:628`); the terminal branch is the
@@ -2872,3 +2926,43 @@ snackbar and now has an explicit cancel surface (`§31.9`), so no search-side wo
   intentional `E2E-S3-AI-001` model-free skip, counted by the skip-budget reporter). The
   model-on serial baseline was 26m50s, so the seam roughly halves the gate and makes
   `E2E_WORKERS=2` viable on this host.
+
+### 32.2 Current status of the bulk-polling work
+
+| Task  | Status      | Closure evidence                                                                                                                                                                 |
+| ----- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T4.5  | `[done]`    | Polling and stalled-state contracts updated in the specs and feature doc (§32.1).                                                                                                |
+| T4.6  | `[done]`    | `bulkJobPoller` and fake-timer unit coverage delivered (§32.1).                                                                                                                  |
+| T4.7  | `[done]`    | Stalled progress-item state and shared message delivered (§32.1).                                                                                                                |
+| T4.8  | `[done]`    | Delete path uses the poller and refresh-first terminal handling (§32.1).                                                                                                         |
+| T4.9  | `[done]`    | Move/copy paths use the poller and preserve undo/skipped-item behavior (§32.1).                                                                                                  |
+| T4.10 | `[done]`    | Cancel forces one status read and converges on the terminal/stalled handler (§32.1).                                                                                             |
+| T4.11 | `[dropped]` | Search keeps its existing short snackbar and inert pending Enter behavior (§32 decisions).                                                                                       |
+| T4.12 | `[done]`    | `E2E-TRASH-013` passed on desktop and mobile; inventory is S3 253/7/260, Core 144/3/147, WebDAV 41/0 (§32.1).                                                                    |
+| T4.6b | `[done]`    | The bulk-operation status route sends `Cache-Control: no-store`; route test passed (§32.1).                                                                                      |
+| T4.13 | `[done]`    | Client/server CI, docs/lint checks, targeted E2E, and the serial release matrix are reported green in §32.1. Reconcile the exact server test total before updating summary pins. |
+
+### 32.3 Remaining P4 and pre-merge work
+
+The accountable role is listed below; the orchestrator assigns an individual implementer when
+the work is dispatched. These items, not the completed bulk-polling add-on, keep the overall
+P4 phase open.
+
+| Item                                        | Status                   | Accountable role                                             | Next action / exit condition                                                                                                                                              |
+| ------------------------------------------- | ------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T4.1 admin AI surface and re-embed launcher | `[open]`                 | P4 orchestrator; assign the implementation owner at dispatch | Deliver the admin AI surface and rate-limited re-embed action, including initial coverage/model-change use (§28.9, §30.5).                                                |
+| T4.2 media ladder                           | `[needs-reconciliation]` | P4 orchestrator                                              | D2–D4 already report the media probes, pipelines, fallback, and backfill scope delivered (§28.8). Mark T4.2 absorbed by those units or state the remaining P4-only scope. |
+| T4.3 hermetic AI/media E2E                  | `[open]`                 | P4 E2E owner; assign at dispatch                             | Add the fake-LLM/degradation matrix and E2E-AI-002 parser case (§30.5).                                                                                                   |
+| T4.4 capacity series                        | `[open]`                 | P4 dashboard owner; assign at dispatch                       | Add capacity snapshots, daily scheduler, gateway series, Storage sparkline, and their specs/tests (§7, §7.1).                                                             |
+| §4.22 delta-semantics SQL leg               | `[deferred]`             | Search/parser owner; assign with the task                    | Apply the parsed predicate delta semantics without inventing grammar beyond the shared contract (§30.5).                                                                  |
+| §30.6 L2 query-parses contract              | `[open]`                 | T3.4 docs owner / orchestrator                               | State that malformed raw JSON is a sqlite-only read case; PostgreSQL JSONB rejects malformed data on write. Add optional focused tests (§30.6).                           |
+| `JOURNAL_DOMAIN.TAGS` parity                | `[needs-decision]`       | Project owner                                                | Decide whether to retain or remove the unused enum value; if removed, change the shared constant and DDL CHECK together (§31.5).                                          |
+| P4 hysteresis calibration                   | `[open]`                 | AI-profile/release owner; assign at calibration              | Re-measure the provisional ±0.02 offsets against operational data as planned in §31.1/§31.6.                                                                              |
+| §30.6 E future-route security precondition  | `[deferred]`             | Owner of any future collection-context file route            | Require `assertMemberConsumable` before adding a preview/download route with collection context; the current service contract already records the precondition.           |
+| `skip-budget.js` stale default comment      | `[open]`                 | E2E infrastructure maintainer                                | Update the comment from the old default of 6 to match the current budget behavior; do not change runtime skip handling without its own test.                              |
+
+**Gate-count reconciliation:** §32.1 records server `194 suites / 3382 tests` and client
+`189 / 2279`. `client/TEST_SUMMARY.md` now matches 189/2279. The server summary's historical
+3386 and 3381 pins conflict with the 3382 total recorded here. Check the original server run
+output before choosing a canonical total; retain the reported gate result but do not repin a
+different number without that evidence.

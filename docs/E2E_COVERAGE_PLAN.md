@@ -171,16 +171,26 @@ Rules:
 
 ### Release gate commands
 
-| Group      | Release command                   | Retry policy                        | Expected skip | Release ownership             |
-| ---------- | --------------------------------- | ----------------------------------- | ------------- | ----------------------------- |
-| Default S3 | `npm run test:e2e:release`        | `--retries=0 --fail-on-flaky-tests` | 7             | Required generic gate         |
-| WebDAV     | `npm run test:e2e:release:webdav` | `--retries=0 --fail-on-flaky-tests` | 0             | Required WebDAV-specific gate |
+The release matrix has two model seams. `test:e2e:release` and
+`test:e2e:release:webdav` are the **model-free** gates: they export
+`WEA_SKIP_EMBED_MODEL=1`, so `E2E-S3-AI-001` skips intentionally and the
+skip-budget reporter adds that one skip on top of the static budget.
+`test:e2e:release:embed` is the **embedded-model** gate: it leaves
+`WEA_SKIP_EMBED_MODEL` unset, so the AI case runs against the pre-seeded
+weights.
 
-The two release commands are the only accepted release evidence. A combined
-`npm run test:e2e:release:all` runs both release jobs; it does
-not replace separate failure attribution. The skip-count reporter compares each
-run's actual skip count with the expected value above, and any unexpected skip
-fails the release gate.
+| Group      | Release command                   | Model seam       | Retry policy                        | Expected skip       | Release ownership             |
+| ---------- | --------------------------------- | ---------------- | ----------------------------------- | ------------------- | ----------------------------- |
+| Default S3 | `npm run test:e2e:release`        | model-free (`1`) | `--retries=0 --fail-on-flaky-tests` | 7 static + 1 AI = 8 | Required model-free gate      |
+| Default S3 | `npm run test:e2e:release:embed`  | embedded (unset) | `--retries=0 --fail-on-flaky-tests` | 7                   | Required embedded-model gate  |
+| WebDAV     | `npm run test:e2e:release:webdav` | model-free (`1`) | `--retries=0 --fail-on-flaky-tests` | 0                   | Required WebDAV-specific gate |
+
+A combined `npm run test:e2e:release:all` runs the embedded default gate
+(`release:embed`) followed by the WebDAV gate, sequentially; it does not replace
+separate failure attribution. The WebDAV group contains no embedding-dependent
+case, so its model-free flag does not change the case set. The skip-count
+reporter compares each run's actual skip count with the expected value above,
+and any unexpected skip fails the release gate.
 
 ### Suite/project runtime matrix
 
@@ -249,7 +259,7 @@ to absorb a conditional or resource-driven skip.
 `E2E-S3-MIG-004` runs in both S3 migration platform projects, so it contributes
 2 cases to the default total.
 
-Current release evidence: default **240 passed / 6 skipped** at `dad55bcb` (2026-10-26); WebDAV 41 passed / 0 skipped. P3 adds ten cases + one static skip (`E2E-S3-COLLECTION-021..025`); the collections/retrieval/ai projects were re-greened individually at the P3 exit gate (2026-10-27, port band 40). The remediation adds `E2E-BULK-010` as two dual-platform cases (no static skip; targeted 2/2 green on s3-desktop + s3-mobile, 2026-10-28), so the inventory became 251 passed / 7 skipped / 258 total and Core 142 / 3 / 145; E2E-TRASH-013 adds the bulk-job stalled/expired path (+2 dual-platform cases, no skip; targeted 2/2 green on s3-desktop + s3-mobile, 2026-10-28), so the expected inventory is now 253 passed / 7 skipped / 260 total and Core is 144 / 3 / 147. The full default-gate re-pin still lands with the orchestrator's release run; the table above is the expected inventory, not a soak result. **Release soak (2026-10-28, `ai-feature` tip `00881ada`, `E2E_WORKERS=1`): default 253 passed / 7 skipped / 260, WebDAV 41/0 — rc=0. Model-free seam (`WEA_SKIP_EMBED_MODEL=1`, tip `cb965996`): default 252/8/260 rc=0 — 13m40s at 1 worker, 8m18s at 2 workers (the extra skip is the intentional AI-001 skip).** The canonical 3-worker configuration is host-capacity-bound on the 6-core runner (PLAN §31.8); `E2E_WORKERS` is the supported concurrency knob.
+Current release evidence: default **240 passed / 6 skipped** at `dad55bcb` (2026-10-26); WebDAV 41 passed / 0 skipped. P3 adds ten cases + one static skip (`E2E-S3-COLLECTION-021..025`); the collections/retrieval/ai projects were re-greened individually at the P3 exit gate (2026-10-27, port band 40). The remediation adds `E2E-BULK-010` as two dual-platform cases (no static skip; targeted 2/2 green on s3-desktop + s3-mobile, 2026-10-28), so the inventory became 251 passed / 7 skipped / 258 total and Core 142 / 3 / 145; E2E-TRASH-013 adds the bulk-job stalled/expired path (+2 dual-platform cases, no skip; targeted 2/2 green on s3-desktop + s3-mobile, 2026-10-28), so the expected inventory is now 253 passed / 7 skipped / 260 total and Core is 144 / 3 / 147. The full default-gate re-pin was completed by the release soak below; the table above is the expected inventory, followed by its observed soak result. **Release soak (2026-10-28, `ai-feature` tip `00881ada`, `E2E_WORKERS=1`): default 253 passed / 7 skipped / 260, WebDAV 41/0 — rc=0 (that default leg is the current `release:embed` gate). Model-free seam (`WEA_SKIP_EMBED_MODEL=1`, tip `cb965996`): default 252/8/260 rc=0 — 13m40s at 1 worker, 8m18s at 2 workers (the extra skip is the intentional AI-001 skip and is the current `release` gate).** The canonical 3-worker configuration is host-capacity-bound on the 6-core runner (PLAN §31.8); `E2E_WORKERS` is the supported concurrency knob.
 
 ### WebDAV coverage trade-off
 
@@ -650,7 +660,7 @@ Practical rule:
 
 - Core-file-feature change → `npm run test:e2e:core` + `npm run test:e2e:webdav`.
 - Admin/config/migration tooling or pre-merge → full `npm run test:e2e`.
-- Release evidence → `npm run test:e2e:release` and `npm run test:e2e:release:webdav`; combined → `npm run test:e2e:release:all`.
+- Release evidence → `npm run test:e2e:release:embed` (embedded default) or `npm run test:e2e:release` (model-free default), plus `npm run test:e2e:release:webdav`; combined → `npm run test:e2e:release:all` (embedded default + WebDAV, sequentially).
 - CI supplies the worker count; there is no fixed worker cap or slot pool.
 
 ## Out of Scope for Playwright-First Coverage

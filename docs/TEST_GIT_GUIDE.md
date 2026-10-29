@@ -145,14 +145,19 @@ npm run test:e2e:core
 # WebDAV-only backend job; exactly one shared bytemark.
 npm run test:e2e:webdav
 
-# Default S3 release gate: zero retries, fail on flaky tests.
+# Default S3 release gate, model-free: zero retries, fail on flaky tests,
+# and WEA_SKIP_EMBED_MODEL=1 skips the AI case intentionally.
 npm run test:e2e:release
 
-# WebDAV release gate: zero retries, fail on flaky tests.
+# Embedded-model default release gate: same policy, but WEA_SKIP_EMBED_MODEL
+# stays unset so the AI case runs against the pre-seeded weights.
+npm run test:e2e:release:embed
+
+# WebDAV release gate, model-free: zero retries, fail on flaky tests.
 npm run test:e2e:release:webdav
 
-# Combined release gate: runs both release
-# commands above.
+# Combined release gate: embedded default + WebDAV,
+# run sequentially.
 npm run test:e2e:release:all
 ```
 
@@ -171,10 +176,12 @@ Runner contract:
 - Running the default and WebDAV groups in parallel from the same checkout is
   unsupported because they share the checkout's stack, database, and port band.
   Use separate worktrees with separate bands.
-- Both release commands pin their group and backend and run with retries
+- Every release command pins its group and backend and runs with retries
   disabled and fail-on-flaky enabled. A retried pass is diagnostic, not release
-  evidence. `test:e2e:release:all` runs both release
-  commands; otherwise run them in sequence.
+  evidence. `test:e2e:release` and `test:e2e:release:webdav` set
+  `WEA_SKIP_EMBED_MODEL=1` (model-free); `test:e2e:release:embed` leaves it
+  unset (embedded model, AI case runs). `test:e2e:release:all` runs
+  `release:embed` then `release:webdav`; otherwise run the gates in sequence.
 - Expected skip counts are release invariants, not per-case details. The
   canonical expected count per group lives in
   [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md); the skip-count reporter compares
@@ -253,9 +260,12 @@ Required assumptions:
   `WEA_SKIP_EMBED_MODEL=0`, pre-seed `WEA_MODEL_DIR`, and enable the worker.
   `AI_SEMANTIC_SEARCH_ENABLED` is a `dbOnly` setting and is ignored from the
   environment; tests that need the kill switch write it through the
-  database/config surface. A release run with the model-free seam skips the
-  AI case intentionally; the skip-budget reporter adds that single skip without
-  changing the static platform/resource budget.
+  database/config surface. The model-free release commands
+  (`test:e2e:release`, `test:e2e:release:webdav`) set
+  `WEA_SKIP_EMBED_MODEL=1`; `test:e2e:release:embed` leaves it unset so the AI
+  case runs with the pre-seeded weights. A model-free release skips the AI case
+  intentionally; the skip-budget reporter adds that single skip without changing
+  the static platform/resource budget.
 
 ### Parallel E2E runs (multiple git worktrees / checkouts)
 

@@ -753,6 +753,137 @@
       "probe_failed": "Probe failed",
       "partial": "Partial",
       "ok": "OK"
+    },
+    "aiPanel": {
+      "title": "AI operations",
+      "refresh": "Refresh",
+      "retry": "Retry",
+      "loadFail": "Failed to load the AI operations snapshot.",
+      "on": "On",
+      "off": "Off",
+      "notInstrumented": "not instrumented",
+      "openSystemSettings": "Open system settings",
+      "openAiPanel": "Open AI operations",
+      "sections": {
+        "pipeline": "Pipeline health",
+        "cost": "Cost ledger",
+        "evolution": "Evolution governance",
+        "models": "Model registry",
+        "coverage": "Coverage",
+        "gates": "Gates",
+        "launcher": "Re-embed launcher",
+        "journal": "Settings journal"
+      },
+      "gateKey": {
+        "AI_SEMANTIC_SEARCH_ENABLED": "Semantic search",
+        "AI_NL_PARSE_ENABLED": "Natural-language parsing",
+        "AI_EVOLUTION_ENABLED": "Evolution enabled",
+        "AI_EVOLUTION_NIGHTLY_ENABLED": "Nightly evolution",
+        "AI_EVOLUTION_CREATE_ENABLED": "Collection creation",
+        "AI_MERGE_SUGGESTIONS_ENABLED": "Merge suggestions",
+        "AI_MERGE_ARBITER_ENABLED": "Merge arbiter",
+        "AI_EVOLUTION_INACTIVE_DAYS": "Inactive days",
+        "AI_EVOLUTION_MIN_AGE_DAYS": "Minimum age (days)",
+        "AI_EVOLUTION_CREATE_RATE_DAYS": "Create-rate window (days)",
+        "AI_ACTIVITY_HALF_LIFE_DAYS": "Activity half-life (days)",
+        "AI_USAGE_EVENT_RETENTION_DAYS": "Usage-event retention (days)",
+        "ARCHIVE_RETENTION_DAYS": "Archive retention (days)",
+        "AI_SUGGESTION_RETENTION_DAYS": "Suggestion retention (days)"
+      },
+      "gates": {
+        "killSwitches": "Kill switches",
+        "impact": "Live impact",
+        "saved": "Setting saved.",
+        "saveFail": "Failed to save the setting."
+      },
+      "pipeline": {
+        "queue": {
+          "pending": "Pending",
+          "running": "Running",
+          "done": "Done",
+          "failed": "Failed",
+          "skipped": "Skipped",
+          "cancelled": "Cancelled"
+        },
+        "failed24h": "Failed (24h)",
+        "failureRate": "Failure rate (24h)",
+        "failedJobs": "Failed jobs",
+        "failedJobsDisplayOnly": "Display only — retry and abandon are not available.",
+        "noFailedJobs": "No failed jobs.",
+        "nodeId": "Node",
+        "kind": "Kind",
+        "generation": "Generation",
+        "attempt": "Attempt",
+        "lastError": "Last error",
+        "finishedAt": "Finished",
+        "readiness": "Capability readiness",
+        "breakerNotInstrumented": "Breaker states require active observation and are not polled by this panel."
+      },
+      "cost": {
+        "role": "Role",
+        "calls": "Calls",
+        "inputChars": "Input chars",
+        "cached": "Cached",
+        "degraded": "Degraded",
+        "failed429": "429s",
+        "caps": "Daily caps — calls: {{calls}}, tokens: {{tokens}} (0 = unlimited)",
+        "perUserNotInstrumented": "Per-user top-N is not instrumented."
+      },
+      "evolution": {
+        "latestNightEval": "Latest night evaluation #{{id}} ({{status}})",
+        "users": "Users",
+        "collections": "Collections",
+        "mergeSuggested": "Merge suggestions",
+        "none": "No night-evaluation report yet.",
+        "pendingMerges": "Pending merge suggestions: {{count}}",
+        "notInstrumented": "Survival curves, merge-accept series and per-version history are not instrumented."
+      },
+      "models": {
+        "role": "Role",
+        "active": "Active model",
+        "engine": "Engine",
+        "history": "History rows",
+        "none": "None",
+        "profile": "Profile provenance — {{role}} model {{model}}",
+        "calibrated": "calibrated: {{value}}"
+      },
+      "coverage": {
+        "embedded": "Embedded",
+        "missing": "Missing",
+        "stale": "Stale space",
+        "text": "Text coverage",
+        "media": "Media coverage",
+        "unavailable": "Coverage is not instrumented until an active embedding model is registered."
+      },
+      "launcher": {
+        "description": "One rate-limited run covers missing/stale text nodes and the media coverage plan. The queue is the progress surface.",
+        "model": "Model",
+        "generation": "Generation",
+        "cooldown": "Retry after (s)",
+        "activeRun": "A previous re-embed run still has queued jobs.",
+        "retryAfter": "The launcher is cooling down. Try again in {{seconds}} seconds.",
+        "previewCounts": "Text: {{text}} · Media: {{media}} · Union: {{union}}",
+        "preview": "Preview",
+        "launch": "Launch re-embed",
+        "confirmTitle": "Confirm re-embed",
+        "confirmBody": "Re-embedding will enqueue text ({{text}}) and media ({{media}}) coverage work, bump the generation counters and journal one undo row. Continue?",
+        "confirm": "Launch",
+        "launchSuccess": "Re-embed launched: {{count}} job(s) queued at generation {{generation}}.",
+        "launchFail": "Failed to launch the re-embed.",
+        "previewFail": "Failed to load the re-embed preview.",
+        "cancelPendingHint": "Undo cancels pending jobs only; running jobs finish and spent provider cost is not refunded."
+      },
+      "probe": {
+        "action": "Probe AI roles",
+        "done": "Probe finished: {{ok}}/{{total}} roles passed.",
+        "fail": "Failed to probe the AI roles."
+      },
+      "journal": {
+        "empty": "No settings journal rows.",
+        "undo": "Undo",
+        "undoSuccess": "Settings journal row undone.",
+        "undoFail": "Failed to undo the settings journal row."
+      }
     }
   },
   "migration": {
@@ -905,6 +1036,7 @@
     "messageLabel": "Message",
     "review": "Review",
     "storage": "Storage",
+    "adminAiOps": "AI operations",
     "hygieneDuplicates": "Exact duplicates",
     "hygieneDuplicatesMeta": "{{groups}} groups · {{files}} files · {{size}} reclaimable",
     "hygieneNearDuplicatesMeta": "Near-duplicates: {{groups}} groups · {{files}} files",
@@ -1134,7 +1266,10 @@
       "repairUploadNotPending": "Node is not in the expected sync state.",
       "repairUploadBlobMissing": "Pending blob is missing; cannot complete.",
       "reportNotFound": "Admin report not found.",
-      "repairNotAvailable": "No repair action is available for this report."
+      "repairNotAvailable": "No repair action is available for this report.",
+      "reembedRateLimited": "A re-embed run was launched recently. Try again in {{retry_after_seconds}} seconds.",
+      "reembedAlreadyActive": "A re-embed run is already in progress. Wait for its queued jobs to drain.",
+      "reembedModelUnavailable": "No active embedding model is registered."
     },
     "ai": {
       "notConfigured": "The AI feature is not configured. Please contact the administrator.",

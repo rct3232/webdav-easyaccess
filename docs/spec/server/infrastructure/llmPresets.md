@@ -80,6 +80,12 @@ Target-contract spec.
 }
 ```
 
+`GET /api/admin/ai/summary` exposes the active registry row plus a read-only profile
+provenance projection (`dim`, `calibrated`, `pooling`, `request_shape`, `dtype`,
+`mrl_dims`, `text_prefixes`) for the AI operations panel. Profile values are release
+artifacts; the panel never offers a calibration or dataset control, and hardcoded
+evolution gates are not part of this projection.
+
 Rows are FROZEN; the admin UI renders from the manifest; probe results persist to
 `llm_models` + `backendHealth`, never back into the manifest.
 

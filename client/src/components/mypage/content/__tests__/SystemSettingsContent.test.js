@@ -36,6 +36,11 @@ describe('SystemSettingsContent', () => {
     mockSetShowHiddenFiles.mockClear();
   });
 
+  it('renders the AI operations cross-link', () => {
+    renderSystemSettingsContent();
+    expect(screen.getByTestId('open-ai-panel')).toBeInTheDocument();
+  });
+
   it('renders registration and show hidden files toggles', async () => {
     renderSystemSettingsContent();
 

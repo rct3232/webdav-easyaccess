@@ -59,6 +59,13 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   never a module-level mock that bypasses the adapter contract. The same network-guard
   precedent as blob-migration testing (stubbed sockets) applies: an accidental real request
   fails the test.
+- **Admin AI surface tests:** the governance summary/launcher suites use real
+  `ai_jobs`/`settings`/`action_journal` stores and fake only provider-adjacent reads
+  (model registry/usage/reports/probe state). They never call `budgetStatus()` or a
+  provider: the panel exposes readiness tokens instead of poll-triggered breaker probes.
+  Launcher tests pin the journal/generation/enqueue atomicity and the cancel-pending race;
+  client tests pin preview → one confirm → POST and the polled queue as the only progress
+  surface.
 - **Hermetic scratch projects:** each destructive AI E2E suite (evolution passes, merge
   execution, archive/purge lifecycles) gets its **own scratch server project** following the
   destructive-suite precedent. Scratch slots are project-scoped with separate desktop and

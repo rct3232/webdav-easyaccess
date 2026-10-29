@@ -412,7 +412,8 @@ describe('embed pipeline (B5/T1.3b)', () => {
     await expect(drain).resolves.toBe(0);
 
     const failed = await aiJobsStore.getById(enqueued.id);
-    expect(failed).toMatchObject({ status: 'failed', attempt: 1, finishedAt: null });
+    expect(failed).toMatchObject({ status: 'failed', attempt: 1 });
+    expect(failed.finishedAt).toBeTruthy();
     expect(failed.lastError).toContain('timed out');
     expect(failed.nextRetryAt).not.toBeNull();
 
@@ -428,7 +429,8 @@ describe('embed pipeline (B5/T1.3b)', () => {
 
     await expect(aiJobsStore.markDone(enqueued.id)).resolves.toEqual({ changes: 0 });
     const afterLateWrite = await aiJobsStore.getById(enqueued.id);
-    expect(afterLateWrite).toMatchObject({ status: 'failed', attempt: 1, finishedAt: null });
+    expect(afterLateWrite).toMatchObject({ status: 'failed', attempt: 1 });
+    expect(afterLateWrite.finishedAt).toBeTruthy();
     expect(afterLateWrite.lastError).toContain('timed out');
   });
 });

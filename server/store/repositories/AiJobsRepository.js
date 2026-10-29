@@ -32,9 +32,18 @@
  *   attempt (`pending`, attempt 0, retry/start/finish/last_error cleared);
  *   an identical or absent hash performs no update and returns `null` (the
  *   dedupe-skip contract).
- * @property {(items: Array<{nodeId, kind, generation, contentHash?}>) => Promise<{enqueued: number}>} enqueueMany
- *   One TX, per-item ON CONFLICT DO NOTHING — backfill seeding (no
- *   content-change reset: driver keys are opaque, not file hashes).
+ * @property {(items: Array<{nodeId, kind, generation, contentHash?}>) => Promise<{enqueued: number, ids: number[]}>} enqueueMany
+ *   One TX, per-item ON CONFLICT DO NOTHING — admin re-embed seeding (no
+ *   content-change reset: driver keys are opaque, not file hashes). `ids`
+ *   lists the newly inserted rows in insertion order.
+ * @property {(tx, items: Array<{nodeId, kind, generation, contentHash?}>) => Promise<{enqueued: number, ids: number[]}>} enqueueManyTx
+ *   Caller-owned-TX variant (the launcher writes generation bump + seed +
+ *   journal row atomically).
+ * @property {(opts: { jobIds: number[] }) => Promise<{cancelledIds: number[], skippedIds: number[]}>} cancelPending
+ *   ONE TX: only `pending` rows → terminal `cancelled` (finished_at=now).
+ *   Running jobs finish; done/failed/skipped/cancelled ids are skipped.
+ * @property {(tx, opts: { jobIds: number[] }) => Promise<{cancelledIds: number[], skippedIds: number[]}>} cancelPendingTx
+ *   Caller-owned-TX variant used by the settings-journal inverse.
  * @property {(opts?: { excludeKinds?: string[] }) => Promise<AiJob|null>} claimNext
  *   Atomically move the oldest claimable row to `running` (started_at=now);
  *   `null` when nothing is claimable — never throws on "nothing to do".
@@ -45,7 +54,8 @@
  *   `running → done`, finished_at=now; guarded on status='running'.
  * @property {(jobId, error) => Promise<{changes: number}>} markFailed
  *   `running → failed`, attempt+1, last_error ≤1KB truncated,
- *   next_retry_at = now + backoff(attempt) (§2.5); guarded on 'running'.
+ *   next_retry_at = now + backoff(attempt) (§2.5), finished_at=now
+ *   (the admin 24h failure-rate window); guarded on 'running'.
  * @property {(jobId, reason?) => Promise<{changes: number}>} markSkipped
  *   `running → skipped`, finished_at=now, last_error=reason (note channel);
  *   guarded on 'running'.
@@ -58,6 +68,12 @@
  * @property {() => Promise<{pending: number, running: number, done: number, failed: number, skipped: number, cancelled: number}>} countByStatus
  * @property {(opts?: {limit?: number}) => Promise<AiJob[]>} listFailed
  *   Recent `failed` rows, newest first (default limit 50).
+ * @property {(sinceIso: string) => Promise<number>} countFailedSince
+ *   Failed rows with finished_at >= sinceIso (admin 24h count).
+ * @property {(sinceIso: string) => Promise<number>} countFinishedSince
+ *   Rows with finished_at >= sinceIso (failure-rate denominator).
+ * @property {(jobIds: number[]) => Promise<number>} countActiveByIds
+ *   pending|running rows among the ids (launcher single-active guard).
  *
  * @param {import('../../infrastructure/db/executor').DbExecutor} executor
  * @returns {AiJobsRepository}

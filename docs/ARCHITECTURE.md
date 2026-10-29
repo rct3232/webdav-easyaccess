@@ -47,8 +47,8 @@ server/domains/
 │ ├── routes.js # GET /api/actions 30d feed + POST /:id/undo (undo journal, docs/features/collections-platform.md §4.11)
 │ └── service.js
 ├── admin/
-│ ├── routes/ # config.js, maintenance.js, migration.js, migrationStatus.js, settings.js, userManagement.js, users.js
-│ └── services/ # cleanupService.js, userService.js
+│ ├── routes/ # config.js, ai.js, maintenance.js, migration.js, migrationStatus.js, settings.js, userManagement.js, users.js
+│ └── services/ # aiAdminService.js, settingsJournalService.js, cleanupService.js, userService.js
 ├── ai/
 │ ├── routes.js # /api/search mount (name + semantic sections, §4.6)
 │ ├── searchService.js # section assembly, dedup, per-query dynamic baseline

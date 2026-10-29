@@ -87,14 +87,18 @@ function classifyNode(node) {
  * @param {Object} deps.fileNodesStore - node lookup (getNode: type/name/mimeType).
  * @param {Function} [deps.capabilityProbe] - async (role) => boolean for
  *   'chat' | 'vision' | 'asr'; defaults to the shared config resolver.
- * @param {number} [deps.generation=1] - per-kind generation (§2.2: default 1;
- *   admin model-change/backfill bumps are out of the hook's scope).
+ * @param {number} [deps.generation=1] - fallback per-kind generation (§2.2:
+ *   default 1; admin model-change/backfill bumps are out of the hook's scope).
+ * @param {(kind: string) => Promise<number>} [deps.generationFor] - async
+ *   current-counter resolver (`generationSettings.getGeneration`); a thrown
+ *   read falls back to `generation` and never breaks the committed caller.
  */
 function createNodeContentHook({
   aiJobsRepository,
   fileNodesStore,
   capabilityProbe,
   generation = 1,
+  generationFor,
 }) {
   if (!aiJobsRepository || typeof aiJobsRepository.enqueue !== 'function') {
     throw new TypeError('createNodeContentHook requires aiJobsRepository.enqueue');
@@ -103,6 +107,21 @@ function createNodeContentHook({
     throw new TypeError('createNodeContentHook requires fileNodesStore.getNode');
   }
   const probe = capabilityProbe || defaultCapabilityProbe();
+
+  /** Current per-kind generation; a read failure degrades to the local default. */
+  async function resolveGeneration(kind) {
+    if (typeof generationFor !== 'function') return generation;
+    try {
+      const value = Number(await generationFor(kind));
+      return Number.isInteger(value) && value >= 1 ? value : generation;
+    } catch (error) {
+      console.error(
+        `[nodeContentHook] generation read failed for ${kind}; using ${generation}:`,
+        error && error.message
+      );
+      return generation;
+    }
+  }
 
   /** Kinds enqueued for one node per the §2.2 decision table. */
   async function kindsForNode(node) {
@@ -138,7 +157,8 @@ function createNodeContentHook({
       const kinds = await kindsForNode(node);
       for (const kind of kinds) {
         try {
-          await aiJobsRepository.enqueue(nodeId, kind, generation, contentHash ?? null);
+          const jobGeneration = await resolveGeneration(kind);
+          await aiJobsRepository.enqueue(nodeId, kind, jobGeneration, contentHash ?? null);
         } catch (error) {
           console.error(
             `[nodeContentHook] failed to enqueue ${kind} job for node ${nodeId}:`,

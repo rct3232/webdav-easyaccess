@@ -48,30 +48,68 @@ module.exports = function createSqliteAiJobsRepository(executor) {
     },
 
     async enqueueMany(items) {
-      const list = Array.isArray(items) ? items : [];
-      if (list.length === 0) return { enqueued: 0 };
       try {
-        return await executor.transaction(async (tx) => {
-          let enqueued = 0;
-          for (const item of list) {
-            const result = await tx.run(
-              `INSERT INTO ai_jobs (node_id, kind, generation, content_hash)
-               VALUES (?, ?, ?, ?)
-               ON CONFLICT (node_id, kind, generation) DO NOTHING`,
-              [
-                Number(item.nodeId),
-                String(item.kind),
-                Number(item.generation),
-                item.contentHash ?? null,
-              ]
-            );
-            enqueued += result.changes;
-          }
-          return { enqueued };
-        });
+        return await executor.transaction((tx) => this.enqueueManyTx(tx, items));
       } catch (error) {
         throw mapDatabaseError(error);
       }
+    },
+
+    async enqueueManyTx(tx, items) {
+      const list = Array.isArray(items) ? items : [];
+      if (list.length === 0) return { enqueued: 0, ids: [] };
+      const ids = [];
+      for (const item of list) {
+        const result = await tx.run(
+          `INSERT INTO ai_jobs (node_id, kind, generation, content_hash)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT (node_id, kind, generation) DO NOTHING
+           RETURNING id`,
+          [
+            Number(item.nodeId),
+            String(item.kind),
+            Number(item.generation),
+            item.contentHash ?? null,
+          ]
+        );
+        const insertedId =
+          result.lastId !== undefined ? result.lastId : result.rows && result.rows[0]?.id;
+        if (result.changes > 0 && insertedId !== undefined) {
+          ids.push(Number(insertedId));
+        }
+      }
+      return { enqueued: ids.length, ids };
+    },
+
+    async cancelPending({ jobIds } = {}) {
+      try {
+        return await executor.transaction((tx) => this.cancelPendingTx(tx, { jobIds }));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async cancelPendingTx(tx, { jobIds } = {}) {
+      const ids = [
+        ...new Set(
+          (Array.isArray(jobIds) ? jobIds : [])
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        ),
+      ];
+      const cancelledIds = [];
+      const skippedIds = [];
+      const now = new Date().toISOString();
+      for (const id of ids) {
+        const result = await tx.run(
+          `UPDATE ai_jobs SET status = 'cancelled', finished_at = ?
+           WHERE id = ? AND status = 'pending'`,
+          [now, id]
+        );
+        if (result.changes > 0) cancelledIds.push(id);
+        else skippedIds.push(id);
+      }
+      return { cancelledIds, skippedIds };
     },
 
     async claimNext(opts = {}) {
@@ -121,12 +159,14 @@ module.exports = function createSqliteAiJobsRepository(executor) {
           ]);
           if (rows.length === 0) return { changes: 0 };
           const nextAttempt = Number(rows[0].attempt) + 1;
-          const nextRetryAt = new Date(Date.now() + backoffMs(nextAttempt)).toISOString();
+          const now = new Date();
+          const nextRetryAt = new Date(now.getTime() + backoffMs(nextAttempt)).toISOString();
           const result = await tx.run(
             `UPDATE ai_jobs
-             SET status = 'failed', attempt = attempt + 1, last_error = ?, next_retry_at = ?
+             SET status = 'failed', attempt = attempt + 1, last_error = ?,
+                 next_retry_at = ?, finished_at = ?
              WHERE id = ? AND status = 'running'`,
-            [truncateError(error), nextRetryAt, Number(jobId)]
+            [truncateError(error), nextRetryAt, now.toISOString(), Number(jobId)]
           );
           return { changes: result.changes };
         });
@@ -151,11 +191,12 @@ module.exports = function createSqliteAiJobsRepository(executor) {
     async recoverStaleRunning(staleMs) {
       const cutoff = new Date(Date.now() - Number(staleMs)).toISOString();
       try {
+        const now = new Date().toISOString();
         const result = await executor.run(
           `UPDATE ai_jobs
-           SET status = 'failed', attempt = attempt + 1, next_retry_at = ?
+           SET status = 'failed', attempt = attempt + 1, next_retry_at = ?, finished_at = ?
            WHERE status = 'running' AND started_at IS NOT NULL AND started_at < ?`,
-          [new Date().toISOString(), cutoff]
+          [now, now, cutoff]
         );
         return { changes: result.changes };
       } catch (error) {
@@ -199,6 +240,59 @@ module.exports = function createSqliteAiJobsRepository(executor) {
         const counts = { pending: 0, running: 0, done: 0, failed: 0, skipped: 0, cancelled: 0 };
         for (const row of rows) counts[String(row.status)] = Number(row.cnt);
         return counts;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async countFailedSince(sinceIso) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT COUNT(*) AS cnt FROM ai_jobs
+           WHERE status = 'failed' AND finished_at IS NOT NULL AND finished_at >= ?`,
+          [String(sinceIso)]
+        );
+        return Number(rows[0]?.cnt ?? 0);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async countFinishedSince(sinceIso) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT COUNT(*) AS cnt FROM ai_jobs
+           WHERE finished_at IS NOT NULL AND finished_at >= ?`,
+          [String(sinceIso)]
+        );
+        return Number(rows[0]?.cnt ?? 0);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async countActiveByIds(jobIds) {
+      const ids = [
+        ...new Set(
+          (Array.isArray(jobIds) ? jobIds : [])
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        ),
+      ];
+      if (ids.length === 0) return 0;
+      try {
+        let total = 0;
+        for (let start = 0; start < ids.length; start += 500) {
+          const batch = ids.slice(start, start + 500);
+          const placeholders = batch.map(() => '?').join(', ');
+          const { rows } = await executor.query(
+            `SELECT COUNT(*) AS cnt FROM ai_jobs
+             WHERE id IN (${placeholders}) AND status IN ('pending', 'running')`,
+            batch
+          );
+          total += Number(rows[0]?.cnt ?? 0);
+        }
+        return total;
       } catch (error) {
         throw mapDatabaseError(error);
       }

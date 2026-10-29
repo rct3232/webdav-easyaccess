@@ -26,6 +26,12 @@ import {
   getAdminReports,
   getAdminReport,
   repairAdminReport,
+  getAiAdminSummary,
+  getAiReembedPreview,
+  startAiReembed,
+  getSettingsJournal,
+  undoSettingsAction,
+  probeLlmRole,
 } from '../adminService';
 
 jest.mock('../apiClient', () => ({
@@ -427,6 +433,53 @@ describe('adminService', () => {
       post.mockRejectedValueOnce(err);
 
       await expect(repairAdminReport(2, { action: 'content_hash' })).rejects.toBe(err);
+    });
+  });
+
+  describe('AI admin wrappers', () => {
+    it('GETs the polled summary and read-only preview', async () => {
+      get.mockResolvedValueOnce({ data: { pipeline: {} } });
+      await expect(getAiAdminSummary()).resolves.toEqual({ pipeline: {} });
+      expect(get).toHaveBeenCalledWith('/admin/ai/summary');
+
+      get.mockResolvedValueOnce({ data: { plan: { union_count: 2 } } });
+      await expect(getAiReembedPreview()).resolves.toEqual({ plan: { union_count: 2 } });
+      expect(get).toHaveBeenCalledWith('/admin/ai/reembed/preview');
+    });
+
+    it('POSTs the launcher and returns its job/undo envelope', async () => {
+      const payload = {
+        job_ids: [1],
+        enqueued: 1,
+        generation: 2,
+        undo: { action_id: 9 },
+        retry_after_seconds: 900,
+      };
+      post.mockResolvedValueOnce({ data: payload });
+
+      await expect(startAiReembed()).resolves.toEqual(payload);
+      expect(post).toHaveBeenCalledWith('/admin/ai/reembed', {});
+    });
+
+    it('reads and undoes settings-domain journal rows', async () => {
+      const feed = { actions: [{ action_id: 4, domain: 'settings' }] };
+      get.mockResolvedValueOnce({ data: feed });
+      await expect(getSettingsJournal()).resolves.toEqual(feed);
+      expect(get).toHaveBeenCalledWith('/actions', { params: { domain: 'settings' } });
+
+      post.mockResolvedValueOnce({ data: { status: 'undone' } });
+      await expect(undoSettingsAction(4)).resolves.toEqual({ status: 'undone' });
+      expect(post).toHaveBeenCalledWith('/actions/4/undo', {});
+    });
+
+    it('probes an LLM role through the config/test target', async () => {
+      post.mockResolvedValueOnce({ data: { ok: true, role: 'chat' } });
+      await expect(probeLlmRole('chat')).resolves.toEqual({ ok: true, role: 'chat' });
+      expect(post).toHaveBeenCalledWith(
+        '/admin/config/test',
+        { target: 'llm', role: 'chat' },
+        { maxRetries: 0 }
+      );
     });
   });
 });

@@ -10,6 +10,7 @@ const { createFailSafeService } = require('./failSafeService');
 const { createTrashService } = require('./trashService');
 const aiJobsStore = require('../store/aiJobsStore');
 const { createNodeContentHook } = require('../domains/ai/nodeContentHook');
+const { getGeneration } = require('../domains/ai/generationSettings');
 const { syncNodeDerivedTagsForNode } = require('../domains/ai/derivedTags');
 const aclService = require('../domains/permissions/services/aclService');
 const ownerNodeResolver = require('../domains/permissions/policy/ownerNodeResolver');
@@ -91,6 +92,7 @@ function createComposition(overrides = {}) {
       createNodeContentHook({
         aiJobsRepository: aiJobsStore,
         fileNodesStore,
+        generationFor: getGeneration,
       }),
       { fileNodesStore }
     );

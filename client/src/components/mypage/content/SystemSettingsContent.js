@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import {
   Accordion,
   AccordionDetails,
@@ -40,7 +41,9 @@ import { mapAiRoleState } from '../../../utils/aiRoleState';
 
 const SystemSettingsContent = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { setTitle, setActions } = usePageHeader();
+  const openAiPanel = () => navigate('/mypage', { state: { category: 'admin-ai' } });
 
   const [tempSettings, setTempSettings] = useState({ registration_enabled: 'false' });
   const [registrationSaving, setRegistrationSaving] = useState(false);
@@ -277,6 +280,15 @@ const SystemSettingsContent = () => {
 
   return (
     <Box>
+      <Button
+        size="small"
+        variant="outlined"
+        onClick={openAiPanel}
+        sx={{ mb: 2 }}
+        data-testid="open-ai-panel"
+      >
+        {t('admin.aiPanel.openAiPanel')}
+      </Button>
       {(failedBackends.length > 0 || aiRoleEntries.length > 0) && (
         <Alert severity="warning" sx={{ mb: 3 }} data-testid="backend-health-card">
           <Typography variant="subtitle2">{t('admin.health.title')}</Typography>
@@ -301,7 +313,12 @@ const SystemSettingsContent = () => {
           </Box>
           {aiRoleEntries.length > 0 && (
             <Box sx={{ mt: failedBackends.length > 0 ? 1 : 0 }}>
-              <Typography variant="subtitle2">{t('admin.ai.title')}</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="subtitle2">{t('admin.ai.title')}</Typography>
+                <Button size="small" onClick={openAiPanel}>
+                  {t('admin.aiPanel.openAiPanel')}
+                </Button>
+              </Box>
               <Box component="ul" sx={{ mt: 1, mb: 0, pl: 3 }}>
                 {aiRoleEntries.map(({ key, role, row, mapped }) => {
                   const detail =

@@ -63,6 +63,21 @@ describe('SettingsRepository conformance', () => {
     expect(row.updated_at).toBeDefined();
   });
 
+  it('tx-bound setTx/getTx/deleteTx join a caller-owned transaction', async () => {
+    const key = `conf.tx.${Date.now()}`;
+    await storage.getExecutor().transaction(async (tx) => {
+      await repo.setTx(tx, key, 'tx-value');
+      await expect(repo.getTx(tx, key)).resolves.toBe('tx-value');
+    });
+    await expect(repo.get(key)).resolves.toBe('tx-value');
+
+    await storage.getExecutor().transaction(async (tx) => {
+      await repo.deleteTx(tx, key);
+      await expect(repo.getTx(tx, key)).resolves.toBeNull();
+    });
+    await expect(repo.get(key)).resolves.toBeNull();
+  });
+
   it('normalises non-string values to strings on write', async () => {
     const key = `conf.num.${Date.now()}`;
     await repo.set(key, 42);

@@ -18,8 +18,13 @@ const actionJournalStore = require('../../store/actionJournalStore');
 const collectionsStore = require('../../store/collectionsStore');
 const createCollectionsRepository = require('../../store/repositories/CollectionsRepository');
 const { createError } = require('../../utils/errorHandler');
+const { getSharedResolver } = require('../../infrastructure/configResolver');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const { JOURNAL_DOMAIN } = require('@webdav-easyaccess/shared/constants');
+// Side-effect: registers the settings-domain undo executor (config/first-run
+// writers may land after this module in a cold require graph; the registration
+// itself is idempotent).
+require('../admin/services/settingsJournalService');
 
 // Journal domains enum (§5 schema CHECK; routes/actions.md §2.4) — mirrors the
 // `action_journal.domain` CHECK.
@@ -439,6 +444,19 @@ async function undoAction(requesterId, actionId, { confirmCascade = false } = {}
         });
       default:
         throw serviceError('notFound', 404);
+    }
+  }
+
+  // Settings-domain undo restores a DB row: invalidate the resolver cache for
+  // the subject key after the TX commits (the executor also invalidates each
+  // key it touches, including cascaded rows).
+  if (row.domain === JOURNAL_DOMAIN.SETTINGS && row.subject.startsWith('settings:')) {
+    const key = row.subject.slice('settings:'.length);
+    if (key && key !== 'ai-reembed') {
+      const resolver = getSharedResolver();
+      if (resolver && typeof resolver.invalidateCache === 'function') {
+        resolver.invalidateCache([key]);
+      }
     }
   }
 

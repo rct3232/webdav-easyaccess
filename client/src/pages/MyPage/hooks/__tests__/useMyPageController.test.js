@@ -76,8 +76,21 @@ describe('useMyPageController', () => {
       'account',
       'admin-users',
       'admin-settings',
+      'admin-ai',
       'preferences',
     ]);
+  });
+
+  it('accepts the admin-ai deep-link for admins and rewrites it for non-admins', async () => {
+    useAuth.mockReturnValue({ user: { is_admin: true } });
+    useLocation.mockReturnValue({ state: { category: 'admin-ai' } });
+    const admin = renderHook(() => useMyPageController({ isMobile: false }));
+    await waitFor(() => expect(admin.result.current.selectedCategory).toBe('admin-ai'));
+
+    useAuth.mockReturnValue({ user: { is_admin: false } });
+    useLocation.mockReturnValue({ state: { category: 'admin-ai' } });
+    const user = renderHook(() => useMyPageController({ isMobile: false }));
+    await waitFor(() => expect(user.result.current.selectedCategory).toBe('account'));
   });
 
   it('rewrites the storage deep-link to the default section for admins (operator rule)', async () => {

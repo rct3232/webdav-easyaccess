@@ -31,6 +31,18 @@ async function enqueueMany(items) {
   return getRepository().enqueueMany(items);
 }
 
+async function enqueueManyTx(tx, items) {
+  return getRepository().enqueueManyTx(tx, items);
+}
+
+async function cancelPending(opts) {
+  return getRepository().cancelPending(opts);
+}
+
+async function cancelPendingTx(tx, opts) {
+  return getRepository().cancelPendingTx(tx, opts);
+}
+
 async function claimNext(opts) {
   return getRepository().claimNext(opts);
 }
@@ -67,9 +79,24 @@ async function listFailed(opts) {
   return getRepository().listFailed(opts);
 }
 
+async function countFailedSince(sinceIso) {
+  return getRepository().countFailedSince(sinceIso);
+}
+
+async function countFinishedSince(sinceIso) {
+  return getRepository().countFinishedSince(sinceIso);
+}
+
+async function countActiveByIds(jobIds) {
+  return getRepository().countActiveByIds(jobIds);
+}
+
 module.exports = {
   enqueue,
   enqueueMany,
+  enqueueManyTx,
+  cancelPending,
+  cancelPendingTx,
   claimNext,
   markDone,
   markFailed,
@@ -79,4 +106,7 @@ module.exports = {
   listByNode,
   countByStatus,
   listFailed,
+  countFailedSince,
+  countFinishedSince,
+  countActiveByIds,
 };

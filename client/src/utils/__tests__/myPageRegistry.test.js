@@ -7,6 +7,7 @@ import {
 import { Person as PersonIcon } from '@mui/icons-material';
 import AccountContent from '../../components/mypage/content/AccountContent';
 import SharingContent from '../../components/mypage/content/SharingContent';
+import AiAdminContent from '../../components/mypage/content/AiAdminContent';
 
 describe('myPageRegistry', () => {
   describe('resolveMyPageCategory', () => {
@@ -22,6 +23,8 @@ describe('myPageRegistry', () => {
     it('normalizes admin-only categories for non-admin users', () => {
       expect(resolveMyPageCategory('admin-users', false)).toBe(DEFAULT_MY_PAGE_CATEGORY);
       expect(resolveMyPageCategory('admin-settings', false)).toBe(DEFAULT_MY_PAGE_CATEGORY);
+      expect(resolveMyPageCategory('admin-ai', false)).toBe(DEFAULT_MY_PAGE_CATEGORY);
+      expect(resolveMyPageCategory('admin-ai', true)).toBe('admin-ai');
     });
 
     it('normalizes sharing for admins', () => {
@@ -43,7 +46,13 @@ describe('myPageRegistry', () => {
     it('includes admin-only categories only for admins', () => {
       const idsAdmin = getMyPageSidebarCategories(true).map((c) => c.id);
       expect(idsAdmin).toEqual(
-        expect.arrayContaining(['account', 'admin-users', 'admin-settings', 'preferences'])
+        expect.arrayContaining([
+          'account',
+          'admin-users',
+          'admin-settings',
+          'admin-ai',
+          'preferences',
+        ])
       );
       expect(idsAdmin).not.toEqual(expect.arrayContaining(['sharing']));
       // operator rule (PLAN §14 client half): the collections dashboard entry
@@ -74,6 +83,18 @@ describe('myPageRegistry', () => {
       expect(descriptor.contentProps.user).toEqual({ username: 'testuser' });
       expect(descriptor.categoryIcon).toBe(PersonIcon);
       expect(descriptor.onBack).toBeUndefined();
+    });
+
+    it('returns the AI operations content descriptor for admin-ai', () => {
+      const descriptor = getMyPageContentDescriptor({
+        selectedCategory: 'admin-ai',
+        selectedContentItem: null,
+        onSelectContentItem: jest.fn(),
+        user: { username: 'admin', is_admin: true },
+        onMessage: jest.fn(),
+      });
+      expect(descriptor.ContentComponent).toBe(AiAdminContent);
+      expect(descriptor.contentProps).toEqual({});
     });
 
     it('returns a detail descriptor with onBack for sharing detail view', () => {

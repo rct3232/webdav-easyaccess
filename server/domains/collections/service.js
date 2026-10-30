@@ -825,6 +825,122 @@ async function updateCollection(userId, collectionId, patch = {}) {
   return { collection: row, undo: { actionId: firstActionId } };
 }
 
+/**
+ * Atomic properties-dialog save (collectionsService.md §2.2/§2.5): validates the
+ * complete patch, then applies only the changed metadata fields plus the grant
+ * upsert/revoke set through ONE journaled store command. Any validation failure
+ * aborts before the write; any write failure unwinds the whole TX. A no-change
+ * patch writes nothing and returns `undo:null`.
+ */
+function parseGrantPatch(rawGrants) {
+  if (rawGrants === undefined || rawGrants === null) return null;
+  if (typeof rawGrants !== 'object' || Array.isArray(rawGrants)) {
+    throw serviceError('invalidRole');
+  }
+  const rawUpsert = rawGrants.upsert === undefined ? [] : rawGrants.upsert;
+  const rawRevoke = rawGrants.revoke === undefined ? [] : rawGrants.revoke;
+  if (!Array.isArray(rawUpsert) || !Array.isArray(rawRevoke)) {
+    throw serviceError('invalidRole');
+  }
+
+  const revoke = [];
+  const revoked = new Set();
+  for (const value of rawRevoke) {
+    const granteeId = toFiniteId(value);
+    if (!granteeId) throw serviceError('granteeNotFound');
+    if (!revoked.has(granteeId)) {
+      revoked.add(granteeId);
+      revoke.push(granteeId);
+    }
+  }
+
+  const upsert = [];
+  const upsertIndex = new Map();
+  for (const entry of rawUpsert) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw serviceError('invalidRole');
+    }
+    if (!GRANT_ROLE.isValid(entry.role)) throw serviceError('invalidRole');
+    const granteeId = toFiniteId(entry.userId);
+    if (!granteeId) throw serviceError('granteeNotFound');
+    if (revoked.has(granteeId)) throw serviceError('invalidRole');
+    if (upsertIndex.has(granteeId)) {
+      upsert[upsertIndex.get(granteeId)] = { granteeId, role: entry.role };
+    } else {
+      upsertIndex.set(granteeId, upsert.length);
+      upsert.push({ granteeId, role: entry.role });
+    }
+  }
+  return { upsert, revoke };
+}
+
+async function updateProperties(userId, collectionId, patch = {}) {
+  const { collection } = await getCollectionForRead(userId, collectionId);
+  await requireOwner(userId, collection);
+
+  const storePatch = {};
+
+  if (patch.name !== undefined && patch.name !== null) {
+    if (typeof patch.name !== 'string' || patch.name.trim().length === 0) {
+      throw serviceError('nameRequired');
+    }
+    if (validateFileName(patch.name)) throw serviceError('invalidName');
+    const requested = patch.name.trim();
+    // Same-name is a no-op: the uniqueness probe must not see the current row.
+    if (requested !== collection.name) {
+      const finalName = await resolveCollectionName(userId, requested);
+      if (finalName !== collection.name) storePatch.name = finalName;
+    }
+  }
+
+  if (patch.pinned !== undefined && patch.pinned !== null) {
+    if (typeof patch.pinned !== 'boolean') throw serviceError('invalidPublishMode');
+    if (patch.pinned !== Boolean(collection.pinned)) storePatch.pinned = patch.pinned;
+  }
+
+  if (patch.publishMode !== undefined && patch.publishMode !== null) {
+    if (!PUBLISH_MODE.isValid(patch.publishMode)) throw serviceError('invalidPublishMode');
+    if (patch.publishMode !== collection.publishMode) storePatch.publishMode = patch.publishMode;
+  }
+
+  const grantPatch = parseGrantPatch(patch.grants);
+  if (grantPatch) {
+    const upsert = [];
+    const revoke = [];
+    for (const granteeId of grantPatch.revoke) {
+      // The owner has no grant row: revoking them is the same as revoking a
+      // missing grant (collectionShareService.md §2.4).
+      if (granteeId === collection.ownerId) throw serviceError('grantNotFound');
+      // eslint-disable-next-line no-await-in-loop
+      const existing = await collectionsStore.getGrant(collectionId, granteeId);
+      if (!existing) throw serviceError('grantNotFound');
+      revoke.push(granteeId);
+    }
+    for (const entry of grantPatch.upsert) {
+      if (entry.granteeId === collection.ownerId) throw serviceError('forbidden');
+      // eslint-disable-next-line no-await-in-loop
+      const grantee = await userStore.findById(entry.granteeId);
+      if (!grantee) throw serviceError('granteeNotFound');
+      if (grantee.is_admin) throw serviceError('forbidden');
+      // eslint-disable-next-line no-await-in-loop
+      const existing = await collectionsStore.getGrant(collectionId, entry.granteeId);
+      if (existing && existing.role === entry.role) continue;
+      upsert.push({ granteeId: entry.granteeId, role: entry.role });
+    }
+    if (upsert.length > 0 || revoke.length > 0) storePatch.grants = { upsert, revoke };
+  }
+
+  const updated = await collectionsStore.updateCollectionProperties(collectionId, storePatch, {
+    actor: userId,
+  });
+  const listed = await shareService.listGrants(userId, collectionId);
+  return {
+    collection: updated,
+    grants: listed.grants,
+    undo: updated.actionId == null ? null : { actionId: updated.actionId },
+  };
+}
+
 async function archiveCollection(userId, collectionId) {
   const { collection } = await getCollectionForRead(userId, collectionId);
   await requireOwner(userId, collection);
@@ -1621,6 +1737,7 @@ module.exports = {
   createSeedCollection,
   createSearchCollection,
   updateCollection,
+  updateProperties,
   archiveCollection,
   restoreCollection,
   deleteCollectionPermanent,

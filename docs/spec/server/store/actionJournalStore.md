@@ -39,9 +39,11 @@ chain_seq, status, created_at, undone_at, expires_at)`; `UNIQUE(domain,subject,c
 | `permissions` | (reserved)                                                       | enum reserved, no writer; grant-undo=revoke allowed silently, revoke-undo=grant is explicit-only (exposure expansion is always explicit)                                                                                                                                                                                                    |
 
 - `status` TEXT + CHECK: `applied | undone | expired`.
-- `payload` JSONB: `{ inverse, items?, fingerprint?, note? }` — `inverse` is the
+- `payload` JSONB: `{ inverse, items?, atomic?, fingerprint?, note? }` — `inverse` is the
   domain-defined operation descriptor the registered undo executor applies; `items` is the
-  per-item `[{..., fingerprint }]` list for command rows; `fingerprint` guards staleness.
+  per-item `[{..., fingerprint }]` list for command rows; `atomic:true` marks a
+  composite command whose item list must be applied all-or-nothing (the properties
+  save family); `fingerprint` guards staleness.
   Audit survives expiry because `domain/subject/subject_label/action/actor/chain_seq` stay.
 - `chain_seq`: monotonic per `(domain, subject)` integer, assigned `COALESCE(MAX,0)+1`
   inside the commit TX. `actor` TEXT (user id; the literal `'system'` for silent evolution).
@@ -95,6 +97,10 @@ chain_seq, status, created_at, undone_at, expires_at)`; `UNIQUE(domain,subject,c
    undone newest-first (LIFO) as one operation.
 3. Dispatch to the domain's registered executor. Per-item fingerprint mismatch ⇒ that item
    is SKIPPED, not failed (mixed results allowed: `11 undone, 1 skipped (state changed since)`).
+   An ATOMIC command row (`payload.atomic === true`) is the exception: any non-applied
+   item throws the fingerprint refusal, aborting the whole undo TX so every earlier
+   item unwinds and the row stays `applied`; a fully applied item list returns its
+   outcomes normally.
    Registered executors: `collection` → `domains/actions/service.js`; `batch` →
    `domains/files/services/batchOperationService.js` §5.5; `file` →
    `domains/dashboard/suggestionUndoService.js` §2.6 (cleanup-accept
@@ -148,6 +154,9 @@ Undo NEVER restores: spent LLM cost, already-received external exposure, file co
 - [ ] tip undo: `applied → undone`, `undone_at` set, inverse applied exactly once; `getAction` status observable
 - [ ] non-tip undo without cascade → `journal_cascade_required` with correct `laterCount`; with `cascade:true` → rows undone LIFO from tip down to target, one `undone` flip each
 - [ ] fingerprint mismatch → item skipped (`reason:'changed'`), other items still undone, TX commits
+- [ ] atomic command row (`payload.atomic:true`): all items apply → single undo pass;
+      one mismatched item → the whole undo refuses (fingerprintMismatch), no item
+      stays applied, and the row remains `applied`
 - [ ] expired row (`payload=NULL`) → `undoAction` → `journal_expired`
 - [ ] rows outlive their subject: delete the collection row directly, `getAction` still returns the journal row (NO FK)
 - [ ] `purgeSubject` removes all rows of `(collection, 'collection:<id>')` and nothing else

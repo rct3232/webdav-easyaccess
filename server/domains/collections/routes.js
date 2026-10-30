@@ -205,6 +205,38 @@ router.put(
   })
 );
 
+// Atomic properties-dialog save (routes spec §2.4): metadata + grants land in
+// ONE journaled transaction; the response carries the canonical collection,
+// the post-save owner grant list and the composite undo pointer.
+router.put(
+  '/:id/properties',
+  authenticateToken,
+  requireUser,
+  requireNonAdmin,
+  asyncHandler(async (req, res) => {
+    try {
+      const body = req.body || {};
+      const result = await collectionsService.updateProperties(
+        req.user.full.id,
+        Number(req.params.id),
+        {
+          name: body.name,
+          pinned: body.pinned,
+          publishMode: body.publishMode,
+          grants: body.grants,
+        }
+      );
+      res.json({
+        collection: wire.serializeCollection(result.collection, { includeDefinition: true }),
+        grants: result.grants,
+        undo: result.undo ? { action_id: result.undo.actionId } : null,
+      });
+    } catch (e) {
+      throw handleServiceError(e);
+    }
+  })
+);
+
 router.post(
   '/:id/archive',
   authenticateToken,

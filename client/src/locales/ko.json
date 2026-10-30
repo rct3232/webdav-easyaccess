@@ -1070,6 +1070,7 @@
       "pin": "고정됨",
       "unpin": "고정 해제됨",
       "set-publish-mode": "공유 모드 변경됨",
+      "update-properties": "속성 변경됨",
       "archive": "보관됨",
       "restore": "복원됨",
       "merge": "병합됨",

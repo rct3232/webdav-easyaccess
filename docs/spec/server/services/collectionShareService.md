@@ -118,6 +118,17 @@ createdAt }` (username resolved via `userStore` at read).
   metadata cannot be re-taken — documented limitation; the journaled
   inverse restores FUTURE state only: revoke-undo = re-grant (exposure expansion),
   therefore behind an explicit user undo click only, never silent.
+- Composite grant updates ride the properties-dialog path
+  (`PUT /:id/properties`, [routes spec](../routes/collections.md) §2.4). The
+  owner supplies `{ upsert: [{ userId, role }], revoke: [userId] }`; the patch is
+  validated with the same rules as `grant`/`revoke` (role, grantee existence,
+  self/admin bans, owner-revoke, and a user present in both lists → `invalidRole`).
+  `collectionsStore.updateCollectionProperties` applies the grant set with the
+  metadata fields in ONE journaled command: a first grant clears the grantee's
+  hidden flag, an existing grant role change PRESERVES it, and a revoke deletes
+  the grant plus the digest cursor in the same TX. The composite row's inverse is
+  all-or-nothing — undo restores the captured name/pin/publish-mode fields with
+  the grant set and refuses as a unit on a mismatch (row stays `applied`).
 
 ### 2.5 Visibility / grantee self-revocation
 
@@ -170,6 +181,10 @@ Same collections router `ERROR_MAP` (shared with collectionsService — see its 
       viewer→editor replaces (single PK row) and is ONE journaled command
 - [ ] Re-grant over a set hidden flag clears it; the collection appears in their
       `listCollections` with `granted_role`
+- [ ] Composite properties save: a first grant clears hidden, a role change
+      preserves it, a revoke removes the grant + cursor in the same TX; role,
+      grantee, self/admin and owner-revoke validation aborts the whole save
+      without partial writes; undo restores the grant set with the metadata
 - [ ] `revoke` → grantee's very next list/items read 404s (instant, no cache); revoking a
       missing row → `grantNotFound`; grant-undo/revoke-undo asymmetry honored (revoke-
       undo requires the explicit undo click)

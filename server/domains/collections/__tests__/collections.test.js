@@ -2103,6 +2103,299 @@ describe('PUT /:id/items/publish (P-4 member publish)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Atomic properties-dialog save (PUT /:id/properties)
+// ---------------------------------------------------------------------------
+
+describe('PUT /:id/properties (atomic composite save)', () => {
+  async function createUser(tag, { isAdmin = false } = {}) {
+    return createAuthenticatedTestUser({
+      username: `props-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      isAdmin,
+    });
+  }
+
+  async function propertyRows(collectionId) {
+    const rows = await dbQuery(
+      `SELECT action, payload FROM action_journal
+        WHERE domain = 'collection' AND subject = ? ORDER BY chain_seq`,
+      [`collection:${collectionId}`]
+    );
+    return rows.rows.map((row) => ({
+      action: row.action,
+      payload: typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload,
+    }));
+  }
+
+  async function grantViaApi(token, collectionId, userId, role) {
+    return request(app)
+      .post(`/api/collections/${collectionId}/grants`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ userId, role });
+  }
+
+  it('saves name/pin/publish mode + grant upsert/revoke in ONE journal row', async () => {
+    const owner = await createUserWithRoot('atomic-owner');
+    const kept = await createUserWithRoot('atomic-kept');
+    const removed = await createUserWithRoot('atomic-removed');
+    const created = await createCollectionViaApi(owner.token, { name: 'Atomic props' });
+    const id = created.body.collection.collection_id;
+    expect((await grantViaApi(owner.token, id, removed.user.id, 'viewer')).status).toBe(201);
+    // The read IS the visit: creates the cursor row the revoke must delete.
+    await request(app)
+      .get(`/api/collections/${id}/items`)
+      .set('Authorization', `Bearer ${removed.token}`);
+
+    const before = (await propertyRows(id)).length;
+    const res = await request(app)
+      .put(`/api/collections/${id}/properties`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({
+        name: 'Atomic props renamed',
+        pinned: true,
+        publishMode: 'auto',
+        grants: {
+          upsert: [{ userId: kept.user.id, role: 'editor' }],
+          revoke: [removed.user.id],
+        },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.collection).toMatchObject({
+      collection_id: id,
+      name: 'Atomic props renamed',
+      name_locked: true,
+      pinned: true,
+      pinned_by: 'user',
+      publish_mode: 'auto',
+    });
+    expect(res.body.undo.action_id).toBeGreaterThan(0);
+    expect(res.body.grants).toEqual([
+      expect.objectContaining({
+        grantee_id: kept.user.id,
+        username: kept.user.username,
+        role: 'editor',
+        granted_by: owner.user.id,
+      }),
+    ]);
+
+    expect(await collectionsStore.getGrant(id, removed.user.id)).toBeNull();
+    expect(await collectionsStore.getDigestCursor(removed.user.id, id)).toBeNull();
+    expect(await collectionsStore.getGrant(id, kept.user.id)).toMatchObject({ role: 'editor' });
+    expect(await collectionsStore.isHiddenFor(kept.user.id, id)).toBe(false);
+
+    const rows = await propertyRows(id);
+    expect(rows).toHaveLength(before + 1);
+    const composite = rows[rows.length - 1];
+    expect(composite.action).toBe('update-properties');
+    expect(composite.payload.atomic).toBe(true);
+    expect(composite.payload.items.map((item) => item.inverse.op)).toEqual([
+      'rename-collection',
+      'set-pinned',
+      'set-publish-mode',
+      'grant-access',
+      'revoke-access',
+    ]);
+  });
+
+  it('same-name is a no-op: no suffix, no lock flip, no journal row, undo null', async () => {
+    const owner = await createUserWithRoot('atomic-same');
+    const created = await createCollectionViaApi(owner.token, { name: 'Same name' });
+    const id = created.body.collection.collection_id;
+    const before = (await propertyRows(id)).length;
+
+    const res = await request(app)
+      .put(`/api/collections/${id}/properties`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ name: 'Same name' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.collection.name).toBe('Same name');
+    expect(res.body.collection.name_locked).toBe(false);
+    expect(res.body.undo).toBeNull();
+    expect(await propertyRows(id)).toHaveLength(before);
+  });
+
+  it('a real rename suffixes collisions against OTHER collections only', async () => {
+    const owner = await createUserWithRoot('atomic-collide');
+    const first = await createCollectionViaApi(owner.token, { name: 'Taken' });
+    const second = await createCollectionViaApi(owner.token, { name: 'Other' });
+
+    const res = await request(app)
+      .put(`/api/collections/${second.body.collection.collection_id}/properties`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ name: 'Taken' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.collection.name).toBe('Taken (2)');
+    expect(res.body.collection.name_locked).toBe(true);
+    expect((await collectionsStore.getCollection(first.body.collection.collection_id)).name).toBe(
+      'Taken'
+    );
+  });
+
+  it('hidden-flag semantics: first grant clears it, role change preserves it', async () => {
+    const owner = await createUserWithRoot('atomic-hidden');
+    const grantee = await createUserWithRoot('atomic-hidden-g');
+    const created = await createCollectionViaApi(owner.token, { name: 'Hidden props' });
+    const id = created.body.collection.collection_id;
+
+    await collectionsStore.setVisible(grantee.user.id, id, true);
+    let res = await request(app)
+      .put(`/api/collections/${id}/properties`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ grants: { upsert: [{ userId: grantee.user.id, role: 'viewer' }] } });
+    expect(res.status).toBe(200);
+    expect(await collectionsStore.isHiddenFor(grantee.user.id, id)).toBe(false);
+
+    await collectionsStore.setVisible(grantee.user.id, id, true);
+    res = await request(app)
+      .put(`/api/collections/${id}/properties`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({ grants: { upsert: [{ userId: grantee.user.id, role: 'editor' }] } });
+    expect(res.status).toBe(200);
+    expect(await collectionsStore.isHiddenFor(grantee.user.id, id)).toBe(true);
+  });
+
+  it('validation aborts the whole save: role/grantee/self/admin/owner and upsert∩revoke', async () => {
+    const owner = await createUserWithRoot('atomic-invalid');
+    const grantee = await createUserWithRoot('atomic-invalid-g');
+    const admin = await createUser('atomic-invalid-adm', { isAdmin: true });
+    const created = await createCollectionViaApi(owner.token, { name: 'Validated props' });
+    const id = created.body.collection.collection_id;
+    await grantViaApi(owner.token, id, grantee.user.id, 'viewer');
+
+    const cases = [
+      [
+        { name: 'Renamed', grants: { upsert: [{ userId: grantee.user.id, role: 'admin' }] } },
+        400,
+        codes().collections.invalidRole,
+      ],
+      [
+        { name: 'Renamed', grants: { upsert: [{ userId: 99999999, role: 'viewer' }] } },
+        404,
+        codes().collections.granteeNotFound,
+      ],
+      [
+        { name: 'Renamed', grants: { upsert: [{ userId: owner.user.id, role: 'viewer' }] } },
+        403,
+        codes().collections.forbidden,
+      ],
+      [
+        { name: 'Renamed', grants: { upsert: [{ userId: admin.user.id, role: 'viewer' }] } },
+        403,
+        codes().collections.forbidden,
+      ],
+      [
+        { name: 'Renamed', grants: { revoke: [owner.user.id] } },
+        404,
+        codes().collections.grantNotFound,
+      ],
+      [{ name: 'Renamed', grants: { revoke: [99999999] } }, 404, codes().collections.grantNotFound],
+      [
+        {
+          name: 'Renamed',
+          grants: {
+            upsert: [{ userId: grantee.user.id, role: 'editor' }],
+            revoke: [grantee.user.id],
+          },
+        },
+        400,
+        codes().collections.invalidRole,
+      ],
+      [{ name: 'Renamed', publishMode: 'bogus' }, 400, codes().collections.invalidPublishMode],
+      [{ name: '   ' }, 400, codes().collections.nameRequired],
+    ];
+
+    for (const [body, status, errorCode] of cases) {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await request(app)
+        .put(`/api/collections/${id}/properties`)
+        .set('Authorization', `Bearer ${owner.token}`)
+        .send(body);
+      expect(res.status).toBe(status);
+      expect(res.body.errorCode).toBe(errorCode);
+    }
+
+    const after = await collectionsStore.getCollection(id);
+    expect(after.name).toBe('Validated props');
+    expect(after.publishMode).toBe('ask');
+    expect(await collectionsStore.getGrant(id, grantee.user.id)).toMatchObject({
+      role: 'viewer',
+    });
+    expect(
+      (await propertyRows(id)).filter((row) => row.action === 'update-properties')
+    ).toHaveLength(0);
+  });
+
+  it('is owner-only: grantees 403, strangers 404 masquerade', async () => {
+    const owner = await createUserWithRoot('atomic-acl');
+    const grantee = await createUserWithRoot('atomic-acl-g');
+    const stranger = await createUserWithRoot('atomic-acl-s');
+    const created = await createCollectionViaApi(owner.token, { name: 'ACL props' });
+    const id = created.body.collection.collection_id;
+    await grantViaApi(owner.token, id, grantee.user.id, 'editor');
+
+    const granteeRes = await request(app)
+      .put(`/api/collections/${id}/properties`)
+      .set('Authorization', `Bearer ${grantee.token}`)
+      .send({ name: 'Nope' });
+    expect(granteeRes.status).toBe(403);
+    expect(granteeRes.body.errorCode).toBe(codes().collections.forbidden);
+
+    const strangerRes = await request(app)
+      .put(`/api/collections/${id}/properties`)
+      .set('Authorization', `Bearer ${stranger.token}`)
+      .send({ name: 'Nope' });
+    expect(strangerRes.status).toBe(404);
+    expect(strangerRes.body.errorCode).toBe(codes().collections.notFound);
+  });
+
+  it('one undo restores metadata and grants together', async () => {
+    const owner = await createUserWithRoot('atomic-undo');
+    const removed = await createUserWithRoot('atomic-undo-r');
+    const added = await createUserWithRoot('atomic-undo-a');
+    const created = await createCollectionViaApi(owner.token, { name: 'Undo props' });
+    const id = created.body.collection.collection_id;
+    await grantViaApi(owner.token, id, removed.user.id, 'viewer');
+
+    const saved = await request(app)
+      .put(`/api/collections/${id}/properties`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({
+        name: 'Undo props renamed',
+        pinned: true,
+        publishMode: 'auto',
+        grants: {
+          upsert: [{ userId: added.user.id, role: 'editor' }],
+          revoke: [removed.user.id],
+        },
+      });
+    expect(saved.status).toBe(200);
+
+    const undo = await request(app)
+      .post(`/api/actions/${saved.body.undo.action_id}/undo`)
+      .set('Authorization', `Bearer ${owner.token}`);
+    expect(undo.status).toBe(200);
+    expect(undo.body).toMatchObject({ action_id: saved.body.undo.action_id, status: 'undone' });
+
+    const restored = await collectionsStore.getCollection(id);
+    expect(restored).toMatchObject({
+      name: 'Undo props',
+      // The rename inverse restores the name only; a user rename keeps the
+      // name locked (same contract as the standalone rename undo).
+      nameLocked: true,
+      pinned: false,
+      pinnedBy: null,
+      publishMode: 'ask',
+    });
+    expect(await collectionsStore.getGrant(id, removed.user.id)).toMatchObject({
+      role: 'viewer',
+    });
+    expect(await collectionsStore.getGrant(id, added.user.id)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Admin operator gate (owner pivot 2026-10-01, routes spec §2.3): collections
 // are a personal-storage surface — the ADMIN actor NEVER participates. Every
 // endpoint responds 403 serverErrors.collections.forbidden for admin
@@ -2131,6 +2424,13 @@ describe('admin operator gate (403 on every collections endpoint)', () => {
     [{ verb: 'post', path: '/api/collections', body: { name: 'Admin set' } }],
     [{ verb: 'get', path: '/api/collections/1' }],
     [{ verb: 'put', path: '/api/collections/1', body: { name: 'renamed', pinned: true } }],
+    [
+      {
+        verb: 'put',
+        path: '/api/collections/1/properties',
+        body: { name: 'renamed', grants: { revoke: [1] } },
+      },
+    ],
     [{ verb: 'post', path: '/api/collections/1/archive' }],
     [{ verb: 'post', path: '/api/collections/1/restore' }],
     [{ verb: 'delete', path: '/api/collections/1' }],

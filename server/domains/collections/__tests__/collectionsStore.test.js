@@ -69,6 +69,131 @@ describe('setPublishMode (journaled)', () => {
   });
 });
 
+describe('updateCollectionProperties (atomic composite)', () => {
+  async function setupPropsFixture(tag) {
+    const { user: owner } = await createAuthenticatedTestUser({
+      username: `store-props-${tag}-o-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    });
+    const { user: grantee } = await createAuthenticatedTestUser({
+      username: `store-props-${tag}-g-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    });
+    const { user: added } = await createAuthenticatedTestUser({
+      username: `store-props-${tag}-a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    });
+    const created = await collectionsStore.createCollection(
+      { ownerId: owner.id, name: `Props ${tag}`, origin: 'user' },
+      { actor: owner.id }
+    );
+    return { owner, grantee, added, created };
+  }
+
+  it('applies name/pin/publish/grants in ONE journal row with nested atomic inverses', async () => {
+    const { owner, grantee, added, created } = await setupPropsFixture('one');
+    await collectionsStore.grantAccess(created.id, grantee.id, 'viewer', owner.id, {
+      actor: owner.id,
+    });
+    await collectionsStore.upsertDigestCursor(grantee.id, created.id, new Date().toISOString());
+
+    const result = await collectionsStore.updateCollectionProperties(
+      created.id,
+      {
+        name: 'Props renamed',
+        pinned: true,
+        publishMode: 'auto',
+        grants: {
+          upsert: [{ granteeId: added.id, role: 'editor' }],
+          revoke: [grantee.id],
+        },
+      },
+      { actor: owner.id }
+    );
+
+    expect(result).toMatchObject({
+      name: 'Props renamed',
+      pinned: true,
+      pinnedBy: 'user',
+      publishMode: 'auto',
+      nameLocked: true,
+    });
+    expect(result.actionId).toBeGreaterThan(0);
+
+    const journal = await subjectRows(created.id);
+    const composite = journal.filter((row) => row.action === 'update-properties');
+    expect(composite).toHaveLength(1);
+    expect(composite[0].payload.atomic).toBe(true);
+    expect(composite[0].payload.items.map((item) => item.inverse.op)).toEqual([
+      'rename-collection',
+      'set-pinned',
+      'set-publish-mode',
+      'grant-access',
+      'revoke-access',
+    ]);
+
+    expect(await collectionsStore.getGrant(created.id, grantee.id)).toBeNull();
+    expect(await collectionsStore.getDigestCursor(grantee.id, created.id)).toBeNull();
+    const grant = await collectionsStore.getGrant(created.id, added.id);
+    expect(grant).toMatchObject({ role: 'editor' });
+    expect(await collectionsStore.isHiddenFor(added.id, created.id)).toBe(false);
+  });
+
+  it('a first grant clears hidden; an existing role change preserves it; no-change patches write nothing', async () => {
+    const { owner, grantee, created } = await setupPropsFixture('hidden');
+    await collectionsStore.setVisible(grantee.id, created.id, true);
+
+    await collectionsStore.updateCollectionProperties(
+      created.id,
+      { grants: { upsert: [{ granteeId: grantee.id, role: 'viewer' }] } },
+      { actor: owner.id }
+    );
+    expect(await collectionsStore.isHiddenFor(grantee.id, created.id)).toBe(false);
+
+    await collectionsStore.setVisible(grantee.id, created.id, true);
+    await collectionsStore.updateCollectionProperties(
+      created.id,
+      { grants: { upsert: [{ granteeId: grantee.id, role: 'editor' }] } },
+      { actor: owner.id }
+    );
+    expect(await collectionsStore.getGrant(created.id, grantee.id)).toMatchObject({
+      role: 'editor',
+    });
+    expect(await collectionsStore.isHiddenFor(grantee.id, created.id)).toBe(true);
+
+    const before = (await subjectRows(created.id)).length;
+    const noChange = await collectionsStore.updateCollectionProperties(
+      created.id,
+      {
+        name: created.name,
+        pinned: false,
+        publishMode: 'ask',
+        grants: { upsert: [{ granteeId: grantee.id, role: 'editor' }] },
+      },
+      { actor: owner.id }
+    );
+    expect(noChange.actionId).toBeNull();
+    expect((await subjectRows(created.id)).length).toBe(before);
+  });
+
+  it('a failing later write rolls back earlier fields and writes NO journal row', async () => {
+    const { owner, created } = await setupPropsFixture('rollback');
+    const before = await collectionsStore.getCollection(created.id);
+
+    await expect(
+      collectionsStore.updateCollectionProperties(
+        created.id,
+        { name: 'Never applied', publishMode: 'bogus' },
+        { actor: owner.id }
+      )
+    ).rejects.toBeTruthy();
+
+    const after = await collectionsStore.getCollection(created.id);
+    expect(after.name).toBe(before.name);
+    expect(after.publishMode).toBe(before.publishMode);
+    expect(
+      (await subjectRows(created.id)).filter((row) => row.action === 'update-properties')
+    ).toHaveLength(0);
+  });
+});
+
 describe('batch addItems / removeItems (one command row each)', () => {
   it('adds several nodes in ONE journaled command whose payload carries item-level inverses', async () => {
     const { user } = await createAuthenticatedTestUser({

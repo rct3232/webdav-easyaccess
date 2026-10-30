@@ -74,7 +74,7 @@ const DOCUMENT_PREFIX = 'title: none | text:';
 const QUERY_PREFIX = 'task: search result | query:';
 const KNOWN_PREFIXES = [DOCUMENT_PREFIX, QUERY_PREFIX];
 
-const IMAGE_CAPTION = 'A red bicycle leans against a brick wall in the sunlight.';
+export const IMAGE_CAPTION = 'A red bicycle leans against a brick wall in the sunlight.';
 /**
  * One answer satisfies BOTH chat consumers: the boot probe requires
  * `tags: string[]`; the `parse.nl` leg requires `predicates` + optional

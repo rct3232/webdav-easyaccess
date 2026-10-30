@@ -383,6 +383,123 @@ test.afterEach(async ({ page, request }) => {
   await flushPrivateWorkspaceCleanups(request, operatorToken);
 });
 
+test('E2E-S3-STORAGE-001: the Storage dashboard renders the usage breakdown and a two-point sparkline from persisted snapshots, then omits the sparkline after the series loses its second point', async ({
+  page,
+  request,
+}, testInfo) => {
+  const isMobile = isMobileProject(testInfo);
+  const dbPath = path.join(scratch, 'webdav.db');
+  const userIdRows = await queryScratchSqlite<{ id: number }>(
+    dbPath,
+    `SELECT id FROM users WHERE username = '${USER_CREDS.username}'`
+  );
+  expect(userIdRows).toHaveLength(1);
+  const userId = Number(userIdRows[0].id);
+
+  const utcDay = (offsetDays: number) => {
+    const now = new Date();
+    const day = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - offsetDays)
+    );
+    return day.toISOString().slice(0, 10);
+  };
+  const yesterday = utcDay(1);
+  const today = utcDay(0);
+  const yesterdayBytes = 1_048_576;
+  const todayBytes = 2_097_152;
+
+  const seedSnapshots = async () => {
+    await execScratchSqlite(
+      dbPath,
+      `INSERT OR REPLACE INTO storage_usage_snapshots (user_id, day, bytes)
+       VALUES (${userId}, '${yesterday}', ${yesterdayBytes}),
+              (${userId}, '${today}', ${todayBytes})`
+    );
+  };
+  const deleteSnapshots = async () => {
+    await execScratchSqlite(
+      dbPath,
+      `DELETE FROM storage_usage_snapshots WHERE user_id = ${userId}`
+    );
+  };
+
+  await seedSnapshots();
+  try {
+    await loginWithCredentials(page, USER_CREDS.username, USER_CREDS.password);
+    const token = await getSessionToken(page);
+    const openStorage = async () => {
+      await page.goto('/mypage');
+      if (isMobile) {
+        const drawer = page.locator('.MuiDrawer-paper');
+        await page.locator('button[aria-label="My page"]').click();
+        await expect(drawer).toBeVisible();
+        await drawer.getByRole('button', { name: /^storage$/i }).click();
+        await expect(drawer).not.toBeVisible();
+      } else {
+        await page.getByRole('button', { name: /^storage$/i }).click();
+      }
+      await expect(page.getByTestId('storage-dashboard')).toBeVisible();
+    };
+
+    await openStorage();
+    await expect(page.getByTestId('storage-usage-summary')).toBeVisible();
+    // Fresh regular-user home: no live files, no trash, no versions yet.
+    await expect(page.getByTestId('storage-usage-total')).toHaveText(/0 B/);
+    await expect(page.getByTestId('storage-usage-live')).toHaveText(/0 B/);
+    await expect(page.getByTestId('storage-usage-trash')).toHaveText(/0 B/);
+    await expect(page.getByTestId('storage-usage-versions')).toHaveText(/0 B/);
+
+    const sparkline = page.getByTestId('storage-usage-sparkline');
+    await expect(sparkline).toBeVisible();
+    const points = await sparkline.locator('polyline').getAttribute('points');
+    expect(points?.trim().split(/\s+/)).toHaveLength(2);
+
+    // One-shot wire contract: exactly the persisted series + the current
+    // breakdown (empty workspace), with the dynamic `as_of` echoed verbatim.
+    const usageRes = await request.get('/api/storage/usage', { headers: auth(token) });
+    expect(usageRes.status()).toBe(200);
+    const usage = (await usageRes.json()) as {
+      current: Record<string, unknown>;
+      series: { points: Array<{ day: string; bytes: number }> };
+    };
+    expect(usage).toEqual({
+      current: {
+        total_bytes: 0,
+        live_bytes: 0,
+        trash_bytes: 0,
+        version_bytes: 0,
+        version_history_supported: true,
+        incomplete: false,
+        as_of: usage.current.as_of,
+      },
+      series: {
+        points: [
+          { day: yesterday, bytes: yesterdayBytes },
+          { day: today, bytes: todayBytes },
+        ],
+      },
+    });
+    expect(String(usage.current.as_of)).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
+
+    // Negative sub-step: one remaining snapshot is below the two-point
+    // minimum, so the server returns `{points:[]}` and the UI omits the chart.
+    await execScratchSqlite(
+      dbPath,
+      `DELETE FROM storage_usage_snapshots WHERE user_id = ${userId} AND day = '${today}'`
+    );
+    // Re-enter the category so the dashboard remounts and re-reads usage.
+    await openStorage();
+    await expect(page.getByTestId('storage-usage-summary')).toBeVisible();
+    await expect(page.getByTestId('storage-usage-sparkline')).toHaveCount(0);
+
+    const singleRes = await request.get('/api/storage/usage', { headers: auth(token) });
+    expect(singleRes.status()).toBe(200);
+    expect((await singleRes.json()).series).toEqual({ points: [] });
+  } finally {
+    await deleteSnapshots();
+  }
+});
+
 test('E2E-S3-COLLECTION-001: Collections sidebar section expands to the archive node and routes to the collections list view', async ({
   page,
 }, testInfo) => {
@@ -1501,12 +1618,12 @@ function trashCount(body: StorageBody): number {
   return body.hygiene?.trash?.item_count ?? body.trash?.item_count ?? 0;
 }
 
-/** The LAST persisted row state for a node (`file_suggestions` is append-per-
+/** The LAST persisted row state for a node (`storage_suggestions` is append-per-
  * kind: the accept→undo→dismiss transitions ride the same row). */
 async function fileSuggestionStateForNode(nodeId: number): Promise<string | undefined> {
   const rows = await queryScratchSqlite<{ state: string }>(
     path.join(scratch, 'webdav.db'),
-    `SELECT state FROM file_suggestions WHERE node_id = ${nodeId} ORDER BY id DESC LIMIT 1`
+    `SELECT state FROM storage_suggestions WHERE node_id = ${nodeId} ORDER BY id DESC LIMIT 1`
   );
   return rows[0]?.state;
 }

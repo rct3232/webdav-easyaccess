@@ -207,6 +207,15 @@ const s3Hermetic: E2EProject[] = [
     baseURL: scratchBase(e2ePorts.scratchAiMatrix),
   },
   {
+    // Browser UI matrix: same fake-LLM columns, but every case drives `page`.
+    // Owns the browser-safe slot 5009 (the optional admin-AI mobile project was
+    // dropped to free it — mobile admin AI is not required).
+    name: 's3-ai-matrix-ui-desktop',
+    testMatch: /ai\.matrix\.ui\.spec\.ts$/,
+    use: desktopUse,
+    baseURL: scratchBase(e2ePorts.scratchAiMatrixUi),
+  },
+  {
     // Model-backed admin panel: summary/launcher/gates/cancel cases.
     name: 's3-admin-ai-model-desktop',
     testMatch: /admin-ai\.spec\.ts$/,
@@ -222,17 +231,6 @@ const s3Hermetic: E2EProject[] = [
     use: desktopUse,
     baseURL: scratchBase(e2ePorts.scratchAdminAiStates),
   },
-  ...(process.env.E2E_ADMIN_AI_MOBILE === '1'
-    ? [
-        {
-          name: 's3-admin-ai-model-mobile',
-          testMatch: /admin-ai\.spec\.ts$/,
-          grep: /E2E-ADMINAI-002:/,
-          use: mobileUse,
-          baseURL: scratchBase(e2ePorts.scratchAdminAiMobile),
-        } satisfies E2EProject,
-      ]
-    : []),
   {
     name: 's3-trash-admin-desktop',
     testMatch: /trash-admin\.spec\.ts$/,

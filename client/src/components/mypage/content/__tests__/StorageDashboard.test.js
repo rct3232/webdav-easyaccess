@@ -140,6 +140,11 @@ describe('StorageDashboard — storage usage summary', () => {
     expect(within(summary).getByText(/^trash$/i)).toBeInTheDocument();
     expect(within(summary).getByText(/^versions$/i)).toBeInTheDocument();
     expect(within(summary).getByText(/5 MB/i)).toBeInTheDocument();
+    // Observable breakdown rows carry stable testids (E2E-S3-STORAGE-001).
+    expect(screen.getByTestId('storage-usage-total')).toHaveTextContent(/5 MB/i);
+    expect(screen.getByTestId('storage-usage-live')).toHaveTextContent(/4 MB/i);
+    expect(screen.getByTestId('storage-usage-trash')).toHaveTextContent(/512 KB/i);
+    expect(screen.getByTestId('storage-usage-versions')).toHaveTextContent(/512 KB/i);
     expect(screen.queryByText(/quota/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });

@@ -47,7 +47,10 @@ const PORT_BASES = {
   scratchRegsetMobile: 5006,
   scratchAdminAiModel: 5007,
   scratchAdminAiStates: 5008,
-  scratchAdminAiMobile: 5009,
+  // Browser-safe AI degradation-matrix UI slot (T4.3 Wave 3): the admin-AI
+  // mobile project that used to own 5009 was dropped (mobile admin AI is not
+  // required), so the browser UI matrix can use this non-restricted port.
+  scratchAiMatrixUi: 5009,
   scratchAdminConfig: 5010,
   scratchAdminConfigMobile: 5017,
   scratchMigration: 5011,
@@ -87,7 +90,7 @@ const PORT_ENV_OVERRIDES = {
   scratchRegsetMobile: 'E2E_SCRATCH_REGSET_MOBILE_PORT',
   scratchAdminAiModel: 'E2E_SCRATCH_ADMIN_AI_MODEL_PORT',
   scratchAdminAiStates: 'E2E_SCRATCH_ADMIN_AI_STATES_PORT',
-  scratchAdminAiMobile: 'E2E_SCRATCH_ADMIN_AI_MOBILE_PORT',
+  scratchAiMatrixUi: 'E2E_SCRATCH_AI_MATRIX_UI_PORT',
   scratchAdminConfig: 'E2E_SCRATCH_ADMIN_CONFIG_PORT',
   scratchAdminConfigMobile: 'E2E_SCRATCH_ADMIN_CONFIG_MOBILE_PORT',
   scratchMigration: 'E2E_SCRATCH_MIGRATION_PORT',

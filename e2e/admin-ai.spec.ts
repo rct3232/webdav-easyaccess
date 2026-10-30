@@ -35,8 +35,9 @@ import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
  *     are real but the launcher leaves queued jobs for the queue/cancel legs;
  *   - states (`:5008`): no embed model, empty queue/journal/reports for the
  *     visibility, cross-link, empty and error/retry legs.
- * An optional mobile model project (`:5009`, `E2E_ADMIN_AI_MOBILE=1`) re-runs
- * the summary render case.
+ * The former optional mobile model project was dropped (mobile admin AI is not
+ * required); its `:5009` slot now hosts the browser AI degradation-matrix UI
+ * project (`e2e/ai.matrix.ui.spec.ts`).
  *
  * Each case resets `ai_jobs`, `action_journal`, `AI_GEN_*`, `ai_usage_daily`
  * and `admin_reports` directly in the scratch sqlite before acting, so the
@@ -222,12 +223,7 @@ test.describe.configure({ mode: 'serial', timeout: 300_000 });
 test.beforeAll(async ({ request }, testInfo) => {
   ensureClientBuild();
   mode = testInfo.project.name.includes('-model-') ? 'model' : 'states';
-  scratchPort =
-    mode === 'model'
-      ? testInfo.project.name.endsWith('-mobile')
-        ? e2ePorts.scratchAdminAiMobile
-        : e2ePorts.scratchAdminAiModel
-      : e2ePorts.scratchAdminAiStates;
+  scratchPort = mode === 'model' ? e2ePorts.scratchAdminAiModel : e2ePorts.scratchAdminAiStates;
   scratch = scratchDirFor(`admin-ai-${mode}`, testInfo.project.name);
   fs.rmSync(scratch, { recursive: true, force: true });
   fs.mkdirSync(scratch, { recursive: true });

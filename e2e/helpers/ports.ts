@@ -36,7 +36,7 @@ export interface E2EPorts {
   scratchRegsetMobile: number;
   scratchAdminAiModel: number;
   scratchAdminAiStates: number;
-  scratchAdminAiMobile: number;
+  scratchAiMatrixUi: number;
   scratchAdminConfig: number;
   scratchAdminConfigMobile: number;
   scratchMigration: number;

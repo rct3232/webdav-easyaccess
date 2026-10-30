@@ -34,6 +34,8 @@ const suggestion = (overrides = {}) => ({
   ],
   a_unique_sample: [{ node_id: 110, name: 'beach.jpg' }],
   b_unique_sample: [{ node_id: 220, name: 'seville.jpg' }],
+  a_preview_items: [{ node_id: 110, name: 'beach.jpg', type: 'file', mime: 'image/jpeg' }],
+  b_preview_items: [{ node_id: 220, name: 'seville.jpg', type: 'file', mime: 'image/jpeg' }],
   ...overrides,
 });
 
@@ -186,7 +188,7 @@ describe('MergeProposalCard', () => {
     expect(screen.getByTestId('merge-detail-panel')).toBeInTheDocument();
   });
 
-  it('detail shows only the title, B(absorbed) → A(survivor) large tiles and the counts reason', () => {
+  it('detail shows only the title, B(absorbed) → A(survivor) collection previews and the counts reason', () => {
     render();
     const panel = hoverOpen();
     expect(within(panel).getByTestId('merge-detail-title')).toHaveTextContent('Europe');
@@ -196,14 +198,21 @@ describe('MergeProposalCard', () => {
     expect(within(panel).queryByTestId('merge-detail-shared')).not.toBeInTheDocument();
 
     const tiles = within(panel).getByTestId('merge-detail-tiles');
-    // DOM order is the visual left-to-right order: B unique, arrow, A unique.
+    // DOM order is the visual left-to-right order: B preview, arrow, A preview.
     expect(Array.from(tiles.children).map((el) => el.dataset.testid)).toEqual([
-      'merge-detail-unique-b',
+      'merge-detail-preview-b',
       'merge-detail-arrow',
-      'merge-detail-unique-a',
+      'merge-detail-preview-a',
     ]);
-    expect(within(panel).getByTestId('merge-unique-b-220')).toHaveTextContent('seville.jpg');
-    expect(within(panel).getByTestId('merge-unique-a-110')).toHaveTextContent('beach.jpg');
+    expect(
+      within(panel).getByTestId('merge-preview-b-220').querySelector('.MuiSvgIcon-root')
+    ).toBeInTheDocument();
+    expect(
+      within(panel).getByTestId('merge-preview-a-110').querySelector('.MuiSvgIcon-root')
+    ).toBeInTheDocument();
+    // Collection-card previews never render member filename labels.
+    expect(within(panel).queryByText('seville.jpg')).not.toBeInTheDocument();
+    expect(within(panel).queryByText('beach.jpg')).not.toBeInTheDocument();
     expect(within(panel).getByTestId('merge-detail-reason')).toHaveTextContent(
       '41 of 58 files are shared; merging keeps them in one collection.'
     );
@@ -304,7 +313,7 @@ describe('MergeProposalCard', () => {
     expect(screen.getByTestId('merge-detail-title')).toHaveTextContent('Kyoto');
   });
 
-  it('asks the host for the detail sample thumbnails only when the panel opens', () => {
+  it('asks the host for the detail preview thumbnails only when the panel opens', () => {
     const onRequestThumbnails = jest.fn();
     render({ onRequestThumbnails });
     expect(onRequestThumbnails).not.toHaveBeenCalled();
@@ -312,17 +321,45 @@ describe('MergeProposalCard', () => {
     expect(onRequestThumbnails).toHaveBeenCalledWith([110, 220]);
   });
 
-  it('renders host thumbnailMap URLs where loaded and placeholders where not (zero fabrication)', () => {
+  it('renders host thumbnailMap URLs where loaded and file-type icons where not (zero fabrication)', () => {
     render({
       thumbnailMap: new Map([[220, '/api/thumbnails/e2e.jpg?token=abc']]),
     });
     const panel = hoverOpen();
-    const tile = within(panel).getByTestId('merge-unique-b-220');
+    const tile = within(panel).getByTestId('merge-preview-b-220');
     const image = tile.querySelector('img');
     expect(image).not.toBeNull();
     expect(image).toHaveAttribute('src', '/api/thumbnails/e2e.jpg?token=abc');
-    // unloaded sample keeps a placeholder — never a fake image
-    expect(within(panel).getByTestId('merge-unique-a-110').querySelector('img')).toBeNull();
+    // unloaded preview keeps its file-type icon — never a fake image
+    expect(within(panel).getByTestId('merge-preview-a-110').querySelector('img')).toBeNull();
+    expect(
+      within(panel).getByTestId('merge-preview-a-110').querySelector('.MuiSvgIcon-root')
+    ).toBeInTheDocument();
+  });
+
+  it('renders at most four collection-preview cells per side and ignores unique samples', () => {
+    render({
+      suggestions: [
+        suggestion({
+          a_preview_items: [
+            { node_id: 1, name: 'a1.jpg', type: 'file', mime: 'image/jpeg' },
+            { node_id: 2, name: 'a2.jpg', type: 'file', mime: 'image/jpeg' },
+            { node_id: 3, name: 'a3.jpg', type: 'file', mime: 'image/jpeg' },
+            { node_id: 4, name: 'a4.jpg', type: 'file', mime: 'image/jpeg' },
+            { node_id: 5, name: 'a5.jpg', type: 'file', mime: 'image/jpeg' },
+          ],
+          a_unique_sample: [{ node_id: 999, name: 'only-a.jpg' }],
+          b_unique_sample: [{ node_id: 998, name: 'only-b.jpg' }],
+        }),
+      ],
+    });
+    const panel = hoverOpen();
+    expect(within(panel).queryByTestId('merge-preview-a-5')).not.toBeInTheDocument();
+    [1, 2, 3, 4].forEach((id) => {
+      expect(within(panel).getByTestId(`merge-preview-a-${id}`)).toBeInTheDocument();
+    });
+    expect(within(panel).queryByTestId('merge-unique-a-999')).not.toBeInTheDocument();
+    expect(within(panel).queryByTestId('merge-unique-b-998')).not.toBeInTheDocument();
   });
 
   it('keeps the same card DOM node when the resolved top row leaves the set', () => {

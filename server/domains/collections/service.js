@@ -1566,6 +1566,8 @@ async function listMergeSuggestions(userId) {
         mergedCount: aIds.size + bIds.size - overlapCount,
         recommendation,
         ...samples,
+        aPreviewItems: buildPreviewItems(aRows),
+        bPreviewItems: buildPreviewItems(bRows),
       })
     );
   }

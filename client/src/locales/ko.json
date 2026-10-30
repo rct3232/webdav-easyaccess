@@ -266,7 +266,7 @@
     "mergeReason": "{{merged}}개 중 {{overlap}}개가 공유되어 있습니다. 병합하면 하나의 컬렉션으로 유지됩니다.",
     "mergeDetailsAria": "병합 상세 보기",
 
-    "mergeUnique": "\"{{name}}\"에만 존재",
+    "mergePreview": "\"{{name}}\" 미리보기",
     "mergeClose": "병합 상세 닫기",
     "digestLine": "+{{added}} / -{{removed}}",
     "digestExpand": "베치기",

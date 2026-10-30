@@ -6,6 +6,15 @@
  * speaks domain objects; the routes serialize through these helpers.
  */
 
+function serializePreviewItems(items = []) {
+  return (items ?? []).map((item) => ({
+    node_id: item.nodeId,
+    name: item.name ?? null,
+    type: item.type ?? null,
+    mime: item.mimeType ?? null,
+  }));
+}
+
 function serializeCollection(
   row,
   {
@@ -31,12 +40,7 @@ function serializeCollection(
     // P-3 card preview: ≤4 newest-added members from the already-resolved member
     // view; revoked/shared-excluded rows are filtered by the service BEFORE this
     // point (their name/mime must never reach the wire — routes spec §collection row).
-    preview_items: (previewItems ?? []).map((item) => ({
-      node_id: item.nodeId,
-      name: item.name ?? null,
-      type: item.type ?? null,
-      mime: item.mimeType ?? null,
-    })),
+    preview_items: serializePreviewItems(previewItems),
     archived_at: row.archivedAt ?? null,
     last_member_change_at: row.lastMemberChangeAt ?? null,
     created_at: row.createdAt ?? null,
@@ -124,6 +128,10 @@ function serializeSuggestion(row, names) {
     overlap_sample: names.overlapSample ?? [],
     a_unique_sample: names.aUniqueSample ?? [],
     b_unique_sample: names.bUniqueSample ?? [],
+    // Collection-card preview parity (merge detail): same ≤4 newest-added
+    // members and wire shape as `serializeCollection.preview_items`.
+    a_preview_items: serializePreviewItems(names.aPreviewItems),
+    b_preview_items: serializePreviewItems(names.bPreviewItems),
   };
 }
 

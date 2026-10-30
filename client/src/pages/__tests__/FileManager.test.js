@@ -2151,6 +2151,8 @@ describe('FileManager', () => {
         overlap_sample: [{ a_node_id: 101, b_node_id: 101 }],
         a_unique_sample: [{ node_id: 110, name: 'beach.jpg' }],
         b_unique_sample: [{ node_id: 220, name: 'seville.jpg' }],
+        a_preview_items: [{ node_id: 110, name: 'beach.jpg', type: 'file', mime: 'image/jpeg' }],
+        b_preview_items: [{ node_id: 220, name: 'seville.jpg', type: 'file', mime: 'image/jpeg' }],
         ...overrides,
       });
 

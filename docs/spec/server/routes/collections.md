@@ -400,7 +400,13 @@ references with 400 (see above).
       "recommendation": null,
       "overlap_sample": [{ "a_node_id": 101, "b_node_id": 101 }],
       "a_unique_sample": [{ "node_id": 110, "name": "beach.jpg" }],
-      "b_unique_sample": [{ "node_id": 220, "name": "seville.jpg" }]
+      "b_unique_sample": [{ "node_id": 220, "name": "seville.jpg" }],
+      "a_preview_items": [
+        { "node_id": 110, "name": "beach.jpg", "type": "file", "mime": "image/jpeg" }
+      ],
+      "b_preview_items": [
+        { "node_id": 220, "name": "seville.jpg", "type": "file", "mime": "image/jpeg" }
+      ]
     }
   ]
 }
@@ -409,15 +415,22 @@ references with 400 (see above).
 `score` is the schema's scaled integer (×1000, `score BIGINT`) — the client does
 not re-float it. Row order = `score` desc.
 
-Sample fields feed the card's thumbnail strip and compare overlay
-([MergeProposalCard.md](../../client/components/file-manager/MergeProposalCard.md)
-§2.4) — the counts above stay the display truth, the samples are capped views of
+`a_preview_items`/`b_preview_items` feed the merge detail's 2×2 collection-card
+previews ([MergeProposalCard.md](../../client/components/file-manager/MergeProposalCard.md)
+§2.5); the compare sample fields remain additive data but are not rendered by the
+current detail. The counts above stay the display truth, the samples are capped views of
 it: `overlap_sample` lists shared-member pairs (`{ a_node_id, b_node_id }`, each
 side's row for the same node), ordered by node id asc, cap 8; `a_unique_sample` /
 `b_unique_sample` list members present only on that side as `{ node_id, name }`,
 ordered by node id asc, cap 4 each. Samples carry ONLY readable member rows — a
 `revoked` member contributes neither id nor name to the payload (member-state
 rule in [collectionsService.md](../../server/services/collectionsService.md)).
+`a_preview_items` / `b_preview_items` are the collection-card previews for each
+side: up to 4 newest-added members as `{ node_id, name, type, mime }`
+(`createdAt` desc, node id desc tie-break), built from the SAME already-resolved
+member views (`buildPreviewItems`), with `state='revoked'` rows excluded. They
+match `GET /api/collections` `preview_items` for the same collection; the merge
+detail renders these instead of the unique comparison samples.
 `recommendation` is the arbiter prefill (`{ verdict, reason }` or `null`; written
 only by the evolution pass, advisory).
 
@@ -603,9 +616,12 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
       origin/publish_mode/pin state, its members+exclusions move back, survivor-owned
       overlap rows untouched; precondition failure (survivor gone, id reused, name
       re-taken) → refusal, row stays `applied`
-- [ ] `GET /merge-suggestions` rows carry `overlap_sample` (≤8, node id asc) and
-      `a_unique_sample`/`b_unique_sample` (≤4, `{ node_id, name }`, node id asc) built
-      from readable member rows only; `revoked` members appear in no sample
+- [ ] `GET /merge-suggestions` rows carry `overlap_sample` (≤8, node id asc),
+      `a_unique_sample`/`b_unique_sample` (≤4, `{ node_id, name }`, node id asc), and
+      `a_preview_items`/`b_preview_items` (≤4, `{ node_id, name, type, mime }`, newest-added)
+      matching `GET /:id` `preview_items`; the compare samples use normal readable rows only,
+      while preview items follow the collection-card rule (`state='revoked'` excluded,
+      shared-excluded rows preview to the owner)
 - [ ] Dismiss then reject on the same pair: dismiss is reversible by the pass, reject is
       terminal (`rejected` row never re-suggested); each dismiss increments
       `dismiss_count` and resets `dismissed_at`

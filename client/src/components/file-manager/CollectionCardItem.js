@@ -1,18 +1,17 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Box, CardMedia, IconButton, Typography } from '@mui/material';
+import { Box, IconButton, Typography } from '@mui/material';
 import {
-  Collections as CollectionsIcon,
   AutoAwesome as AutoAwesomeIcon,
   Share as ShareIcon,
   MoreVert as MoreVertIcon,
   PushPin as PushPinIcon,
 } from '@mui/icons-material';
-import { getFileIcon } from '../../utils/fileIconUtils';
 import { getCollectionEntryKey } from '../../utils/fileViewUtils';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useLongPressSelect } from './hooks/useLongPressSelect';
 import CardTile from './CardTile';
+import CollectionPreviewGrid from './CollectionPreviewGrid';
 import TileCornerBadge from './TileCornerBadge';
 
 /**
@@ -27,28 +26,6 @@ import TileCornerBadge from './TileCornerBadge';
  * long-press=select is shell-owned).
  * @see docs/spec/client/components/file-manager/CollectionsListView.md §2.4
  */
-const PREVIEW_CAP = 4;
-
-const previewGridStyles = {
-  width: '100%',
-  height: '100%',
-  display: 'grid',
-  gridTemplateColumns: 'repeat(2, 1fr)',
-  gridTemplateRows: 'repeat(2, 1fr)',
-  gap: 0.5,
-  p: 0.5,
-};
-
-const previewCellStyles = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  minWidth: 0,
-  minHeight: 0,
-  overflow: 'hidden',
-  '& .MuiSvgIcon-root': { fontSize: 28, color: 'text.secondary' },
-};
-
 const moreButtonStyles = {
   position: 'absolute',
   top: 4,
@@ -94,48 +71,9 @@ const CollectionCardItem = ({
   const isViewer = collection.granted_role != null;
   const isAutoPinned = collection.pinned_by === 'auto';
   const isUserPinned = collection.pinned === true && collection.pinned_by === 'user';
-  const previews = (collection.preview_items ?? []).slice(0, PREVIEW_CAP);
-
-  const media =
-    previews.length > 0 ? (
-      <Box sx={previewGridStyles}>
-        {previews.map((item) => {
-          const thumbnailUrl = previewThumbnails?.get(item.node_id);
-          return (
-            <Box
-              key={item.node_id}
-              data-file-node-id={item.node_id}
-              data-testid={`collection-preview-${item.node_id}`}
-              sx={previewCellStyles}
-            >
-              {thumbnailUrl ? (
-                <CardMedia
-                  component="img"
-                  image={thumbnailUrl}
-                  alt={item.name ?? ''}
-                  sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              ) : (
-                getFileIcon({ type: item.type, mime: item.mime ?? undefined, basename: item.name })
-              )}
-            </Box>
-          );
-        })}
-      </Box>
-    ) : (
-      <Box
-        data-testid="collection-card-fallback"
-        sx={{
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <CollectionsIcon fontSize="large" color="action" />
-      </Box>
-    );
+  const media = (
+    <CollectionPreviewGrid items={collection.preview_items} thumbnailMap={previewThumbnails} />
+  );
 
   const moreAction = !selectionMode ? (
     <IconButton

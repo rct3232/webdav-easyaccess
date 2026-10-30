@@ -915,7 +915,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     rejectMergeSuggestion,
   } = collectionsApi;
 
-  const handleMergeSampleThumbnails = useCallback(
+  const handleMergePreviewThumbnails = useCallback(
     (nodeIds) => {
       if (!Array.isArray(nodeIds) || nodeIds.length === 0) return;
       requestThumbnailsBatch(nodeIds)
@@ -958,10 +958,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         suggestions={mergePending}
         onAction={handleMergeAction}
         thumbnailMap={previewThumbnails}
-        onRequestThumbnails={handleMergeSampleThumbnails}
+        onRequestThumbnails={handleMergePreviewThumbnails}
       />
     );
-  }, [mergePending, handleMergeAction, handleMergeSampleThumbnails, previewThumbnails]);
+  }, [mergePending, handleMergeAction, handleMergePreviewThumbnails, previewThumbnails]);
 
   // Card selection uses synthetic path keys (getCollectionEntryKey) in the
   // page-level selection Set — no collision with numeric file nodeIds. The

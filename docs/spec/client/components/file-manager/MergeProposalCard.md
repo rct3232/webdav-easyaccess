@@ -21,12 +21,12 @@ Target-contract spec.
 
 ### 2.2 Props
 
-| Name                | Type     | Required | Default | Description                                                                                                                                                                                                                                                                                                                                                                        |
-| ------------------- | -------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| suggestions         | array    | Y        | -       | The pending `GET /merge-suggestions` rows in server order (score desc). `suggestions[0]` is the card body; `suggestions.slice(1)` are the footer accordion rows. Each row carries `suggestion_id`, `a_id/a_name` (survivor), `b_id/b_name` (absorbed), `overlap_count`, `merged_count`, `score`, `overlap_sample`, `a_unique_sample`/`b_unique_sample`, optional `recommendation`. |
-| onAction            | function | Y        | -       | `(suggestionId, action) => void`; `action` is `'merge' \| 'keep-separate' \| 'later'`. The card dispatches the clicked row's `suggestion_id`; the host resolves the pair and calls `mergePair` / `rejectMergeSuggestion` / `dismissMergeSuggestion`. The card closes its detail panel before dispatching.                                                                          |
-| thumbnailMap        | object   | N        | null    | Host-owned `Map<nodeId, url>` of already-loaded sample thumbnails (the shared preview cache); a sample id without an entry renders a placeholder tile.                                                                                                                                                                                                                             |
-| onRequestThumbnails | function | N        | -       | Called with the displayed sample node ids when a detail panel opens (`(nodeIds) => void`); absent ⇒ tiles simply stay placeholders.                                                                                                                                                                                                                                                |
+| Name                | Type     | Required | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------- | -------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| suggestions         | array    | Y        | -       | The pending `GET /merge-suggestions` rows in server order (score desc). `suggestions[0]` is the card body; `suggestions.slice(1)` are the footer accordion rows. Each row carries `suggestion_id`, `a_id/a_name` (survivor), `b_id/b_name` (absorbed), `overlap_count`, `merged_count`, `score`, `a_preview_items`/`b_preview_items` (collection-card previews), optional `recommendation`; the legacy `overlap_sample`/`a_unique_sample`/`b_unique_sample` fields remain in the payload but are NOT rendered by the detail. |
+| onAction            | function | Y        | -       | `(suggestionId, action) => void`; `action` is `'merge' \| 'keep-separate' \| 'later'`. The card dispatches the clicked row's `suggestion_id`; the host resolves the pair and calls `mergePair` / `rejectMergeSuggestion` / `dismissMergeSuggestion`. The card closes its detail panel before dispatching.                                                                                                                                                                                                                    |
+| thumbnailMap        | object   | N        | null    | Host-owned `Map<nodeId, url>` of already-loaded preview thumbnails (the shared collection-card preview cache); a preview id without an entry renders its file-type icon.                                                                                                                                                                                                                                                                                                                                                     |
+| onRequestThumbnails | function | N        | -       | Called with the A/B `preview_items` node ids when a detail panel opens (`(nodeIds) => void`); absent ⇒ preview cells simply stay icon/placeholder.                                                                                                                                                                                                                                                                                                                                                                           |
 
 The host never remounts the card with a `key` and never keeps a cursor — the top row is
 always `suggestions[0]`, so resolving the top pair promotes the next pending pair
@@ -79,15 +79,19 @@ selection callbacks.
   NO full-screen backdrop and does not follow the mouse. Item actions stay clickable.
 - Close behavior: 300ms hover-out grace, cancelled by pointer enter on the panel; Esc;
   outside pointer-down; the panel's close button (`merge-detail-close`).
-- Content: the title only (`mergeQuestion`, `merge-detail-title`), then two large sample
-  panels in B(absorbed) → A(survivor) order (`merge-detail-tiles`):
-  - left = `b_unique_sample` tiles (`merge-unique-b-<node_id>`, name caption);
+- Content: the title only (`mergeQuestion`, `merge-detail-title`), then two collection-card
+  preview panels in B(absorbed) → A(survivor) order (`merge-detail-tiles`):
+  - left = `b_preview_items` 2×2 preview (`merge-detail-preview-b`,
+    cells `merge-preview-b-<node_id>`);
   - arrow = `merge-detail-arrow`;
-  - right = `a_unique_sample` tiles (`merge-unique-a-<node_id>`, name caption).
-    Shared members are represented by the reason/counts, not by a third tile column.
-    Thumbnails come from `thumbnailMap`; unloaded samples stay placeholders (zero fabrication).
-    Tiles use `aspect-ratio: 1` at roughly three quarters of the previous fill size; mobile
-    keeps the same horizontal B → A direction.
+  - right = `a_preview_items` 2×2 preview (`merge-detail-preview-a`,
+    cells `merge-preview-a-<node_id>`).
+    The previews match the collection list cards: up to 4 newest-added members, newest-first,
+    **NO filename labels**, thumbnail when `thumbnailMap` has the node id, otherwise the
+    same `getFileIcon(type, mime, name)` icon as the card, and the Collections glyph fallback
+    when a side has no preview items. Unique/shared comparison tiles are retired from the
+    detail; shared members remain represented by the reason/counts sentence. Mobile keeps
+    the same horizontal B → A direction.
 - Bottom one-line reason (`merge-detail-reason`, single line with ellipsis): use
   `recommendation.reason` verbatim when present (arbiter band only), else the deterministic
   counts sentence from `overlap_count`/`merged_count` (`fileManager.mergeReason`, e.g.
@@ -118,9 +122,10 @@ separate` / `Later` live on every item and dispatch that item's id with the same
 ### 2.8 Dependencies
 
 - **imports:** MUI Box/Button/Card/IconButton/Paper/Popper/Typography,
-  `useTranslation`, `utils/koParticleUtils.js` (pure particle picker), `hooks/useResponsive`
-  (mobile tap vs desktop hover); **no** gateway/service imports (callbacks only — thumbnails
-  arrive via `thumbnailMap`/`onRequestThumbnails` props).
+  `CollectionPreviewGrid` (shared with the collection cards), `useTranslation`,
+  `utils/koParticleUtils.js` (pure particle picker), `hooks/useResponsive` (mobile tap vs
+  desktop hover); **no** gateway/service imports (callbacks only — thumbnails arrive via
+  `thumbnailMap`/`onRequestThumbnails` props).
 
 ### 2.9 i18n Keys
 
@@ -128,8 +133,8 @@ separate` / `Later` live on every item and dispatch that item's id with the same
   `fileManager.mergeMore` (footer text), `fileManager.mergeAccept` (`Merge`),
   `fileManager.mergeKeepSeparate` (`Keep separate`), `fileManager.mergeLater` (`Later`),
   `fileManager.mergeReason` (deterministic counts sentence), `fileManager.mergeDetailsAria`
-  (body/row keyboard label), `fileManager.mergeShared` / `fileManager.mergeUnique` (detail tile
-  group aria labels only), `fileManager.mergeClose` (panel close aria)
+  (body/row keyboard label), `fileManager.mergePreview` (A/B preview group aria labels only),
+  `fileManager.mergeClose` (panel close aria)
 
 ### 2.10 Verification Scenarios
 
@@ -148,16 +153,18 @@ separate` / `Later` live on every item and dispatch that item's id with the same
       click is a no-op; Enter/Space opens from a focused body/row.
 - [ ] Detail is a portaled overlay anchored immediately above/below the hovered row; it may
       extend beyond the accordion/card clip but never becomes a card-level/detached panel.
-      It shows only the title, then horizontal B-unique → arrow → A-unique tiles, then a
-      bottom one-line reason; `recommendation.reason` wins when present, otherwise the
-      deterministic counts sentence.
+      It shows only the title, then horizontal B-preview → arrow → A-preview 2×2 grids,
+      then a bottom one-line reason; `recommendation.reason` wins when present, otherwise
+      the deterministic counts sentence.
 - [ ] Detail has no action buttons; the row's own actions remain clickable while it is open.
-- [ ] `onRequestThumbnails` fires with the displayed sample node ids when a detail opens.
+- [ ] `onRequestThumbnails` fires with the A/B `preview_items` node ids when a detail opens.
 - [ ] E2E/BDD selector anchors (`data-testid`): `merge-proposal-card`, `merge-card-body`,
       `merge-card-actions`, `merge-more-toggle`, `merge-suggestion-list`,
       `merge-suggestion-row-<suggestion_id>`, `merge-detail-panel`, `merge-detail-title`,
-      `merge-detail-tiles`, `merge-detail-arrow`, `merge-detail-reason`, `merge-detail-close`,
-      `merge-unique-a-<node_id>`, `merge-unique-b-<node_id>`,
+      `merge-detail-tiles`, `merge-detail-preview-a`, `merge-detail-preview-b`,
+      `merge-detail-arrow`, `merge-detail-reason`, `merge-detail-close`,
+      `merge-preview-a-<node_id>`, `merge-preview-b-<node_id>`,
+      `merge-preview-a-empty`, `merge-preview-b-empty`,
       `merge-accept`, `merge-keep-separate`, `merge-later`,
       `merge-row-accept-<suggestion_id>`, `merge-row-keep-separate-<suggestion_id>`,
       `merge-row-later-<suggestion_id>`.

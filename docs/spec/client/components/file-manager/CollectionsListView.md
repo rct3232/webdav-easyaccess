@@ -97,7 +97,9 @@ Target-contract spec.
   (§2.3 `onPreviewThumbnailsLoaded`). A collection with no previewable members renders the sidebar collections
   glyph (`Collections as CollectionsIcon`, `fontSize="large"`, `color="action"`,
   centered in the media area, `data-testid="collection-card-fallback"`) — not a
-  file-tree folder icon.
+  file-tree folder icon. The same shared `CollectionPreviewGrid` renders each side of the
+  MergeProposalCard detail (custom `testIdPrefix`/`emptyTestId`), so the merge previews stay
+  visually identical to the collection cards.
 - **Footer area:** collection name ONLY (archive membership is view-scoped — no member-count
   line, no `status=archived` chip). The card menu trigger is the tile
   More action (`data-testid="card-menu-button-<id>"`), hidden while `selectionMode`

@@ -147,6 +147,8 @@ describe('wire.serializeSuggestion', () => {
     expect(bare.overlap_sample).toEqual([]);
     expect(bare.a_unique_sample).toEqual([]);
     expect(bare.b_unique_sample).toEqual([]);
+    expect(bare.a_preview_items).toEqual([]);
+    expect(bare.b_preview_items).toEqual([]);
 
     const withSamples = wire.serializeSuggestion(row, {
       aName: 'A',
@@ -156,10 +158,20 @@ describe('wire.serializeSuggestion', () => {
       overlapSample: [{ a_node_id: 101, b_node_id: 101 }],
       aUniqueSample: [{ node_id: 110, name: 'beach.jpg' }],
       bUniqueSample: [{ node_id: 220, name: 'seville.jpg' }],
+      aPreviewItems: [
+        { nodeId: 110, name: 'beach.jpg', type: 'file', mimeType: 'image/jpeg' },
+      ],
+      bPreviewItems: [{ nodeId: 220, name: 'seville.jpg', type: 'file', mimeType: null }],
     });
     expect(withSamples.overlap_sample).toEqual([{ a_node_id: 101, b_node_id: 101 }]);
     expect(withSamples.a_unique_sample).toEqual([{ node_id: 110, name: 'beach.jpg' }]);
     expect(withSamples.b_unique_sample).toEqual([{ node_id: 220, name: 'seville.jpg' }]);
+    expect(withSamples.a_preview_items).toEqual([
+      { node_id: 110, name: 'beach.jpg', type: 'file', mime: 'image/jpeg' },
+    ]);
+    expect(withSamples.b_preview_items).toEqual([
+      { node_id: 220, name: 'seville.jpg', type: 'file', mime: null },
+    ]);
   });
 
   it('passes the arbiter recommendation through untouched (advisory prefill)', () => {

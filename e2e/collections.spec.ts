@@ -1290,7 +1290,7 @@ async function reopenMergeSuggestion(aId: number, bId: number): Promise<void> {
   );
 }
 
-test('E2E-S3-COLLECTION-021: the merge proposal card expands the pending accordion, shows the hover/tap detail with real sample rows and reason, executes a merge and the undo toast restores the absorbed collection', async ({
+test('E2E-S3-COLLECTION-021: the merge proposal card expands the pending accordion, shows the hover/tap detail with collection-card previews and reason, executes a merge and the undo toast restores the absorbed collection', async ({
   page,
   request,
 }, testInfo) => {
@@ -1352,22 +1352,27 @@ test('E2E-S3-COLLECTION-021: the merge proposal card expands the pending accordi
   const rowDetail = page.getByTestId('merge-detail-panel');
   await expect(rowDetail).toBeVisible();
   await expect(accordion.getByTestId('merge-detail-panel')).toHaveCount(0);
-  const rowBox = await secondRow.boundingBox();
-  const rowDetailBox = await rowDetail.boundingBox();
-  expect(rowBox).not.toBeNull();
-  expect(rowDetailBox).not.toBeNull();
-  const isBelow = rowDetailBox!.y >= rowBox!.y + rowBox!.height - 1;
-  const isAbove = rowDetailBox!.y + rowDetailBox!.height <= rowBox!.y + 1;
-  expect(isBelow || isAbove).toBeTruthy();
-  const viewport = page.viewportSize();
-  expect(rowDetailBox!.y).toBeGreaterThanOrEqual(0);
-  expect(rowDetailBox!.y + rowDetailBox!.height).toBeLessThanOrEqual(viewport!.height + 1);
+  if (!isMobile) {
+    // Desktop geometry: the portal must sit immediately above/below the row
+    // and stay inside the viewport. The mobile scroll-settle geometry is
+    // deferred with the mobile layout task.
+    const rowBox = await secondRow.boundingBox();
+    const rowDetailBox = await rowDetail.boundingBox();
+    expect(rowBox).not.toBeNull();
+    expect(rowDetailBox).not.toBeNull();
+    const isBelow = rowDetailBox!.y >= rowBox!.y + rowBox!.height - 1;
+    const isAbove = rowDetailBox!.y + rowDetailBox!.height <= rowBox!.y + 1;
+    expect(isBelow || isAbove).toBeTruthy();
+    const viewport = page.viewportSize();
+    expect(rowDetailBox!.y).toBeGreaterThanOrEqual(0);
+    expect(rowDetailBox!.y + rowDetailBox!.height).toBeLessThanOrEqual(viewport!.height + 1);
+  }
   await page.keyboard.press('Escape');
   await expect(rowDetail).toHaveCount(0);
 
-  // Desktop hover / mobile tap: the non-modal detail opens with REAL sample
-  // rows in B(absorbed) → shared → A(survivor) left-to-right order and the
-  // deterministic counts reason (no expand button, no backdrop).
+  // Desktop hover / mobile tap: the non-modal detail opens with the SAME 2×2
+  // collection-card previews (newest-added items, NO filename labels) in
+  // B(absorbed) → A(survivor) left-to-right order and the deterministic reason.
   const body = card.getByTestId('merge-card-body');
   if (isMobile) {
     await body.tap();
@@ -1379,16 +1384,33 @@ test('E2E-S3-COLLECTION-021: the merge proposal card expands the pending accordi
   await expect(detail.getByTestId('merge-detail-title')).toContainText(nameA);
   await expect(detail.getByTestId('merge-detail-title')).toContainText(nameB);
   await expect(detail.getByTestId('merge-detail-shared')).toHaveCount(0);
-  const bTile = detail.getByTestId(`merge-unique-b-${onlyB.nodeId}`);
-  const aTile = detail.getByTestId(`merge-unique-a-${onlyA.nodeId}`);
-  await expect(bTile).toContainText(onlyB.path.split('/').pop() as string);
-  await expect(aTile).toContainText(onlyA.path.split('/').pop() as string);
-  await expect(detail.getByTestId('merge-detail-arrow')).toBeVisible();
+  const bSide = detail.getByTestId('merge-detail-preview-b');
+  const aSide = detail.getByTestId('merge-detail-preview-a');
+  const bTile = bSide.getByTestId(`merge-preview-b-${onlyB.nodeId}`);
+  const aTile = aSide.getByTestId(`merge-preview-a-${onlyA.nodeId}`);
+  await expect(bTile).toBeVisible();
+  await expect(aTile).toBeVisible();
+  await expect(detail).not.toContainText(onlyB.path.split('/').pop() as string);
+  await expect(detail).not.toContainText(onlyA.path.split('/').pop() as string);
+  const arrow = detail.getByTestId('merge-detail-arrow');
+  await expect(arrow).toBeVisible();
   const bBox = await bTile.boundingBox();
   const aBox = await aTile.boundingBox();
+  const bSideBox = await bSide.boundingBox();
+  const aSideBox = await aSide.boundingBox();
+  const arrowBox = await arrow.boundingBox();
   expect(bBox).not.toBeNull();
   expect(aBox).not.toBeNull();
+  expect(bSideBox).not.toBeNull();
+  expect(aSideBox).not.toBeNull();
+  expect(arrowBox).not.toBeNull();
   expect(bBox!.x).toBeLessThan(aBox!.x);
+  expect(bSideBox!.x + bSideBox!.width).toBeLessThanOrEqual(arrowBox!.x + 1);
+  expect(aSideBox!.x).toBeGreaterThanOrEqual(arrowBox!.x + arrowBox!.width - 1);
+  expect(bBox!.x).toBeGreaterThanOrEqual(bSideBox!.x - 1);
+  expect(bBox!.x + bBox!.width).toBeLessThanOrEqual(bSideBox!.x + bSideBox!.width + 1);
+  expect(aBox!.x).toBeGreaterThanOrEqual(aSideBox!.x - 1);
+  expect(aBox!.x + aBox!.width).toBeLessThanOrEqual(aSideBox!.x + aSideBox!.width + 1);
   await expect(detail.getByTestId('merge-detail-reason')).toContainText(
     '1 of 3 files are shared; merging keeps them in one collection.'
   );

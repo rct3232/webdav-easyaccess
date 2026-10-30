@@ -3,7 +3,7 @@
  * between the collections toolbar and the list. The body presents the top
  * score-desc pending pair; a centered footer text expands the remaining pairs
  * in an accordion; desktop hover / mobile tap opens a NON-MODAL detail panel
- * with the real sample tiles (B absorbed → A survivor) and a
+ * with the collection-card 2×2 previews (B absorbed → A survivor) and a
  * one-line reason. `Merge` executes immediately: THE CARD IS THE CONFIRMATION
  * (no dialog). IO-free pure view: thumbnails arrive through the host
  * `thumbnailMap`/`onRequestThumbnails` props, all mutation intent rides
@@ -15,32 +15,12 @@ import { useTranslation } from 'react-i18next';
 import { Box, Button, Card, IconButton, Paper, Popper, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
 import { useResponsive } from '../../hooks/useResponsive';
 import { koObjectParticle, koWithParticle } from '../../utils/koParticleUtils';
+import CollectionPreviewGrid from './CollectionPreviewGrid';
 
 const HOVER_OPEN_DELAY_MS = 200;
 const HOVER_CLOSE_GRACE_MS = 300;
-const UNIQUE_SAMPLE_CAP = 4;
-
-const detailTileSx = {
-  width: '100%',
-  maxWidth: { xs: 72, sm: 180 },
-  height: 'auto',
-  aspectRatio: '1 / 1',
-  borderRadius: 2,
-  objectFit: 'cover',
-  display: 'block',
-  bgcolor: 'action.hover',
-};
-
-const detailPlaceholderSx = {
-  ...detailTileSx,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: 'text.disabled',
-};
 
 const focusRingSx = {
   outline: 'none',
@@ -182,18 +162,18 @@ const MergeProposalCard = ({
     };
   }, [detail, closeDetail]);
 
-  const detailSampleIds = useMemo(() => {
+  const detailPreviewIds = useMemo(() => {
     if (!detailSuggestion) return [];
     const ids = [];
-    (detailSuggestion.a_unique_sample ?? []).forEach((row) => ids.push(row.node_id));
-    (detailSuggestion.b_unique_sample ?? []).forEach((row) => ids.push(row.node_id));
+    (detailSuggestion.a_preview_items ?? []).forEach((row) => ids.push(row.node_id));
+    (detailSuggestion.b_preview_items ?? []).forEach((row) => ids.push(row.node_id));
     return [...new Set(ids.filter((id) => id != null))];
   }, [detailSuggestion]);
 
   useEffect(() => {
-    if (detailSampleIds.length === 0 || typeof onRequestThumbnails !== 'function') return;
-    onRequestThumbnails(detailSampleIds);
-  }, [detailSampleIds, onRequestThumbnails]);
+    if (detailPreviewIds.length === 0 || typeof onRequestThumbnails !== 'function') return;
+    onRequestThumbnails(detailPreviewIds);
+  }, [detailPreviewIds, onRequestThumbnails]);
 
   const questionFor = useCallback(
     (suggestion) =>
@@ -229,14 +209,6 @@ const MergeProposalCard = ({
     [t]
   );
 
-  const thumbUrlOf = useCallback(
-    (nodeId) => {
-      if (!thumbnailMap || typeof thumbnailMap.get !== 'function') return null;
-      return thumbnailMap.get(nodeId) ?? thumbnailMap.get(Number(nodeId)) ?? null;
-    },
-    [thumbnailMap]
-  );
-
   const dispatchAction = useCallback(
     (suggestion, action) => {
       if (!suggestion) return;
@@ -253,35 +225,6 @@ const MergeProposalCard = ({
       event.preventDefault();
       handler();
     }
-  };
-
-  const renderUniqueTile = (row, side) => {
-    const url = thumbUrlOf(row.node_id);
-    return (
-      <Box
-        key={`unique-${side}-${row.node_id}`}
-        data-testid={`merge-unique-${side}-${row.node_id}`}
-        sx={{ minWidth: 0 }}
-      >
-        {url ? (
-          <Box component="img" src={url} alt="" sx={detailTileSx} />
-        ) : (
-          <Box sx={detailPlaceholderSx} aria-hidden="true">
-            <InsertDriveFileOutlinedIcon fontSize="small" />
-          </Box>
-        )}
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          noWrap
-          component="div"
-          sx={{ mt: 0.25 }}
-          title={row.name ?? ''}
-        >
-          {row.name}
-        </Typography>
-      </Box>
-    );
   };
 
   if (!topSuggestion) return null;
@@ -331,28 +274,24 @@ const MergeProposalCard = ({
         sx={{
           display: 'flex',
           flexDirection: 'row',
-          alignItems: 'stretch',
+          alignItems: 'center',
+          justifyContent: 'center',
           gap: { xs: 1, sm: 2 },
           mt: 1.5,
           width: '100%',
         }}
       >
         <Box
-          data-testid="merge-detail-unique-b"
-          aria-label={t('fileManager.mergeUnique', { name: suggestion.b_name })}
-          sx={{
-            flex: '1 1 0',
-            minWidth: 0,
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            gap: 1,
-            justifyItems: 'center',
-            alignContent: 'flex-start',
-          }}
+          data-testid="merge-detail-preview-b"
+          aria-label={t('fileManager.mergePreview', { name: suggestion.b_name })}
+          sx={{ flex: '1 1 0', minWidth: 0, maxWidth: 200, aspectRatio: '1 / 1' }}
         >
-          {(suggestion.b_unique_sample ?? [])
-            .slice(0, UNIQUE_SAMPLE_CAP)
-            .map((row) => renderUniqueTile(row, 'b'))}
+          <CollectionPreviewGrid
+            items={suggestion.b_preview_items}
+            thumbnailMap={thumbnailMap}
+            testIdPrefix="merge-preview-b"
+            emptyTestId="merge-preview-b-empty"
+          />
         </Box>
         <Box
           data-testid="merge-detail-arrow"
@@ -362,21 +301,16 @@ const MergeProposalCard = ({
           <ArrowForwardIcon />
         </Box>
         <Box
-          data-testid="merge-detail-unique-a"
-          aria-label={t('fileManager.mergeUnique', { name: suggestion.a_name })}
-          sx={{
-            flex: '1 1 0',
-            minWidth: 0,
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            gap: 1,
-            justifyItems: 'center',
-            alignContent: 'flex-start',
-          }}
+          data-testid="merge-detail-preview-a"
+          aria-label={t('fileManager.mergePreview', { name: suggestion.a_name })}
+          sx={{ flex: '1 1 0', minWidth: 0, maxWidth: 200, aspectRatio: '1 / 1' }}
         >
-          {(suggestion.a_unique_sample ?? [])
-            .slice(0, UNIQUE_SAMPLE_CAP)
-            .map((row) => renderUniqueTile(row, 'a'))}
+          <CollectionPreviewGrid
+            items={suggestion.a_preview_items}
+            thumbnailMap={thumbnailMap}
+            testIdPrefix="merge-preview-a"
+            emptyTestId="merge-preview-a-empty"
+          />
         </Box>
       </Box>
 

@@ -1612,6 +1612,25 @@ describe('merge suggestions and execution', () => {
     expect(row.overlap_sample.some((pair) => pair.a_node_id === foreign.id)).toBe(false);
     expect(row.a_unique_sample).toEqual([{ node_id: uniqueA.id, name: 'only-a.jpg' }]);
     expect(row.b_unique_sample).toEqual([{ node_id: uniqueB.id, name: 'only-b.jpg' }]);
+
+    // Collection-card preview parity: the suggestion carries EXACTLY the same
+    // ≤4 newest-added rows as GET /api/collections/:id (shared-excluded rows
+    // follow the card rule; member-state revoked rows are excluded there).
+    const [aDetail, bDetail] = await Promise.all([
+      request(app)
+        .get(`/api/collections/${ctx.aId}`)
+        .set('Authorization', `Bearer ${ctx.token}`),
+      request(app)
+        .get(`/api/collections/${ctx.bId}`)
+        .set('Authorization', `Bearer ${ctx.token}`),
+    ]);
+    expect(row.a_preview_items).toEqual(aDetail.body.preview_items);
+    expect(row.b_preview_items).toEqual(bDetail.body.preview_items);
+    expect(row.a_preview_items).toHaveLength(4);
+    expect(row.b_preview_items).toHaveLength(4);
+    expect(row.a_preview_items.map((item) => item.node_id)).toContain(uniqueA.id);
+    expect(row.b_preview_items.map((item) => item.node_id)).toContain(uniqueB.id);
+    expect(Object.keys(row.a_preview_items[0]).sort()).toEqual(['mime', 'name', 'node_id', 'type']);
   });
 
   it('survivor keeps its own name and name_locked; the loser name is never adopted', async () => {

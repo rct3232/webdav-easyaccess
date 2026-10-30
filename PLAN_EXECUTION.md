@@ -3053,17 +3053,22 @@ refined by U4 below.
 - **Badges:** files-surface collection markers removed; `for-nodes` remains for
   AddToCollectionMenu checkmarks, FilePropertiesDialog “Member of”, and bulk add.
 - **Merge UI:** sticky region between toolbar and list; body/footer accordion; desktop
-  hover/mobile tap detail; no active-pair cursor; B(absorbed)→A(survivor) large samples;
-  deterministic count sentence with optional arbiter reason.
+  hover/mobile tap detail; no active-pair cursor; two panel-filling B(absorbed)→A(survivor)
+  tile grids (no middle shared column), with the panel kept below the card so card actions
+  stay clickable; deterministic count sentence with optional arbiter reason.
 - **Properties:** dialog-wide draft, Save/Discard/Cancel, cross-tab save, role badge toggle,
   hierarchical `onBack`, one atomic `PUT /:id/properties` TX and one composite undo;
-  role changes preserve the grantee hidden flag; new grants clear it.
+  role changes preserve the grantee hidden flag; new grants clear it. The footer keeps a
+  default-text Close at the far right and inserts an outlined-primary Save before it only
+  while dirty, so the Close position never shifts.
 - **File AI:** read-gated AI Info tab with tags/summary/caption/transcript/safe media/
   provenance; no category/degraded fabrication.
 - **Admin AI:** rendered/API-only contract manifest, sentinel fixture, null-safe rendering,
   launcher/preview reasons, journal errors, and eight browser E2E cases.
-- **E2E:** browser AI matrix (`AI-008..012`, AI-015), `STORAGE-001`, and admin-AI cases;
-  default inventory 283 (276 passed / 7 skipped model-on; 275/8 model-free), WebDAV 41/0.
+- **E2E:** browser AI matrix (`AI-008..012`, AI-015), admin-AI cases, and a dedicated
+  storage suite (`STORAGE-001..002` in `e2e/storage.spec.ts`; the former COLLECTION-023
+  moved there) under dependent `s3-storage-desktop`/`s3-storage-mobile` projects. Default
+  inventory 283 (276 passed / 7 skipped model-on; 275/8 model-free), WebDAV 41/0.
 
 **Verification (2026-10-30)**
 

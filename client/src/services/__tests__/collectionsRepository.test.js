@@ -10,6 +10,7 @@ import {
   getCollectionItems,
   createCollection,
   updateCollection,
+  saveCollectionProperties,
   archiveCollection,
   deleteCollection,
   addCollectionItems,
@@ -187,6 +188,27 @@ describe('collectionsRepository mutations (absorb + notify + onError)', () => {
       pinned: true,
       publishMode: 'auto',
     });
+    expect(notifyCollectionsChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('saveCollectionProperties PUTs the changed-key plan to /:id/properties and notifies', async () => {
+    const payload = {
+      collection: { collection_id: 17, publish_mode: 'auto' },
+      grants: [{ grantee_id: 11, role: 'editor' }],
+      undo: { action_id: 11 },
+    };
+    put.mockResolvedValueOnce({ data: payload });
+
+    const result = await saveCollectionProperties(17, {
+      publishMode: 'auto',
+      grants: { upsert: [{ userId: 11, role: 'editor' }], revoke: [9] },
+    });
+
+    expect(put).toHaveBeenCalledWith('/collections/17/properties', {
+      publishMode: 'auto',
+      grants: { upsert: [{ userId: 11, role: 'editor' }], revoke: [9] },
+    });
+    expect(result).toEqual(payload);
     expect(notifyCollectionsChange).toHaveBeenCalledTimes(1);
   });
 

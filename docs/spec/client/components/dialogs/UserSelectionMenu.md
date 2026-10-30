@@ -19,28 +19,29 @@
 
 ### 2.2 Props
 
-| Name                   | Type     | Required | Default | Description                |
-| ---------------------- | -------- | -------- | ------- | -------------------------- |
-| folderMenuAnchor       | element  | Y        | -       | Menu anchor                |
-| onClose                | function | Y        | -       | Close handler              |
-| folderMenuPath         | string   | Y        | -       | Folder path                |
-| folderPermissions      | Map      | Y        | -       | Path -> user permissions   |
-| isAdminMode            | boolean  | Y        | -       | Admin mode                 |
-| userId                 | string   | N        | -       | Current user ID            |
-| username               | string   | N        | -       | Username                   |
-| user                   | object   | N        | -       | Current user               |
-| userInfoMap            | Map      | Y        | -       | User info map              |
-| users                  | array    | Y        | -       | Users list                 |
-| getUserName            | function | Y        | -       | Get display name           |
-| handleTogglePermission | function | Y        | -       | Toggle permission          |
-| handleRemoveUser       | function | Y        | -       | Remove user                |
-| folderMenuView         | string   | Y        | -       | `'manage' \| 'selectUser'` |
-| setFolderMenuView      | function | Y        | -       | Set view                   |
-| handleAddUser          | function | N        | -       | Add user                   |
-| handleUserSelect       | function | N        | -       | User select                |
-| isShareMode            | boolean  | Y        | -       | Share mode                 |
-| isReviewMode           | boolean  | Y        | -       | Review mode                |
-| permissionRequest      | object   | N        | -       | Pending request            |
+| Name                   | Type     | Required | Default | Description                                                |
+| ---------------------- | -------- | -------- | ------- | ---------------------------------------------------------- |
+| folderMenuAnchor       | element  | Y        | -       | Menu anchor                                                |
+| onClose                | function | Y        | -       | Close handler                                              |
+| folderMenuPath         | string   | Y        | -       | Folder path                                                |
+| folderPermissions      | Map      | Y        | -       | Path -> user permissions                                   |
+| isAdminMode            | boolean  | Y        | -       | Admin mode                                                 |
+| userId                 | string   | N        | -       | Current user ID                                            |
+| username               | string   | N        | -       | Username                                                   |
+| user                   | object   | N        | -       | Current user                                               |
+| userInfoMap            | Map      | Y        | -       | User info map                                              |
+| users                  | array    | Y        | -       | Users list                                                 |
+| getUserName            | function | Y        | -       | Get display name                                           |
+| handleTogglePermission | function | Y        | -       | Toggle permission                                          |
+| handleRemoveUser       | function | Y        | -       | Remove user                                                |
+| folderMenuView         | string   | Y        | -       | `'manage' \| 'selectUser'`                                 |
+| setFolderMenuView      | function | Y        | -       | Set view                                                   |
+| handleAddUser          | function | N        | -       | Add user                                                   |
+| handleUserSelect       | function | N        | -       | User select                                                |
+| isShareMode            | boolean  | Y        | -       | Share mode                                                 |
+| isReviewMode           | boolean  | Y        | -       | Review mode                                                |
+| permissionRequest      | object   | N        | -       | Pending request                                            |
+| onBack                 | function | N        | -       | Back-view handler; the Back row renders only when provided |
 
 ### 2.3 Callback Signatures
 
@@ -51,6 +52,7 @@
 | handleRemoveUser       | Remove user          | `(folderPath, userId)`       |
 | setFolderMenuView      | View switch          | `('manage' \| 'selectUser')` |
 | handleUserSelect       | Select a user to add | `(userId)`                   |
+| onBack                 | Back row             | -                            |
 
 ### 2.4 Dependencies
 
@@ -72,6 +74,7 @@
 - Returns null when !folderMenuPath
 - Manage view: list prepared users with toggle/remove actions
 - Select-user view: list prepared addable users or a helper-prepared review-request requester entry
+- The Back row renders only when `onBack` is provided; ShareDialog supplies it (manage view), while the collection properties picker omits it (the grant list lives in the tab)
 - Any filtering or display-user shaping should be prepared upstream where practical; this component should not become a policy-heavy controller
 
 ### 2.7 Verification Scenarios
@@ -79,6 +82,7 @@
 - [ ] Renders manage/select-user views
 - [ ] Toggle, remove, add user
 - [ ] Review mode shows requester-only add option when applicable
+- [ ] Back row renders when `onBack` is supplied and is absent when it is omitted
 - [ ] onClose
 - [ ] Prepared user lists render the same visible menu options after filtering/derivation is moved upstream
 

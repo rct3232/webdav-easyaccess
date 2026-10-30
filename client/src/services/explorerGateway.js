@@ -44,6 +44,7 @@ import {
   revokeGrant,
   revokeOwnGrant,
   runSearch,
+  saveCollectionProperties,
   undoAction,
   updateCollection,
 } from './collectionsRepository';
@@ -389,6 +390,7 @@ const explorerGateway = {
   grantCollection,
   revokeGrant,
   revokeOwnGrant,
+  saveCollectionProperties,
   subscribeToCollections,
   // Search results mode (§2.6 search group)
   runSearch,

@@ -38,6 +38,7 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 | GET    | `/:id`               | Token | Single collection (owner definition; grantee `granted_role`; ungranted → 404 masquerade).                                                                          |
 | POST   | `/`                  | Token | Create — body-shape dispatch: `{ name }` manual (`origin='user'`), `{ name, seedNodeId }` seed (`origin='seed'`), `{ name, semantic }` search (`origin='search'`). |     |
 | PUT    | `/:id`               | Token | Update name / pin / publish_mode.                                                                                                                                  |
+| PUT    | `/:id/properties`    | Token | Atomic properties + grants save (changed keys only).                                                                                                               |
 | POST   | `/:id/archive`       | Token | Archive (manual; confirm dialog is client-side).                                                                                                                   |
 | POST   | `/:id/restore`       | Token | Restore an archived collection.                                                                                                                                    |
 | DELETE | `/:id`               | Token | Permanent delete — archived only, else 409.                                                                                                                        |
@@ -194,6 +195,12 @@ Field rules:
   unpin PERSISTS — the explicit unpin is not itself an auto-pin touch, so a system
   collection stays unpinned until the next separate user touch. Owner-only.
   200: `{ "collection": <collection>, "undo": { "action_id": 991 } }`.
+- **PUT /:id/properties:** Owner-only atomic properties save. Body
+  `{ name?, publishMode?, pinned?, grants?: { upsert: [{ userId, role }], revoke: [userId] } }`;
+  every omitted field is unchanged, `grants` is the only grant mutation surface in this call,
+  and the whole plan commits as one journaled command. `upsert` replaces the role by
+  `grantee_id`; `revoke` drops the grant. 200:
+  `{ "collection": <collection>, "grants": [<grant>], "undo": { "action_id": 996 } }`.
 - **POST /:id/archive:** Owner-only. Active → archived + `archived_at`. 409
   `collections.alreadyArchived`. 200: `{ "collection": <collection>, "undo":
 { "action_id": 992 } }`.

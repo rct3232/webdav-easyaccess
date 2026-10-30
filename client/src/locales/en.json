@@ -433,9 +433,12 @@
     "collectionPreviewUnavailable": "Member preview is unavailable.",
     "collectionGrants": "Shared with",
     "collectionGrantsEmpty": "Not shared yet — only you can see this collection.",
-    "collectionGrantRoleTitle": "Role",
+    "collectionGrantRoleToggle": "Switch role",
     "collectionRenameSave": "Change",
     "collectionUnpin": "Unpin",
+    "collectionUnsavedTitle": "Unsaved changes",
+    "collectionUnsavedMessage": "Save your changes before closing this collection?",
+    "collectionDiscard": "Discard",
     "publishModeTitle": "Publish mode",
     "publishModeAsk": "Ask",
     "publishModeOff": "Off",
@@ -1545,7 +1548,8 @@
     "undoAdded": "Added to collection",
     "undoExcluded": "Removed from collection",
     "undoGrantAdded": "Collection shared",
-    "undoGrantRevoked": "Sharing revoked"
+    "undoGrantRevoked": "Sharing revoked",
+    "propertiesSaved": "Collection properties saved"
   },
   "ai": {
     "provisionFailed": "Model provisioning failed."

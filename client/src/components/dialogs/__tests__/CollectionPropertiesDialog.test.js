@@ -1,11 +1,11 @@
 /**
  * CollectionPropertiesDialog tests.
- * Verifies observable outcomes per spec: docs/spec/client/components/dialogs/CollectionPropertiesDialog.md §2.8/§2.9.
+ * Verifies observable outcomes per spec: docs/spec/client/components/dialogs/CollectionPropertiesDialog.md §2.3/§2.9/§2.10.
  * The dialog is a pure view — every test drives it through props only.
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { screen, within, fireEvent } from '@testing-library/react';
+import { screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import CollectionPropertiesDialog from '../CollectionPropertiesDialog';
 
@@ -79,9 +79,9 @@ function openDialog(overrides = {}) {
     open: true,
     onClose: jest.fn(),
     collection: OWNER_ROW,
-    onPatch: jest.fn(),
-    onGrant: jest.fn(),
-    onRevoke: jest.fn(),
+    onSave: jest.fn().mockResolvedValue(true),
+    grants: GRANTS,
+    shareableUsers: SHAREABLE_USERS,
     ...overrides,
   };
   const utils = renderWithProviders(<CollectionPropertiesDialog {...props} />);
@@ -90,6 +90,10 @@ function openDialog(overrides = {}) {
 
 function openSharing(overrides = {}) {
   return openDialog({ collection: OWNER_ROW, initialTab: 'sharing', ...overrides });
+}
+
+function nameInput() {
+  return screen.getByTestId('collection-name-field').querySelector('input');
 }
 
 async function waitForRemoved(element) {
@@ -102,7 +106,7 @@ async function waitForRemoved(element) {
 }
 
 describe('CollectionPropertiesDialog', () => {
-  describe('tab bar (§2.3)', () => {
+  describe('tab bar (§2.4)', () => {
     it('renders title → tabs → body → fixed Close bar in document order, Info default-active', () => {
       const { utils } = openDialog();
 
@@ -133,6 +137,8 @@ describe('CollectionPropertiesDialog', () => {
           name: 'Close',
         })
       ).toBeInTheDocument();
+      // clean draft ⇒ no Save affordance
+      expect(screen.queryByTestId('collection-props-save')).not.toBeInTheDocument();
 
       utils.unmount();
     });
@@ -143,10 +149,8 @@ describe('CollectionPropertiesDialog', () => {
       expect(screen.getByTestId('collection-props-tab-info')).toBeInTheDocument();
       expect(screen.queryByTestId('collection-props-tab-ai')).not.toBeInTheDocument();
       expect(screen.queryByTestId('collection-props-tab-sharing')).not.toBeInTheDocument();
-      // the name renders in the inline-rename field (an input VALUE, not text)
-      expect(screen.getByTestId('collection-name-field').querySelector('input')).toHaveValue(
-        'Roadtrip photos'
-      );
+      // the name renders in the inline draft field (an input VALUE, not text)
+      expect(nameInput()).toHaveValue('Roadtrip photos');
 
       utils.unmount();
     });
@@ -163,7 +167,7 @@ describe('CollectionPropertiesDialog', () => {
       utils.unmount();
     });
 
-    it('unknown initialTab falls back to Info (§2.9)', () => {
+    it('unknown initialTab falls back to Info (§2.10)', () => {
       const { utils } = openDialog({ initialTab: 'bogus' });
 
       expect(screen.getByTestId('collection-props-tab-info')).toHaveAttribute(
@@ -240,29 +244,7 @@ describe('CollectionPropertiesDialog', () => {
     });
   });
 
-  describe('Info tab (§2.3)', () => {
-    it('rename dispatches onPatch({ name })', () => {
-      const { props, utils } = openDialog();
-
-      const input = screen.getByTestId('collection-name-field').querySelector('input');
-      fireEvent.change(input, { target: { value: 'Renamed set' } });
-      fireEvent.click(screen.getByTestId('collection-rename-save'));
-
-      expect(props.onPatch).toHaveBeenCalledWith({ name: 'Renamed set' });
-      utils.unmount();
-    });
-
-    it('auto-pin chip shows the unpin CTA dispatching onPatch({ pinned: false })', () => {
-      const { props, utils } = openDialog({
-        collection: { ...OWNER_ROW, pinned: true, pinned_by: 'auto' },
-      });
-
-      expect(screen.getByTestId('collection-autopin-chip')).toBeInTheDocument();
-      fireEvent.click(screen.getByTestId('collection-unpin'));
-      expect(props.onPatch).toHaveBeenCalledWith({ pinned: false });
-      utils.unmount();
-    });
-
+  describe('Info tab (§2.4)', () => {
     it('shows origin/status/publish-mode chips, item count and timestamps', () => {
       const { utils } = openDialog();
 
@@ -295,16 +277,171 @@ describe('CollectionPropertiesDialog', () => {
       expect(screen.getByTestId('collection-props-tab-info')).toBeInTheDocument();
       failed.utils.unmount();
     });
+
+    it('rename stays in the draft: no onSave before Save; Save dispatches only { name } and closes on success', async () => {
+      const { props, utils } = openDialog();
+
+      fireEvent.change(nameInput(), { target: { value: 'Renamed set' } });
+
+      expect(props.onSave).not.toHaveBeenCalled();
+      const save = screen.getByTestId('collection-props-save');
+      expect(save).toBeInTheDocument();
+
+      fireEvent.click(save);
+
+      await waitFor(() => expect(props.onSave).toHaveBeenCalledTimes(1));
+      expect(props.onSave).toHaveBeenCalledWith({ name: 'Renamed set' });
+      await waitFor(() => expect(props.onClose).toHaveBeenCalledTimes(1));
+      utils.unmount();
+    });
+
+    it('an external row refresh does not reset an in-progress name draft (reset effect keys on id, not name)', () => {
+      const { props, utils } = openDialog();
+
+      fireEvent.change(nameInput(), { target: { value: 'My draft' } });
+      utils.rerender(
+        <CollectionPropertiesDialog
+          {...props}
+          collection={{ ...OWNER_ROW, name: 'Server renamed' }}
+        />
+      );
+
+      expect(nameInput()).toHaveValue('My draft');
+      expect(screen.getByTestId('collection-props-save')).toBeInTheDocument();
+    });
+
+    it('empty name keeps the draft dirty but disables Save', () => {
+      const { props, utils } = openDialog();
+
+      fireEvent.change(nameInput(), { target: { value: '   ' } });
+
+      const save = screen.getByTestId('collection-props-save');
+      expect(save).toBeDisabled();
+      fireEvent.click(save);
+      expect(props.onSave).not.toHaveBeenCalled();
+      utils.unmount();
+    });
+
+    it('auto-pin chip shows the unpin CTA mutating the draft; Save dispatches { pinned:false }', async () => {
+      const { props, utils } = openDialog({
+        collection: { ...OWNER_ROW, pinned: true, pinned_by: 'auto' },
+      });
+
+      expect(screen.getByTestId('collection-autopin-chip')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('collection-unpin'));
+      expect(props.onSave).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('collection-pin-row')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('collection-props-save'));
+      await waitFor(() => expect(props.onSave).toHaveBeenCalledWith({ pinned: false }));
+      utils.unmount();
+    });
   });
 
-  describe('Sharing tab (§2.3) — owner-only', () => {
-    it('publish_mode radio reflects the row value and a change dispatches onPatch({ publishMode })', () => {
+  describe('draft persistence + dirty-close prompt (§2.3)', () => {
+    it('clean Close closes immediately without a prompt', () => {
+      const { props, utils } = openDialog();
+
+      fireEvent.click(screen.getByTestId('collection-props-close'));
+
+      expect(props.onClose).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('collection-props-unsaved-dialog')).not.toBeInTheDocument();
+      utils.unmount();
+    });
+
+    it('dirty Close opens Save/Discard/Cancel; Cancel keeps the draft, Discard closes without saving', async () => {
+      const { props, utils } = openDialog();
+
+      fireEvent.change(nameInput(), { target: { value: 'Draft name' } });
+      fireEvent.click(screen.getByTestId('collection-props-close'));
+
+      expect(props.onClose).not.toHaveBeenCalled();
+      const prompt = screen.getByTestId('collection-props-unsaved-dialog');
+      expect(within(prompt).getByText('Unsaved changes')).toBeInTheDocument();
+      expect(within(prompt).getByRole('button', { name: 'Save' })).toBeInTheDocument();
+      expect(within(prompt).getByRole('button', { name: 'Discard' })).toBeInTheDocument();
+      expect(within(prompt).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('collection-props-close-cancel'));
+      await waitFor(() =>
+        expect(screen.queryByTestId('collection-props-unsaved-dialog')).not.toBeInTheDocument()
+      );
+      expect(nameInput()).toHaveValue('Draft name');
+      expect(props.onSave).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByTestId('collection-props-close'));
+      fireEvent.click(screen.getByTestId('collection-props-close-discard'));
+      expect(props.onClose).toHaveBeenCalledTimes(1);
+      expect(props.onSave).not.toHaveBeenCalled();
+      utils.unmount();
+    });
+
+    it('dirty-close Save commits the draft and closes on success', async () => {
+      const { props, utils } = openDialog();
+
+      fireEvent.change(nameInput(), { target: { value: 'Prompt saved' } });
+      fireEvent.click(screen.getByTestId('collection-props-close'));
+      fireEvent.click(screen.getByTestId('collection-props-close-save'));
+
+      await waitFor(() => expect(props.onSave).toHaveBeenCalledWith({ name: 'Prompt saved' }));
+      await waitFor(() => expect(props.onClose).toHaveBeenCalledTimes(1));
+      utils.unmount();
+    });
+
+    it('a failed save keeps the dialog open with the draft intact', async () => {
+      const onSave = jest.fn().mockResolvedValue(false);
+      const { props, utils } = openSharing({ onSave });
+
+      fireEvent.click(screen.getByRole('radio', { name: 'Auto' }));
+      fireEvent.click(screen.getByTestId('collection-props-save'));
+
+      await waitFor(() => expect(onSave).toHaveBeenCalledWith({ publishMode: 'auto' }));
+      expect(props.onClose).not.toHaveBeenCalled();
+      expect(screen.getByRole('radio', { name: 'Auto' })).toBeChecked();
+      expect(screen.getByTestId('collection-props-save')).toBeInTheDocument();
+      utils.unmount();
+    });
+
+    it('saving blocks every close path until the pending save settles', async () => {
+      let resolveSave;
+      const onSave = jest.fn(
+        () =>
+          new Promise((resolve) => {
+            resolveSave = resolve;
+          })
+      );
+      const { props, utils } = openDialog({ onSave });
+
+      fireEvent.change(nameInput(), { target: { value: 'Pending' } });
+      fireEvent.click(screen.getByTestId('collection-props-save'));
+
+      expect(await screen.findByText('Saving...')).toBeInTheDocument();
+      expect(screen.getByTestId('collection-props-close')).toBeDisabled();
+      fireEvent.click(screen.getByTestId('collection-props-close'));
+      expect(props.onClose).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('collection-props-unsaved-dialog')).not.toBeInTheDocument();
+
+      resolveSave(true);
+      await waitFor(() => expect(props.onClose).toHaveBeenCalledTimes(1));
+      utils.unmount();
+    });
+  });
+
+  describe('Sharing tab (§2.4) — owner-only draft', () => {
+    it('publish_mode radio mutates the draft, the Info chip follows it, and Save sends the whole plan from any tab', async () => {
       const { props, utils } = openSharing();
 
       expect(screen.getByRole('radio', { name: 'Ask' })).toBeChecked();
-      expect(screen.getByTestId('collection-publish-mode-auto')).toBeInTheDocument();
       fireEvent.click(screen.getByRole('radio', { name: 'Auto' }));
-      expect(props.onPatch).toHaveBeenCalledWith({ publishMode: 'auto' });
+      expect(props.onSave).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByTestId('collection-props-tab-info'));
+      expect(screen.getByTestId('collection-publish-mode-chip')).toHaveTextContent('Auto');
+      expect(screen.getByTestId('collection-props-save')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('collection-props-save'));
+      await waitFor(() => expect(props.onSave).toHaveBeenCalledWith({ publishMode: 'auto' }));
+      await waitFor(() => expect(props.onClose).toHaveBeenCalled());
       utils.unmount();
 
       const off = openSharing({ collection: { ...OWNER_ROW, publish_mode: 'off' } });
@@ -324,6 +461,7 @@ describe('CollectionPropertiesDialog', () => {
     it('grants skeleton while loading; empty copy when no grants; rows show username, LOCALIZED role chip and the unified revoke label', () => {
       const loading = openSharing({ grants: null });
       expect(screen.getByTestId('collection-grants-loading')).toBeInTheDocument();
+      expect(screen.getByTestId('collection-grant-add')).toBeDisabled();
       loading.utils.unmount();
 
       const empty = openSharing({ grants: [] });
@@ -343,59 +481,84 @@ describe('CollectionPropertiesDialog', () => {
       utils.unmount();
     });
 
-    it('revoke dispatches instantly with no confirm step', () => {
-      const { props, utils } = openSharing({ grants: GRANTS });
-
-      fireEvent.click(screen.getByTestId('collection-grant-revoke-9'));
-
-      expect(props.onRevoke).toHaveBeenCalledTimes(1);
-      expect(props.onRevoke).toHaveBeenCalledWith(9);
-      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
-      utils.unmount();
-    });
-
-    it('add flow: viewer-default role toggle; the picker lists only ungranted, non-admin candidates and a selection dispatches onGrant(userId, role) then closes', async () => {
-      const { props, utils } = openSharing({ grants: GRANTS, shareableUsers: SHAREABLE_USERS });
-
-      expect(screen.getByTestId('collection-grant-role-viewer')).toHaveAttribute(
-        'aria-pressed',
-        'true'
-      );
+    it('the added row merges into the Shared with list as a viewer draft; no separate pending list and no write', async () => {
+      const { props, utils } = openSharing();
 
       fireEvent.click(screen.getByTestId('collection-grant-add'));
       const menu = await screen.findByRole('menu');
+      // the removed bottom role toggle is gone — Add user is the only add chrome
+      expect(screen.queryByTestId('collection-grant-role-viewer')).not.toBeInTheDocument();
       expect(within(menu).getByText('dave')).toBeInTheDocument();
-      // already-granted users never reappear as candidates
       expect(within(menu).queryByText('bob')).not.toBeInTheDocument();
       expect(within(menu).queryByText('carol')).not.toBeInTheDocument();
-      // admins never appear
       expect(within(menu).queryByText('mallory')).not.toBeInTheDocument();
 
       fireEvent.click(within(menu).getByText('dave'));
-      expect(props.onGrant).toHaveBeenCalledTimes(1);
-      expect(props.onGrant).toHaveBeenCalledWith(11, 'viewer');
-      expect(await waitForRemoved(menu)).toBe(true);
+
+      const row = await screen.findByTestId('collection-grant-row-11');
+      expect(within(row).getByText('Viewer')).toBeInTheDocument();
+      expect(screen.getByTestId('collection-props-save')).toBeInTheDocument();
+      expect(props.onSave).not.toHaveBeenCalled();
+
+      // the draft row filters the next candidate list immediately
+      fireEvent.click(screen.getByTestId('collection-grant-add'));
+      const reopened = await screen.findByRole('menu');
+      expect(within(reopened).queryByText('dave')).not.toBeInTheDocument();
       utils.unmount();
     });
 
-    it('role toggle switches the granted role on add (editor)', async () => {
-      const { props, utils } = openSharing({ grants: [], shareableUsers: SHAREABLE_USERS });
+    it('role badge toggles viewer/editor in the draft and Save sends only the changed grant rows', async () => {
+      const { props, utils } = openSharing();
 
-      fireEvent.click(screen.getByTestId('collection-grant-role-editor'));
-      expect(screen.getByTestId('collection-grant-role-editor')).toHaveAttribute(
-        'aria-pressed',
-        'true'
+      fireEvent.click(screen.getByTestId('collection-grant-add'));
+      fireEvent.click(within(await screen.findByRole('menu')).getByText('dave'));
+
+      fireEvent.click(await screen.findByTestId('collection-grant-role-11'));
+      expect(screen.getByTestId('collection-grant-role-11')).toHaveTextContent('Editor');
+      fireEvent.click(screen.getByTestId('collection-grant-revoke-9'));
+      expect(screen.queryByTestId('collection-grant-row-9')).not.toBeInTheDocument();
+      expect(props.onSave).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByTestId('collection-props-save'));
+
+      await waitFor(() =>
+        expect(props.onSave).toHaveBeenCalledWith({
+          grants: { upsert: [{ userId: 11, role: 'editor' }], revoke: [9] },
+        })
       );
+      utils.unmount();
+    });
+
+    it('remove → re-add restores the baseline role (no dirty diff)', async () => {
+      const { utils } = openSharing();
+
+      // carol's baseline role is editor
+      fireEvent.click(screen.getByTestId('collection-grant-revoke-10'));
+      expect(screen.queryByTestId('collection-grant-row-10')).not.toBeInTheDocument();
+      expect(screen.getByTestId('collection-props-save')).toBeInTheDocument();
 
       fireEvent.click(screen.getByTestId('collection-grant-add'));
       const menu = await screen.findByRole('menu');
-      fireEvent.click(within(menu).getByText('bob'));
-      expect(props.onGrant).toHaveBeenCalledWith(9, 'editor');
+      fireEvent.click(within(menu).getByText('carol'));
+
+      expect(await screen.findByTestId('collection-grant-row-10')).toHaveTextContent('Editor');
+      expect(screen.queryByTestId('collection-props-save')).not.toBeInTheDocument();
+      utils.unmount();
+    });
+
+    it('switching tabs closes an open picker', async () => {
+      const { utils } = openSharing();
+
+      fireEvent.click(screen.getByTestId('collection-grant-add'));
+      const menu = await screen.findByRole('menu');
+      fireEvent.click(screen.getByTestId('collection-props-tab-info'));
+
+      expect(await waitForRemoved(menu)).toBe(true);
       utils.unmount();
     });
   });
 
-  describe('locale mirror (§2.7)', () => {
+  describe('locale mirror (§2.8)', () => {
     it('every new dialog/collections key exists in en AND ko (translated, never copied)', () => {
       const en = require('../../../locales/en.json');
       const ko = require('../../../locales/ko.json');
@@ -422,9 +585,12 @@ describe('CollectionPropertiesDialog', () => {
         'collectionPreviewUnavailable',
         'collectionGrants',
         'collectionGrantsEmpty',
-        'collectionGrantRoleTitle',
+        'collectionGrantRoleToggle',
         'collectionRenameSave',
         'collectionUnpin',
+        'collectionUnsavedTitle',
+        'collectionUnsavedMessage',
+        'collectionDiscard',
         'publishModeTitle',
         'publishModeAsk',
         'publishModeOff',
@@ -451,13 +617,10 @@ describe('CollectionPropertiesDialog', () => {
         expect(ko.dialogs[key]).not.toBe(en.dialogs[key]);
       }
 
-      // undo-toast labels for the grant CRUD
-      for (const key of ['undoGrantAdded', 'undoGrantRevoked']) {
-        expect(typeof en.collections[key]).toBe('string');
-        expect(en.collections[key].length).toBeGreaterThan(0);
-        expect(typeof ko.collections[key]).toBe('string');
-        expect(ko.collections[key].length).toBeGreaterThan(0);
-      }
+      expect(typeof en.collections.propertiesSaved).toBe('string');
+      expect(en.collections.propertiesSaved.length).toBeGreaterThan(0);
+      expect(typeof ko.collections.propertiesSaved).toBe('string');
+      expect(ko.collections.propertiesSaved).not.toBe(en.collections.propertiesSaved);
 
       // P-1 unified revoke label reused verbatim (EN "Revoke permission")
       expect(en.dialogs.revokePermission).toBe('Revoke permission');

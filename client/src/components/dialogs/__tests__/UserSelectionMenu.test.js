@@ -74,15 +74,26 @@ describe('UserSelectionMenu', () => {
     expect(defaultProps.setFolderMenuView).toHaveBeenCalledWith('selectUser');
   });
 
-  it('renders select user view with back option', () => {
-    renderWithAnchor({ folderMenuView: 'selectUser' });
+  it('renders the back row only when onBack is provided', () => {
+    const withBack = renderWithAnchor({
+      folderMenuView: 'selectUser',
+      onBack: jest.fn(),
+    });
     expect(screen.getByText(/back/i)).toBeInTheDocument();
+    withBack.unmount();
+
+    renderWithAnchor({ folderMenuView: 'selectUser' });
+    expect(screen.queryByText(/back/i)).not.toBeInTheDocument();
   });
 
-  it('calls setFolderMenuView with manage when back clicked in selectUser view', () => {
-    renderWithAnchor({ folderMenuView: 'selectUser' });
+  it('calls onBack (not the view setter) when back clicked in selectUser view', () => {
+    const onBack = jest.fn();
+    renderWithAnchor({ folderMenuView: 'selectUser', onBack });
+
     fireEvent.click(screen.getByText(/back/i));
-    expect(defaultProps.setFolderMenuView).toHaveBeenCalledWith('manage');
+
+    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(defaultProps.setFolderMenuView).not.toHaveBeenCalled();
   });
 
   it('shows available users in selectUser view', () => {

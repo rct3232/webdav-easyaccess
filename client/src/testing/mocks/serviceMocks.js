@@ -145,6 +145,7 @@ export function createExplorerGatewayMock(overrides = {}) {
     grantCollection: jest.fn().mockResolvedValue(null),
     revokeGrant: jest.fn().mockResolvedValue(null),
     revokeOwnGrant: jest.fn().mockResolvedValue(null),
+    saveCollectionProperties: jest.fn().mockResolvedValue(null),
     subscribeToCollections: jest.fn(() => jest.fn()),
     // Search results-mode seams (T0.11 — explorerGateway §2.6 search group)
     runSearch: jest.fn().mockResolvedValue(null),

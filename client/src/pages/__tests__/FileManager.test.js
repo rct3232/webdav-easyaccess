@@ -1752,13 +1752,13 @@ describe('FileManager', () => {
     }, 15000);
 
     /**
-     * T3.2b — collection-properties host wiring (FileManager.md §7): the
-     * reserved `sharing` dispatch opens the owner-only CollectionPropertiesDialog
-     * on the LIVE fetch row; grants/publish-mode IO rides the hook's gateway
-     * seams and the dialog list updates from the mutation RESPONSE rows.
+     * collection-properties host wiring (FileManager.md §7): the reserved
+     * `sharing` dispatch opens the owner-only CollectionPropertiesDialog on
+     * the LIVE fetch row; every edit stays in the dialog draft and ONE
+     * `PUT /:id/properties` fires on Save.
      */
     describe('collection-properties sharing dialog host', () => {
-      it('sharing dispatch opens the dialog, loads grants, PUTs publish_mode and runs grant/revoke from responses', async () => {
+      it('stages grant/role/publish changes across tabs and saves ONE atomic properties plan', async () => {
         let cardState = { ...ownCard };
         let grants = [
           {
@@ -1769,9 +1769,10 @@ describe('FileManager', () => {
             created_at: '2026-09-02T00:00:00Z',
           },
         ];
-        const putBodies = [];
-        const postBodies = [];
-        const deleteUrls = [];
+        const propertiesBodies = [];
+        const legacyPutBodies = [];
+        const grantPostBodies = [];
+        const grantDeleteUrls = [];
         server.use(
           http.get('/api/collections', () => HttpResponse.json({ collections: [cardState] })),
           http.get('/api/collections/merge-suggestions', () =>
@@ -1791,34 +1792,47 @@ describe('FileManager', () => {
               { id: 11, username: 'dave', email: 'dave@e.test' },
             ])
           ),
-          http.put('/api/collections/1', async ({ request }) => {
+          http.put('/api/collections/1/properties', async ({ request }) => {
             const body = await request.json();
-            putBodies.push(body);
+            propertiesBodies.push(body);
             if (body.publishMode) cardState = { ...cardState, publish_mode: body.publishMode };
-            return HttpResponse.json({ collection: cardState, undo: { action_id: 101 } });
+            if (body.name) cardState = { ...cardState, name: body.name };
+            if (typeof body.pinned === 'boolean') cardState = { ...cardState, pinned: body.pinned };
+            let nextGrants = [...grants];
+            for (const revokedId of body.grants?.revoke ?? []) {
+              nextGrants = nextGrants.filter((row) => row.grantee_id !== Number(revokedId));
+            }
+            for (const upsert of body.grants?.upsert ?? []) {
+              nextGrants = [
+                ...nextGrants.filter((row) => row.grantee_id !== Number(upsert.userId)),
+                {
+                  grantee_id: Number(upsert.userId),
+                  username: 'dave',
+                  role: upsert.role,
+                  granted_by: 1,
+                  created_at: '2026-09-06T00:00:00Z',
+                },
+              ];
+            }
+            grants = nextGrants;
+            return HttpResponse.json({
+              collection: cardState,
+              grants,
+              undo: { action_id: 101 },
+            });
+          }),
+          // legacy per-field / per-grant endpoints must stay IO-silent
+          http.put('/api/collections/1', async ({ request }) => {
+            legacyPutBodies.push(await request.json());
+            return HttpResponse.json({ collection: cardState, undo: { action_id: 102 } });
           }),
           http.post('/api/collections/1/grants', async ({ request }) => {
-            const body = await request.json();
-            postBodies.push(body);
-            const grant = {
-              grantee_id: Number(body.userId),
-              username: 'dave',
-              role: body.role,
-              granted_by: 1,
-              created_at: '2026-09-06T00:00:00Z',
-            };
-            grants = [...grants.filter((row) => row.grantee_id !== grant.grantee_id), grant];
-            return HttpResponse.json({ grant, undo: { action_id: 202 } }, { status: 201 });
+            grantPostBodies.push(await request.json());
+            return HttpResponse.json({ grant: {}, undo: { action_id: 202 } }, { status: 201 });
           }),
           http.delete('/api/collections/1/grants', ({ request }) => {
-            deleteUrls.push(new URL(request.url).searchParams.get('userId'));
-            const revokedId = Number(new URL(request.url).searchParams.get('userId'));
-            grants = grants.filter((row) => row.grantee_id !== revokedId);
-            return HttpResponse.json({
-              grantee_id: revokedId,
-              revoked: true,
-              undo: { action_id: 203 },
-            });
+            grantDeleteUrls.push(new URL(request.url).searchParams.get('userId'));
+            return HttpResponse.json({ grantee_id: 0, revoked: true, undo: { action_id: 203 } });
           })
         );
 
@@ -1833,41 +1847,53 @@ describe('FileManager', () => {
           'aria-selected',
           'true'
         );
-
-        // grants land from the owner-only read
         expect(await screen.findByTestId('collection-grant-row-9')).toHaveTextContent('bob');
 
-        // 2) publish_mode PUT through onPatch → undo toast, live row reflects it
-        fireEvent.click(screen.getByRole('radio', { name: 'Auto' }));
-        await waitFor(() => expect(putBodies.at(-1)).toMatchObject({ publishMode: 'auto' }));
-        expect(await screen.findByText('Publish mode updated')).toBeInTheDocument();
-
-        // 3) add grant: editor toggle → picker skips the already-granted bob
-        fireEvent.click(screen.getByTestId('collection-grant-role-editor'));
+        // 2) add user → DRAFT row, no request before Save
         fireEvent.click(screen.getByTestId('collection-grant-add'));
         const menu = await screen.findByRole('menu');
         expect(within(menu).getByText('dave')).toBeInTheDocument();
         expect(within(menu).queryByText('bob')).not.toBeInTheDocument();
         fireEvent.click(within(menu).getByText('dave'));
+        expect(await screen.findByTestId('collection-grant-row-11')).toHaveTextContent('Viewer');
+        expect(propertiesBodies).toHaveLength(0);
+        expect(legacyPutBodies).toHaveLength(0);
+        expect(grantPostBodies).toHaveLength(0);
 
-        await waitFor(() =>
-          expect(postBodies).toEqual([expect.objectContaining({ userId: 11, role: 'editor' })])
-        );
-        // list updates from the POST response row (grantee_id 11)
-        expect(await screen.findByTestId('collection-grant-row-11')).toHaveTextContent('dave');
-        expect(await screen.findByText('Collection shared')).toBeInTheDocument();
+        // 3) role badge + publish mode are drafts too
+        fireEvent.click(screen.getByTestId('collection-grant-role-11'));
+        expect(screen.getByTestId('collection-grant-role-11')).toHaveTextContent('Editor');
+        fireEvent.click(screen.getByRole('radio', { name: 'Auto' }));
+        expect(propertiesBodies).toHaveLength(0);
 
-        // 4) revoke is instant (no confirm) and the row drops from the response
-        fireEvent.click(screen.getByTestId('collection-grant-revoke-11'));
-        await waitFor(() => expect(deleteUrls).toContain('11'));
-        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
-        await waitFor(() =>
-          expect(screen.queryByTestId('collection-grant-row-11')).not.toBeInTheDocument()
-        );
-        expect(await screen.findByText('Sharing revoked')).toBeInTheDocument();
+        // 4) draft survives a tab switch: Info chip reflects Auto, Sharing keeps the row
+        fireEvent.click(screen.getByTestId('collection-props-tab-info'));
+        expect(screen.getByTestId('collection-publish-mode-chip')).toHaveTextContent('Auto');
+        expect(screen.getByTestId('collection-props-save')).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('collection-props-tab-sharing'));
+        expect(screen.getByRole('radio', { name: 'Auto' })).toBeChecked();
+        expect(screen.getByTestId('collection-grant-row-11')).toHaveTextContent('Editor');
 
-        // 5) closing returns to the card grid (single host instance)
-        fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+        // 5) remove an existing grant (draft only), then Save ONE atomic plan
+        fireEvent.click(screen.getByTestId('collection-grant-revoke-9'));
+        expect(screen.queryByTestId('collection-grant-row-9')).not.toBeInTheDocument();
+        expect(propertiesBodies).toHaveLength(0);
+
+        fireEvent.click(screen.getByTestId('collection-props-save'));
+
+        await waitFor(() => expect(propertiesBodies).toHaveLength(1));
+        expect(propertiesBodies[0]).toEqual({
+          publishMode: 'auto',
+          grants: { upsert: [{ userId: 11, role: 'editor' }], revoke: [9] },
+        });
+        expect(legacyPutBodies).toHaveLength(0);
+        expect(grantPostBodies).toHaveLength(0);
+        expect(grantDeleteUrls).toHaveLength(0);
+
+        // 6) ONE summary toast, no per-grant undo toasts; dialog closes
+        expect(await screen.findByText('Collection properties saved')).toBeInTheDocument();
+        expect(screen.queryByText('Collection shared')).not.toBeInTheDocument();
+        expect(screen.queryByText('Sharing revoked')).not.toBeInTheDocument();
         await waitFor(() =>
           expect(screen.queryByTestId('collection-props-tab-sharing')).not.toBeInTheDocument()
         );

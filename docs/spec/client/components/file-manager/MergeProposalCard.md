@@ -41,15 +41,17 @@ selection callbacks.
   `merged_count` likewise). `a_name`, `b_name`, `overlap_count`, `merged_count` verbatim
   (ko particle handling is a pure i18n formatter — a client-side particle picker; en copy is
   phrased without particles).
-- Buttons: `[Merge(primary)] [Keep separate(ghost)] [Later(text)]` on EVERY item, each
-  dispatching that item's id. The first item keeps `merge-accept`/`merge-keep-separate`/
-  `merge-later`; expanded items use `merge-row-<action>-<suggestion_id>`.
+- Buttons: icon-only `[Later(Snooze, gray)] [Keep separate(Block, gray)]
+[Merge(MergeType, primary)]` in that order on EVERY item, with no button background or
+  border. Each icon dispatches that item's id; the i18n label is both the aria-label and the
+  tooltip. The first item keeps `merge-accept`/`merge-keep-separate`/`merge-later`; expanded
+  items use `merge-row-<action>-<suggestion_id>`.
 - Body/footer structure: each item is a summary line + its actions (the hover/tap/keyboard
   target is the text block); the footer is a separate full-width strip after the list.
 - No thumbnail strip and no expand button: samples live in the detail panel (desktop hover /
   mobile tap). The body carries `role="button"`, `tabIndex=0`, `aria-expanded` and an
   Enter/Space keyboard path so the detail stays reachable without hover.
-- Mobile: each item is a column — summary text on top, the three action buttons at the
+- Mobile: each item is a column — summary text on top, the three icon actions at the
   bottom. Desktop: summary left, actions right. Footer below the list.
 - `recommendation` is never rendered on the collapsed card; its `reason` is the detail
   panel's one-line reason (§2.5).
@@ -138,11 +140,11 @@ separate` / `Later` live on every item and dispatch that item's id with the same
 
 ### 2.8 Dependencies
 
-- **imports:** MUI Box/Button/Card/IconButton/Paper/Popper/Typography,
-  `CollectionPreviewGrid` (shared with the collection cards), `useTranslation`,
-  `utils/koParticleUtils.js` (pure particle picker), `hooks/useResponsive` (mobile tap vs
-  desktop hover); **no** gateway/service imports (callbacks only — thumbnails arrive via
-  `thumbnailMap`/`onRequestThumbnails` props).
+- **imports:** MUI Box/Card/IconButton/Paper/Popper/Tooltip/Typography, icons
+  `Block`/`MergeType`/`Snooze`/`Close`/`ArrowForward`, `CollectionPreviewGrid` (shared with
+  the collection cards), `useTranslation`, `utils/koParticleUtils.js` (pure particle picker),
+  `hooks/useResponsive` (mobile tap vs desktop hover); **no** gateway/service imports
+  (callbacks only — thumbnails arrive via `thumbnailMap`/`onRequestThumbnails` props).
 
 ### 2.9 i18n Keys
 
@@ -158,8 +160,9 @@ separate` / `Later` live on every item and dispatch that item's id with the same
 
 - [ ] One card for a non-empty set; top row is score-desc first; the same DOM node is reused
       when the set shrinks (no key remount).
-- [ ] Every item carries distinct `Merge`/`Keep separate`/`Later` actions that dispatch
-      `onAction` with that row's `suggestion_id`; no dialog opens.
+- [ ] Every item carries the icon-only `Later(Snooze, gray) → Keep separate(Block, gray) →
+Merge(MergeType, primary)` actions in that order, with no background/border; each
+      dispatches `onAction` with that row's `suggestion_id`; no dialog opens.
 - [ ] `suggestions.length > 1` renders the centered footer text (no chip/badge), with
       `role="button"` + `aria-expanded`; expanding lists ALL rows in a viewport-bounded
       scrollable accordion (`40vh` desktop / `50vh` mobile), keeps the footer below the

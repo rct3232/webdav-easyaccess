@@ -12,9 +12,12 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Box, Button, Card, IconButton, Paper, Popper, Typography } from '@mui/material';
+import { Box, Card, IconButton, Paper, Popper, Tooltip, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import BlockIcon from '@mui/icons-material/Block';
+import MergeTypeIcon from '@mui/icons-material/MergeType';
+import SnoozeIcon from '@mui/icons-material/Snooze';
 import { useResponsive } from '../../hooks/useResponsive';
 import { koObjectParticle, koWithParticle } from '../../utils/koParticleUtils';
 import CollectionPreviewGrid from './CollectionPreviewGrid';
@@ -514,38 +517,48 @@ const MergeProposalCard = ({
               justifyContent: { xs: 'flex-end', sm: 'flex-end' },
             }}
           >
-            <Button
-              variant="contained"
-              size="small"
-              data-testid={actionTestId('accept')}
-              onClick={(event) => {
-                event.stopPropagation();
-                dispatchAction(suggestion, 'merge');
-              }}
-            >
-              {t('fileManager.mergeAccept')}
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              data-testid={actionTestId('keep-separate')}
-              onClick={(event) => {
-                event.stopPropagation();
-                dispatchAction(suggestion, 'keep-separate');
-              }}
-            >
-              {t('fileManager.mergeKeepSeparate')}
-            </Button>
-            <Button
-              size="small"
-              data-testid={actionTestId('later')}
-              onClick={(event) => {
-                event.stopPropagation();
-                dispatchAction(suggestion, 'later');
-              }}
-            >
-              {t('fileManager.mergeLater')}
-            </Button>
+            <Tooltip title={t('fileManager.mergeLater')}>
+              <IconButton
+                size="small"
+                data-testid={actionTestId('later')}
+                aria-label={t('fileManager.mergeLater')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  dispatchAction(suggestion, 'later');
+                }}
+                sx={{ color: 'text.secondary' }}
+              >
+                <SnoozeIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={t('fileManager.mergeKeepSeparate')}>
+              <IconButton
+                size="small"
+                data-testid={actionTestId('keep-separate')}
+                aria-label={t('fileManager.mergeKeepSeparate')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  dispatchAction(suggestion, 'keep-separate');
+                }}
+                sx={{ color: 'text.secondary' }}
+              >
+                <BlockIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={t('fileManager.mergeAccept')}>
+              <IconButton
+                size="small"
+                color="primary"
+                data-testid={actionTestId('accept')}
+                aria-label={t('fileManager.mergeAccept')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  dispatchAction(suggestion, 'merge');
+                }}
+              >
+                <MergeTypeIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Box>
         </Box>
       </Box>

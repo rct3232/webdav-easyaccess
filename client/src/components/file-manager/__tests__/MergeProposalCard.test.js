@@ -95,6 +95,28 @@ describe('MergeProposalCard', () => {
     expect(screen.getByRole('button', { name: 'Merge' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Keep separate' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Later' })).toBeInTheDocument();
+    const actions = screen.getByTestId('merge-card-actions');
+    const actionButtons = Array.from(actions.querySelectorAll('button'));
+    expect(actionButtons.map((button) => button.dataset.testid)).toEqual([
+      'merge-later',
+      'merge-keep-separate',
+      'merge-accept',
+    ]);
+    actionButtons.forEach((button) => {
+      expect(button).toHaveClass('MuiIconButton-root');
+      expect(button).not.toHaveClass('MuiButton-contained');
+      expect(button).not.toHaveClass('MuiButton-outlined');
+    });
+    expect(
+      screen.getByTestId('merge-later').querySelector('[data-testid="SnoozeIcon"]')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId('merge-keep-separate').querySelector('[data-testid="BlockIcon"]')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId('merge-accept').querySelector('[data-testid="MergeTypeIcon"]')
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('merge-accept')).toHaveClass('MuiIconButton-colorPrimary');
     expect(screen.queryByTestId('merge-strip')).not.toBeInTheDocument();
     expect(screen.queryByTestId('merge-cycle-chip')).not.toBeInTheDocument();
   });
@@ -466,7 +488,9 @@ describe('MergeProposalCard', () => {
       );
     } finally {
       await i18n.changeLanguage(original);
-      await waitFor(() => expect(screen.getByTestId('merge-accept')).toHaveTextContent('Merge'));
+      await waitFor(() =>
+        expect(screen.getByTestId('merge-accept')).toHaveAttribute('aria-label', 'Merge')
+      );
     }
   });
 });

@@ -3052,8 +3052,9 @@ refined by U4 below.
   S3/WebDAV semantics, `incomplete` on NULL sizes, 2-point minimum, no quota/capacity.
 - **Badges:** files-surface collection markers removed; `for-nodes` remains for
   AddToCollectionMenu checkmarks, FilePropertiesDialog “Member of”, and bulk add.
-- **Merge UI:** sticky region between toolbar and list; body/footer accordion; desktop
-  hover/mobile tap detail; no active-pair cursor; two collection-card 2×2 preview panels
+- **Merge UI:** sticky region between toolbar and list; body/footer accordion with
+  icon-only Later(Snooze, gray) → Keep separate(Block, gray) → Merge(MergeType, primary)
+  actions; desktop hover/mobile tap detail; no active-pair cursor; two collection-card 2×2 preview panels
   (B absorbed → A survivor, newest-added `preview_items`, no filename labels) shared with
   the collection grid; each side CONTAINER uses the grid-view `grey.100` + divider theme
   (cells stay transparent); a shared

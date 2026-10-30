@@ -106,7 +106,7 @@ describe('admin AI i18n mirror', () => {
         'AI_ACTIVITY_HALF_LIFE_DAYS',
         'AI_USAGE_EVENT_RETENTION_DAYS',
         'ARCHIVE_RETENTION_DAYS',
-        'AI_SUGGESTION_RETENTION_DAYS',
+        'STORAGE_SUGGESTION_RETENTION_DAYS',
       ])
     );
   });

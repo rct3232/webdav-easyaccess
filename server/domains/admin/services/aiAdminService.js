@@ -11,6 +11,12 @@
  */
 
 const { AI_JOB_KIND, JOURNAL_DOMAIN, LLM_ROLE } = require('@webdav-easyaccess/shared/constants');
+const {
+  AI_ADMIN_EVOLUTION_NOT_INSTRUMENTED,
+  AI_ADMIN_FAILED_JOB_LIMIT,
+  AI_ADMIN_NOT_INSTRUMENTED,
+  AI_ADMIN_REASONS,
+} = require('@webdav-easyaccess/shared/aiAdminContract');
 const actionJournalStore = require('../../../store/actionJournalStore');
 const aiJobsStore = require('../../../store/aiJobsStore');
 const aiUsageDailyStore = require('../../../store/aiUsageDailyStore');
@@ -40,7 +46,7 @@ const {
 const REEMBED_LOCK = 'ai-reembed-launcher';
 const REEMBED_COOLDOWN_MS = 15 * 60 * 1000;
 const REEMBED_SAMPLE_SIZE = 20;
-const FAILED_JOB_LIMIT = 20;
+const FAILED_JOB_LIMIT = AI_ADMIN_FAILED_JOB_LIMIT;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Curated gate definitions: metadata only, never a value. Impact metrics are
@@ -65,12 +71,7 @@ const GATE_DEFS = Object.freeze([
   { key: 'STORAGE_SUGGESTION_RETENTION_DAYS', metric: 'not_instrumented' },
 ]);
 
-const NOT_INSTRUMENTED = Object.freeze([
-  'survival_curves',
-  'merge_accept_series',
-  'per_version_history',
-  'per_user_top_n',
-]);
+const NOT_INSTRUMENTED = AI_ADMIN_NOT_INSTRUMENTED;
 
 function serviceError(code, status, params) {
   const error = new Error(code);
@@ -225,7 +226,7 @@ function createAiAdminService(overrides = {}) {
     if (!modelId) {
       return {
         available: false,
-        reason: 'model_unavailable',
+        reason: AI_ADMIN_REASONS.MODEL_UNAVAILABLE,
         model_id: null,
         text: null,
         media: null,
@@ -310,13 +311,13 @@ function createAiAdminService(overrides = {}) {
     let reason = null;
     if (!activeModelId) {
       available = false;
-      reason = 'model_unavailable';
+      reason = AI_ADMIN_REASONS.MODEL_UNAVAILABLE;
     } else if (cooldown > 0) {
       available = false;
-      reason = 'cooldown';
+      reason = AI_ADMIN_REASONS.COOLDOWN;
     } else if (activeJobs > 0) {
       available = false;
-      reason = 'active_run';
+      reason = AI_ADMIN_REASONS.ACTIVE_RUN;
     }
     return {
       available,
@@ -411,7 +412,7 @@ function createAiAdminService(overrides = {}) {
       evolution: {
         latest_night_eval: nextNightEval,
         pending_merge_suggestions: (merges || []).length,
-        not_instrumented: ['survival_curves', 'merge_accept_series', 'per_version_history'],
+        not_instrumented: [...AI_ADMIN_EVOLUTION_NOT_INSTRUMENTED],
       },
       models: {
         roles: models.roles,

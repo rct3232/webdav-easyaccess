@@ -17,6 +17,10 @@ const llmModelsStore = require('../../../../store/llmModelsStore');
 const { setSharedResolver } = require('../../../../infrastructure/configResolver');
 const { errorHandler } = require('../../../../utils/errorHandler');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
+const {
+  validateAiAdminPreview,
+  validateAiAdminSummary,
+} = require('@webdav-easyaccess/shared/aiAdminContract');
 
 let app;
 let dbCleanup;
@@ -92,12 +96,17 @@ describe('admin AI routes', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
+    expect(validateAiAdminSummary(res.body)).toEqual([]);
     expect(res.body.pipeline.failed_jobs_display_only).toBe(true);
     expect(res.body.pipeline.breaker_states).toEqual({
       instrumented: false,
       reason: 'active_observation_required',
     });
-    expect(res.body.coverage).toMatchObject({ available: false, model_id: null });
+    expect(res.body.coverage).toMatchObject({
+      available: false,
+      reason: 'model_unavailable',
+      model_id: null,
+    });
     expect(res.body.launcher.available).toBe(false);
     expect(res.body.launcher.reason).toBe('model_unavailable');
     expect(res.body.not_instrumented).toEqual(
@@ -109,6 +118,19 @@ describe('admin AI routes', () => {
       ])
     );
     expect(res.body.gates.kill_switches.length).toBeGreaterThan(0);
+
+    const preview = await request(app)
+      .get('/api/admin/ai/reembed/preview')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(preview.status).toBe(200);
+    expect(validateAiAdminPreview(preview.body)).toEqual([]);
+    expect(preview.body).toMatchObject({
+      available: false,
+      reason: 'model_unavailable',
+      model_id: null,
+      coverage: { text: null, media: null },
+    });
+    expect(preview.body.plan).toEqual({ text_count: 0, media_count: 0, union_count: 0 });
   });
 
   it('preview reports the deterministic plan and launch returns 429 params on the next call', async () => {
@@ -119,6 +141,7 @@ describe('admin AI routes', () => {
       .get('/api/admin/ai/reembed/preview')
       .set('Authorization', `Bearer ${adminToken}`);
     expect(preview.status).toBe(200);
+    expect(validateAiAdminPreview(preview.body)).toEqual([]);
     expect(preview.body.plan.union_count).toBeGreaterThanOrEqual(1);
     expect(preview.body.retry_after_seconds).toBe(0);
 

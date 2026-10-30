@@ -13,6 +13,7 @@ export function useAiAdminPanel({ service = adminService, pollMs = DEFAULT_POLL_
   const [summary, setSummary] = useState(null);
   const [preview, setPreview] = useState(null);
   const [journal, setJournal] = useState([]);
+  const [journalError, setJournalError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [busyKey, setBusyKey] = useState(null);
@@ -39,13 +40,19 @@ export function useAiAdminPanel({ service = adminService, pollMs = DEFAULT_POLL_
   }, [service]);
 
   const refreshJournal = useCallback(async () => {
-    if (journalInFlightRef.current) return;
+    if (journalInFlightRef.current) return [];
     journalInFlightRef.current = true;
     try {
       const data = await service.getSettingsJournal();
-      if (mountedRef.current) setJournal(Array.isArray(data?.actions) ? data.actions : []);
+      const actions = Array.isArray(data?.actions) ? data.actions : [];
+      if (mountedRef.current) {
+        setJournal(actions);
+        setJournalError(null);
+      }
+      return actions;
     } catch (err) {
-      if (mountedRef.current) setError(err);
+      if (mountedRef.current) setJournalError(err);
+      return [];
     } finally {
       journalInFlightRef.current = false;
     }
@@ -143,6 +150,7 @@ export function useAiAdminPanel({ service = adminService, pollMs = DEFAULT_POLL_
     summary,
     preview,
     journal,
+    journalError,
     loading,
     error,
     busyKey,

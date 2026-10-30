@@ -54,6 +54,14 @@ Admin reports repair codes (`docs/spec/server/routes/admin.md` §2.2.6 — exten
 
 AI admin launcher codes (`docs/spec/server/routes/admin.md` §2.2.7 — same `admin` domain): `admin.reembedRateLimited` (429, `params: { retry_after_seconds }`), `admin.reembedAlreadyActive` (409 — the previous launch still has pending/running ids), and `admin.reembedModelUnavailable` (409 — no active embed model). The shared error envelope is unchanged; routes that map bare-string service errors MUST re-attach `params` because `mapServiceError` drops them.
 
+**AI admin contract manifest:** `shared/aiAdminContract.js` is the single field inventory for
+`GET /api/admin/ai/summary` and `/api/admin/ai/reembed/preview` (nested type schema,
+`not_instrumented` v1 lists, launcher/coverage reason tokens, failed-job limit 20, impact
+metrics). `shared/fixtures/aiAdminPanel.fixture.js` is the sentinel payload used by the
+server shape/route tests, the client render matrix, MSW and the i18n mirror test. Adding or
+renaming a summary/preview field means updating the manifest + fixture and both sides'
+tests in the same change. Response fields remain snake_case.
+
 **Wire casing:** new admin AI endpoints return snake_case response fields (`node_id`, `last_error`, `retry_after_seconds`, `action_id`) while request bodies stay camelCase. Existing endpoints keep their current shape.
 
 ---

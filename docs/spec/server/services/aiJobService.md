@@ -329,7 +329,8 @@ role, calls, input_chars, cached, degraded, failed_429)` PK `(day,role)`); this 
 - `truncated` (overlength ladder entered — `ai_enrichments.truncated`, embed `source` column
   for the vector side) and `degraded` (length-class halving active for the model,
   propagated from llmAdapter's limiter event) are persisted with the RESULT rows so the
-  the admin degraded-input histogram and per-role ledger can be rebuilt from DB alone.
+  per-role cost ledger (`ai_usage_daily.degraded`) can be rebuilt from DB alone. The
+  v1 admin panel surfaces that per-role counter; it does not render a histogram block.
 - A role hitting its daily cap pauses that KIND's execution (jobs park — §2.3); the
   admin pipeline card shows `queue depth, 24h fail/429 rates, breaker states` from
   `countByStatus`/`listFailed` + `ai_usage_daily`.

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Box, CardMedia } from '@mui/material';
+import { Box } from '@mui/material';
 import { Collections as CollectionsIcon } from '@mui/icons-material';
-import { getFileIcon } from '../../utils/fileIconUtils';
+import PreviewTile from './PreviewTile';
 
 /**
  * CollectionPreviewGrid — the shared 2×2 collection-card media preview.
@@ -24,16 +24,6 @@ const previewGridStyles = {
   p: 0.5,
 };
 
-const previewCellStyles = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  minWidth: 0,
-  minHeight: 0,
-  overflow: 'hidden',
-  '& .MuiSvgIcon-root': { fontSize: 28, color: 'text.secondary' },
-};
-
 const CollectionPreviewGrid = ({
   items = [],
   thumbnailMap = null,
@@ -52,6 +42,10 @@ const CollectionPreviewGrid = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          bgcolor: 'grey.100',
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: 1,
         }}
       >
         <CollectionsIcon fontSize="large" color="action" />
@@ -61,28 +55,14 @@ const CollectionPreviewGrid = ({
 
   return (
     <Box sx={previewGridStyles}>
-      {previews.map((item) => {
-        const thumbnailUrl = thumbnailMap?.get(item.node_id);
-        return (
-          <Box
-            key={item.node_id}
-            data-file-node-id={item.node_id}
-            data-testid={`${testIdPrefix}-${item.node_id}`}
-            sx={previewCellStyles}
-          >
-            {thumbnailUrl ? (
-              <CardMedia
-                component="img"
-                image={thumbnailUrl}
-                alt={item.name ?? ''}
-                sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              />
-            ) : (
-              getFileIcon({ type: item.type, mime: item.mime ?? undefined, basename: item.name })
-            )}
-          </Box>
-        );
-      })}
+      {previews.map((item) => (
+        <PreviewTile
+          key={item.node_id}
+          item={item}
+          thumbnailMap={thumbnailMap}
+          testId={`${testIdPrefix}-${item.node_id}`}
+        />
+      ))}
     </Box>
   );
 };

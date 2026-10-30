@@ -1309,15 +1309,30 @@ test('E2E-S3-COLLECTION-021: the merge proposal card expands the pending accordi
   await seedMergeSuggestion(aId, bId, 900);
 
   // Second pending pair — the NEVER-STACKED rule: two rows still render ONE
-  // card; the centered footer expands the remaining score-desc rows.
+  // card; the centered footer expands the remaining score-desc rows. C/D is
+  // the visual count fixture (10 shared + one unique each): its detail shows
+  // 4 preview cells per side and a three-tile shared strip with "+7".
   const other = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
-  const otherShared = await seedFile(request, other.token, other.base, testInfo, 'merge2-shared');
+  const otherShared = [];
+  for (let i = 0; i < 10; i += 1) {
+    otherShared.push(
+      await seedFile(request, other.token, other.base, testInfo, `merge2-shared-${i}`)
+    );
+  }
+  const otherOnlyC = await seedFile(request, other.token, other.base, testInfo, 'merge2-only-c');
+  const otherOnlyD = await seedFile(request, other.token, other.base, testInfo, 'merge2-only-d');
   const nameC = buildName(testInfo, 'merge-c');
   const nameD = buildName(testInfo, 'merge-d');
   const cId = await createCollectionApi(request, other.token, nameC);
   const dId = await createCollectionApi(request, other.token, nameD);
-  await addItemsApi(request, other.token, cId, [otherShared.nodeId]);
-  await addItemsApi(request, other.token, dId, [otherShared.nodeId]);
+  await addItemsApi(request, other.token, cId, [
+    ...otherShared.map((file) => file.nodeId),
+    otherOnlyC.nodeId,
+  ]);
+  await addItemsApi(request, other.token, dId, [
+    ...otherShared.map((file) => file.nodeId),
+    otherOnlyD.nodeId,
+  ]);
   await seedMergeSuggestion(cId, dId, 700);
 
   await page.goto('/files/__collections__');

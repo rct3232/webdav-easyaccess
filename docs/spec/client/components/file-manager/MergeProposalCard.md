@@ -89,14 +89,26 @@ selection callbacks.
     The previews match the collection list cards: up to 4 newest-added members, newest-first,
     **NO filename labels**, thumbnail when `thumbnailMap` has the node id, otherwise the
     same `getFileIcon(type, mime, name)` icon as the card, and the Collections glyph fallback
-    when a side has no preview items. Unique/shared comparison tiles are retired from the
-    detail; shared members remain represented by the reason/counts sentence. Mobile keeps
-    the same horizontal B → A direction.
-- Bottom one-line reason (`merge-detail-reason`, single line with ellipsis): use
-  `recommendation.reason` verbatim when present (arbiter band only), else the deterministic
-  counts sentence from `overlap_count`/`merged_count` (`fileManager.mergeReason`, e.g.
-  `41 of 58 files are shared; merging keeps them in one collection.`). No LLM call ever
-  generates this sentence.
+    when a side has no preview items. Each preview cell uses the grid-view media theme:
+    `grey.100` background, `divider` 1px border, and the theme radius. Unique/shared
+    comparison tiles are retired from the detail. Mobile keeps the same horizontal B → A
+    direction.
+- Bottom footer (`merge-detail-footer`): a shared-file strip followed by the one-line reason
+  (`merge-detail-reason`).
+  - Shared strip (`merge-detail-shared-strip`): up to **3** shared-file tiles from
+    `overlap_sample` (`merge-shared-<node_id>`), each a 24×24 mini tile with the same
+    grid-view theme; when `overlap_count` exceeds the shown tiles, a `+N` caption
+    (`merge-shared-more`) uses the TOTAL `overlap_count` (e.g. 7 shared → 3 tiles + `+4`,
+    10 shared → 3 tiles + `+7`). No filenames are rendered on the mini tiles; thumbnails
+    come from `thumbnailMap` with the generic file icon fallback.
+  - Desktop: `[shared strip] [reason]` in one row, reason left-aligned with ellipsis.
+  - Mobile: two rows — shared strip first, reason below.
+  - No shared files ⇒ no strip; the reason keeps the row/full width.
+  - Reason copy uses `recommendation.reason` verbatim when present (arbiter band only), else
+    the deterministic counts sentence from `overlap_count`/`merged_count`
+    (`fileManager.mergeReason`, e.g.
+    `41 of 58 files are shared; merging keeps them in one collection.`). No LLM call ever
+    generates this sentence.
 - The panel contains a close control only. It has NO action buttons: `Merge` / `Keep
 separate` / `Later` live on every item and dispatch that item's id with the same `onAction`
   contract.
@@ -134,7 +146,8 @@ separate` / `Later` live on every item and dispatch that item's id with the same
   `fileManager.mergeKeepSeparate` (`Keep separate`), `fileManager.mergeLater` (`Later`),
   `fileManager.mergeReason` (deterministic counts sentence), `fileManager.mergeDetailsAria`
   (body/row keyboard label), `fileManager.mergePreview` (A/B preview group aria labels only),
-  `fileManager.mergeClose` (panel close aria)
+  `fileManager.mergeSharedFiles` (shared strip aria label), `fileManager.mergeClose` (panel
+  close aria)
 
 ### 2.10 Verification Scenarios
 
@@ -156,15 +169,20 @@ separate` / `Later` live on every item and dispatch that item's id with the same
       It shows only the title, then horizontal B-preview → arrow → A-preview 2×2 grids,
       then a bottom one-line reason; `recommendation.reason` wins when present, otherwise
       the deterministic counts sentence.
+- [ ] Detail footer shows at most 3 shared tiles plus `+N` from `overlap_count` (desktop
+      same row as the reason, mobile two rows); no strip when the pair has no shared files.
 - [ ] Detail has no action buttons; the row's own actions remain clickable while it is open.
-- [ ] `onRequestThumbnails` fires with the A/B `preview_items` node ids when a detail opens.
+- [ ] `onRequestThumbnails` fires with the A/B `preview_items` and shared `overlap_sample`
+      node ids when a detail opens.
 - [ ] E2E/BDD selector anchors (`data-testid`): `merge-proposal-card`, `merge-card-body`,
       `merge-card-actions`, `merge-more-toggle`, `merge-suggestion-list`,
       `merge-suggestion-row-<suggestion_id>`, `merge-detail-panel`, `merge-detail-title`,
       `merge-detail-tiles`, `merge-detail-preview-a`, `merge-detail-preview-b`,
-      `merge-detail-arrow`, `merge-detail-reason`, `merge-detail-close`,
+      `merge-detail-arrow`, `merge-detail-footer`, `merge-detail-shared-strip`,
+      `merge-detail-reason`, `merge-detail-close`,
       `merge-preview-a-<node_id>`, `merge-preview-b-<node_id>`,
       `merge-preview-a-empty`, `merge-preview-b-empty`,
+      `merge-shared-<node_id>`, `merge-shared-more`,
       `merge-accept`, `merge-keep-separate`, `merge-later`,
       `merge-row-accept-<suggestion_id>`, `merge-row-keep-separate-<suggestion_id>`,
       `merge-row-later-<suggestion_id>`.

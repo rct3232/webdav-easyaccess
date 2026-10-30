@@ -267,6 +267,7 @@
     "mergeDetailsAria": "Show merge details",
 
     "mergePreview": "Preview of \"{{name}}\"",
+    "mergeSharedFiles": "Shared files",
     "mergeClose": "Close merge details",
     "digestLine": "+{{added}} / -{{removed}}",
     "digestExpand": "expand",

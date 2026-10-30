@@ -267,6 +267,7 @@
     "mergeDetailsAria": "병합 상세 보기",
 
     "mergePreview": "\"{{name}}\" 미리보기",
+    "mergeSharedFiles": "공유 파일",
     "mergeClose": "병합 상세 닫기",
     "digestLine": "+{{added}} / -{{removed}}",
     "digestExpand": "베치기",

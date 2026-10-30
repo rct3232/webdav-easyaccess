@@ -213,9 +213,64 @@ describe('MergeProposalCard', () => {
     // Collection-card previews never render member filename labels.
     expect(within(panel).queryByText('seville.jpg')).not.toBeInTheDocument();
     expect(within(panel).queryByText('beach.jpg')).not.toBeInTheDocument();
+    const sharedStrip = within(panel).getByTestId('merge-detail-shared-strip');
+    expect(within(sharedStrip).getByTestId('merge-shared-101')).toBeInTheDocument();
+    expect(within(sharedStrip).getByTestId('merge-shared-102')).toBeInTheDocument();
+    expect(within(sharedStrip).getByTestId('merge-shared-more')).toHaveTextContent('+39');
     expect(within(panel).getByTestId('merge-detail-reason')).toHaveTextContent(
       '41 of 58 files are shared; merging keeps them in one collection.'
     );
+  });
+
+  it('caps the shared strip at three tiles and shows +N from the total overlap count', () => {
+    render({
+      suggestions: [
+        suggestion({
+          overlap_count: 7,
+          merged_count: 8,
+          overlap_sample: [101, 102, 103, 104, 105, 106, 107].map((id) => ({
+            a_node_id: id,
+            b_node_id: id,
+          })),
+        }),
+      ],
+    });
+    const panel = hoverOpen();
+    const strip = within(panel).getByTestId('merge-detail-shared-strip');
+    [101, 102, 103].forEach((id) => {
+      expect(within(strip).getByTestId(`merge-shared-${id}`)).toBeInTheDocument();
+    });
+    expect(within(strip).queryByTestId('merge-shared-104')).not.toBeInTheDocument();
+    expect(within(strip).getByTestId('merge-shared-more')).toHaveTextContent('+4');
+  });
+
+  it('shows all shared tiles without +N when the overlap count fits', () => {
+    render({
+      suggestions: [
+        suggestion({
+          overlap_count: 2,
+          merged_count: 3,
+          overlap_sample: [
+            { a_node_id: 101, b_node_id: 101 },
+            { a_node_id: 102, b_node_id: 102 },
+          ],
+        }),
+      ],
+    });
+    const panel = hoverOpen();
+    const strip = within(panel).getByTestId('merge-detail-shared-strip');
+    expect(within(strip).getByTestId('merge-shared-101')).toBeInTheDocument();
+    expect(within(strip).getByTestId('merge-shared-102')).toBeInTheDocument();
+    expect(within(strip).queryByTestId('merge-shared-more')).not.toBeInTheDocument();
+  });
+
+  it('omits the shared strip when the pair has no shared files', () => {
+    render({
+      suggestions: [suggestion({ overlap_count: 0, merged_count: 2, overlap_sample: [] })],
+    });
+    const panel = hoverOpen();
+    expect(within(panel).queryByTestId('merge-detail-shared-strip')).not.toBeInTheDocument();
+    expect(within(panel).getByTestId('merge-detail-reason')).toBeInTheDocument();
   });
 
   it('uses recommendation.reason verbatim when the arbiter supplied one', () => {
@@ -318,7 +373,7 @@ describe('MergeProposalCard', () => {
     render({ onRequestThumbnails });
     expect(onRequestThumbnails).not.toHaveBeenCalled();
     hoverOpen();
-    expect(onRequestThumbnails).toHaveBeenCalledWith([110, 220]);
+    expect(onRequestThumbnails).toHaveBeenCalledWith([110, 220, 101, 102]);
   });
 
   it('renders host thumbnailMap URLs where loaded and file-type icons where not (zero fabrication)', () => {

@@ -18,6 +18,7 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useResponsive } from '../../hooks/useResponsive';
 import { koObjectParticle, koWithParticle } from '../../utils/koParticleUtils';
 import CollectionPreviewGrid from './CollectionPreviewGrid';
+import PreviewTile from './PreviewTile';
 
 const HOVER_OPEN_DELAY_MS = 200;
 const HOVER_CLOSE_GRACE_MS = 300;
@@ -167,6 +168,10 @@ const MergeProposalCard = ({
     const ids = [];
     (detailSuggestion.a_preview_items ?? []).forEach((row) => ids.push(row.node_id));
     (detailSuggestion.b_preview_items ?? []).forEach((row) => ids.push(row.node_id));
+    (detailSuggestion.overlap_sample ?? []).forEach((pair) => {
+      const nodeId = pair.a_node_id ?? pair.b_node_id;
+      if (nodeId != null) ids.push(nodeId);
+    });
     return [...new Set(ids.filter((id) => id != null))];
   }, [detailSuggestion]);
 
@@ -228,6 +233,54 @@ const MergeProposalCard = ({
   };
 
   if (!topSuggestion) return null;
+
+  const renderSharedStrip = (suggestion) => {
+    const sharedIds = [];
+    (suggestion.overlap_sample ?? []).forEach((pair) => {
+      const nodeId = pair.a_node_id ?? pair.b_node_id;
+      if (nodeId != null && !sharedIds.includes(nodeId)) sharedIds.push(nodeId);
+    });
+    const shownIds = sharedIds.slice(0, 3);
+    const remaining = Math.max(0, (suggestion.overlap_count ?? 0) - shownIds.length);
+    if (shownIds.length === 0 && remaining === 0) return null;
+    return (
+      <Box
+        data-testid="merge-detail-shared-strip"
+        aria-label={t('fileManager.mergeSharedFiles')}
+        sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}
+      >
+        {shownIds.map((nodeId) => (
+          <PreviewTile
+            key={nodeId}
+            item={{ node_id: nodeId }}
+            thumbnailMap={thumbnailMap}
+            testId={`merge-shared-${nodeId}`}
+            iconFontSize={14}
+            sx={{ width: 24, height: 24, borderRadius: 0.5, flexShrink: 0 }}
+          />
+        ))}
+        {remaining > 0 ? (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            data-testid="merge-shared-more"
+            sx={{
+              ml: 0.25,
+              px: 0.5,
+              py: 0.25,
+              borderRadius: 0.5,
+              bgcolor: 'action.hover',
+              fontWeight: 600,
+              lineHeight: 1.2,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            +{remaining}
+          </Typography>
+        ) : null}
+      </Box>
+    );
+  };
 
   const renderDetail = (suggestion) => (
     <Paper
@@ -314,22 +367,37 @@ const MergeProposalCard = ({
         </Box>
       </Box>
 
-      <Typography
-        variant="body2"
-        color="text.secondary"
-        data-testid="merge-detail-reason"
-        title={reasonFor(suggestion)}
+      <Box
+        data-testid="merge-detail-footer"
         sx={{
-          display: 'block',
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          alignItems: { xs: 'flex-start', sm: 'center' },
+          gap: { xs: 0.75, sm: 1 },
           mt: 1.5,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          textAlign: 'center',
         }}
       >
-        {reasonFor(suggestion)}
-      </Typography>
+        {renderSharedStrip(suggestion)}
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          data-testid="merge-detail-reason"
+          title={reasonFor(suggestion)}
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            maxWidth: '100%',
+            alignSelf: { xs: 'stretch', sm: 'auto' },
+            display: 'block',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            textAlign: 'left',
+          }}
+        >
+          {reasonFor(suggestion)}
+        </Typography>
+      </Box>
     </Paper>
   );
 

@@ -915,31 +915,17 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
   );
 
   // -- T3.1 merge-proposal card slot (FileManager.md merge slot) ----------
-  // ONE card over the score-desc pending set; the `+N more` chip cycles a
-  // shell-owned cursor, resolution (Later/Keep separate) rides the hook's
-  // refresh, merge rides the existing onUndoable seam. Strip thumbnails reuse
-  // the SAME preview-thumbnail cache the collections grid batches into — the
-  // card itself stays IO-free (MergeProposalCard.md §2.7).
-  const [mergeCursor, setMergeCursor] = useState(0);
+  // ONE card over the score-desc pending set. There is NO shell cursor and NO
+  // key remount: the card receives the full set, its body is suggestions[0],
+  // and resolving an action promotes the next row on the hook's refresh. Detail
+  // thumbnails reuse the SAME preview-thumbnail cache the collections grid
+  // batches into — the card itself stays IO-free (MergeProposalCard.md §2.8).
   const {
     suggestions: mergePending,
     mergePair,
     dismissMergeSuggestion,
     rejectMergeSuggestion,
   } = collectionsApi;
-  const suggestionsLength = mergePending.length;
-  const handleMergeCycle = useCallback(() => {
-    setMergeCursor((cursor) => {
-      if (suggestionsLength === 0) return 0;
-      return (Math.min(cursor, suggestionsLength - 1) + 1) % suggestionsLength;
-    });
-  }, [suggestionsLength]);
-
-  useEffect(() => {
-    // the pending set emptied (resolved/merged elsewhere): park the cursor so
-    // the NEXT suggestion wave starts on its top-scored pair
-    if (suggestionsLength === 0) setMergeCursor(0);
-  }, [suggestionsLength]);
 
   const handleMergeSampleThumbnails = useCallback(
     (nodeIds) => {
@@ -953,39 +939,41 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
           if (thumbnailMap.size > 0) handlePreviewThumbnailsLoaded(thumbnailMap);
         })
         .catch(() => {
-          // cosmetic failure — strip tiles stay placeholders (zero fabrication)
+          // cosmetic failure — detail tiles stay placeholders (zero fabrication)
         });
     },
     [handlePreviewThumbnailsLoaded]
   );
 
+  // The card dispatches (suggestionId, action); the shell resolves the row's
+  // pair ids and maps merge/keep-separate/later onto the existing mutations.
+  const handleMergeAction = useCallback(
+    (suggestionId, action) => {
+      const suggestion = mergePending.find((row) => row.suggestion_id === suggestionId);
+      if (!suggestion) return;
+      const { a_id: survivorId, b_id: absorbedId } = suggestion;
+      if (action === 'merge') {
+        mergePair(survivorId, absorbedId);
+      } else if (action === 'keep-separate') {
+        rejectMergeSuggestion(survivorId, absorbedId);
+      } else if (action === 'later') {
+        dismissMergeSuggestion(survivorId, absorbedId);
+      }
+    },
+    [mergePending, mergePair, rejectMergeSuggestion, dismissMergeSuggestion]
+  );
+
   const mergeSlotNode = useMemo(() => {
     if (mergePending.length === 0) return null;
-    const current = mergePending[Math.min(mergeCursor, mergePending.length - 1)];
-    if (!current) return null;
     return (
       <MergeProposalCard
-        key={current.suggestion_id}
-        suggestion={current}
-        remainingCount={mergePending.length - 1}
-        onCycle={handleMergeCycle}
-        onMerge={(aId, bId) => mergePair(aId, bId)}
-        onKeepSeparate={(aId, bId) => rejectMergeSuggestion(aId, bId)}
-        onLater={(aId, bId) => dismissMergeSuggestion(aId, bId)}
+        suggestions={mergePending}
+        onAction={handleMergeAction}
         thumbnailMap={previewThumbnails}
         onRequestThumbnails={handleMergeSampleThumbnails}
       />
     );
-  }, [
-    mergePending,
-    mergePair,
-    rejectMergeSuggestion,
-    dismissMergeSuggestion,
-    mergeCursor,
-    handleMergeCycle,
-    handleMergeSampleThumbnails,
-    previewThumbnails,
-  ]);
+  }, [mergePending, handleMergeAction, handleMergeSampleThumbnails, previewThumbnails]);
 
   // Card selection uses synthetic path keys (getCollectionEntryKey) in the
   // page-level selection Set — no collision with numeric file nodeIds. The

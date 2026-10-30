@@ -188,14 +188,16 @@ factor is a release constant.
 
 Detection runs nightly or on pair signals: centroid similarity as a prefilter, then the
 containment-safe set rule over materialized membership (LLM-free, same pipeline). Proposals live at the object, never in an inbox: one
-card atop the collection list, never stacked (an `+N more` chip cycles; zero pending = zero layout
-footprint), collapsed to a 68px line —
-`"Merge "A" into "B"? · N overlapping files · M after merge"` — with a thumbnail strip that
-expands into a two-column compare overlay. `Merge` executes immediately — **the card is the
-confirmation** — with an undo toast; `Keep separate` suppresses the pair permanently; `Later`
-re-raises once after two weeks, then sleeps 30 days; no sidebar/tree badges. The
-survivor keeps its chosen name unless locked; an arbiter verdict may pre-select the card (§4.19),
-but the user decides.
+sticky card between the collections toolbar and the list, never stacked (zero pending = zero
+layout footprint). The card body is the top pair —
+`"Merge "A" into "B"? · N overlapping files · M after merge"`; a centered footer text expands
+the remaining pending pairs in an accordion. Desktop hover / mobile tap opens a non-modal detail
+panel (no backdrop): title, large sample tiles B(absorbed) → shared → A(survivor), and a bottom
+one-line reason — the arbiter's reason when present, otherwise a deterministic counts sentence.
+`Merge` executes immediately — **the card is the confirmation** — with an undo toast;
+`Keep separate` suppresses the pair permanently; `Later` re-raises once after two weeks, then
+sleeps 30 days; no sidebar/tree badges. The survivor keeps its chosen name unless locked; an
+arbiter reason may prefill the detail panel (§4.19), but the user decides.
 
 ### 4.5 Seed collection
 
@@ -436,8 +438,8 @@ sentences, why-together, reranking, taxonomy mining, or definition tuning). Role
   rules cannot rank; without chat, a heuristic keep; pre-fills §4.17 rows — accept stays
   user-clicked.
 - **Merge arbiter** — the 0.55–0.7 review band of §4.9 only, recommending merge / keep-separate /
-  sibling as a pre-selection on the §4.4 card; **it advises, never acts**. Its prompt must carry
-  the **symmetric difference** (unique-member counts and per-side samples).
+  sibling as the prefilled reason in the §4.4 card's detail panel; **it advises, never acts**. Its
+  prompt must carry the **symmetric difference** (unique-member counts and per-side samples).
 
 All roles take aggregate inputs only, return schema-checked JSON committed by service code, journal
 their verdicts, and keep a rule fallback (guaranteeing the no-LLM column). **Reasoning defaults off

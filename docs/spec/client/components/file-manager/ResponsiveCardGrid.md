@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item               | Description                                                                                                                                                                                                                                                            |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role               | Shared responsive card-grid container extracted from `FileGrid` (§2.6 layout) — the single grid surface used by the file grid and the collections list cards. Renders full-width span children (cluster headers, merge slot, load-more sentinel) alongside card cells. |
-| Used in            | FileGrid, CollectionsListView (list mode)                                                                                                                                                                                                                              |
-| Related components | FileGridItem, CollectionCardItem, CardTile                                                                                                                                                                                                                             |
+| Item               | Description                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role               | Shared responsive card-grid container extracted from `FileGrid` (§2.6 layout) — the single grid surface used by the file grid and the collections list cards. Renders full-width span children (cluster headers, load-more sentinel) alongside card cells. The merge proposal slot is NOT a grid child — `CollectionsListView` hosts it in a sticky wrapper above the grid. |
+| Used in            | FileGrid, CollectionsListView (list mode)                                                                                                                                                                                                                                                                                                                                   |
+| Related components | FileGridItem, CollectionCardItem, CardTile                                                                                                                                                                                                                                                                                                                                  |
 
 ---
 
@@ -21,8 +21,9 @@
 
 - `ResponsiveCardGrid` (default export): the grid container `Box`.
 - `CardGridSpan` (named export): a full-width child (`gridColumn: '1 / -1'`) for rows that must
-  break the column flow — cluster group headers, the merge-card slot, the load-more sentinel.
-  Forwards a `ref` (FileGrid passes its `loadMoreRef`).
+  break the column flow — cluster group headers and the load-more sentinel. Forwards a `ref`
+  (FileGrid passes its `loadMoreRef`). The merge proposal slot is hosted outside this grid
+  (sticky wrapper above it), never as a span child.
 
 ### 2.3 Props
 
@@ -46,8 +47,9 @@
 - Pure layout: no data logic, no IO, no callbacks. Children are host-provided nodes.
 - Extracting it must not change FileGrid's rendered DOM (regression anchor:
   `FileGrid.test.js` passes UNCHANGED).
-- Full-width children contract: cluster headers, the merge-card slot and the load-more sentinel
-  render as `CardGridSpan` children — the container itself adds no extra wrappers.
+- Full-width children contract: cluster headers and the load-more sentinel render as
+  `CardGridSpan` children — the container itself adds no extra wrappers. The merge proposal
+  slot stays outside the grid in its sticky wrapper.
 
 ### 2.6 Verification Scenarios
 

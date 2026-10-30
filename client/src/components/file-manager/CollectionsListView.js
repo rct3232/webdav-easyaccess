@@ -338,11 +338,30 @@ const CollectionsListView = ({
         onClick={() => onPseudoTileNavigate?.('/__collections__/__archive__')}
       />
     );
+    // Merge region (CollectionsListView.md §2.4): the card stays BETWEEN the
+    // toolbar and the list, pinned to the top of the scroll container. It is a
+    // sticky wrapper in normal flow — never a grid child — so accordion
+    // expansion pushes the collection cards down while scrolling content
+    // passes underneath its opaque background.
+    const mergeRegion = mergeSlot ? (
+      <Box
+        data-testid="merge-proposal-slot"
+        sx={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 5,
+          bgcolor: 'background.paper',
+          pb: 1.5,
+        }}
+      >
+        {mergeSlot}
+      </Box>
+    ) : null;
     return (
       <Box data-testid="collections-list-region">
+        {mergeRegion}
         {visible.length === 0 ? (
           <>
-            {mergeSlot}
             <ResponsiveCardGrid>
               {likedTile}
               {archiveTile}
@@ -358,7 +377,6 @@ const CollectionsListView = ({
         ) : (
           <ResponsiveCardGrid>
             {likedTile}
-            {mergeSlot && <CardGridSpan>{mergeSlot}</CardGridSpan>}
             {visible.map((collection, index) => {
               const showClusterHeader =
                 sort === 'similar' &&

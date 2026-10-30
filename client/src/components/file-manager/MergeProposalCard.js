@@ -1,327 +1,697 @@
 /**
- * MergeProposalCard — the ONLY proposal UI in the product: one card atop the
- * collection list (never stacked), 68px collapsed one-liner with the
- * overlapping-member thumbnail strip that expands into a REAL two-column
- * compare overlay (≤300px, rendered over the list — the list never shifts).
- * `Merge` executes immediately: THE CARD IS THE CONFIRMATION (no dialog).
- * `+N more` cycles the pending set; the recommendation row is an advisory
- * prefill only (the user still presses Merge). IO-free pure view: thumbnails
- * arrive through the host `thumbnailMap`/`onRequestThumbnails` props, all
- * mutation intent rides the pair-id callbacks (MergeProposalCard.md §2.7).
+ * MergeProposalCard — the ONLY proposal UI in the product: one sticky card
+ * between the collections toolbar and the list. The body presents the top
+ * score-desc pending pair; a centered footer text expands the remaining pairs
+ * in an accordion; desktop hover / mobile tap opens a NON-MODAL detail panel
+ * with the real sample tiles (B absorbed → shared → A survivor) and a
+ * one-line reason. `Merge` executes immediately: THE CARD IS THE CONFIRMATION
+ * (no dialog). IO-free pure view: thumbnails arrive through the host
+ * `thumbnailMap`/`onRequestThumbnails` props, all mutation intent rides
+ * `onAction(suggestionId, action)` (MergeProposalCard.md §2.8).
  * @see docs/spec/client/components/file-manager/MergeProposalCard.md
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Box, Button, Card, CardContent, Chip, IconButton, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  IconButton,
+  Paper,
+  Popper,
+  Typography,
+} from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
+import { useResponsive } from '../../hooks/useResponsive';
 import { koObjectParticle, koWithParticle } from '../../utils/koParticleUtils';
 
-// Collapsed grammar height (spec §2.3) and the overlay ceiling (spec §2.4).
-const CARD_MIN_HEIGHT_PX = 68;
-const OVERLAY_MAX_HEIGHT_PX = 300;
-const STRIP_TILE_PX = 36;
+const HOVER_OPEN_DELAY_MS = 200;
+const HOVER_CLOSE_GRACE_MS = 300;
+const OVERLAP_SAMPLE_CAP = 8;
+const UNIQUE_SAMPLE_CAP = 4;
 
-const stripTileSx = {
-  width: STRIP_TILE_PX,
-  height: STRIP_TILE_PX,
-  borderRadius: 1,
+const detailTileSx = {
+  width: { xs: 56, sm: 84 },
+  height: { xs: 56, sm: 84 },
+  borderRadius: 1.5,
   objectFit: 'cover',
   flexShrink: 0,
+  bgcolor: 'action.hover',
 };
 
-const placeholderTileSx = {
-  ...stripTileSx,
+const detailPlaceholderSx = {
+  ...detailTileSx,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  bgcolor: 'action.hover',
   color: 'text.disabled',
 };
 
+const focusRingSx = {
+  outline: 'none',
+  '&:focus-visible': {
+    outline: '2px solid',
+    outlineColor: 'primary.main',
+    outlineOffset: 2,
+    borderRadius: 1,
+  },
+};
+
 const MergeProposalCard = ({
-  suggestion,
-  remainingCount = 0,
-  onCycle,
-  onMerge,
-  onKeepSeparate,
-  onLater,
+  suggestions = [],
+  onAction,
   thumbnailMap = null,
   onRequestThumbnails,
 }) => {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(false);
+  const { isMobile } = useResponsive();
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [detail, setDetail] = useState(null); // { suggestionId, anchorEl }
+  const cardRef = useRef(null);
+  const panelRef = useRef(null);
+  const openTimerRef = useRef(null);
+  const closeTimerRef = useRef(null);
 
-  const overlapIds = useMemo(
-    () => (suggestion?.overlap_sample ?? []).map((pair) => pair.a_node_id),
-    [suggestion]
+  const topSuggestion = suggestions[0] ?? null;
+  const remainingSuggestions = suggestions.slice(1);
+  const detailSuggestion = useMemo(
+    () =>
+      detail
+        ? (suggestions.find((row) => row.suggestion_id === detail.suggestionId) ?? null)
+        : null,
+    [detail, suggestions]
   );
 
-  // Strip-visible effect: ask the host to batch-load the displayed sample ids
-  // (the card never performs IO itself). Re-issued when the displayed row
-  // cycles to a different pair.
-  const suggestedId = suggestion?.suggestion_id ?? null;
-  useEffect(() => {
-    if (overlapIds.length > 0 && typeof onRequestThumbnails === 'function') {
-      onRequestThumbnails(overlapIds);
+  const clearOpenTimer = useCallback(() => {
+    if (openTimerRef.current) {
+      clearTimeout(openTimerRef.current);
+      openTimerRef.current = null;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggestedId]);
+  }, []);
 
-  const toggleExpanded = useCallback(() => setExpanded((open) => !open), []);
-  const collapse = useCallback(() => setExpanded(false), []);
+  const clearCloseTimer = useCallback(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  const closeDetail = useCallback(() => {
+    clearOpenTimer();
+    clearCloseTimer();
+    setDetail(null);
+  }, [clearOpenTimer, clearCloseTimer]);
+
+  const openDetailNow = useCallback(
+    (suggestion, anchorEl) => {
+      if (!suggestion) return;
+      clearOpenTimer();
+      clearCloseTimer();
+      setDetail({
+        suggestionId: suggestion.suggestion_id,
+        anchorEl: anchorEl ?? cardRef.current,
+      });
+    },
+    [clearOpenTimer, clearCloseTimer]
+  );
+
+  // Hover intent: 200ms to open, 300ms grace before closing. The grace window
+  // lets the pointer travel from the row into the panel; panel enter cancels.
+  const scheduleOpen = useCallback(
+    (suggestion, anchorEl) => {
+      if (isMobile || !suggestion) return;
+      clearOpenTimer();
+      clearCloseTimer();
+      openTimerRef.current = setTimeout(() => {
+        openTimerRef.current = null;
+        setDetail({
+          suggestionId: suggestion.suggestion_id,
+          anchorEl: anchorEl ?? cardRef.current,
+        });
+      }, HOVER_OPEN_DELAY_MS);
+    },
+    [isMobile, clearOpenTimer, clearCloseTimer]
+  );
+
+  const scheduleClose = useCallback(() => {
+    if (isMobile) return;
+    clearOpenTimer();
+    clearCloseTimer();
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
+      setDetail(null);
+    }, HOVER_CLOSE_GRACE_MS);
+  }, [isMobile, clearOpenTimer, clearCloseTimer]);
+
+  const cancelScheduledClose = useCallback(() => {
+    clearCloseTimer();
+  }, [clearCloseTimer]);
+
+  // A resolved/removed row must not leave an orphaned panel behind.
+  useEffect(() => {
+    if (!detail) return;
+    if (!suggestions.some((row) => row.suggestion_id === detail.suggestionId)) {
+      closeDetail();
+    }
+  }, [suggestions, detail, closeDetail]);
+
+  // Collapsing the accordion closes a panel anchored to one of its rows.
+  useEffect(() => {
+    if (moreOpen || !detail) return;
+    if (detail.suggestionId !== topSuggestion?.suggestion_id) closeDetail();
+  }, [moreOpen, detail, topSuggestion, closeDetail]);
+
+  useEffect(
+    () => () => {
+      clearOpenTimer();
+      clearCloseTimer();
+    },
+    [clearOpenTimer, clearCloseTimer]
+  );
 
   useEffect(() => {
-    if (!expanded) return undefined;
+    if (!detail) return undefined;
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') collapse();
+      if (event.key === 'Escape') closeDetail();
+    };
+    const onPointerDown = (event) => {
+      const target = event.target;
+      if (panelRef.current?.contains(target)) return;
+      if (cardRef.current?.contains(target)) return;
+      closeDetail();
     };
     document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [expanded, collapse]);
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown, { passive: true });
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+    };
+  }, [detail, closeDetail]);
 
-  if (!suggestion) return null;
+  const detailSampleIds = useMemo(() => {
+    if (!detailSuggestion) return [];
+    const ids = [];
+    (detailSuggestion.overlap_sample ?? []).forEach((pair) => ids.push(pair.a_node_id));
+    (detailSuggestion.a_unique_sample ?? []).forEach((row) => ids.push(row.node_id));
+    (detailSuggestion.b_unique_sample ?? []).forEach((row) => ids.push(row.node_id));
+    return [...new Set(ids.filter((id) => id != null))];
+  }, [detailSuggestion]);
 
-  const {
-    a_id: survivorId,
-    a_name: survivorName,
-    b_id: absorbedId,
-    b_name: absorbedName,
-    overlap_count: overlapCount,
-    merged_count: mergedCount,
-    recommendation,
-    a_unique_sample: aUniqueSample = [],
-    b_unique_sample: bUniqueSample = [],
-    overlap_sample: overlapSample = [],
-  } = suggestion;
+  useEffect(() => {
+    if (detailSampleIds.length === 0 || typeof onRequestThumbnails !== 'function') return;
+    onRequestThumbnails(detailSampleIds);
+  }, [detailSampleIds, onRequestThumbnails]);
 
-  // ko particle picker (i18n.md particle rule): en templates simply do not
-  // interpolate these params.
-  const question = t('fileManager.mergeQuestion', {
-    absorbed: absorbedName,
-    survivor: survivorName,
-    pObj: koObjectParticle(absorbedName),
-    pWith: koWithParticle(survivorName),
-  });
+  const questionFor = useCallback(
+    (suggestion) =>
+      t('fileManager.mergeQuestion', {
+        absorbed: suggestion.b_name,
+        survivor: suggestion.a_name,
+        pObj: koObjectParticle(suggestion.b_name),
+        pWith: koWithParticle(suggestion.a_name),
+      }),
+    [t]
+  );
 
-  const thumbUrlOf = (nodeId) => {
-    if (!thumbnailMap || typeof thumbnailMap.get !== 'function') return null;
-    return thumbnailMap.get(nodeId) ?? thumbnailMap.get(Number(nodeId)) ?? null;
+  const countsFor = useCallback(
+    (suggestion) =>
+      `${t('fileManager.mergeOverlapCount', { count: suggestion.overlap_count })} · ${t(
+        'fileManager.mergeAfter',
+        { count: suggestion.merged_count }
+      )}`,
+    [t]
+  );
+
+  const reasonFor = useCallback(
+    (suggestion) => {
+      const arbiterReason = suggestion?.recommendation?.reason;
+      if (typeof arbiterReason === 'string' && arbiterReason.trim().length > 0) {
+        return arbiterReason;
+      }
+      return t('fileManager.mergeReason', {
+        overlap: suggestion?.overlap_count ?? 0,
+        merged: suggestion?.merged_count ?? 0,
+      });
+    },
+    [t]
+  );
+
+  const thumbUrlOf = useCallback(
+    (nodeId) => {
+      if (!thumbnailMap || typeof thumbnailMap.get !== 'function') return null;
+      return thumbnailMap.get(nodeId) ?? thumbnailMap.get(Number(nodeId)) ?? null;
+    },
+    [thumbnailMap]
+  );
+
+  const dispatchAction = useCallback(
+    (suggestion, action) => {
+      if (!suggestion) return;
+      closeDetail();
+      onAction?.(suggestion.suggestion_id, action);
+    },
+    [closeDetail, onAction]
+  );
+
+  const toggleMore = useCallback(() => setMoreOpen((open) => !open), []);
+
+  const handleDisclosureKeyDown = (event, handler) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handler();
+    }
   };
 
-  const renderTile = (pair) => {
+  const renderSharedTile = (pair) => {
     const url = thumbUrlOf(pair.a_node_id);
     if (url) {
       return (
         <Box
           component="img"
-          key={`tile-${pair.a_node_id}`}
+          key={`shared-${pair.a_node_id}`}
           data-testid={`merge-sample-tile-${pair.a_node_id}`}
           src={url}
           alt=""
-          sx={stripTileSx}
+          sx={detailTileSx}
         />
       );
     }
     // Zero fabrication: a sample without a loaded image stays a plain tile.
     return (
       <Box
-        key={`tile-${pair.a_node_id}`}
+        key={`shared-${pair.a_node_id}`}
         data-testid={`merge-sample-tile-${pair.a_node_id}`}
-        sx={placeholderTileSx}
+        sx={detailPlaceholderSx}
         aria-hidden="true"
-      />
+      >
+        <InsertDriveFileOutlinedIcon fontSize="small" />
+      </Box>
     );
   };
 
-  const renderUniqueRows = (rows, side) =>
-    rows.map((row) => (
-      <Typography
+  const renderUniqueTile = (row, side) => {
+    const url = thumbUrlOf(row.node_id);
+    return (
+      <Box
         key={`unique-${side}-${row.node_id}`}
-        variant="body2"
         data-testid={`merge-unique-${side}-${row.node_id}`}
-        sx={{
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
+        sx={{ width: { xs: 56, sm: 84 }, minWidth: 0, flexShrink: 0 }}
       >
-        {row.name}
-      </Typography>
-    ));
+        {url ? (
+          <Box component="img" src={url} alt="" sx={detailTileSx} />
+        ) : (
+          <Box sx={detailPlaceholderSx} aria-hidden="true">
+            <InsertDriveFileOutlinedIcon fontSize="small" />
+          </Box>
+        )}
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          noWrap
+          component="div"
+          sx={{ mt: 0.25 }}
+          title={row.name ?? ''}
+        >
+          {row.name}
+        </Typography>
+      </Box>
+    );
+  };
+
+  if (!topSuggestion) return null;
+
+  const topQuestion = questionFor(topSuggestion);
+  const topOpen = detail?.suggestionId === topSuggestion.suggestion_id;
 
   return (
-    <Card
-      variant="outlined"
-      data-testid="merge-proposal-card"
-      sx={{
-        minHeight: `${CARD_MIN_HEIGHT_PX}px`,
-        display: 'flex',
-        alignItems: 'center',
-        position: 'relative',
-        zIndex: (theme) => theme.zIndex.appBar,
-      }}
-    >
-      <CardContent
+    <>
+      <Card
+        ref={cardRef}
+        variant="outlined"
+        data-testid="merge-proposal-card"
+        onMouseLeave={isMobile ? undefined : scheduleClose}
         sx={{
           display: 'flex',
-          alignItems: 'center',
-          gap: 1.5,
-          width: '100%',
-          py: 1,
-          '&:last-child': { pb: 1 },
+          flexDirection: 'column',
+          position: 'relative',
+          bgcolor: 'background.paper',
         }}
       >
-        <Box sx={{ flex: '1 1 auto', minWidth: 0 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Typography variant="body2" noWrap component="span" sx={{ fontWeight: 600 }}>
-              {question}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" component="span">
-              · {t('fileManager.mergeOverlapCount', { count: overlapCount })} ·{' '}
-              {t('fileManager.mergeAfter', { count: mergedCount })}
-            </Typography>
-          </Box>
-          {recommendation ? (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              data-testid="merge-recommendation"
-              sx={{ display: 'block' }}
-            >
-              {t('fileManager.mergeRecommendation', {
-                verdict: recommendation.verdict,
-                reason: recommendation.reason ?? '',
-              })}
-            </Typography>
-          ) : null}
-        </Box>
-        <Box
-          role="button"
-          tabIndex={0}
-          aria-expanded={expanded}
-          aria-label={question}
-          data-testid="merge-strip"
-          onClick={toggleExpanded}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              toggleExpanded();
-            }
+        <CardContent
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            alignItems: { xs: 'stretch', sm: 'center' },
+            gap: 1.5,
+            width: '100%',
+            py: 1.25,
+            '&:last-child': { pb: 1.25 },
           }}
-          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', flexShrink: 0 }}
         >
-          {overlapSample.map(renderTile)}
-        </Box>
-        {remainingCount > 0 ? (
-          <Chip
-            size="small"
-            variant="outlined"
-            data-testid="merge-cycle-chip"
-            label={t('fileManager.mergeMore', { count: remainingCount })}
-            onClick={() => onCycle && onCycle()}
-          />
-        ) : null}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-          <Button
-            variant="contained"
-            size="small"
-            data-testid="merge-accept"
-            onClick={() => onMerge(survivorId, absorbedId)}
-          >
-            {t('fileManager.mergeAccept')}
-          </Button>
-          <Button
-            variant="outlined"
-            size="small"
-            data-testid="merge-keep-separate"
-            onClick={() => onKeepSeparate(survivorId, absorbedId)}
-          >
-            {t('fileManager.mergeKeepSeparate')}
-          </Button>
-          <Button
-            size="small"
-            data-testid="merge-later"
-            onClick={() => onLater(survivorId, absorbedId)}
-          >
-            {t('fileManager.mergeLater')}
-          </Button>
-        </Box>
-      </CardContent>
-
-      {expanded ? (
-        <>
           <Box
-            data-testid="merge-compare-backdrop"
-            onClick={collapse}
-            sx={{ position: 'fixed', inset: 0, zIndex: (theme) => theme.zIndex.modal - 1 }}
-          />
-          <Box
-            data-testid="merge-compare-overlay"
+            role="button"
+            tabIndex={0}
+            aria-label={t('fileManager.mergeDetailsAria')}
+            aria-expanded={topOpen}
+            aria-controls="merge-detail-panel"
+            data-testid="merge-card-body"
+            onMouseEnter={isMobile ? undefined : () => scheduleOpen(topSuggestion, cardRef.current)}
+            onClick={() => {
+              if (isMobile) openDetailNow(topSuggestion, cardRef.current);
+            }}
+            onKeyDown={(event) =>
+              handleDisclosureKeyDown(event, () => openDetailNow(topSuggestion, cardRef.current))
+            }
             sx={{
-              position: 'fixed',
-              top: 96,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: 'min(560px, calc(100vw - 32px))',
-              maxHeight: `${OVERLAY_MAX_HEIGHT_PX}px`,
-              overflow: 'auto',
-              zIndex: (theme) => theme.zIndex.modal,
+              flex: '1 1 auto',
+              minWidth: 0,
+              cursor: isMobile ? 'pointer' : 'default',
+              ...focusRingSx,
             }}
           >
-            <Card variant="elevation" elevation={8}>
-              <CardContent>
-                <Box
-                  sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-                >
-                  <Typography variant="subtitle2" data-testid="merge-compare-heading">
-                    {t('fileManager.mergeQuestion', {
-                      absorbed: absorbedName,
-                      survivor: survivorName,
-                      pObj: koObjectParticle(absorbedName),
-                      pWith: koWithParticle(survivorName),
-                    })}
-                  </Typography>
-                  <IconButton
-                    size="small"
-                    data-testid="merge-compare-close"
-                    aria-label={t('fileManager.mergeClose')}
-                    onClick={collapse}
-                  >
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
-                </Box>
-                <Typography variant="caption" color="text.secondary">
-                  {t('fileManager.mergeShared')}
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', my: 0.5 }}>
-                  {overlapSample.map(renderTile)}
-                </Box>
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="subtitle2" noWrap data-testid="merge-side-a">
-                      {survivorName}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {t('fileManager.mergeUnique', { name: survivorName })}
-                    </Typography>
-                    {renderUniqueRows(aUniqueSample, 'a')}
-                  </Box>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="subtitle2" noWrap data-testid="merge-side-b">
-                      {absorbedName}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {t('fileManager.mergeUnique', { name: absorbedName })}
-                    </Typography>
-                    {renderUniqueRows(bUniqueSample, 'b')}
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                flexWrap: 'wrap',
+                columnGap: 1,
+                rowGap: 0.25,
+              }}
+            >
+              <Typography variant="body2" component="span" sx={{ fontWeight: 600 }}>
+                {topQuestion}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" component="span">
+                · {countsFor(topSuggestion)}
+              </Typography>
+            </Box>
           </Box>
-        </>
+          <Box
+            data-testid="merge-card-actions"
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5,
+              flexShrink: 0,
+              flexWrap: 'wrap',
+              justifyContent: { xs: 'flex-start', sm: 'flex-end' },
+            }}
+          >
+            <Button
+              variant="contained"
+              size="small"
+              data-testid="merge-accept"
+              onClick={() => dispatchAction(topSuggestion, 'merge')}
+            >
+              {t('fileManager.mergeAccept')}
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              data-testid="merge-keep-separate"
+              onClick={() => dispatchAction(topSuggestion, 'keep-separate')}
+            >
+              {t('fileManager.mergeKeepSeparate')}
+            </Button>
+            <Button
+              size="small"
+              data-testid="merge-later"
+              onClick={() => dispatchAction(topSuggestion, 'later')}
+            >
+              {t('fileManager.mergeLater')}
+            </Button>
+          </Box>
+        </CardContent>
+
+        {remainingSuggestions.length > 0 ? (
+          <Box
+            role="button"
+            tabIndex={0}
+            aria-expanded={moreOpen}
+            aria-controls="merge-suggestion-list"
+            data-testid="merge-more-toggle"
+            onClick={toggleMore}
+            onKeyDown={(event) => handleDisclosureKeyDown(event, toggleMore)}
+            sx={{
+              py: 0.75,
+              px: 1.5,
+              textAlign: 'center',
+              typography: 'caption',
+              color: 'text.secondary',
+              cursor: 'pointer',
+              borderTop: 1,
+              borderColor: 'divider',
+              ...focusRingSx,
+            }}
+          >
+            {t('fileManager.mergeMore', { count: remainingSuggestions.length })}
+          </Box>
+        ) : null}
+
+        {remainingSuggestions.length > 0 && moreOpen ? (
+          <Box
+            id="merge-suggestion-list"
+            data-testid="merge-suggestion-list"
+            sx={{
+              maxHeight: '40vh',
+              overflowY: 'auto',
+              borderTop: 1,
+              borderColor: 'divider',
+            }}
+          >
+            {remainingSuggestions.map((suggestion) => {
+              const rowOpen = detail?.suggestionId === suggestion.suggestion_id;
+              return (
+                <Box
+                  key={suggestion.suggestion_id}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={rowOpen}
+                  aria-controls="merge-detail-panel"
+                  data-testid={`merge-suggestion-row-${suggestion.suggestion_id}`}
+                  onMouseEnter={
+                    isMobile ? undefined : (event) => scheduleOpen(suggestion, event.currentTarget)
+                  }
+                  onMouseLeave={isMobile ? undefined : scheduleClose}
+                  onClick={(event) => {
+                    if (isMobile) openDetailNow(suggestion, event.currentTarget);
+                  }}
+                  onKeyDown={(event) =>
+                    handleDisclosureKeyDown(event, () =>
+                      openDetailNow(suggestion, event.currentTarget)
+                    )
+                  }
+                  sx={{
+                    px: 1.5,
+                    py: 1,
+                    borderTop: 1,
+                    borderColor: 'divider',
+                    cursor: isMobile ? 'pointer' : 'default',
+                    bgcolor: rowOpen ? 'action.hover' : 'transparent',
+                    ...focusRingSx,
+                  }}
+                >
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 1, rowGap: 0.25 }}>
+                    <Typography variant="body2" component="span" sx={{ fontWeight: 600 }}>
+                      {questionFor(suggestion)}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" component="span">
+                      · {countsFor(suggestion)}
+                    </Typography>
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+        ) : null}
+      </Card>
+
+      {detailSuggestion ? (
+        <Popper
+          open
+          role="presentation"
+          anchorEl={detail?.anchorEl ?? cardRef.current}
+          placement="bottom-start"
+          modifiers={[
+            { name: 'offset', options: { offset: [0, 8] } },
+            {
+              name: 'flip',
+              enabled: true,
+              options: { fallbackPlacements: ['top-start', 'bottom-end', 'top-end'] },
+            },
+            {
+              name: 'preventOverflow',
+              enabled: true,
+              options: { altAxis: true, padding: 8 },
+            },
+          ]}
+          sx={{ zIndex: (theme) => theme.zIndex.modal - 1, maxWidth: '100vw' }}
+        >
+          <Paper
+            id="merge-detail-panel"
+            ref={panelRef}
+            elevation={8}
+            data-testid="merge-detail-panel"
+            role="region"
+            aria-label={questionFor(detailSuggestion)}
+            onMouseEnter={cancelScheduledClose}
+            onMouseLeave={isMobile ? undefined : scheduleClose}
+            sx={{
+              width: { xs: 'calc(100vw - 24px)', sm: 'min(880px, calc(100vw - 48px))' },
+              maxHeight: '70vh',
+              overflow: 'auto',
+              p: 2,
+              borderRadius: 2,
+              border: 1,
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+              <Typography
+                variant="subtitle1"
+                component="h3"
+                data-testid="merge-detail-title"
+                sx={{ flex: 1, minWidth: 0, fontWeight: 600 }}
+              >
+                {questionFor(detailSuggestion)}
+              </Typography>
+              <IconButton
+                size="small"
+                data-testid="merge-detail-close"
+                aria-label={t('fileManager.mergeClose')}
+                onClick={closeDetail}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Box>
+
+            {/* B (absorbed) unique tiles → shared tiles → A (survivor) unique
+                tiles, left-to-right. Each group is aria-labelled; the visible
+                detail keeps only the title (MergeProposalCard.md §2.5). */}
+            <Box
+              data-testid="merge-detail-tiles"
+              sx={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: { xs: 1, sm: 2 },
+                mt: 1.5,
+                width: '100%',
+              }}
+            >
+              <Box
+                data-testid="merge-detail-unique-b"
+                aria-label={t('fileManager.mergeUnique', { name: detailSuggestion.b_name })}
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 1,
+                  flex: '0 1 auto',
+                  maxWidth: '30%',
+                  alignContent: 'flex-start',
+                }}
+              >
+                {(detailSuggestion.b_unique_sample ?? [])
+                  .slice(0, UNIQUE_SAMPLE_CAP)
+                  .map((row) => renderUniqueTile(row, 'b'))}
+              </Box>
+              <Box
+                data-testid="merge-detail-shared"
+                aria-label={t('fileManager.mergeShared')}
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 1,
+                  flex: '1 1 auto',
+                  minWidth: 0,
+                  justifyContent: 'center',
+                  alignContent: 'flex-start',
+                }}
+              >
+                {(detailSuggestion.overlap_sample ?? [])
+                  .slice(0, OVERLAP_SAMPLE_CAP)
+                  .map(renderSharedTile)}
+              </Box>
+              <Box
+                data-testid="merge-detail-unique-a"
+                aria-label={t('fileManager.mergeUnique', { name: detailSuggestion.a_name })}
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 1,
+                  flex: '0 1 auto',
+                  maxWidth: '30%',
+                  alignContent: 'flex-start',
+                  justifyContent: 'flex-end',
+                }}
+              >
+                {(detailSuggestion.a_unique_sample ?? [])
+                  .slice(0, UNIQUE_SAMPLE_CAP)
+                  .map((row) => renderUniqueTile(row, 'a'))}
+              </Box>
+            </Box>
+
+            <Box
+              data-testid="merge-detail-actions"
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 0.5,
+                flexWrap: 'wrap',
+                mt: 1.5,
+              }}
+            >
+              <Button
+                variant="contained"
+                size="small"
+                data-testid="merge-detail-accept"
+                onClick={() => dispatchAction(detailSuggestion, 'merge')}
+              >
+                {t('fileManager.mergeAccept')}
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                data-testid="merge-detail-keep-separate"
+                onClick={() => dispatchAction(detailSuggestion, 'keep-separate')}
+              >
+                {t('fileManager.mergeKeepSeparate')}
+              </Button>
+              <Button
+                size="small"
+                data-testid="merge-detail-later"
+                onClick={() => dispatchAction(detailSuggestion, 'later')}
+              >
+                {t('fileManager.mergeLater')}
+              </Button>
+            </Box>
+
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              data-testid="merge-detail-reason"
+              title={reasonFor(detailSuggestion)}
+              sx={{
+                display: 'block',
+                mt: 1.5,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                textAlign: 'center',
+              }}
+            >
+              {reasonFor(detailSuggestion)}
+            </Typography>
+          </Paper>
+        </Popper>
       ) : null}
-    </Card>
+    </>
   );
 };
 

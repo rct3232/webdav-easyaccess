@@ -2127,10 +2127,11 @@ describe('FileManager', () => {
     });
 
     /**
-     * T3.1 merge-proposal card slot: the shell injects ONE card (never stacked),
-     * the `+N more` chip cycles the score-desc pending set, Merge dispatches with
-     * no extra dialog and raises the undo toast, Later/Keep separate resolve the
-     * pair through dismiss/reject — and an empty set renders NOTHING.
+     * T3.1 merge-proposal card slot: the shell injects ONE card (never stacked)
+     * with the full score-desc pending set; the footer expands the remaining
+     * rows and the card dispatches `onAction(suggestionId, action)` — Merge
+     * raises the undo toast, Later/Keep separate resolve through dismiss/reject,
+     * and an empty set renders NOTHING (no key remount / cursor).
      * @see docs/spec/client/components/file-manager/MergeProposalCard.md
      * @see docs/spec/client/pages/FileManager.md (merge slot)
      */
@@ -2214,7 +2215,7 @@ describe('FileManager', () => {
         score: 640,
       });
 
-      it('renders ONE card for the whole pending set, cycles with +N more, merges without a dialog and offers undo', async () => {
+      it('renders ONE card for the whole pending set, expands the footer accordion, merges without a dialog and offers undo', async () => {
         const state = slotState([firstPair, secondPair]);
         server.use(...state.handlers);
         await renderWithProvidersAct(<FileManagerWithRoutes />, {
@@ -2227,27 +2228,28 @@ describe('FileManager', () => {
         // score desc first: Europe|2025 trip pair displayed
         expect(card).toHaveTextContent('Europe');
         expect(card).toHaveTextContent('+1 more');
+        expect(screen.queryByTestId('merge-cycle-chip')).not.toBeInTheDocument();
 
-        fireEvent.click(screen.getByTestId('merge-cycle-chip'));
-        await waitFor(() =>
-          expect(screen.getByTestId('merge-proposal-card')).toHaveTextContent('Kyoto')
-        );
+        fireEvent.click(screen.getByTestId('merge-more-toggle'));
+        expect(screen.getByTestId('merge-suggestion-row-89')).toHaveTextContent('Kyoto');
 
         fireEvent.click(screen.getByTestId('merge-accept'));
         // card IS the confirmation: no dialog ever opens
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-        await waitFor(() => expect(state.calls.posts).toEqual(['merge/30/31']));
+        await waitFor(() => expect(state.calls.posts).toEqual(['merge/17/23']));
         // undo toast rides the mergePair → onUndoable seam
         expect(await screen.findByText('Collections merged')).toBeInTheDocument();
 
         // the merged pair left the pending set (server truth re-read): the
-        // remaining card shows the FIRST pair again (cursor clamps) with no chip
+        // next row is promoted to the body, the footer disappears, and the
+        // SAME card DOM node survives (no key remount / cursor)
         await waitFor(() => {
           const next = screen.getByTestId('merge-proposal-card');
-          expect(next).toHaveTextContent('Europe');
-          expect(screen.queryByTestId('merge-cycle-chip')).not.toBeInTheDocument();
+          expect(next).toHaveTextContent('Kyoto');
+          expect(screen.queryByTestId('merge-more-toggle')).not.toBeInTheDocument();
+          expect(screen.queryByTestId('merge-suggestion-list')).not.toBeInTheDocument();
         });
-        // the single card still owns exactly one DOM node; the list renders on
+        expect(screen.getByTestId('merge-proposal-card')).toBe(card);
         expect(screen.getAllByTestId('merge-proposal-card')).toHaveLength(1);
         expect(screen.getByTestId('collection-card-1')).toBeInTheDocument();
       }, 15000);
@@ -2264,11 +2266,11 @@ describe('FileManager', () => {
         fireEvent.click(screen.getByTestId('merge-later'));
         await waitFor(() => expect(state.calls.posts).toEqual(['dismiss/17/23']));
 
-        // the cycled set shrank: the surviving row shows with no chip
+        // the pending set shrank: the next row is promoted with no footer
         await waitFor(() =>
           expect(screen.getByTestId('merge-proposal-card')).toHaveTextContent('Kyoto')
         );
-        expect(screen.queryByTestId('merge-cycle-chip')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('merge-more-toggle')).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByTestId('merge-keep-separate'));
         await waitFor(() => expect(state.calls.posts).toEqual(['dismiss/17/23', 'reject/30/31']));
@@ -2276,6 +2278,31 @@ describe('FileManager', () => {
           expect(screen.queryByTestId('merge-proposal-card')).not.toBeInTheDocument()
         );
         expect(screen.queryByTestId('merge-proposal-card')).not.toBeInTheDocument();
+      }, 15000);
+
+      it('dispatches an accordion row through its detail actions and removes that suggestion', async () => {
+        const state = slotState([firstPair, secondPair]);
+        server.use(...state.handlers);
+        await renderWithProvidersAct(<FileManagerWithRoutes />, {
+          initialEntries: ['/files/__collections__'],
+        });
+
+        await screen.findByTestId('merge-proposal-card');
+        fireEvent.click(screen.getByTestId('merge-more-toggle'));
+        const row = screen.getByTestId('merge-suggestion-row-89');
+        // keyboard path (desktop click on a row is a no-op)
+        fireEvent.keyDown(row, { key: 'Enter' });
+        const panel = await screen.findByTestId('merge-detail-panel');
+        expect(within(panel).getByTestId('merge-detail-title')).toHaveTextContent('Kyoto');
+
+        fireEvent.click(within(panel).getByTestId('merge-detail-later'));
+        await waitFor(() => expect(state.calls.posts).toEqual(['dismiss/30/31']));
+        await waitFor(() => {
+          const next = screen.getByTestId('merge-proposal-card');
+          expect(next).toHaveTextContent('Europe');
+          expect(screen.queryByTestId('merge-detail-panel')).not.toBeInTheDocument();
+          expect(screen.queryByTestId('merge-more-toggle')).not.toBeInTheDocument();
+        });
       }, 15000);
 
       it('empty pending set renders no card and no layout wrapper (zero footprint)', async () => {

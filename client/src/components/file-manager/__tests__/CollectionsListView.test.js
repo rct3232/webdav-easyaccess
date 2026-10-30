@@ -200,11 +200,32 @@ describe('CollectionsListView — list mode', () => {
     expect(container.innerHTML).not.toMatch(/merge/i);
   });
 
-  it('mergeSlot injects the host-provided card above the list', () => {
+  it('mergeSlot injects the host-provided card in a sticky wrapper BEFORE the grid (never a grid child)', () => {
     renderWithProviders(
       <CollectionsListView {...listProps()} mergeSlot={<div data-testid="merge-card" />} />
     );
+    const slot = screen.getByTestId('merge-proposal-slot');
+    expect(within(slot).getByTestId('merge-card')).toBeInTheDocument();
+    expect(slot).toHaveStyle({ position: 'sticky', top: 0, zIndex: 5 });
+    const region = screen.getByTestId('collections-list-region');
+    // wrapper precedes the responsive grid in normal flow (not a grid cell)
+    expect(region.firstElementChild).toBe(slot);
+    const grid = screen.getByTestId('collection-card-1').parentElement;
+    expect(grid.contains(slot)).toBe(false);
+    expect(screen.getByTestId('collection-card-1')).toBeInTheDocument();
+  });
+
+  it('empty state keeps the same merge wrapper-before-grid order', () => {
+    const props = listProps();
+    props.collections = [];
+    renderWithProviders(
+      <CollectionsListView {...props} mergeSlot={<div data-testid="merge-card" />} />
+    );
+    const slot = screen.getByTestId('merge-proposal-slot');
+    const region = screen.getByTestId('collections-list-region');
+    expect(region.firstElementChild).toBe(slot);
     expect(screen.getByTestId('merge-card')).toBeInTheDocument();
+    expect(screen.getByText('No collections yet')).toBeInTheDocument();
   });
 
   it('shared-received/auto-pin cards render top-left MEDIA BADGES (footer chips retired, M-4)', () => {

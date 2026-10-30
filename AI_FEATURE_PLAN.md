@@ -343,15 +343,21 @@ Nightly (or pair-signal) detection: derived pairs by centroid cosine; stored pai
 membership set-Jaccard (LLM-free variant, same pipeline). Row
 `collection_merge_suggestions(a_id,b_id,score,state pending|merged|dismissed|rejected)`.
 UI grammar (researched from Apple Photos / Google Photos / GitHub / Gmail patterns —
-proposals live at the object, never in an inbox): one card atop the collection list
-(never stacked; `+N more` chip cycles), collapsed 68px one-line:
-`"Merge "A" into "B"? · N overlapping files · M after merge"` + overlapping-member
-thumbnail strip (strip = expand toggle → ≤300px overlay two-column compare, list not
-shifted) + buttons `[Merge(primary)][Keep separate(ghost)][Later(text)]`; `Later` re-raises
-once after 2 weeks then sleeps 30d; `Keep separate` = permanent pair suppression;
-`Merge` executes immediately (NO extra dialog — the card IS the confirmation) + undo toast
-(§4.11 toast system). Zero pending ⇒ zero layout footprint. No sidebar/tree chips for
-merges (rejected).
+proposals live at the object, never in an inbox): one sticky card between the collections
+toolbar and the collection list (never stacked; zero pending ⇒ zero layout footprint).
+The card body is the top score-desc pair, one line:
+`"Merge "A" into "B"? · N overlapping files · M after merge"` + buttons
+`[Merge(primary)][Keep separate(ghost)][Later(text)]`; the centered footer text expands an
+accordion of the remaining pending pairs (max 40vh, rows push the list down). Desktop hover /
+mobile tap (no expand button) opens a NON-MODAL detail panel anchored below the sticky region
+(Popper flip/preventOverflow for lower accordion rows; no backdrop, no mouse-follow): title
+only, large sample tiles B(absorbed) → shared → A(survivor), and a bottom one-line reason —
+the arbiter `recommendation.reason` when present, otherwise the deterministic counts sentence
+("41 of 58 files are shared; merging keeps them in one collection."). The panel carries
+`[Merge][Keep separate][Later]` for that row. `Later` re-raises once after 2 weeks then sleeps
+30d; `Keep separate` = permanent pair suppression; `Merge` executes immediately (NO extra
+dialog — the card IS the confirmation) + undo toast (§4.11 toast system). No sidebar/tree chips
+for merges (rejected).
 Merge survivor: keep chosen name unless `name_locked`.
 
 Contract specs (binding, MUST read before implementing this section): `docs/spec/server/routes/collections.md`, `docs/spec/client/components/file-manager/MergeProposalCard.md`
@@ -904,8 +910,8 @@ does work rules can't):
   merge), _theme+duplicate_ (Europe/2026-trip — should merge), and _sibling themes_ (Europe/
   Japan — must not); membership overlap alone can look identical for all three. Input:
   both collection names+top tags+sizes + ≤5 sampled member summaries each (features only).
-  Output: verdict ∈ {merge, keep_separate, sibling} + one-line reason, written as
-  prefilled recommendation + reason row on the §4.4 card (`sibling` → no card in v1,
+  Output: verdict ∈ {merge, keep_separate, sibling} + one-line reason, written as the
+  prefilled recommendation reason in the §4.4 card's detail panel (`sibling` → no card in v1,
   §9). It advises, never acts: user still presses Merge; no arbiter call is ever
   self-executing. ~~Chat off ⇒ band pairs simply get no recommendation (card still
   appears, no preselection).~~ **SUPERSEDED by owner ruling R1 (2026-10-27, `PLAN_EXECUTION.md` §30.2;

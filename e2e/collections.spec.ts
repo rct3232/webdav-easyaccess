@@ -1290,10 +1290,11 @@ async function reopenMergeSuggestion(aId: number, bId: number): Promise<void> {
   );
 }
 
-test('E2E-S3-COLLECTION-021: the merge proposal card cycles the pending set, compares the real sample rows, executes a merge from the card and the undo toast restores the absorbed collection', async ({
+test('E2E-S3-COLLECTION-021: the merge proposal card expands the pending accordion, shows the hover/tap detail with real sample rows and reason, executes a merge and the undo toast restores the absorbed collection', async ({
   page,
   request,
 }, testInfo) => {
+  const isMobile = isMobileProject(testInfo);
   const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
   const shared = await seedFile(request, token, base, testInfo, 'merge-shared');
   const onlyA = await seedFile(request, token, base, testInfo, 'merge-only-a');
@@ -1308,7 +1309,7 @@ test('E2E-S3-COLLECTION-021: the merge proposal card cycles the pending set, com
   await seedMergeSuggestion(aId, bId, 900);
 
   // Second pending pair — the NEVER-STACKED rule: two rows still render ONE
-  // card, and the `+1 more` chip cycles the displayed row (score desc first).
+  // card; the centered footer expands the remaining score-desc rows.
   const other = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
   const otherShared = await seedFile(request, other.token, other.base, testInfo, 'merge2-shared');
   const nameC = buildName(testInfo, 'merge-c');
@@ -1326,29 +1327,60 @@ test('E2E-S3-COLLECTION-021: the merge proposal card cycles the pending set, com
   // Highest score first: the A|B pair line names both collections.
   await expect(card).toContainText(nameA);
   await expect(card).toContainText(nameB);
-  await expect(card.getByTestId('merge-cycle-chip')).toContainText('+1 more');
+  await expect(card.getByTestId('merge-cycle-chip')).toHaveCount(0);
+  const footer = card.getByTestId('merge-more-toggle');
+  await expect(footer).toContainText('+1 more');
+  await expect(footer).toHaveAttribute('aria-expanded', 'false');
+  await footer.click();
+  await expect(footer).toHaveAttribute('aria-expanded', 'true');
+  const accordion = card.getByTestId('merge-suggestion-list');
+  await expect(accordion).toBeVisible();
+  await expect(accordion).toContainText(nameC);
+  await expect(accordion).toContainText(nameD);
 
-  // Expand: the strip opens the two-column compare overlay with REAL sample
-  // rows (shared tile + per-side unique names — zero-fabrication rule).
-  await card.getByTestId('merge-strip').click();
-  const overlay = page.getByTestId('merge-compare-overlay');
-  await expect(overlay).toBeVisible();
-  await expect(overlay.getByTestId(`merge-sample-tile-${shared.nodeId}`)).toBeVisible();
-  await expect(overlay.getByTestId(`merge-unique-a-${onlyA.nodeId}`)).toContainText(
-    onlyA.path.split('/').pop() as string
+  // Desktop hover / mobile tap: the non-modal detail opens with REAL sample
+  // rows in B(absorbed) → shared → A(survivor) left-to-right order and the
+  // deterministic counts reason (no expand button, no backdrop).
+  const body = card.getByTestId('merge-card-body');
+  if (isMobile) {
+    await body.tap();
+  } else {
+    await body.hover();
+  }
+  const detail = page.getByTestId('merge-detail-panel');
+  await expect(detail).toBeVisible();
+  await expect(detail.getByTestId('merge-detail-title')).toContainText(nameA);
+  await expect(detail.getByTestId('merge-detail-title')).toContainText(nameB);
+  await expect(detail.getByTestId(`merge-sample-tile-${shared.nodeId}`)).toBeVisible();
+  const bTile = detail.getByTestId(`merge-unique-b-${onlyB.nodeId}`);
+  const aTile = detail.getByTestId(`merge-unique-a-${onlyA.nodeId}`);
+  await expect(bTile).toContainText(onlyB.path.split('/').pop() as string);
+  await expect(aTile).toContainText(onlyA.path.split('/').pop() as string);
+  const sharedTile = detail.getByTestId(`merge-sample-tile-${shared.nodeId}`);
+  const bBox = await bTile.boundingBox();
+  const sharedBox = await sharedTile.boundingBox();
+  const aBox = await aTile.boundingBox();
+  expect(bBox).not.toBeNull();
+  expect(sharedBox).not.toBeNull();
+  expect(aBox).not.toBeNull();
+  expect(bBox!.x).toBeLessThan(sharedBox!.x);
+  expect(sharedBox!.x).toBeLessThan(aBox!.x);
+  await expect(detail.getByTestId('merge-detail-reason')).toContainText(
+    '1 of 3 files are shared; merging keeps them in one collection.'
   );
-  await expect(overlay.getByTestId(`merge-unique-b-${onlyB.nodeId}`)).toContainText(
-    onlyB.path.split('/').pop() as string
-  );
-  await page.keyboard.press('Escape');
-  await expect(overlay).toHaveCount(0);
+  await expect(detail.getByTestId('merge-detail-accept')).toBeVisible();
+  await expect(detail.getByTestId('merge-detail-keep-separate')).toBeVisible();
+  await expect(detail.getByTestId('merge-detail-later')).toBeVisible();
 
-  // The card IS the confirmation: Merge dispatches with NO extra dialog.
+  // The card IS the confirmation and stays clickable with the panel open:
+  // Merge dispatches with NO extra dialog. The resolved row leaves the set
+  // and the NEXT pending pair is promoted to the card body.
   await card.getByTestId('merge-accept').click();
   await expect(page.getByTestId('undo-toast-action')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  // The merged pair left the pending set; the cycled card shows the next pair.
   await expect(card).toContainText(nameC);
+  await expect(card.getByTestId('merge-more-toggle')).toHaveCount(0);
+  await expect(page.getByTestId('merge-detail-panel')).toHaveCount(0);
 
   // Undo reverses the merge: the loser is restored with its members.
   await page.getByTestId('undo-toast-action').click();
@@ -1397,6 +1429,25 @@ test('E2E-S3-COLLECTION-022: Later defers the pair into a DB-dormant card remova
   await page.goto('/files/__collections__');
   const card = page.getByTestId('merge-proposal-card');
   await expect(card).toBeVisible({ timeout: 30_000 });
+  // Single pending row: no footer accordion, but the detail still opens with
+  // its deterministic reason and its own Merge/Keep/Later actions.
+  await expect(card.getByTestId('merge-more-toggle')).toHaveCount(0);
+  const body = card.getByTestId('merge-card-body');
+  if (isMobileProject(testInfo)) {
+    await body.tap();
+  } else {
+    await body.hover();
+  }
+  const detail = page.getByTestId('merge-detail-panel');
+  await expect(detail).toBeVisible();
+  await expect(detail.getByTestId('merge-detail-reason')).toContainText(
+    '2 of 2 files are shared; merging keeps them in one collection.'
+  );
+  await expect(detail.getByTestId('merge-detail-accept')).toBeVisible();
+  await expect(detail.getByTestId('merge-detail-keep-separate')).toBeVisible();
+  await expect(detail.getByTestId('merge-detail-later')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(detail).toHaveCount(0);
 
   // Later → dismissed (re-raisable by the nightly cadence; the row STAYS).
   await card.getByTestId('merge-later').click();

@@ -73,10 +73,18 @@ jest.mock('../collectionsRepository', () => {
     'runSearch',
     'recordSearchClick',
     'getActions',
-    'getFileSuggestions',
-    'getStorageUsageSeries',
-    'acceptFileSuggestions',
-    'dismissFileSuggestion',
+  ];
+  const mock = {};
+  for (const name of fns) mock[name] = jest.fn();
+  return mock;
+});
+
+jest.mock('../storageRepository', () => {
+  const fns = [
+    'getStorageHygiene',
+    'getStorageUsage',
+    'acceptStorageSuggestions',
+    'dismissStorageSuggestion',
   ];
   const mock = {};
   for (const name of fns) mock[name] = jest.fn();
@@ -690,46 +698,53 @@ describe('explorerGateway', () => {
     });
   });
 
-  describe('explorerGateway actions-feed + dashboard seams (T0.10)', () => {
-    it('re-exports getActions / getFileSuggestions / acceptFileSuggestions / dismissFileSuggestion with the repository shapes', async () => {
+  describe('explorerGateway actions-feed + storage seams', () => {
+    it('re-exports getActions with the repository shape', async () => {
       const repo = require('../collectionsRepository');
 
       const feed = { actions: [{ action_id: 1 }] };
       repo.getActions.mockResolvedValueOnce(feed);
       await expect(explorerGateway.getActions({ domain: 'collection' })).resolves.toBe(feed);
       expect(repo.getActions).toHaveBeenCalledWith({ domain: 'collection' });
+    });
 
-      const payload = { suggestions: [], duplicates: { group_count: 0 } };
-      repo.getFileSuggestions.mockResolvedValueOnce(payload);
-      await expect(explorerGateway.getFileSuggestions()).resolves.toBe(payload);
+    it('re-exports the storage domain seams (hygiene/usage/suggestions) with the repository shapes', async () => {
+      const storage = require('../storageRepository');
 
-      repo.acceptFileSuggestions.mockResolvedValueOnce({ trashed: [7] });
-      await expect(explorerGateway.acceptFileSuggestions([7], { silent: true })).resolves.toEqual({
+      const hygiene = { hygiene: { duplicates: { group_count: 0 } }, suggestions: [] };
+      storage.getStorageHygiene.mockResolvedValueOnce(hygiene);
+      await expect(explorerGateway.getStorageHygiene()).resolves.toBe(hygiene);
+
+      const usage = { current: { total_bytes: 10 }, series: { points: [] } };
+      storage.getStorageUsage.mockResolvedValueOnce(usage);
+      await expect(explorerGateway.getStorageUsage()).resolves.toBe(usage);
+
+      storage.acceptStorageSuggestions.mockResolvedValueOnce({ trashed: [7] });
+      await expect(
+        explorerGateway.acceptStorageSuggestions([7], { onError: jest.fn() })
+      ).resolves.toEqual({
         trashed: [7],
       });
-      expect(repo.acceptFileSuggestions).toHaveBeenCalledWith([7], { silent: true });
+      expect(storage.acceptStorageSuggestions).toHaveBeenCalledWith([7], {
+        onError: expect.any(Function),
+      });
 
-      repo.dismissFileSuggestion.mockResolvedValueOnce({ id: 9, state: 'dismissed' });
-      await expect(explorerGateway.dismissFileSuggestion(9)).resolves.toEqual({
+      storage.dismissStorageSuggestion.mockResolvedValueOnce({ id: 9, state: 'dismissed' });
+      await expect(explorerGateway.dismissStorageSuggestion(9)).resolves.toEqual({
         id: 9,
         state: 'dismissed',
       });
-      expect(repo.dismissFileSuggestion).toHaveBeenCalledWith(9);
+      expect(storage.dismissStorageSuggestion).toHaveBeenCalledWith(9);
     });
 
-    it('loadStorageUsageSeries re-exports the repository series read (null on absorbed failure)', async () => {
-      const repo = require('../collectionsRepository');
-      const series = {
-        points: [
-          { day: '2026-10-01', bytes: 10 },
-          { day: '2026-10-02', bytes: 20 },
-        ],
-      };
-      repo.getStorageUsageSeries.mockResolvedValueOnce(series);
-      await expect(explorerGateway.loadStorageUsageSeries()).resolves.toBe(series);
+    it('storage reads resolve the repository absorbed fallbacks (empty suggestions / null)', async () => {
+      const storage = require('../storageRepository');
 
-      repo.getStorageUsageSeries.mockResolvedValueOnce(null);
-      await expect(explorerGateway.loadStorageUsageSeries()).resolves.toBeNull();
+      storage.getStorageHygiene.mockResolvedValueOnce({ suggestions: [] });
+      await expect(explorerGateway.getStorageHygiene()).resolves.toEqual({ suggestions: [] });
+
+      storage.getStorageUsage.mockResolvedValueOnce(null);
+      await expect(explorerGateway.getStorageUsage()).resolves.toBeNull();
     });
   });
 

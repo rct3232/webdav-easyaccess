@@ -1036,6 +1036,14 @@
     "messageLabel": "메시지",
     "review": "검토",
     "storage": "스토리지",
+    "collectionsOverview": "컬렉션",
+    "storageUsageTitle": "저장소 사용량",
+    "storageUsageTotal": "전체",
+    "storageUsageLive": "사용 중",
+    "storageUsageTrash": "휴지통",
+    "storageUsageVersions": "버전",
+    "storageUsageIncomplete": "일부 파일 크기를 확인할 수 없어 합계가 불완전할 수 있습니다.",
+    "storageUsageSparkline": "저장소 사용량 추이",
     "adminAiOps": "AI 운영",
     "hygieneDuplicates": "완전 중복 파일",
     "hygieneDuplicatesMeta": "그룹 {{groups}}개 · 파일 {{files}}개 · {{size}} 정리 가능",
@@ -1110,8 +1118,7 @@
       "StaleScreenshot": "오래된 스크린샷",
       "OldInstaller": "오래된 설치 파일"
     },
-    "suggestionsTrashed": "휴지통으로 {{count}}개 항목 이동",
-    "capacityTitle": "저장소 추이"
+    "suggestionsTrashed": "휴지통으로 {{count}}개 항목 이동"
   },
   "shareLink": {
     "invalidLink": "유효하지 않은 링크입니다.",

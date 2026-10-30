@@ -152,10 +152,13 @@ export function createExplorerGatewayMock(overrides = {}) {
     undoAction: jest
       .fn()
       .mockResolvedValue({ ok: true, status: 'undone', itemsUndone: 1, itemsSkipped: 0 }),
-    // Actions feed + Storage dashboard seams (T0.10 — explorerGateway §2.6)
+    // Actions feed seam (T0.10 — explorerGateway §2.6)
     getActions: jest.fn().mockResolvedValue({ actions: [] }),
-    getFileSuggestions: jest.fn().mockResolvedValue({ suggestions: [] }),
-    acceptFileSuggestions: jest.fn().mockResolvedValue(null),
+    // Personal storage seams (storage client-domain split — explorerGateway §2.6)
+    getStorageHygiene: jest.fn().mockResolvedValue({ suggestions: [] }),
+    getStorageUsage: jest.fn().mockResolvedValue(null),
+    acceptStorageSuggestions: jest.fn().mockResolvedValue(null),
+    dismissStorageSuggestion: jest.fn().mockResolvedValue(null),
     // File-likes seams (T0.5 — explorerGateway §2.6 file-likes group)
     loadFileLikes: jest.fn().mockResolvedValue({ liked: [] }),
     loadLikedItems: jest.fn().mockResolvedValue({ items: [] }),

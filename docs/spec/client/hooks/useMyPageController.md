@@ -87,13 +87,14 @@
 
 ## 3. AI-platform registry additions (AI platform)
 
-Addendum to §2.3/§2.4: two new `myPageRegistry` categories flow through the existing pipeline unchanged (`resolveMyPageCategory`, `getMyPageSidebarCategories`, admin normalization; no new controller state). Entry shape per CODING_STYLE.md Express Patterns / `CollectionDashboard.md` §2.5:
+Addendum to §2.3/§2.4: three `myPageRegistry` categories flow through the existing pipeline unchanged (`resolveMyPageCategory`, `getMyPageSidebarCategories`, admin normalization; no new controller state). Entry shape per CODING_STYLE.md Express Patterns / `StorageDashboard.md` §2.5:
 
-| Category            | Entry                                                                              | Visibility | Content                                                              |
-| ------------------- | ---------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------- |
-| `storage` (Storage) | `{ id: 'storage', icon, labelKey: 'mypage.storage', visibility: 'nonAdminOnly' }`  | Non-admins | Direct → `CollectionDashboard`.                                      |
-| AI-ops (admin)      | `{ id: 'admin-ai', icon, labelKey: 'mypage.adminAiOps', visibility: 'adminOnly' }` | Admin only | Direct → `AiAdminContent`; regular users: row ABSENT (not disabled). |
+| Category                    | Entry                                                                                             | Visibility | Content                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------- |
+| `collections` (Collections) | `{ id: 'collections', icon, labelKey: 'mypage.collectionsOverview', visibility: 'nonAdminOnly' }` | Non-admins | Direct → `CollectionsOverview`.                                      |
+| `storage` (Storage)         | `{ id: 'storage', icon, labelKey: 'mypage.storage', visibility: 'nonAdminOnly' }`                 | Non-admins | Direct → `StorageDashboard`.                                         |
+| AI-ops (admin)              | `{ id: 'admin-ai', icon, labelKey: 'mypage.adminAiOps', visibility: 'adminOnly' }`                | Admin only | Direct → `AiAdminContent`; regular users: row ABSENT (not disabled). |
 
 - **No sidebar status chip.** The sidebar is a pure view with no chip renderer and this controller performs no network reads (§2.4). The five-state `ai.<role>` display stays in `SystemSettingsContent`; the AI panel renders the fuller operations readiness inside its content.
-- Deep-link bootstrapping (`location.state.category`) accepts `storage` and `admin-ai`; admin-only normalization falls back to the default category for non-admins, legacy `admin` still maps to `admin-users`.
-- Operator rule (admin is a pure operator): the `storage` deep-link falls back to the default section for admins (`resolveMyPageCategory` normalization, mirroring the `sharing` precedent) — the dashboard is hidden / never invoked for admin.
+- Deep-link bootstrapping (`location.state.category`) accepts `collections`, `storage` and `admin-ai`; admin-only normalization falls back to the default category for non-admins, legacy `admin` still maps to `admin-users`.
+- Operator rule (admin is a pure operator): both `collections` and `storage` deep-links fall back to the default section for admins (`resolveMyPageCategory` normalization, mirroring the `sharing` precedent) — the personal surfaces are hidden / never invoked for admin.

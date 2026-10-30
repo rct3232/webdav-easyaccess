@@ -47,7 +47,7 @@ import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
  * Chain: create → add members → digest counts → archive → undo → restore →
  * purge, plus the key P0 UI anchors: the Collections sidebar section, card
  * menus, the file-side Add-to-collection submenu, the like toggle, the
- * Storage dashboard and the actions feed + undo toast. P-4 adds the members
+ * Collections overview, the Storage dashboard and the actions feed + undo toast. P-4 adds the members
  * shared-renderer contract (011: grid default, per-surface list persistence,
  * double-click preview) and the member-publish route (012: publish-all banner
  * + owner per-row publish menu — the granted_role:null visibility fix). P-5
@@ -56,7 +56,7 @@ import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
  *
  * SCRATCH-HERMETIC per the destructive-case policy (docs/TESTING_STRATEGY.md):
  * the suite permanently deletes collections, exercises per-subject undo-journal
- * tip semantics and renders the regular user's MyPage Storage dashboard, so it
+ * tip semantics and renders the regular user's MyPage Collections/Storage dashboards, so it
  * boots its OWN server per Playwright project (desktop :5013 / mobile :5014,
  * own sqlite, project-scoped S3 bucket) and never touches the shared :5002
  * pool. One scratch server serves the whole (serial) file per project —
@@ -67,14 +67,14 @@ import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
  * side is the evolution pass; the card contract under test is the read surface
  * + dispatch), and the persisted-suggestion case (023) seeds hash-duplicates
  * through the upload API — the dup generator leg of the dashboard read is
- * hash-first/LLM-free (`routes/dashboard.md` §2.4); only the near-dup VECTOR
+ * hash-first/LLM-free (`routes/storage.md` §2.4); only the near-dup VECTOR
  * variant needs an embed model, and its ABSENCE is part of what 023 pins
  * (§4.12 absent-not-disabled).
  *
  * IDENTITY (admin-operator pivot, PLAN §14): every case authenticates as a
  * REGULAR USER provisioned by `beforeAll` (`ensureScratchRegularUser` — admin
  * API create, which also ensures the `/<username>` home node). The U1 server
- * gates 403 admin on collections/file-likes/dashboard and U2 hides those
+ * gates 403 admin on collections/file-likes/storage and U2 hides those
  * surfaces for admin sessions, so an admin actor can no longer exercise this
  * lifecycle. The scratch admin stays bootstrapped for OPERATOR duties only:
  * user provisioning and the perm-delete folder-purge fallback
@@ -669,7 +669,7 @@ test('E2E-S3-COLLECTION-008: Member row menu excludes a file with undo and expos
   await expect(page.getByTestId(`member-row-${fileB.nodeId}`)).toBeVisible();
 });
 
-test('E2E-S3-COLLECTION-009: Storage dashboard renders the collection journal feed and feed undo restores an archived collection', async ({
+test('E2E-S3-COLLECTION-009: Collections overview renders the collection journal feed and feed undo restores an archived collection', async ({
   page,
   request,
 }, testInfo) => {
@@ -685,12 +685,12 @@ test('E2E-S3-COLLECTION-009: Storage dashboard renders the collection journal fe
     const drawer = page.locator('.MuiDrawer-paper');
     await page.locator('button[aria-label="My page"]').click();
     await expect(drawer).toBeVisible();
-    await drawer.getByRole('button', { name: /^storage$/i }).click();
+    await drawer.getByRole('button', { name: /^collections$/i }).click();
     await expect(drawer).not.toBeVisible();
   } else {
-    await page.getByRole('button', { name: /^storage$/i }).click();
+    await page.getByRole('button', { name: /^collections$/i }).click();
   }
-  await expect(page.getByTestId('collection-dashboard')).toBeVisible();
+  await expect(page.getByTestId('collections-overview')).toBeVisible();
   await expect(page.getByText(/System changes/i)).toBeVisible();
 
   // Newest-first feed: the first row of this subject is the archive tip.
@@ -707,9 +707,9 @@ test('E2E-S3-COLLECTION-009: Storage dashboard renders the collection journal fe
     .filter({ hasText: name });
   await expect(undoneRow.first()).toBeVisible({ timeout: 10_000 });
 
-  // No AI surfaces — no storage-usage sparkline (no snapshot data in this
-  // workspace) and no suggestion checkboxes (`semantic` key absent).
-  await expect(page.getByTestId('capacity-sparkline')).toHaveCount(0);
+  // CollectionsOverview owns no storage reads: no usage sparkline and no
+  // suggestion checkboxes on this surface (`semantic` key absent).
+  await expect(page.getByTestId('storage-usage-sparkline')).toHaveCount(0);
   await expect(page.getByTestId('suggestion-checkbox')).toHaveCount(0);
 });
 
@@ -1418,8 +1418,8 @@ test('E2E-S3-COLLECTION-022: Later defers the pair into a DB-dormant card remova
 });
 
 // ---------------------------------------------------------------------------
-// Persisted cleanup-suggestion lifecycle (T3.3 — routes/dashboard.md §2.4,
-// SuggestionsChecklist.md §2.3/§2.7, AI_FEATURE_PLAN §4.12/§4.16/§4.17)
+// Persisted cleanup-suggestion lifecycle (T3.3 — routes/storage.md §2.4,
+// StorageCleanupSuggestions.md §2.3/§2.7, AI_FEATURE_PLAN §4.12/§4.16/§4.17)
 // ---------------------------------------------------------------------------
 
 interface DashboardSuggestionRow {
@@ -1433,11 +1433,21 @@ interface DashboardSuggestionRow {
   expires_at: string | null;
 }
 
-interface DashboardBody {
-  duplicates: { group_count: number; duplicate_count: number; reclaimable_bytes: number };
+interface StorageBody {
+  hygiene?: {
+    duplicates: { group_count: number; duplicate_count: number; reclaimable_bytes: number };
+    near_duplicates?: { group_count: number; duplicate_count: number };
+    trash: { item_count: number; total_bytes: number; retention_days: number };
+  };
+  duplicates?: { group_count: number; duplicate_count: number; reclaimable_bytes: number };
   near_duplicates?: { group_count: number; duplicate_count: number };
   suggestions: DashboardSuggestionRow[];
-  trash: { item_count: number; total_bytes: number; retention_days: number };
+  trash?: { item_count: number; total_bytes: number; retention_days: number };
+}
+
+/** Trash count from the canonical nested payload, tolerating the flat shape. */
+function trashCount(body: StorageBody): number {
+  return body.hygiene?.trash?.item_count ?? body.trash?.item_count ?? 0;
 }
 
 /** The LAST persisted row state for a node (`file_suggestions` is append-per-
@@ -1479,10 +1489,10 @@ test('E2E-S3-COLLECTION-023: the persisted cleanup-suggestion checklist accepts 
   const dup = await seedFile(request, token, base, testInfo, 'sugg-dup');
   const dupName = dup.path.split('/').pop() as string;
 
-  const readDashboard = async (): Promise<DashboardBody> => {
-    const res = await request.get('/api/dashboard', { headers: auth(token) });
+  const readDashboard = async (): Promise<StorageBody> => {
+    const res = await request.get('/api/storage', { headers: auth(token) });
     expect(res.ok()).toBeTruthy();
-    return res.json() as Promise<DashboardBody>;
+    return res.json() as Promise<StorageBody>;
   };
 
   // (a) Persisted rows: the read materializes the pending set, rows carry ids,
@@ -1495,17 +1505,17 @@ test('E2E-S3-COLLECTION-023: the persisted cleanup-suggestion checklist accepts 
   expect(seeded!.id).toBeTruthy();
   expect(seeded!.reason.keep_node_id).toBe(keeper.nodeId);
   expect(body.suggestions.some((row) => row.node_id === keeper.nodeId)).toBe(false);
-  expect(body.near_duplicates).toBeUndefined();
+  expect(body.hygiene?.near_duplicates ?? body.near_duplicates).toBeUndefined();
   expect(body.suggestions.every((row) => row.kind !== 'near_dup')).toBe(true);
-  const trashBaseline = body.trash.item_count;
+  const trashBaseline = trashCount(body);
 
   await openMyPageStorage(page, isMobile);
-  await expect(page.getByTestId('collection-dashboard')).toBeVisible();
+  await expect(page.getByTestId('storage-dashboard')).toBeVisible();
 
   // (b) The checklist row: checkbox + per-row dismiss anchored on the
   //     PERSISTED id; NO accept control before a selection (single-control
-  //     rule, SuggestionsChecklist.md §2.3).
-  const checklistRow = page.locator('#dashboard-suggestions li').filter({ hasText: dupName });
+  //     rule, StorageCleanupSuggestions.md §2.3).
+  const checklistRow = page.locator('#storage-suggestions li').filter({ hasText: dupName });
   await expect(checklistRow).toBeVisible({ timeout: 30_000 });
   await expect(checklistRow.getByTestId('suggestion-checkbox')).toBeVisible();
   await expect(page.getByTestId(`suggestion-dismiss-${seeded!.id}`)).toBeVisible();
@@ -1525,7 +1535,7 @@ test('E2E-S3-COLLECTION-023: the persisted cleanup-suggestion checklist accepts 
       async () => {
         const after = await readDashboard();
         return (
-          after.trash.item_count === trashBaseline + 1 &&
+          trashCount(after) === trashBaseline + 1 &&
           !after.suggestions.some((row) => row.node_id === dup.nodeId)
         );
       },
@@ -1541,10 +1551,10 @@ test('E2E-S3-COLLECTION-023: the persisted cleanup-suggestion checklist accepts 
   await expect(page.getByText(/1 undone/i)).toBeVisible();
   await expect(checklistRow).toBeVisible({ timeout: 15_000 });
   await expect.poll(() => fileSuggestionStateForNode(dup.nodeId)).toBe('pending');
-  await expect.poll(async () => (await readDashboard()).trash.item_count).toBe(trashBaseline);
+  await expect.poll(async () => trashCount(await readDashboard())).toBe(trashBaseline);
 
   // (e) dismiss removes the row WITHOUT a toast (self-reversing preference,
-  //     no journal row — routes/dashboard.md §2.4 dismiss).
+  //     no journal row — routes/storage.md §2.4 dismiss).
   body = await readDashboard();
   const relisted = body.suggestions.find((row) => row.node_id === dup.nodeId);
   expect(relisted?.id).toBeTruthy();
@@ -1561,7 +1571,7 @@ test('E2E-S3-COLLECTION-023: the persisted cleanup-suggestion checklist accepts 
 
   // (f) AI-block gate audit (§4.12): embed unconfigured ⇒ no storage-usage
   //     sparkline (no snapshot data) and no near-dup surfaces on the dashboard.
-  await expect(page.getByTestId('capacity-sparkline')).toHaveCount(0);
+  await expect(page.getByTestId('storage-usage-sparkline')).toHaveCount(0);
   await expect(page.getByText(/near[- ]duplicate/i)).toHaveCount(0);
 
   // The trashed→restored pair rides the afterEach workspace purge (perm-delete

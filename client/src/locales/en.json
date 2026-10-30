@@ -1036,6 +1036,14 @@
     "messageLabel": "Message",
     "review": "Review",
     "storage": "Storage",
+    "collectionsOverview": "Collections",
+    "storageUsageTitle": "Storage usage",
+    "storageUsageTotal": "Total",
+    "storageUsageLive": "Live",
+    "storageUsageTrash": "Trash",
+    "storageUsageVersions": "Versions",
+    "storageUsageIncomplete": "Some file sizes are unavailable; totals may be incomplete.",
+    "storageUsageSparkline": "Storage usage trend",
     "adminAiOps": "AI operations",
     "hygieneDuplicates": "Exact duplicates",
     "hygieneDuplicatesMeta": "{{groups}} groups · {{files}} files · {{size}} reclaimable",
@@ -1110,8 +1118,7 @@
       "StaleScreenshot": "Old screenshot",
       "OldInstaller": "Old installer"
     },
-    "suggestionsTrashed": "Moved {{count}} items to Trash",
-    "capacityTitle": "Storage over time"
+    "suggestionsTrashed": "Moved {{count}} items to Trash"
   },
   "shareLink": {
     "invalidLink": "Invalid link.",

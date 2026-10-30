@@ -1,11 +1,11 @@
 /**
- * SuggestionsChecklist — cleanup/duplicate suggestions as checkbox rows with
+ * StorageCleanupSuggestions — cleanup/duplicate suggestions as checkbox rows with
  * the SINGLE `Accept selected (N)` control (Q4 contract, docs/spec/client/
- * components/mypage/content/SuggestionsChecklist.md). The checkbox IS the
+ * components/mypage/content/StorageCleanupSuggestions.md). The checkbox IS the
  * selection confirmation; accept sends only the checked node ids. Dismiss is
  * per-row and renders for persisted rows carrying an `id` when the host passes
  * `onDismiss` (docs/spec/client/components/mypage/content/
- * SuggestionsChecklist.md §2.2/§2.7).
+ * StorageCleanupSuggestions.md §2.2/§2.7).
  */
 import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -46,7 +46,7 @@ function reasonLabelKey(kind) {
   return `mypage.suggestionsReason.${camel.charAt(0).toUpperCase()}${camel.slice(1)}`;
 }
 
-const SuggestionsChecklist = ({ suggestions = [], onAccept, onDismiss, loading = false }) => {
+const StorageCleanupSuggestions = ({ suggestions = [], onAccept, onDismiss, loading = false }) => {
   const { t } = useTranslation();
   const [checked, setChecked] = useState(() => new Set());
   const [expandedKeepers, setExpandedKeepers] = useState(() => new Set());
@@ -230,4 +230,4 @@ const SuggestionsChecklist = ({ suggestions = [], onAccept, onDismiss, loading =
   );
 };
 
-export default SuggestionsChecklist;
+export default StorageCleanupSuggestions;

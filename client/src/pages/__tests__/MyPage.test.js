@@ -457,18 +457,33 @@ describe('MyPage Storage dashboard entry (T0.10)', () => {
   });
 
   const dashboardHandlers = () => [
-    http.get('/api/dashboard', () =>
+    http.get('/api/storage', () =>
       HttpResponse.json({
-        duplicates: { group_count: 0, duplicate_count: 0, reclaimable_bytes: 0 },
+        hygiene: {
+          duplicates: { group_count: 0, duplicate_count: 0, reclaimable_bytes: 0 },
+          trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
+        },
         suggestions: [],
-        trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
+      })
+    ),
+    http.get('/api/storage/usage', () =>
+      HttpResponse.json({
+        current: {
+          total_bytes: 0,
+          live_bytes: 0,
+          trash_bytes: 0,
+          versions_bytes: 0,
+          version_history_supported: false,
+          incomplete: false,
+        },
+        series: { points: [] },
       })
     ),
     http.get('/api/actions', () => HttpResponse.json({ actions: [] })),
     http.get(/\/api\/collections(\?.*)?$/, () => HttpResponse.json({ collections: [] })),
   ];
 
-  it('Storage category renders for a non-admin and shows the CollectionDashboard', async () => {
+  it('Storage category renders for a non-admin and shows the StorageDashboard', async () => {
     server.use(...dashboardHandlers());
     const user = userEvent.setup();
     renderWithProviders(<MyPage />, { initialEntries: ['/mypage'] });
@@ -477,7 +492,7 @@ describe('MyPage Storage dashboard entry (T0.10)', () => {
 
     await user.click(await screen.findByRole('button', { name: /storage/i }));
 
-    expect(await screen.findByTestId('collection-dashboard')).toBeInTheDocument();
+    expect(await screen.findByTestId('storage-dashboard')).toBeInTheDocument();
   });
 
   it('location.state.category=storage boots directly into the dashboard', async () => {
@@ -488,7 +503,30 @@ describe('MyPage Storage dashboard entry (T0.10)', () => {
 
     await waitForMyPageReady();
 
-    expect(await screen.findByTestId('collection-dashboard')).toBeInTheDocument();
+    expect(await screen.findByTestId('storage-dashboard')).toBeInTheDocument();
+  });
+
+  it('Collections category renders for a non-admin and shows the CollectionsOverview', async () => {
+    server.use(...dashboardHandlers());
+    const user = userEvent.setup();
+    renderWithProviders(<MyPage />, { initialEntries: ['/mypage'] });
+
+    await waitForMyPageReady();
+
+    await user.click(await screen.findByRole('button', { name: /^collections$/i }));
+
+    expect(await screen.findByTestId('collections-overview')).toBeInTheDocument();
+  });
+
+  it('location.state.category=collections boots directly into the collections overview', async () => {
+    server.use(...dashboardHandlers());
+    renderWithProviders(<MyPage />, {
+      initialEntries: [{ pathname: '/mypage', state: { category: 'collections' } }],
+    });
+
+    await waitForMyPageReady();
+
+    expect(await screen.findByTestId('collections-overview')).toBeInTheDocument();
   });
 });
 
@@ -518,12 +556,17 @@ describe('MyPage admin operator suppression — storage (PLAN §14 client half)'
     http.get('/api/admin/users/pending', () => HttpResponse.json([])),
     http.get('/api/admin/users', () => HttpResponse.json([])),
     http.get('/api/admin/settings', () => HttpResponse.json({ registration_enabled: 'false' })),
-    http.get('/api/dashboard', () =>
+    http.get('/api/storage', () =>
       HttpResponse.json({
-        duplicates: { group_count: 0, duplicate_count: 0, reclaimable_bytes: 0 },
+        hygiene: {
+          duplicates: { group_count: 0, duplicate_count: 0, reclaimable_bytes: 0 },
+          trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
+        },
         suggestions: [],
-        trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
       })
+    ),
+    http.get('/api/storage/usage', () =>
+      HttpResponse.json({ current: null, series: { points: [] } })
     ),
     http.get('/api/actions', () => HttpResponse.json({ actions: [] })),
     http.get(/\/api\/collections(\?.*)?$/, () => HttpResponse.json({ collections: [] })),
@@ -539,6 +582,7 @@ describe('MyPage admin operator suppression — storage (PLAN §14 client half)'
     await screen.findByRole('button', { name: /settings/i }, { timeout: 5000 });
 
     expect(screen.queryByRole('button', { name: /storage/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^collections$/i })).not.toBeInTheDocument();
   });
 
   it('admin deep-link category=storage falls back to the default section (no dashboard)', async () => {
@@ -550,6 +594,6 @@ describe('MyPage admin operator suppression — storage (PLAN §14 client half)'
 
     // only the post-hydration fallback renders Account; non-admins never hit this
     await screen.findByRole('heading', { name: /account info/i }, { timeout: 5000 });
-    expect(screen.queryByTestId('collection-dashboard')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('storage-dashboard')).not.toBeInTheDocument();
   });
 });

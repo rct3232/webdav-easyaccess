@@ -405,7 +405,7 @@ export const undoAction = async (actionId, options = {}) => {
   }
 };
 
-// -- Actions feed + Storage dashboard (T0.10; routes/{actions,dashboard}.md) --
+// -- Actions feed (T0.10; routes/actions.md) ---------------------------------
 
 /**
  * 30-day undo-journal feed (GET /api/actions) — rows consumed verbatim in
@@ -416,49 +416,4 @@ export const undoAction = async (actionId, options = {}) => {
 export const getActions = async (params = {}) => {
   const query = buildQuery([['domain', params.domain]]);
   return absorbRead(query ? `/actions?${query}` : '/actions', { actions: [] });
-};
-
-/**
- * One-shot Storage-dashboard read (GET /api/dashboard): duplicates + persisted
- * pending suggestion rows (id/created_at/expires_at — routes/dashboard.md §2.4)
- * + trash summary in one payload. The failure fallback keeps the spec'd
- * `{ suggestions: [] }` shape — consumers read the other keys
- * defensively (absent ⇒ block omitted, CollectionDashboard §2.3.1).
- * @returns {Promise<Object>}
- */
-export const getFileSuggestions = async () => {
-  return absorbRead('/dashboard', { suggestions: [] });
-};
-
-/**
- * Per-user daily storage-usage series (GET /api/dashboard/storage-usage).
- * The server already enforces the two-point minimum; absorbed failure
- * returns `null` so the dashboard omits the sparkline block (no fabricated
- * or partial series — routes/dashboard.md §2.4).
- * @returns {Promise<{ points: Array<{ day: string, bytes: number }> } | null>}
- */
-export const getStorageUsageSeries = async () => {
-  return absorbRead('/dashboard/storage-usage', null);
-};
-
-/**
- * Accept checked suggestion rows → trash as ONE journaled command (POST
- * /api/dashboard/suggestions/accept, camelCase body). The response carries
- * `undo: { action_id }` for the undo toast (routes/dashboard.md §2.4).
- * @param {number[]} nodeIds
- * @param {{ silent?: boolean, onError?: Function }} [options]
- */
-export const acceptFileSuggestions = async (nodeIds, options) => {
-  return absorbMutation('/dashboard/suggestions/accept', { data: { nodeIds }, options });
-};
-
-/**
- * Dismiss one persisted suggestion (`pending → dismissed`, POST
- * /api/dashboard/suggestions/dismiss). Absorbed failure returns null and the
- * row stays (no toast either way — SuggestionsChecklist §2.2).
- * @param {number} suggestionId
- * @param {{ silent?: boolean, onError?: Function }} [options]
- */
-export const dismissFileSuggestion = async (suggestionId, options) => {
-  return absorbMutation('/dashboard/suggestions/dismiss', { data: { suggestionId }, options });
 };

@@ -52,7 +52,7 @@
 
 - **Inline in MyPage:** AppBar (do not extract)
 - **Layout:** MyPageSidebar, MyPageContentArea, MyPageContentPanel
-- **Content:** AccountContent, SharingContent, UserManagementContent, SystemSettingsContent, AiAdminContent, PreferencesContent
+- **Content:** AccountContent, SharingContent, CollectionsOverview, StorageDashboard, UserManagementContent, SystemSettingsContent, AiAdminContent, PreferencesContent
 - **Dialogs:** ShareDialog (mode share, mode review), AccountEditDialog
 
 ### 3.4 Controller-provided State
@@ -144,17 +144,19 @@ Boundary notes:
 
 ## 4. AI-platform registry additions (AI platform)
 
-Addendum to the §3.5 category table (same format; registry contract in `useMyPageController.md` §3 / `CollectionDashboard.md` §2.5; content resolved through the registry/helper layer per the §3.5 boundary note — no new inline dispatch in this page):
+Addendum to the §3.5 category table (same format; registry contract in `useMyPageController.md` §3 / `StorageDashboard.md` §2.5; content resolved through the registry/helper layer per the §3.5 boundary note — no new inline dispatch in this page):
 
 | Category          | Type   | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ----------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Storage (Storage) | Direct | `CollectionDashboard` — hygiene cards, system-changes journal feed, my-collections status, SuggestionsChecklist, storage-usage sparkline. Non-admins only (visibility `nonAdminOnly` — operator rule).                                                                                                                                                                                                                                                          |
+| Collections       | Direct | `CollectionsOverview` — my-collections status (active/archived counts, grants received/granted with revoke) and the collection system-changes journal feed. Non-admins only (visibility `nonAdminOnly` — operator rule).                                                                                                                                                                                                                                        |
+| Storage (Storage) | Direct | `StorageDashboard` — storage-usage summary/sparkline, hygiene cards, cleanup suggestions checklist. Non-admins only (visibility `nonAdminOnly` — operator rule).                                                                                                                                                                                                                                                                                                |
 | Admin AI Ops      | Direct | Admin AI governance panel (`docs/spec/client/components/mypage/content/AiAdminContent.md`). Admin only (visibility `adminOnly`); the sidebar row is icon+label only — the sidebar has no chip renderer and `useMyPageController` performs no network reads. The five-state `ai.<role>` rows remain in SystemSettingsContent; the AI panel shows the fuller operations readiness inside its own content. Regular users never see the row (absent, not disabled). |
 
-- Both are single-panel categories (no list→detail pattern); `selectedContentItem` stays `null` for them (§3.4 semantics unchanged).
-- Deep links: FileManager/dashboard cross-links enter via `location.state.category` (`storage` / `admin-ai` ids), same normalization as today (§3.4).
+- All three are single-panel categories (no list→detail pattern); `selectedContentItem` stays `null` for them (§3.4 semantics unchanged).
+- Deep links: FileManager/dashboard cross-links enter via `location.state.category` (`collections` / `storage` / `admin-ai` ids), same normalization as today (§3.4).
 
 Verification (appends §3.9):
 
-- [ ] (target) `storage` category renders `CollectionDashboard` for non-admin users only — hidden for admins (sidebar `nonAdminOnly`) and admin deep-links fall back to the default section (operator rule).
+- [ ] (target) `collections` category renders `CollectionsOverview` for non-admin users only — hidden for admins (sidebar `nonAdminOnly`) and admin deep-links fall back to the default section (operator rule).
+- [ ] (target) `storage` category renders `StorageDashboard` for non-admin users only — hidden for admins (sidebar `nonAdminOnly`) and admin deep-links fall back to the default section (operator rule).
 - [ ] (target) AI-ops row renders only for admins as an icon+label sidebar row; absent-not-disabled for non-admins. Live AI status is rendered inside the content panel, never by the sidebar/controller.

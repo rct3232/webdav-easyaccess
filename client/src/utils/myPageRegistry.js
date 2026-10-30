@@ -1,6 +1,7 @@
 import {
   Person as PersonIcon,
   Share as ShareIcon,
+  Collections as CollectionsIcon,
   Storage as StorageIcon,
   People as PeopleIcon,
   Settings as SettingsIcon,
@@ -13,7 +14,8 @@ import SharingContent from '../components/mypage/content/SharingContent';
 import UserManagementContent from '../components/mypage/content/UserManagementContent';
 import SystemSettingsContent from '../components/mypage/content/SystemSettingsContent';
 import PreferencesContent from '../components/mypage/content/PreferencesContent';
-import CollectionDashboard from '../components/mypage/content/CollectionDashboard';
+import CollectionsOverview from '../components/mypage/content/CollectionsOverview';
+import StorageDashboard from '../components/mypage/content/StorageDashboard';
 import AiAdminContent from '../components/mypage/content/AiAdminContent';
 
 export const DEFAULT_MY_PAGE_CATEGORY = 'account';
@@ -34,11 +36,17 @@ const MY_PAGE_CATEGORY_META = [
     visibility: 'nonAdminOnly',
   },
   {
+    id: 'collections',
+    icon: CollectionsIcon,
+    labelKey: 'mypage.collectionsOverview',
+    visibility: 'nonAdminOnly',
+  },
+  {
     id: 'storage',
     icon: StorageIcon,
     labelKey: 'mypage.storage',
-    // Operator rule (PLAN §14 client half): the collections dashboard is a
-    // user surface — admin is a pure operator, never a participant.
+    // Operator rule (PLAN §14 client half): personal surfaces are user-facing —
+    // admin is a pure operator, never a participant.
     visibility: 'nonAdminOnly',
   },
   {
@@ -126,11 +134,20 @@ export function getMyPageContentDescriptor({
     };
   }
 
+  if (selectedCategory === 'collections') {
+    return {
+      categoryIcon: getMyPageCategoryIcon(selectedCategory),
+      onBack,
+      ContentComponent: CollectionsOverview,
+      contentProps: { user },
+    };
+  }
+
   if (selectedCategory === 'storage') {
     return {
       categoryIcon: getMyPageCategoryIcon(selectedCategory),
       onBack,
-      ContentComponent: CollectionDashboard,
+      ContentComponent: StorageDashboard,
       contentProps: { user, onNavigate, onMessage },
     };
   }
@@ -191,9 +208,10 @@ export function resolveMyPageCategory(categoryId, isAdmin) {
     return DEFAULT_MY_PAGE_CATEGORY;
   }
 
-  // Operator rule (PLAN §14 client half): storage (collections dashboard)
-  // deep-links fall back for admins — mirrors the `sharing` precedent.
-  if (categoryId === 'storage' && isAdmin) {
+  // Operator rule (PLAN §14 client half): personal surfaces (collections
+  // overview / storage dashboard) deep-links fall back for admins — mirrors
+  // the `sharing` precedent.
+  if ((categoryId === 'collections' || categoryId === 'storage') && isAdmin) {
     return DEFAULT_MY_PAGE_CATEGORY;
   }
 

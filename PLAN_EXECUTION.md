@@ -3057,8 +3057,9 @@ refined by U4 below.
   (B absorbed → A survivor, newest-added `preview_items`, no filename labels) shared with
   the collection grid; each side CONTAINER uses the grid-view `grey.100` + divider theme
   (cells stay transparent); a shared
-  strip of up to 3 mini tiles plus `+N` sits beside the deterministic reason on desktop
-  (two rows on mobile); the detail is a Popper portal anchored to the hovered/tapped row,
+  strip of up to 3 mini tiles plus `+N` and the deterministic reason form one centered group
+  on desktop (two centered rows on mobile); the expanded accordion reserves bottom padding
+  so its last row clears the footer; the detail is a Popper portal anchored to the row,
   so it may escape the accordion/card clip while staying adjacent (never card-level), and
   card actions stay clickable.
 - **Properties:** dialog-wide draft, Save/Discard/Cancel, cross-tab save, role badge toggle,
@@ -3085,9 +3086,11 @@ refined by U4 below.
 - Release E2E: model-on 277/6 rc=0; model-free 276/7 rc=0; WebDAV 41/0 rc=0.
 - Merge detail portal + preview-parity follow-up: server `domains/collections`
   **332/332**; client `MergeProposalCard` + `CollectionsListView` + `FileManager`
-  **157/157**; COLLECTION-021 desktop+mobile **2/2** (portaled previews outside the
-  accordion, grid-view tile theme, shared strip 3 tiles + `+N`). The E2E C/D fixture seeds
-  10 shared + one unique per side for visual count review (no C/D count assertions).
+  **158/158**; COLLECTION-021 desktop+mobile **2/2** (portaled previews outside the
+  accordion, container-level grid-view theme, shared strip 3 tiles + `+N` centered with
+  the reason on desktop and centered on two rows on mobile, accordion footer clearance).
+  The E2E C/D fixture seeds 10 shared + one unique per side for visual count review (no
+  C/D count assertions).
 - `docsStatePurity` 3/3; Prettier/ESLint clean on changed files; docs/DOM count pins
   updated.
 - `client/TEST_SUMMARY.md`, `server/TEST_SUMMARY.md`, `PLAN.md`, and

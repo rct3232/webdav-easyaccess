@@ -63,8 +63,9 @@ selection callbacks.
 - Expanded accordion (`merge-suggestion-list`) lists ALL suggestions in server order,
   including the first item, as rows with the same question/count/actions UI. The list has a
   viewport-bounded `maxHeight` (never taller than the collection-list area) with vertical
-  scroll, so the first item scrolls with the rest. The footer stays BELOW the scroll list at
-  the bottom of the card.
+  scroll, so the first item scrolls with the rest. When expanded, the list reserves bottom
+  padding so the last row is never flush with or covered by the footer. The footer stays
+  BELOW the scroll list at the bottom of the card.
 - Row interaction: desktop click is a NO-OP (hover opens the detail); mobile tap opens the
   detail. A row's text block is keyboard-focusable and Enter/Space opens the detail. No
   active-pair selection state exists.
@@ -102,9 +103,10 @@ selection callbacks.
     (`merge-shared-more`) uses the TOTAL `overlap_count` (e.g. 7 shared → 3 tiles + `+4`,
     10 shared → 3 tiles + `+7`). No filenames are rendered on the mini tiles; thumbnails
     come from `thumbnailMap` with the generic file icon fallback.
-  - Desktop: `[shared strip] [reason]` in one row; the reason stays centered within the
-    remaining width with ellipsis.
-  - Mobile: two rows — shared strip first, reason below (centered).
+  - Desktop: `[shared strip] [reason]` form ONE centered group; the strip and reason are
+    centered together as a unit, with the reason ellipsizing when needed.
+  - Mobile: two rows — the shared strip is centered on its row and the reason is centered
+    on the row below.
   - No shared files ⇒ no strip; the reason keeps the row/full width.
   - Reason copy uses `recommendation.reason` verbatim when present (arbiter band only), else
     the deterministic counts sentence from `overlap_count`/`merged_count`
@@ -171,8 +173,10 @@ separate` / `Later` live on every item and dispatch that item's id with the same
       It shows only the title, then horizontal B-preview → arrow → A-preview 2×2 grids,
       then a bottom one-line reason; `recommendation.reason` wins when present, otherwise
       the deterministic counts sentence.
-- [ ] Detail footer shows at most 3 shared tiles plus `+N` from `overlap_count` (desktop
-      same row as the reason, mobile two rows); no strip when the pair has no shared files.
+- [ ] Detail footer shows at most 3 shared tiles plus `+N` from `overlap_count`; desktop
+      centers the strip+reason as one group, mobile centers the strip and reason on separate
+      rows; no strip when the pair has no shared files.
+- [ ] Expanded accordion keeps the last row clear of the footer when scrolled to the end.
 - [ ] Detail has no action buttons; the row's own actions remain clickable while it is open.
 - [ ] `onRequestThumbnails` fires with the A/B `preview_items` and shared `overlap_sample`
       node ids when a detail opens.

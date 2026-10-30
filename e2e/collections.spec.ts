@@ -1436,6 +1436,9 @@ test('E2E-S3-COLLECTION-021: the merge proposal card expands the pending accordi
   // Merge dispatches with NO extra dialog. The resolved row leaves the set
   // and the NEXT pending pair is promoted to the card body.
   await card.getByTestId('merge-accept').click();
+  // The promoted C/D row can sit under the stationary pointer and reopen its
+  // hover detail; move away before asserting the merge closed the panel.
+  await page.mouse.move(0, 0);
   await expect(page.getByTestId('undo-toast-action')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(card).toContainText(nameC);

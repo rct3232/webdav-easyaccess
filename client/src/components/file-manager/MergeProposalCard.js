@@ -392,7 +392,8 @@ const MergeProposalCard = ({
         sx={{
           display: 'flex',
           flexDirection: { xs: 'column', sm: 'row' },
-          alignItems: { xs: 'flex-start', sm: 'center' },
+          alignItems: 'center',
+          justifyContent: 'center',
           gap: { xs: 0.75, sm: 1 },
           mt: 1.5,
         }}
@@ -404,7 +405,7 @@ const MergeProposalCard = ({
           data-testid="merge-detail-reason"
           title={reasonFor(suggestion)}
           sx={{
-            flex: 1,
+            flex: '0 1 auto',
             minWidth: 0,
             maxWidth: '100%',
             alignSelf: { xs: 'stretch', sm: 'auto' },
@@ -576,6 +577,8 @@ const MergeProposalCard = ({
               flex: '1 1 auto',
               overflowY: moreOpen ? 'auto' : 'visible',
               maxHeight: moreOpen ? '40vh' : undefined,
+              // Keep the last row clear of the footer when scrolled to the end.
+              pb: moreOpen ? 1 : 0,
             }}
           >
             {visibleSuggestions.map(renderSuggestionItem)}

@@ -414,7 +414,12 @@ describe('FilePropertiesDialog AI-platform header like toggle (§3)', () => {
     const onToggleLike = jest.fn();
     const onClose = jest.fn();
     renderWithProviders(
-      <FilePropertiesDialog {...defaultProps} onClose={onClose} onToggleLike={onToggleLike} file={{ ...fileProps, liked: true }} />
+      <FilePropertiesDialog
+        {...defaultProps}
+        onClose={onClose}
+        onToggleLike={onToggleLike}
+        file={{ ...fileProps, liked: true }}
+      />
     );
 
     const toggle = screen.getByTestId('like-toggle');
@@ -507,5 +512,117 @@ describe('FilePropertiesDialog AI-platform `Member of` chips (§3.2)', () => {
     renderWithProviders(<FilePropertiesDialog {...defaultProps} collections={collections} />);
     expect(screen.queryByTestId('props-collections')).not.toBeInTheDocument();
     expect(screen.queryByTestId('props-collection-chip-17')).not.toBeInTheDocument();
+  });
+});
+
+describe('FilePropertiesDialog AI Info tab (§3.3)', () => {
+  const aiEnrichment = {
+    tags: ['beach', 'sunset'],
+    summary: 'A sunset over the beach.',
+    caption: 'Waves at golden hour.',
+    transcript: 'hello world',
+    media_kind: 'music',
+    media: { duration_sec: 12.5, width: 1920, height: 1080, codecs: ['h264', 'aac'] },
+    truncated: true,
+    schema_version: 1,
+    updated_at: '2026-10-30T10:00:00.000Z',
+    provenance: {
+      features: { model_name: 'qwen-features' },
+      caption: { model_name: 'qwen-vision' },
+      asr: null,
+    },
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    getFolderPermissions.mockResolvedValue([]);
+    getFolderStats.mockResolvedValue({ fileCount: 42, totalSize: 2048 });
+  });
+
+  it('renders no AI tab for null, empty, metadata-only payloads, or trashed files', () => {
+    const { unmount } = renderWithProviders(
+      <FilePropertiesDialog {...defaultProps} aiEnrichment={null} />
+    );
+    expect(screen.queryByTestId('props-tab-ai')).not.toBeInTheDocument();
+    unmount();
+
+    const empty = renderWithProviders(<FilePropertiesDialog {...defaultProps} aiEnrichment={{}} />);
+    expect(screen.queryByTestId('props-tab-ai')).not.toBeInTheDocument();
+    empty.unmount();
+
+    renderWithProviders(
+      <FilePropertiesDialog
+        {...defaultProps}
+        aiEnrichment={{
+          tags: [],
+          summary: '',
+          schema_version: 1,
+          updated_at: '2026-10-30T10:00:00.000Z',
+          provenance: { features: { model_name: 'qwen-features' } },
+        }}
+      />
+    );
+    expect(screen.queryByTestId('props-tab-ai')).not.toBeInTheDocument();
+  });
+
+  it('never shows the AI tab for a trashed file, even with a payload', () => {
+    renderWithProviders(
+      <FilePropertiesDialog
+        {...defaultProps}
+        file={{ ...fileProps, isTrashed: true }}
+        aiEnrichment={aiEnrichment}
+      />
+    );
+    expect(screen.queryByTestId('props-tab-ai')).not.toBeInTheDocument();
+  });
+
+  it('renders the AI tab between Info and Versions and displays the whitelist verbatim', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FilePropertiesDialog {...defaultProps} aiEnrichment={aiEnrichment} />);
+
+    const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent);
+    expect(tabs).toEqual(['Info', 'AI Info', 'Versions']);
+
+    await user.click(screen.getByTestId('props-tab-ai'));
+
+    expect(screen.getByTestId('props-ai-info')).toBeInTheDocument();
+    expect(screen.getAllByTestId('props-ai-tag')).toHaveLength(2);
+    expect(screen.getByTestId('props-ai-tags')).toHaveTextContent('beach');
+    expect(screen.getByTestId('props-ai-tags')).toHaveTextContent('sunset');
+    expect(screen.getByTestId('props-ai-summary')).toHaveTextContent('A sunset over the beach.');
+    expect(screen.getByTestId('props-ai-caption')).toHaveTextContent('Waves at golden hour.');
+    expect(screen.getByTestId('props-ai-transcript')).toHaveTextContent('hello world');
+    expect(screen.getByTestId('props-ai-media')).toHaveTextContent('Kind: music');
+    expect(screen.getByTestId('props-ai-media')).toHaveTextContent('Duration: 12.5s');
+    expect(screen.getByTestId('props-ai-media')).toHaveTextContent('Dimensions: 1920×1080');
+    expect(screen.getByTestId('props-ai-media')).toHaveTextContent('Codecs: h264, aac');
+    expect(screen.getByTestId('props-ai-truncated')).toHaveTextContent('Truncated');
+    expect(screen.getByTestId('props-ai-provenance')).toHaveTextContent('qwen-features');
+    expect(screen.getByTestId('props-ai-provenance')).toHaveTextContent('qwen-vision');
+    expect(screen.queryByTestId('props-ai-provenance-asr')).not.toBeInTheDocument();
+  });
+
+  it('ships zero edit affordances on the AI tab', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FilePropertiesDialog {...defaultProps} aiEnrichment={aiEnrichment} />);
+    await user.click(screen.getByTestId('props-tab-ai'));
+
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /regenerate/i })).not.toBeInTheDocument();
+  });
+
+  it('falls back to Info when the payload disappears while AI Info is active', async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderWithProviders(
+      <FilePropertiesDialog {...defaultProps} aiEnrichment={aiEnrichment} />
+    );
+    await user.click(screen.getByTestId('props-tab-ai'));
+    expect(screen.getByTestId('props-ai-info')).toBeInTheDocument();
+
+    rerender(<FilePropertiesDialog {...defaultProps} aiEnrichment={null} />);
+
+    expect(screen.queryByTestId('props-ai-info')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Info' })).toHaveAttribute('aria-selected', 'true');
   });
 });

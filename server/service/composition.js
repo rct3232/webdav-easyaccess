@@ -19,6 +19,7 @@ const { createFileService } = require('../domains/files/services/fileService');
 const { createBatchOperationService } = require('../domains/files/services/batchOperationService');
 const { createDownloadService } = require('../domains/files/services/downloadService');
 const { createVersionsService } = require('../domains/files/services/versionsService');
+const { createEnrichmentService } = require('../domains/ai/enrichmentService');
 const { createMigrationJobStore } = require('../domains/admin/stores/migrationJobStore');
 const { createMigrationService } = require('../domains/admin/services/migrationService');
 const { buildDestBlobStore } = require('../infrastructure/adapters/blobstore/config');
@@ -151,6 +152,13 @@ function createComposition(overrides = {}) {
       nodeContentHook,
     });
 
+  const enrichmentService =
+    overrides.enrichmentService ||
+    createEnrichmentService({
+      fileNodesStore,
+      aclService: effectiveAclService,
+    });
+
   const trashService =
     overrides.trashService ||
     createTrashService({
@@ -205,6 +213,7 @@ function createComposition(overrides = {}) {
     batchOperationService,
     downloadService,
     versionsService,
+    enrichmentService,
     trashService,
     gcService,
     failSafeService,

@@ -1495,6 +1495,16 @@ export const handlers = [
     });
   }),
 
+  // --- AI enrichment (GET /ai/enrichments/:nodeId) ---
+  // Default = readable-without-row contract; tests override with
+  // server.use(http.get(...)) to seed a payload.
+  http.get(`${API_BASE}/ai/enrichments/:nodeId`, ({ params }) =>
+    HttpResponse.json({
+      node_id: Number(params.nodeId),
+      enrichment: null,
+    })
+  ),
+
   // --- Thumbnails: single image fetch (GET /thumbnails/:hash.:ext?token=) ---
   // server/domains/thumbnails/routes.js + api.md "Thumbnails".
   http.get(`${API_BASE}/thumbnails/:hash.:ext`, ({ request }) => {

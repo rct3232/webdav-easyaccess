@@ -193,6 +193,7 @@ app.use('/api/recent-files', setupModeGuardInstance, require('./domains/recentFi
 app.use('/api/collections', setupModeGuardInstance, require('./domains/collections/routes'));
 app.use('/api/actions', setupModeGuardInstance, require('./domains/actions/routes'));
 app.use('/api/search', setupModeGuardInstance, require('./domains/ai/routes'));
+app.use('/api/ai', setupModeGuardInstance, require('./domains/ai/enrichmentRoutes'));
 app.use(
   '/api/file-likes',
   setupModeGuardInstance,

@@ -190,6 +190,16 @@ Separate mount (per-node subject, not per-collection; router still owned by the 
 
 ---
 
+## AI Enrichments
+
+Spec: `docs/spec/server/routes/aiEnrichments.md`.
+
+| Method | Path                          | Auth  | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------ | ----------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/ai/enrichments/:nodeId` | Token | Read one node's persisted AI enrichment for the properties `AI Info` tab. Readable with row → `{ node_id, enrichment: { tags, summary, caption, transcript, media_kind, media: { duration_sec, width, height, codecs } \| null, truncated, schema_version, updated_at, provenance: { features, caption, asr } } }` (provenance entries are `{ model_name } \| null`); readable without row → `{ node_id, enrichment: null }`. Unknown/trashed/unreadable → 404 `serverErrors.files.notFound` (masquerade); share tokens excluded; `Cache-Control: no-store`; raw probe/streams/ids/keys/vectors never returned. |
+
+---
+
 ## Search
 
 Spec: `docs/spec/server/routes/search.md`.

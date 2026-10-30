@@ -26,6 +26,7 @@ import { getPublicSettings } from '../../services/settingsService';
 import { useRecentFile } from './hooks/useRecentFile';
 import { useCollections } from './hooks/useCollections';
 import { useCollectionMemberships } from './hooks/useCollectionMemberships';
+import { useFileAiInfo } from './hooks/useFileAiInfo';
 import { useSearchResults } from './hooks/useSearchResults';
 import { useUndoToast } from '../../hooks/useUndoToast';
 import { getServerErrorDisplay } from '../../utils/errorUtils';
@@ -407,6 +408,14 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     if (!source) return null;
     return files.find((f) => getEntryKey(f) === getEntryKey(source)) || source;
   }, [files, mobilePropertiesFile, actionSheetFile]);
+
+  // FilePropertiesDialog §3.3: host fetch of the opened node's AI enrichment.
+  // No IO for share-link/trashed/props-closed states — the dialog only ever
+  // receives a prepared payload or null (absent-not-disabled).
+  const { enrichment: propertiesAiEnrichment } = useFileAiInfo({
+    nodeId: propertiesFile?.nodeId ?? null,
+    enabled: propertiesDialogOpen && !isShareLinkMode && propertiesFile?.isTrashed !== true,
+  });
 
   // 미리보기 갤러리용 미디어 파일 목록 (같은 노드/경로의 이미지/비디오)
   const mediaFiles = useMemo(() => {
@@ -2342,6 +2351,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       mobileShareFile,
       propertiesFile,
       propertiesCollections,
+      propertiesAiEnrichment,
       bulkDeleteFilePaths,
       bulkConflictData,
       setBulkConflictData,
@@ -2356,6 +2366,7 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       mobileShareFile,
       propertiesFile,
       propertiesCollections,
+      propertiesAiEnrichment,
       bulkDeleteFilePaths,
       bulkConflictData,
       setBulkConflictData,

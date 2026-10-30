@@ -3,7 +3,7 @@
  * between the collections toolbar and the list. The body presents the top
  * score-desc pending pair; a centered footer text expands the remaining pairs
  * in an accordion; desktop hover / mobile tap opens a NON-MODAL detail panel
- * with the real sample tiles (B absorbed → shared → A survivor) and a
+ * with the real sample tiles (B absorbed → A survivor) and a
  * one-line reason. `Merge` executes immediately: THE CARD IS THE CONFIRMATION
  * (no dialog). IO-free pure view: thumbnails arrive through the host
  * `thumbnailMap`/`onRequestThumbnails` props, all mutation intent rides
@@ -23,21 +23,22 @@ import {
   Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
 import { useResponsive } from '../../hooks/useResponsive';
 import { koObjectParticle, koWithParticle } from '../../utils/koParticleUtils';
 
 const HOVER_OPEN_DELAY_MS = 200;
 const HOVER_CLOSE_GRACE_MS = 300;
-const OVERLAP_SAMPLE_CAP = 8;
 const UNIQUE_SAMPLE_CAP = 4;
 
 const detailTileSx = {
-  width: { xs: 56, sm: 84 },
-  height: { xs: 56, sm: 84 },
-  borderRadius: 1.5,
+  width: '100%',
+  height: 'auto',
+  aspectRatio: '1 / 1',
+  borderRadius: 2,
   objectFit: 'cover',
-  flexShrink: 0,
+  display: 'block',
   bgcolor: 'action.hover',
 };
 
@@ -195,7 +196,6 @@ const MergeProposalCard = ({
   const detailSampleIds = useMemo(() => {
     if (!detailSuggestion) return [];
     const ids = [];
-    (detailSuggestion.overlap_sample ?? []).forEach((pair) => ids.push(pair.a_node_id));
     (detailSuggestion.a_unique_sample ?? []).forEach((row) => ids.push(row.node_id));
     (detailSuggestion.b_unique_sample ?? []).forEach((row) => ids.push(row.node_id));
     return [...new Set(ids.filter((id) => id != null))];
@@ -266,40 +266,13 @@ const MergeProposalCard = ({
     }
   };
 
-  const renderSharedTile = (pair) => {
-    const url = thumbUrlOf(pair.a_node_id);
-    if (url) {
-      return (
-        <Box
-          component="img"
-          key={`shared-${pair.a_node_id}`}
-          data-testid={`merge-sample-tile-${pair.a_node_id}`}
-          src={url}
-          alt=""
-          sx={detailTileSx}
-        />
-      );
-    }
-    // Zero fabrication: a sample without a loaded image stays a plain tile.
-    return (
-      <Box
-        key={`shared-${pair.a_node_id}`}
-        data-testid={`merge-sample-tile-${pair.a_node_id}`}
-        sx={detailPlaceholderSx}
-        aria-hidden="true"
-      >
-        <InsertDriveFileOutlinedIcon fontSize="small" />
-      </Box>
-    );
-  };
-
   const renderUniqueTile = (row, side) => {
     const url = thumbUrlOf(row.node_id);
     return (
       <Box
         key={`unique-${side}-${row.node_id}`}
         data-testid={`merge-unique-${side}-${row.node_id}`}
-        sx={{ width: { xs: 56, sm: 84 }, minWidth: 0, flexShrink: 0 }}
+        sx={{ minWidth: 0 }}
       >
         {url ? (
           <Box component="img" src={url} alt="" sx={detailTileSx} />
@@ -541,8 +514,8 @@ const MergeProposalCard = ({
             onMouseEnter={cancelScheduledClose}
             onMouseLeave={isMobile ? undefined : scheduleClose}
             sx={{
-              width: { xs: 'calc(100vw - 24px)', sm: 'min(880px, calc(100vw - 48px))' },
-              maxHeight: '70vh',
+              width: { xs: 'calc(100vw - 24px)', sm: 'min(1080px, calc(100vw - 48px))' },
+              maxHeight: '80vh',
               overflow: 'auto',
               p: 2,
               borderRadius: 2,
@@ -570,16 +543,16 @@ const MergeProposalCard = ({
               </IconButton>
             </Box>
 
-            {/* B (absorbed) unique tiles → shared tiles → A (survivor) unique
-                tiles, left-to-right. Each group is aria-labelled; the visible
-                detail keeps only the title (MergeProposalCard.md §2.5). */}
+            {/* Two large sample panels only: B (absorbed) → A (survivor).
+                Shared members are represented by the reason/counts, not by a
+                third tile column. Each panel fills half the detail width. */}
             <Box
               data-testid="merge-detail-tiles"
               sx={{
                 display: 'flex',
-                alignItems: 'flex-start',
-                justifyContent: 'space-between',
-                gap: { xs: 1, sm: 2 },
+                flexDirection: { xs: 'column', sm: 'row' },
+                alignItems: 'stretch',
+                gap: { xs: 1.5, sm: 2 },
                 mt: 1.5,
                 width: '100%',
               }}
@@ -588,11 +561,11 @@ const MergeProposalCard = ({
                 data-testid="merge-detail-unique-b"
                 aria-label={t('fileManager.mergeUnique', { name: detailSuggestion.b_name })}
                 sx={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
+                  flex: '1 1 0',
+                  minWidth: 0,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
                   gap: 1,
-                  flex: '0 1 auto',
-                  maxWidth: '30%',
                   alignContent: 'flex-start',
                 }}
               >
@@ -601,33 +574,27 @@ const MergeProposalCard = ({
                   .map((row) => renderUniqueTile(row, 'b'))}
               </Box>
               <Box
-                data-testid="merge-detail-shared"
-                aria-label={t('fileManager.mergeShared')}
+                data-testid="merge-detail-arrow"
+                aria-hidden="true"
                 sx={{
+                  alignSelf: 'center',
+                  color: 'text.secondary',
                   display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: 1,
-                  flex: '1 1 auto',
-                  minWidth: 0,
-                  justifyContent: 'center',
-                  alignContent: 'flex-start',
+                  transform: { xs: 'rotate(90deg)', sm: 'none' },
                 }}
               >
-                {(detailSuggestion.overlap_sample ?? [])
-                  .slice(0, OVERLAP_SAMPLE_CAP)
-                  .map(renderSharedTile)}
+                <ArrowForwardIcon />
               </Box>
               <Box
                 data-testid="merge-detail-unique-a"
                 aria-label={t('fileManager.mergeUnique', { name: detailSuggestion.a_name })}
                 sx={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
+                  flex: '1 1 0',
+                  minWidth: 0,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
                   gap: 1,
-                  flex: '0 1 auto',
-                  maxWidth: '30%',
                   alignContent: 'flex-start',
-                  justifyContent: 'flex-end',
                 }}
               >
                 {(detailSuggestion.a_unique_sample ?? [])

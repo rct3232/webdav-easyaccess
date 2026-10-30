@@ -1468,20 +1468,21 @@ test('E2E-S3-COLLECTION-021: the merge proposal card expands the pending accordi
   await expect(detail).toBeVisible();
   await expect(detail.getByTestId('merge-detail-title')).toContainText(nameA);
   await expect(detail.getByTestId('merge-detail-title')).toContainText(nameB);
-  await expect(detail.getByTestId(`merge-sample-tile-${shared.nodeId}`)).toBeVisible();
+  await expect(detail.getByTestId('merge-detail-shared')).toHaveCount(0);
   const bTile = detail.getByTestId(`merge-unique-b-${onlyB.nodeId}`);
   const aTile = detail.getByTestId(`merge-unique-a-${onlyA.nodeId}`);
   await expect(bTile).toContainText(onlyB.path.split('/').pop() as string);
   await expect(aTile).toContainText(onlyA.path.split('/').pop() as string);
-  const sharedTile = detail.getByTestId(`merge-sample-tile-${shared.nodeId}`);
+  await expect(detail.getByTestId('merge-detail-arrow')).toBeVisible();
   const bBox = await bTile.boundingBox();
-  const sharedBox = await sharedTile.boundingBox();
   const aBox = await aTile.boundingBox();
   expect(bBox).not.toBeNull();
-  expect(sharedBox).not.toBeNull();
   expect(aBox).not.toBeNull();
-  expect(bBox!.x).toBeLessThan(sharedBox!.x);
-  expect(sharedBox!.x).toBeLessThan(aBox!.x);
+  if (isMobile) {
+    expect(bBox!.y).toBeLessThan(aBox!.y);
+  } else {
+    expect(bBox!.x).toBeLessThan(aBox!.x);
+  }
   await expect(detail.getByTestId('merge-detail-reason')).toContainText(
     '1 of 3 files are shared; merging keeps them in one collection.'
   );

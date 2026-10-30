@@ -76,13 +76,14 @@ selection callbacks.
   full-screen backdrop and NO mouse-follow positioning. Card actions stay clickable.
 - Close behavior: 300ms hover-out grace, cancelled by pointer enter on the panel; Esc;
   outside pointer-down; the panel's close button (`merge-detail-close`).
-- Content: the title only (`mergeQuestion`, `merge-detail-title`), then large sample tiles in
-  B(absorbed) → shared → A(survivor) left-to-right order (`merge-detail-tiles`):
+- Content: the title only (`mergeQuestion`, `merge-detail-title`), then two large sample
+  panels in B(absorbed) → A(survivor) order (`merge-detail-tiles`):
   - left = `b_unique_sample` tiles (`merge-unique-b-<node_id>`, name caption);
-  - middle = `overlap_sample` tiles (`merge-sample-tile-<a_node_id>`, max 8);
+  - arrow = `merge-detail-arrow`;
   - right = `a_unique_sample` tiles (`merge-unique-a-<node_id>`, name caption).
+    Shared members are represented by the reason/counts, not by a third tile column.
     Thumbnails come from `thumbnailMap`; unloaded samples stay placeholders (zero fabrication).
-    Tiles are large (panel-filling; no 300px ceiling).
+    Tiles fill their panel (`aspect-ratio: 1`) with no 300px ceiling; mobile stacks B above A.
 - Bottom one-line reason (`merge-detail-reason`, single line with ellipsis): use
   `recommendation.reason` verbatim when present (arbiter band only), else the deterministic
   counts sentence from `overlap_count`/`merged_count` (`fileManager.mergeReason`, e.g.
@@ -140,7 +141,7 @@ selection callbacks.
       pointer enter on the panel cancels the close; Esc/outside/close button closes.
 - [ ] Mobile tap on the card body or an accordion row opens the detail; desktop accordion-row
       click is a no-op; Enter/Space opens from a focused body/row.
-- [ ] Detail shows only the title, then B-unique → shared → A-unique large tiles, then a
+- [ ] Detail shows only the title, then B-unique → arrow → A-unique large tiles, then a
       bottom one-line reason; `recommendation.reason` wins when present, otherwise the
       deterministic counts sentence.
 - [ ] Detail actions dispatch the displayed row's id and close the panel; card actions remain
@@ -149,8 +150,8 @@ selection callbacks.
 - [ ] E2E/BDD selector anchors (`data-testid`): `merge-proposal-card`, `merge-card-body`,
       `merge-card-actions`, `merge-more-toggle`, `merge-suggestion-list`,
       `merge-suggestion-row-<suggestion_id>`, `merge-detail-panel`, `merge-detail-title`,
-      `merge-detail-tiles`, `merge-detail-reason`, `merge-detail-close`,
-      `merge-sample-tile-<a_node_id>`, `merge-unique-a-<node_id>`, `merge-unique-b-<node_id>`,
+      `merge-detail-tiles`, `merge-detail-arrow`, `merge-detail-reason`, `merge-detail-close`,
+      `merge-unique-a-<node_id>`, `merge-unique-b-<node_id>`,
       `merge-accept`, `merge-keep-separate`, `merge-later`, `merge-detail-accept`,
       `merge-detail-keep-separate`, `merge-detail-later`.
 

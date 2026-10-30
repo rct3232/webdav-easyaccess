@@ -695,24 +695,20 @@ const CollectionPropertiesDialog = ({
         {/* Fixed bottom action bar — identical across tab switches */}
         <DialogActions>
           <Box sx={{ flex: 1 }} />
-          <Button
-            data-testid="collection-props-close"
-            onClick={requestClose}
-            variant="outlined"
-            disabled={saving}
-          >
-            {t('common.close')}
-          </Button>
           {dirty && (
             <Button
               data-testid="collection-props-save"
               onClick={performSave}
-              variant="contained"
+              variant="outlined"
+              color="primary"
               disabled={!canSave}
             >
               {saving ? t('common.saving') : t('common.save')}
             </Button>
           )}
+          <Button data-testid="collection-props-close" onClick={requestClose} disabled={saving}>
+            {t('common.close')}
+          </Button>
         </DialogActions>
       </Dialog>
 

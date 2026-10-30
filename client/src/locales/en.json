@@ -265,7 +265,7 @@
     "mergeLater": "Later",
     "mergeReason": "{{overlap}} of {{merged}} files are shared; merging keeps them in one collection.",
     "mergeDetailsAria": "Show merge details",
-    "mergeShared": "Shared",
+
     "mergeUnique": "Only in \"{{name}}\"",
     "mergeClose": "Close merge details",
     "digestLine": "+{{added}} / -{{removed}}",

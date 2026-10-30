@@ -185,23 +185,23 @@ describe('MergeProposalCard', () => {
     expect(screen.getByTestId('merge-detail-panel')).toBeInTheDocument();
   });
 
-  it('detail shows only the title, B(absorbed) → shared → A(survivor) large tiles and the counts reason', () => {
+  it('detail shows only the title, B(absorbed) → A(survivor) large tiles and the counts reason', () => {
     render();
     const panel = hoverOpen();
     expect(within(panel).getByTestId('merge-detail-title')).toHaveTextContent('Europe');
     expect(within(panel).getByTestId('merge-detail-title')).toHaveTextContent('2025 trip');
     expect(within(panel).queryByText('Shared')).not.toBeInTheDocument();
     expect(within(panel).queryByText(/Only in/)).not.toBeInTheDocument();
+    expect(within(panel).queryByTestId('merge-detail-shared')).not.toBeInTheDocument();
 
     const tiles = within(panel).getByTestId('merge-detail-tiles');
-    // DOM order is the visual left-to-right order: B unique, shared, A unique.
+    // DOM order is the visual left-to-right order: B unique, arrow, A unique.
     expect(Array.from(tiles.children).map((el) => el.dataset.testid)).toEqual([
       'merge-detail-unique-b',
-      'merge-detail-shared',
+      'merge-detail-arrow',
       'merge-detail-unique-a',
     ]);
     expect(within(panel).getByTestId('merge-unique-b-220')).toHaveTextContent('seville.jpg');
-    expect(within(panel).getByTestId('merge-sample-tile-101')).toBeInTheDocument();
     expect(within(panel).getByTestId('merge-unique-a-110')).toHaveTextContent('beach.jpg');
     expect(within(panel).getByTestId('merge-detail-reason')).toHaveTextContent(
       '41 of 58 files are shared; merging keeps them in one collection.'
@@ -295,19 +295,20 @@ describe('MergeProposalCard', () => {
     render({ onRequestThumbnails });
     expect(onRequestThumbnails).not.toHaveBeenCalled();
     hoverOpen();
-    expect(onRequestThumbnails).toHaveBeenCalledWith([101, 102, 110, 220]);
+    expect(onRequestThumbnails).toHaveBeenCalledWith([110, 220]);
   });
 
   it('renders host thumbnailMap URLs where loaded and placeholders where not (zero fabrication)', () => {
     render({
-      thumbnailMap: new Map([[101, '/api/thumbnails/e2e.jpg?token=abc']]),
+      thumbnailMap: new Map([[220, '/api/thumbnails/e2e.jpg?token=abc']]),
     });
     const panel = hoverOpen();
-    const tile = within(panel).getByTestId('merge-sample-tile-101');
-    expect(tile.tagName).toBe('IMG');
-    expect(tile).toHaveAttribute('src', '/api/thumbnails/e2e.jpg?token=abc');
+    const tile = within(panel).getByTestId('merge-unique-b-220');
+    const image = tile.querySelector('img');
+    expect(image).not.toBeNull();
+    expect(image).toHaveAttribute('src', '/api/thumbnails/e2e.jpg?token=abc');
     // unloaded sample keeps a placeholder — never a fake image
-    expect(within(panel).getByTestId('merge-sample-tile-102').tagName).not.toBe('IMG');
+    expect(within(panel).getByTestId('merge-unique-a-110').querySelector('img')).toBeNull();
   });
 
   it('keeps the same card DOM node when the resolved top row leaves the set', () => {

@@ -257,6 +257,17 @@ describe('MergeProposalCard', () => {
     expect(screen.queryByTestId('merge-detail-panel')).not.toBeInTheDocument();
   });
 
+  it('portals the detail outside the accordion and card so the scroll box cannot clip it', () => {
+    render({ suggestions: [suggestion(), secondSuggestion()] });
+    fireEvent.click(screen.getByTestId('merge-more-toggle'));
+    const panel = hoverOpen('merge-suggestion-row-89');
+    const list = screen.getByTestId('merge-suggestion-list');
+    const card = screen.getByTestId('merge-proposal-card');
+    expect(list.contains(panel)).toBe(false);
+    expect(card.contains(panel)).toBe(false);
+    expect(document.body.contains(panel)).toBe(true);
+  });
+
   it('desktop accordion-row click is a no-op; keyboard Enter opens the row detail', () => {
     render({ suggestions: [suggestion(), secondSuggestion()] });
     fireEvent.click(screen.getByTestId('merge-more-toggle'));

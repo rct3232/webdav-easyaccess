@@ -51,8 +51,8 @@ selection callbacks.
   Enter/Space keyboard path so the detail stays reachable without hover.
 - Mobile: each item is a column — summary text on top, the three action buttons at the
   bottom. Desktop: summary left, actions right. Footer below the list.
-- `recommendation` is never rendered on the collapsed card; its `reason` is the inline
-  detail's one-line reason (§2.5).
+- `recommendation` is never rendered on the collapsed card; its `reason` is the detail
+  panel's one-line reason (§2.5).
 
 ### 2.4 Pending Accordion (footer)
 
@@ -72,10 +72,11 @@ selection callbacks.
 ### 2.5 Detail Panel (non-modal)
 
 - Opens on desktop hover with 200ms intent, or on mobile tap. There is NO expand button. The
-  panel is rendered INLINE inside the accordion, immediately below the hovered/tapped item
-  (or immediately above it when the lower viewport half cannot fit). It never portals outside
-  the accordion, adds NO full-screen backdrop, and does not follow the mouse. Item actions
-  stay clickable.
+  panel is rendered in a MUI Popper portal anchored to the hovered/tapped ITEM (never to the
+  card), immediately below it (or immediately above it when the lower viewport half cannot
+  fit). The portal sits outside the accordion and card, so the panel may extend beyond their
+  scroll/clip bounds; it is never detached from the item or positioned at card level. It adds
+  NO full-screen backdrop and does not follow the mouse. Item actions stay clickable.
 - Close behavior: 300ms hover-out grace, cancelled by pointer enter on the panel; Esc;
   outside pointer-down; the panel's close button (`merge-detail-close`).
 - Content: the title only (`mergeQuestion`, `merge-detail-title`), then two large sample
@@ -116,7 +117,7 @@ separate` / `Later` live on every item and dispatch that item's id with the same
 
 ### 2.8 Dependencies
 
-- **imports:** MUI Card/CardContent/Button/Box/Paper/Popper/IconButton/Typography,
+- **imports:** MUI Box/Button/Card/IconButton/Paper/Popper/Typography,
   `useTranslation`, `utils/koParticleUtils.js` (pure particle picker), `hooks/useResponsive`
   (mobile tap vs desktop hover); **no** gateway/service imports (callbacks only — thumbnails
   arrive via `thumbnailMap`/`onRequestThumbnails` props).
@@ -145,10 +146,11 @@ separate` / `Later` live on every item and dispatch that item's id with the same
       pointer enter on the panel cancels the close; Esc/outside/close button closes.
 - [ ] Mobile tap on the card body or an accordion row opens the detail; desktop accordion-row
       click is a no-op; Enter/Space opens from a focused body/row.
-- [ ] Detail is inline immediately above/below the hovered row (never outside the accordion),
-      shows only the title, then horizontal B-unique → arrow → A-unique tiles, then a bottom
-      one-line reason; `recommendation.reason` wins when present, otherwise the deterministic
-      counts sentence.
+- [ ] Detail is a portaled overlay anchored immediately above/below the hovered row; it may
+      extend beyond the accordion/card clip but never becomes a card-level/detached panel.
+      It shows only the title, then horizontal B-unique → arrow → A-unique tiles, then a
+      bottom one-line reason; `recommendation.reason` wins when present, otherwise the
+      deterministic counts sentence.
 - [ ] Detail has no action buttons; the row's own actions remain clickable while it is open.
 - [ ] `onRequestThumbnails` fires with the displayed sample node ids when a detail opens.
 - [ ] E2E/BDD selector anchors (`data-testid`): `merge-proposal-card`, `merge-card-body`,

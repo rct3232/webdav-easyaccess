@@ -12,7 +12,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Box, Button, Card, IconButton, Paper, Typography } from '@mui/material';
+import { Box, Button, Card, IconButton, Paper, Popper, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
@@ -22,14 +22,6 @@ import { koObjectParticle, koWithParticle } from '../../utils/koParticleUtils';
 const HOVER_OPEN_DELAY_MS = 200;
 const HOVER_CLOSE_GRACE_MS = 300;
 const UNIQUE_SAMPLE_CAP = 4;
-
-function resolveDetailPlacement(anchorEl) {
-  const rect = anchorEl?.getBoundingClientRect?.();
-  if (!rect) return 'below';
-  // Inline detail: keep it next to the hovered item, preferring below but
-  // flipping above when the lower viewport half cannot fit it.
-  return rect.bottom + 340 > window.innerHeight ? 'above' : 'below';
-}
 
 const detailTileSx = {
   width: '100%',
@@ -69,7 +61,9 @@ const MergeProposalCard = ({
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
   const [moreOpen, setMoreOpen] = useState(false);
-  const [detail, setDetail] = useState(null); // { suggestionId, anchorEl }
+  // { suggestionId, anchorEl }: the detail is portaled beside the anchored ROW
+  // (never the card), so the accordion/card scroll clip cannot cut it off.
+  const [detail, setDetail] = useState(null);
   const cardRef = useRef(null);
   const panelRef = useRef(null);
   const openTimerRef = useRef(null);
@@ -107,13 +101,10 @@ const MergeProposalCard = ({
 
   const openDetailNow = useCallback(
     (suggestion, anchorEl) => {
-      if (!suggestion) return;
+      if (!suggestion || !anchorEl) return;
       clearOpenTimer();
       clearCloseTimer();
-      setDetail({
-        suggestionId: suggestion.suggestion_id,
-        placement: resolveDetailPlacement(anchorEl),
-      });
+      setDetail({ suggestionId: suggestion.suggestion_id, anchorEl });
     },
     [clearOpenTimer, clearCloseTimer]
   );
@@ -127,10 +118,8 @@ const MergeProposalCard = ({
       clearCloseTimer();
       openTimerRef.current = setTimeout(() => {
         openTimerRef.current = null;
-        setDetail({
-          suggestionId: suggestion.suggestion_id,
-          placement: resolveDetailPlacement(anchorEl),
-        });
+        if (!anchorEl) return;
+        setDetail({ suggestionId: suggestion.suggestion_id, anchorEl });
       }, HOVER_OPEN_DELAY_MS);
     },
     [isMobile, clearOpenTimer, clearCloseTimer]
@@ -301,15 +290,16 @@ const MergeProposalCard = ({
     <Paper
       id="merge-detail-panel"
       ref={panelRef}
-      elevation={0}
+      elevation={8}
       data-testid="merge-detail-panel"
       role="region"
       aria-label={questionFor(suggestion)}
       onMouseEnter={cancelScheduledClose}
       onMouseLeave={isMobile ? undefined : scheduleClose}
       sx={{
-        mt: 1,
-        mb: 1,
+        width: { xs: 'calc(100vw - 16px)', sm: 'min(920px, calc(100vw - 48px))' },
+        maxHeight: 'min(70vh, 520px)',
+        overflowY: 'auto',
         p: { xs: 1, sm: 1.5 },
         border: 1,
         borderColor: 'divider',
@@ -423,6 +413,7 @@ const MergeProposalCard = ({
       <Box
         key={suggestionId}
         data-testid={bodyTestId}
+        data-merge-row={suggestionId}
         onMouseEnter={
           isMobile ? undefined : (event) => scheduleOpen(suggestion, event.currentTarget)
         }
@@ -440,7 +431,6 @@ const MergeProposalCard = ({
           bgcolor: rowOpen ? 'action.hover' : 'transparent',
         }}
       >
-        {rowOpen && detail?.placement === 'above' ? renderDetail(suggestion) : null}
         <Box
           sx={{
             display: 'flex',
@@ -459,7 +449,11 @@ const MergeProposalCard = ({
             onKeyDown={(event) =>
               handleDisclosureKeyDown(event, () => {
                 if (rowOpen) closeDetail();
-                else openDetailNow(suggestion, event.currentTarget);
+                else
+                  openDetailNow(
+                    suggestion,
+                    event.currentTarget.closest('[data-merge-row]') ?? event.currentTarget
+                  );
               })
             }
             sx={{
@@ -531,7 +525,6 @@ const MergeProposalCard = ({
             </Button>
           </Box>
         </Box>
-        {rowOpen && detail?.placement === 'below' ? renderDetail(suggestion) : null}
       </Box>
     );
   };
@@ -539,58 +532,95 @@ const MergeProposalCard = ({
   const visibleSuggestions = moreOpen ? suggestions : [topSuggestion];
 
   return (
-    <Card
-      ref={cardRef}
-      data-testid="merge-proposal-card"
-      variant="outlined"
-      onMouseLeave={isMobile ? undefined : scheduleClose}
-      sx={{
-        position: 'relative',
-        zIndex: 1,
-        minHeight: 68,
-        borderRadius: 2,
-        bgcolor: 'background.paper',
-      }}
-    >
-      <Box sx={{ display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 200px)' }}>
-        <Box
-          id="merge-suggestion-list"
-          data-testid="merge-suggestion-list"
-          sx={{
-            flex: '1 1 auto',
-            overflowY: moreOpen ? 'auto' : 'visible',
-            maxHeight: moreOpen ? '40vh' : undefined,
-          }}
-        >
-          {visibleSuggestions.map(renderSuggestionItem)}
-        </Box>
-        {remainingSuggestions.length > 0 ? (
+    <>
+      <Card
+        ref={cardRef}
+        data-testid="merge-proposal-card"
+        variant="outlined"
+        onMouseLeave={isMobile ? undefined : scheduleClose}
+        sx={{
+          position: 'relative',
+          zIndex: 1,
+          minHeight: 68,
+          borderRadius: 2,
+          bgcolor: 'background.paper',
+        }}
+      >
+        <Box sx={{ display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 200px)' }}>
           <Box
-            role="button"
-            tabIndex={0}
-            aria-expanded={moreOpen}
-            aria-controls="merge-suggestion-list"
-            data-testid="merge-more-toggle"
-            onClick={toggleMore}
-            onKeyDown={(event) => handleDisclosureKeyDown(event, toggleMore)}
+            id="merge-suggestion-list"
+            data-testid="merge-suggestion-list"
             sx={{
-              py: 0.75,
-              px: 1.5,
-              textAlign: 'center',
-              typography: 'caption',
-              color: 'text.secondary',
-              cursor: 'pointer',
-              borderTop: 1,
-              borderColor: 'divider',
-              flexShrink: 0,
-              ...focusRingSx,
+              flex: '1 1 auto',
+              overflowY: moreOpen ? 'auto' : 'visible',
+              maxHeight: moreOpen ? '40vh' : undefined,
             }}
           >
-            {t('fileManager.mergeMore', { count: remainingSuggestions.length })}
+            {visibleSuggestions.map(renderSuggestionItem)}
           </Box>
-        ) : null}
-      </Box>
-    </Card>
+          {remainingSuggestions.length > 0 ? (
+            <Box
+              role="button"
+              tabIndex={0}
+              aria-expanded={moreOpen}
+              aria-controls="merge-suggestion-list"
+              data-testid="merge-more-toggle"
+              onClick={toggleMore}
+              onKeyDown={(event) => handleDisclosureKeyDown(event, toggleMore)}
+              sx={{
+                py: 0.75,
+                px: 1.5,
+                textAlign: 'center',
+                typography: 'caption',
+                color: 'text.secondary',
+                cursor: 'pointer',
+                borderTop: 1,
+                borderColor: 'divider',
+                flexShrink: 0,
+                ...focusRingSx,
+              }}
+            >
+              {t('fileManager.mergeMore', { count: remainingSuggestions.length })}
+            </Box>
+          ) : null}
+        </Box>
+      </Card>
+      {detailSuggestion && detail?.anchorEl ? (
+        <Popper
+          open
+          role="presentation"
+          anchorEl={detail.anchorEl}
+          placement="bottom-start"
+          modifiers={[
+            { name: 'offset', options: { offset: [0, 8] } },
+            {
+              name: 'flip',
+              enabled: true,
+              options: {
+                fallbackPlacements: ['top-start'],
+                boundary: 'viewport',
+                rootBoundary: 'viewport',
+                padding: 8,
+              },
+            },
+            {
+              name: 'preventOverflow',
+              enabled: true,
+              options: {
+                boundary: 'viewport',
+                rootBoundary: 'viewport',
+                altAxis: false,
+                padding: 8,
+                tether: false,
+              },
+            },
+          ]}
+          sx={{ zIndex: (theme) => theme.zIndex.modal - 1 }}
+        >
+          {renderDetail(detailSuggestion)}
+        </Popper>
+      ) : null}
+    </>
   );
 };
 

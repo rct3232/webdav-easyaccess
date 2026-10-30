@@ -3054,8 +3054,10 @@ refined by U4 below.
   AddToCollectionMenu checkmarks, FilePropertiesDialog “Member of”, and bulk add.
 - **Merge UI:** sticky region between toolbar and list; body/footer accordion; desktop
   hover/mobile tap detail; no active-pair cursor; two panel-filling B(absorbed)→A(survivor)
-  tile grids (no middle shared column), with the panel kept below the card so card actions
-  stay clickable; deterministic count sentence with optional arbiter reason.
+  tile grids (no middle shared column); the detail is a Popper portal anchored to the
+  hovered/tapped row, so it may escape the accordion/card clip while staying adjacent
+  (never card-level), and card actions stay clickable; deterministic count sentence with
+  optional arbiter reason.
 - **Properties:** dialog-wide draft, Save/Discard/Cancel, cross-tab save, role badge toggle,
   hierarchical `onBack`, one atomic `PUT /:id/properties` TX and one composite undo;
   role changes preserve the grantee hidden flag; new grants clear it. The footer keeps the
@@ -3078,6 +3080,8 @@ refined by U4 below.
 - PostgreSQL adapter leg on a freshly recreated `webdav_test`: 32 suites / 492 passed +
   1 skipped.
 - Release E2E: model-on 277/6 rc=0; model-free 276/7 rc=0; WebDAV 41/0 rc=0.
+- Merge detail portal follow-up: `MergeProposalCard` unit 20/20; COLLECTION-021
+  desktop+mobile 2/2 (portaled outside the accordion, adjacent above/below the row).
 - `docsStatePurity` 3/3; Prettier/ESLint clean on changed files; docs/DOM count pins
   updated.
 - `client/TEST_SUMMARY.md`, `server/TEST_SUMMARY.md`, `PLAN.md`, and

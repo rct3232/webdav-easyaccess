@@ -2247,7 +2247,8 @@ describe('FileManager', () => {
           const next = screen.getByTestId('merge-proposal-card');
           expect(next).toHaveTextContent('Kyoto');
           expect(screen.queryByTestId('merge-more-toggle')).not.toBeInTheDocument();
-          expect(screen.queryByTestId('merge-suggestion-list')).not.toBeInTheDocument();
+          expect(screen.queryByTestId('merge-suggestion-row-89')).not.toBeInTheDocument();
+          expect(screen.getByTestId('merge-suggestion-list')).toBeInTheDocument();
         });
         expect(screen.getByTestId('merge-proposal-card')).toBe(card);
         expect(screen.getAllByTestId('merge-proposal-card')).toHaveLength(1);
@@ -2280,7 +2281,7 @@ describe('FileManager', () => {
         expect(screen.queryByTestId('merge-proposal-card')).not.toBeInTheDocument();
       }, 15000);
 
-      it('dispatches an accordion row through its detail actions and removes that suggestion', async () => {
+      it('dispatches an accordion row through its own actions while the detail is open', async () => {
         const state = slotState([firstPair, secondPair]);
         server.use(...state.handlers);
         await renderWithProvidersAct(<FileManagerWithRoutes />, {
@@ -2289,13 +2290,14 @@ describe('FileManager', () => {
 
         await screen.findByTestId('merge-proposal-card');
         fireEvent.click(screen.getByTestId('merge-more-toggle'));
-        const row = screen.getByTestId('merge-suggestion-row-89');
+        const row = screen.getByTestId('merge-row-text-89');
         // keyboard path (desktop click on a row is a no-op)
         fireEvent.keyDown(row, { key: 'Enter' });
         const panel = await screen.findByTestId('merge-detail-panel');
         expect(within(panel).getByTestId('merge-detail-title')).toHaveTextContent('Kyoto');
+        expect(within(panel).queryByTestId('merge-detail-later')).not.toBeInTheDocument();
 
-        fireEvent.click(within(panel).getByTestId('merge-detail-later'));
+        fireEvent.click(screen.getByTestId('merge-row-later-89'));
         await waitFor(() => expect(state.calls.posts).toEqual(['dismiss/30/31']));
         await waitFor(() => {
           const next = screen.getByTestId('merge-proposal-card');

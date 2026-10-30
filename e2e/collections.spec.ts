@@ -1338,6 +1338,33 @@ test('E2E-S3-COLLECTION-021: the merge proposal card expands the pending accordi
   await expect(accordion).toContainText(nameC);
   await expect(accordion).toContainText(nameD);
 
+  // The row detail is portaled beside its item, not nested in the scroll box:
+  // it can extend beyond the accordion/card clip instead of being cut off.
+  const secondRow = accordion
+    .locator('[data-testid^="merge-suggestion-row-"]')
+    .filter({ hasText: nameC });
+  const secondRowText = secondRow.locator('[data-testid^="merge-row-text-"]');
+  if (isMobile) {
+    await secondRowText.tap();
+  } else {
+    await secondRowText.hover();
+  }
+  const rowDetail = page.getByTestId('merge-detail-panel');
+  await expect(rowDetail).toBeVisible();
+  await expect(accordion.getByTestId('merge-detail-panel')).toHaveCount(0);
+  const rowBox = await secondRow.boundingBox();
+  const rowDetailBox = await rowDetail.boundingBox();
+  expect(rowBox).not.toBeNull();
+  expect(rowDetailBox).not.toBeNull();
+  const isBelow = rowDetailBox!.y >= rowBox!.y + rowBox!.height - 1;
+  const isAbove = rowDetailBox!.y + rowDetailBox!.height <= rowBox!.y + 1;
+  expect(isBelow || isAbove).toBeTruthy();
+  const viewport = page.viewportSize();
+  expect(rowDetailBox!.y).toBeGreaterThanOrEqual(0);
+  expect(rowDetailBox!.y + rowDetailBox!.height).toBeLessThanOrEqual(viewport!.height + 1);
+  await page.keyboard.press('Escape');
+  await expect(rowDetail).toHaveCount(0);
+
   // Desktop hover / mobile tap: the non-modal detail opens with REAL sample
   // rows in B(absorbed) → shared → A(survivor) left-to-right order and the
   // deterministic counts reason (no expand button, no backdrop).

@@ -234,6 +234,10 @@ const MergeProposalCard = ({
 
   if (!topSuggestion) return null;
 
+  const hasSharedFiles = (suggestion) =>
+    (suggestion.overlap_sample ?? []).some((pair) => (pair.a_node_id ?? pair.b_node_id) != null) ||
+    (suggestion.overlap_count ?? 0) > 0;
+
   const renderSharedStrip = (suggestion) => {
     const sharedIds = [];
     (suggestion.overlap_sample ?? []).forEach((pair) => {
@@ -337,7 +341,17 @@ const MergeProposalCard = ({
         <Box
           data-testid="merge-detail-preview-b"
           aria-label={t('fileManager.mergePreview', { name: suggestion.b_name })}
-          sx={{ flex: '1 1 0', minWidth: 0, maxWidth: 200, aspectRatio: '1 / 1' }}
+          sx={{
+            flex: '1 1 0',
+            minWidth: 0,
+            maxWidth: 200,
+            aspectRatio: '1 / 1',
+            overflow: 'hidden',
+            bgcolor: 'grey.100',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 1,
+          }}
         >
           <CollectionPreviewGrid
             items={suggestion.b_preview_items}
@@ -356,7 +370,17 @@ const MergeProposalCard = ({
         <Box
           data-testid="merge-detail-preview-a"
           aria-label={t('fileManager.mergePreview', { name: suggestion.a_name })}
-          sx={{ flex: '1 1 0', minWidth: 0, maxWidth: 200, aspectRatio: '1 / 1' }}
+          sx={{
+            flex: '1 1 0',
+            minWidth: 0,
+            maxWidth: 200,
+            aspectRatio: '1 / 1',
+            overflow: 'hidden',
+            bgcolor: 'grey.100',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 1,
+          }}
         >
           <CollectionPreviewGrid
             items={suggestion.a_preview_items}
@@ -392,7 +416,7 @@ const MergeProposalCard = ({
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            textAlign: 'left',
+            textAlign: hasSharedFiles(suggestion) ? 'left' : 'center',
           }}
         >
           {reasonFor(suggestion)}

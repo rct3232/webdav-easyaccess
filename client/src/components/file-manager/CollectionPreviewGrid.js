@@ -42,10 +42,6 @@ const CollectionPreviewGrid = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          bgcolor: 'grey.100',
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 1,
         }}
       >
         <CollectionsIcon fontSize="large" color="action" />

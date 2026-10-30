@@ -3055,7 +3055,8 @@ refined by U4 below.
 - **Merge UI:** sticky region between toolbar and list; body/footer accordion; desktop
   hover/mobile tap detail; no active-pair cursor; two collection-card 2×2 preview panels
   (B absorbed → A survivor, newest-added `preview_items`, no filename labels) shared with
-  the collection grid and styled with the grid-view `grey.100` + divider theme; a shared
+  the collection grid; each side CONTAINER uses the grid-view `grey.100` + divider theme
+  (cells stay transparent); a shared
   strip of up to 3 mini tiles plus `+N` sits beside the deterministic reason on desktop
   (two rows on mobile); the detail is a Popper portal anchored to the hovered/tapped row,
   so it may escape the accordion/card clip while staying adjacent (never card-level), and

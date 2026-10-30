@@ -3,11 +3,11 @@ import { Box, CardMedia } from '@mui/material';
 import { getFileIcon } from '../../utils/fileIconUtils';
 
 /**
- * PreviewTile — one grid-view-styled preview cell.
+ * PreviewTile — one transparent preview cell (thumbnail or file-type icon).
  *
  * Shared by the collection card 2×2 preview and the merge detail's shared-file
- * strip so both use the grid view's `grey.100` media background, divider
- * border, and theme radius.
+ * strip. The grey.100 surface/border belongs to the CONTAINER (the collection
+ * card media area or the merge detail's side frame), never to the cell.
  */
 const baseSx = {
   display: 'flex',
@@ -18,10 +18,6 @@ const baseSx = {
   width: '100%',
   height: '100%',
   overflow: 'hidden',
-  bgcolor: 'grey.100',
-  border: '1px solid',
-  borderColor: 'divider',
-  borderRadius: 1,
 };
 
 const PreviewTile = ({ item, thumbnailMap = null, testId, iconFontSize = 28, sx, ...boxProps }) => {

@@ -273,6 +273,23 @@ describe('MergeProposalCard', () => {
     expect(within(panel).getByTestId('merge-detail-reason')).toBeInTheDocument();
   });
 
+  it('centers a text-only reason and left-aligns it beside the shared strip', () => {
+    const { rerender } = render({
+      suggestions: [suggestion({ overlap_count: 0, merged_count: 2, overlap_sample: [] })],
+    });
+    let panel = hoverOpen();
+    expect(getComputedStyle(within(panel).getByTestId('merge-detail-reason')).textAlign).toBe(
+      'center'
+    );
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    rerender(<MergeProposalCard suggestions={[suggestion()]} onAction={jest.fn()} />);
+    panel = hoverOpen();
+    expect(getComputedStyle(within(panel).getByTestId('merge-detail-reason')).textAlign).toBe(
+      'left'
+    );
+  });
+
   it('uses recommendation.reason verbatim when the arbiter supplied one', () => {
     render({
       suggestions: [

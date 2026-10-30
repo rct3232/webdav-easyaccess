@@ -94,8 +94,9 @@ Target-contract spec.
   `data-file-node-id` + `data-testid="collection-preview-<node_id>"` and shows the file icon
   immediately (`getFileIcon` from `{type, mime, name}`), swapping to a thumbnail `CardMedia`
   once `previewThumbnails` (Map, keyed by node id) gains that id via the batch mechanism
-  (§2.3 `onPreviewThumbnailsLoaded`). Each cell uses the grid-view media theme (`grey.100`
-  background, `divider` 1px border, theme radius) via the shared `PreviewTile`. A collection with no previewable members renders the sidebar collections
+  (§2.3 `onPreviewThumbnailsLoaded`). The card media container keeps the grid-view
+  `grey.100` background; the cells themselves stay transparent with no border (the merge
+  detail adds the `divider` frame to its side CONTAINERS, never to the cells). A collection with no previewable members renders the sidebar collections
   glyph (`Collections as CollectionsIcon`, `fontSize="large"`, `color="action"`,
   centered in the media area, `data-testid="collection-card-fallback"`) — not a
   file-tree folder icon. The same shared `CollectionPreviewGrid` renders each side of the

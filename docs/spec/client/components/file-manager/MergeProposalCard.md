@@ -89,10 +89,11 @@ selection callbacks.
     The previews match the collection list cards: up to 4 newest-added members, newest-first,
     **NO filename labels**, thumbnail when `thumbnailMap` has the node id, otherwise the
     same `getFileIcon(type, mime, name)` icon as the card, and the Collections glyph fallback
-    when a side has no preview items. Each preview cell uses the grid-view media theme:
-    `grey.100` background, `divider` 1px border, and the theme radius. Unique/shared
-    comparison tiles are retired from the detail. Mobile keeps the same horizontal B → A
-    direction.
+    when a side has no preview items. Each side's preview CONTAINER uses the grid-view media
+    theme: `grey.100` background, `divider` 1px border, and the theme radius. The individual
+    cells stay transparent with no per-cell border/background, matching the collection card
+    media area. Unique/shared comparison tiles are retired from the detail. Mobile keeps the
+    same horizontal B → A direction.
 - Bottom footer (`merge-detail-footer`): a shared-file strip followed by the one-line reason
   (`merge-detail-reason`).
   - Shared strip (`merge-detail-shared-strip`): up to **3** shared-file tiles from

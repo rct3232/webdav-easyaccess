@@ -38,6 +38,7 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 | GET    | `/:id`               | Token | Single collection (owner definition; grantee `granted_role`; ungranted → 404 masquerade).                                                                          |
 | POST   | `/`                  | Token | Create — body-shape dispatch: `{ name }` manual (`origin='user'`), `{ name, seedNodeId }` seed (`origin='seed'`), `{ name, semantic }` search (`origin='search'`). |     |
 | PUT    | `/:id`               | Token | Update name / pin / publish_mode.                                                                                                                                  |
+| PUT    | `/:id/properties`    | Token | Atomic composite properties save: name / pin / publish_mode / grants in ONE journaled command.                                                                     |
 | POST   | `/:id/archive`       | Token | Archive (manual; confirm dialog is client-side).                                                                                                                   |
 | POST   | `/:id/restore`       | Token | Restore an archived collection.                                                                                                                                    |
 | DELETE | `/:id`               | Token | Permanent delete — archived only, else 409.                                                                                                                        |
@@ -194,6 +195,29 @@ Field rules:
   unpin PERSISTS — the explicit unpin is not itself an auto-pin touch, so a system
   collection stays unpinned until the next separate user touch. Owner-only.
   200: `{ "collection": <collection>, "undo": { "action_id": 991 } }`.
+- **PUT /:id/properties:** Owner-only. Atomic composite save for the properties
+  dialog. Body carries ONLY changed fields: `{ name?, publishMode?, pinned?,
+grants?: { upsert: [{ userId, role }], revoke: [userId] } }` (`publishMode ∈
+ask|off|auto`; `role ∈ viewer|editor`).
+  - Same-name is a no-op; the active-name uniqueness probe ignores the current
+    collection. A real rename locks the name (`name_locked=true`) and re-suffixes
+    collisions exactly like `PUT /:id`.
+  - Grant validation: role, grantee existence, self-grant and admin-grantee bans,
+    owner revoke, and a user appearing in both `upsert` and `revoke` are rejected
+    (`invalidRole`, `granteeNotFound`, `forbidden`, `grantNotFound`). A revoke
+    deletes the grant and the grantee's digest cursor (mirror of
+    `DELETE /:id/grants`); a first grant clears the grantee's
+    `collection_visibility.hidden`; an existing grant role change preserves the
+    hidden flag.
+  - All selected changes (metadata + grants) apply in ONE
+    `actionJournalStore.commitChange` transaction; any validation or write
+    failure rolls back every field. Success journals one
+    `action='update-properties'` row whose payload carries the nested
+    per-change inverses with `atomic:true`. A request with no actual change
+    journals nothing and returns `undo: null`.
+  - 200: `{ "collection": <collection>, "grants": [ … ], "undo":
+{ "action_id": 1001 } }` — `grants` is the post-save owner grant list in the
+    `GET /:id/grants` row shape.
 - **POST /:id/archive:** Owner-only. Active → archived + `archived_at`. 409
   `collections.alreadyArchived`. 200: `{ "collection": <collection>, "undo":
 { "action_id": 992 } }`.
@@ -470,7 +494,7 @@ suggestion row (a suggestion state transition is opportunistic).
 | 400  | `serverErrors.collections.invalidSort`           | Unknown `sort` value.                                                                                                                                                                                                                                                                                                                                               |
 | 400  | `serverErrors.collections.invalidInclude`        | Unknown token in `include`.                                                                                                                                                                                                                                                                                                                                         |
 | 400  | `serverErrors.collections.invalidPublishMode`    | Bad `publishMode`.                                                                                                                                                                                                                                                                                                                                                  |
-| 400  | `serverErrors.collections.invalidRole`           | Grant role outside `viewer\|editor`.                                                                                                                                                                                                                                                                                                                                |
+| 400  | `serverErrors.collections.invalidRole`           | Grant role outside `viewer\|editor`; malformed `grants` payload on `PUT /:id/properties`; the same user listed in both `upsert` and `revoke`.                                                                                                                                                                                                                       |
 | 400  | `serverErrors.collections.emptyNodeIds`          | Missing/empty/over-cap `nodeIds` (item routes and the `{ name, semantic }` create arm).                                                                                                                                                                                                                                                                             |
 | 400  | `serverErrors.collections.previewTargetRequired` | 0 or 2 of `seedNodeId`/`definition`.                                                                                                                                                                                                                                                                                                                                |
 | 400  | `serverErrors.collections.mergeSameCollection`   | `:id == :other`.                                                                                                                                                                                                                                                                                                                                                    |
@@ -516,7 +540,11 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
 - A multi-field `PUT /:id` body journals one command per
   present field (rename / pin / publish-mode, in that order) and the response's
   `undo.action_id` points at the FIRST command — a tip undo of it cascades through the
-  later commands of the same update (journal chain semantics, actions.md).
+  later commands of the same update (journal chain semantics, actions.md). The
+  atomic `PUT /:id/properties` is the dialog path: ONE composite command and ONE
+  undo pointer; undoing it restores the captured name/pin/publish-mode/grant state
+  in one transaction and refuses as a unit when any captured inverse no longer
+  matches (the row stays `applied`).
 - Restore with a name collision journals the silent
   suffix rename and the restore; the undo pointer is the restore command.
 - Item ordering reads member activity scores from the
@@ -588,6 +616,20 @@ All errors follow the shared error envelope (`errorCode` + optional `params`,
       hidden/archived collections stay excluded for both
 - [ ] `PUT /:id` `pinned:false` on a `pinned_by='auto'` system row persists (`pinned`
       false, `pinned_by` null); the next separate user touch auto-pins it again
+- [ ] `PUT /:id/properties` saves name + pin + publish_mode + grant upsert/revoke
+      in ONE `action='update-properties'` journal row (`payload.atomic:true`,
+      nested inverses); the response carries the post-save `collection` and
+      `grants` list
+- [ ] `PUT /:id/properties` same-name is a no-op (no suffix, no name lock flip, no
+      journal row, `undo:null`); a real rename locks the name and suffixes a
+      collision against other collections only
+- [ ] Composite grants: first grant clears `collection_visibility.hidden`;
+      existing grant role change preserves it; revoke deletes the grant + the
+      grantee's digest cursor inside the same TX; invalid role/grantee/self/
+      admin/owner and upsert∩revoke conflicts roll back every field
+- [ ] Undo of the composite row restores name/pin/publish_mode and the grant set
+      in one transaction; when one captured inverse no longer matches, the whole
+      undo is refused (`409 fingerprintMismatch`) and the row stays `applied`
 - [ ] `sort=similar` groups rows through the ACTIVE embed model's centroids; centroid
       rows of a stale/non-active model id never group
 - [ ] Every mutation response carries snake_case fields and an `undo.action_id`;

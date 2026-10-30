@@ -300,6 +300,19 @@ async function applyInverseTx(tx, inverse, row) {
       );
       return outcomeFromChanges(changes);
     }
+    case 'set-publish-mode': {
+      if (!inverse.publishMode) return { applied: false, reason: 'changed' };
+      const existing = await repo.getCollectionTx(tx, inverse.collectionId);
+      if (!existing || existing.publishMode === inverse.publishMode) {
+        return { applied: false, reason: 'changed' };
+      }
+      const { changes } = await repo.updatePublishMode(
+        tx,
+        inverse.collectionId,
+        inverse.publishMode
+      );
+      return outcomeFromChanges(changes);
+    }
     case 'restore-collection': {
       // guarded update — changes 0 already means "not archived / missing"
       const { changes } = await repo.restoreRow(tx, inverse.collectionId);
@@ -381,6 +394,7 @@ async function applyInverseTx(tx, inverse, row) {
  */
 async function applyCollectionInverse({ row, tx }) {
   const payload = row.payload || {};
+  const atomic = payload.atomic === true;
   if (Array.isArray(payload.items) && payload.items.length > 0) {
     const outcomes = [];
     // eslint-disable-next-line no-restricted-syntax
@@ -394,10 +408,19 @@ async function applyCollectionInverse({ row, tx }) {
       // `undone`.
       const descriptor = item && item.inverse ? item.inverse : item;
       // eslint-disable-next-line no-await-in-loop
-      outcomes.push(await applyInverseTx(tx, descriptor, row));
+      const outcome = await applyInverseTx(tx, descriptor, row);
+      // Atomic command rows (the update-properties composite) fail closed:
+      // one non-applied item refuses the WHOLE undo — the throw aborts the
+      // undo TX, every earlier item unwinds and the row stays `applied`
+      // (actionJournalStore.md §2.4).
+      if (atomic && !outcome.applied) {
+        throw fingerprintRefusal();
+      }
+      outcomes.push(outcome);
     }
     return outcomes;
   }
+  if (atomic) throw fingerprintRefusal();
 
   // The row is needed by inverses that fall back to the capturing actor
   // (`grant-access` → row.actor); dropping it here broke undo-revoke with a

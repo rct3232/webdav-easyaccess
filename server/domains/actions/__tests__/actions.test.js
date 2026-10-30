@@ -524,6 +524,90 @@ describe('POST /api/actions/:id/undo', () => {
   });
 });
 
+// -- atomic composite rows (update-properties) --------------------------------
+
+describe('atomic composite rows (update-properties)', () => {
+  async function setupAtomic(tag) {
+    const collection = await collectionsStore.createCollection(
+      { ownerId: owner.id, name: `Atomic ${tag}`, origin: 'user' },
+      { actor: owner.id }
+    );
+    const grantee = await createAuthenticatedTestUser({
+      username: `actions-atomic-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    });
+    await collectionsStore.grantAccess(collection.id, grantee.user.id, 'viewer', owner.id, {
+      actor: owner.id,
+    });
+    const saved = await collectionsStore.updateCollectionProperties(
+      collection.id,
+      {
+        name: `Atomic ${tag} renamed`,
+        pinned: true,
+        publishMode: 'auto',
+        grants: {
+          upsert: [{ granteeId: other.id, role: 'editor' }],
+          revoke: [grantee.user.id],
+        },
+      },
+      { actor: owner.id }
+    );
+    return { collection, grantee, saved };
+  }
+
+  it('restores metadata and the grant set in ONE undo pass', async () => {
+    const { collection, grantee, saved } = await setupAtomic('undo');
+
+    const res = await request(app)
+      .post(`/api/actions/${saved.actionId}/undo`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ action_id: saved.actionId, status: 'undone' });
+
+    const restored = await collectionsStore.getCollection(collection.id);
+    expect(restored).toMatchObject({
+      name: `Atomic undo`,
+      // The rename inverse restores the name only; the user rename stays locked.
+      nameLocked: true,
+      pinned: false,
+      pinnedBy: null,
+      publishMode: 'ask',
+    });
+    expect(await collectionsStore.getGrant(collection.id, grantee.user.id)).toMatchObject({
+      role: 'viewer',
+    });
+    expect(await collectionsStore.getGrant(collection.id, other.id)).toBeNull();
+  });
+
+  it('fails closed as a unit: one mismatched item leaves the row applied and every field unchanged', async () => {
+    const { collection, grantee, saved } = await setupAtomic('fail');
+    // Make the LAST inverse (revoke-access for the newly granted user) a no-op
+    // by deleting that grant directly. Earlier items would apply if the row
+    // were processed per item; the atomic contract must roll them all back.
+    await dbRun('DELETE FROM collection_grants WHERE collection_id = ? AND grantee_id = ?', [
+      collection.id,
+      other.id,
+    ]);
+
+    const res = await request(app)
+      .post(`/api/actions/${saved.actionId}/undo`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({});
+    expect(res.status).toBe(409);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.actions.fingerprintMismatch);
+
+    expect((await actionJournalStore.getAction(saved.actionId)).status).toBe('applied');
+    const after = await collectionsStore.getCollection(collection.id);
+    expect(after).toMatchObject({
+      name: 'Atomic fail renamed',
+      pinned: true,
+      publishMode: 'auto',
+    });
+    expect(await collectionsStore.getGrant(collection.id, grantee.user.id)).toBeNull();
+    expect(await collectionsStore.getGrant(collection.id, other.id)).toBeNull();
+  });
+});
+
 // -- is_tip across actors (cross-user sharing writes) -------------------------
 
 describe('GET /api/actions is_tip — per-subject across actors', () => {

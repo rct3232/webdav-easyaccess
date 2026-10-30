@@ -173,6 +173,146 @@ async function setPublishMode(collectionId, publishMode, ctx = {}) {
 }
 
 /**
+ * JOURNALED composite (collectionsStore.md §2.2): the atomic properties-dialog
+ * path. Applies only changed metadata fields plus the grant upsert/revoke set in
+ * ONE commitChange TX. The journal payload carries one nested inverse per change
+ * under `payload.items` and `atomic:true`; the undo executor applies the list
+ * all-or-nothing (a mismatch refuses the whole undo, row stays applied).
+ *
+ * Grant side effects (collectionShareService.md §2.4): revoke deletes the grant
+ * and the grantee's digest cursor; a FIRST grant clears the grantee's hidden
+ * flag; an existing grant role change PRESERVES the hidden flag. A user present
+ * in both lists is rejected by the service before this method runs.
+ *
+ * @param {number} collectionId
+ * @param {{ name?, pinned?, publishMode?, grants?: { upsert?: Array<{granteeId, role}>, revoke?: number[] } }} patch
+ * @param {{ actor }} [ctx]
+ * @returns {Promise<Object>} updated collection row plus `actionId`
+ *   (`null` when the patch changes nothing).
+ */
+async function updateCollectionProperties(collectionId, patch = {}, ctx = {}) {
+  const repo = getRepository();
+  const previous = await repo.getCollection(collectionId);
+  if (!previous) return { changes: 0, actionId: null };
+
+  const grantPatch = patch.grants || {};
+  const revokeIds = Array.isArray(grantPatch.revoke) ? grantPatch.revoke : [];
+  const upserts = Array.isArray(grantPatch.upsert) ? grantPatch.upsert : [];
+
+  // Pre-read every affected grant OUTSIDE the commitChange TX (the inverse
+  // descriptor is static) — mirrors grantAccess/revokeAccess.
+  const existingByGrantee = new Map();
+  for (const granteeId of revokeIds) {
+    if (!existingByGrantee.has(granteeId)) {
+      // eslint-disable-next-line no-await-in-loop
+      existingByGrantee.set(granteeId, await repo.getGrant(collectionId, granteeId));
+    }
+  }
+  for (const grant of upserts) {
+    if (!existingByGrantee.has(grant.granteeId)) {
+      // eslint-disable-next-line no-await-in-loop
+      existingByGrantee.set(grant.granteeId, await repo.getGrant(collectionId, grant.granteeId));
+    }
+  }
+
+  const renamed = patch.name !== undefined && patch.name !== previous.name;
+  const pinChanged =
+    patch.pinned !== undefined && Boolean(patch.pinned) !== Boolean(previous.pinned);
+  const modeChanged = patch.publishMode !== undefined && patch.publishMode !== previous.publishMode;
+
+  const items = [];
+  if (renamed) {
+    items.push({
+      inverse: { op: 'rename-collection', collectionId, previousName: previous.name },
+    });
+  }
+  if (pinChanged) {
+    items.push({ inverse: { op: 'set-pinned', collectionId, pinned: Boolean(previous.pinned) } });
+  }
+  if (modeChanged) {
+    items.push({
+      inverse: {
+        op: 'set-publish-mode',
+        collectionId,
+        publishMode: previous.publishMode,
+      },
+    });
+  }
+  for (const granteeId of revokeIds) {
+    const existing = existingByGrantee.get(granteeId);
+    items.push({
+      inverse: {
+        op: 'grant-access',
+        collectionId,
+        granteeId,
+        role: existing ? existing.role : null,
+        grantedBy: existing ? existing.grantedBy : null,
+      },
+    });
+  }
+  for (const grant of upserts) {
+    const existing = existingByGrantee.get(grant.granteeId);
+    if (existing && existing.role === grant.role) continue;
+    items.push({
+      inverse: existing
+        ? {
+            op: 'grant-access',
+            collectionId,
+            granteeId: grant.granteeId,
+            role: existing.role,
+            grantedBy: existing.grantedBy,
+          }
+        : { op: 'revoke-access', collectionId, granteeId: grant.granteeId },
+    });
+  }
+
+  if (items.length === 0) return { ...previous, actionId: null };
+
+  const committed = await actionJournalStore.commitChange(
+    'collection',
+    `collection:${collectionId}`,
+    {
+      actor: ctx.actor,
+      action: 'update-properties',
+      subjectLabel: renamed ? patch.name : previous.name,
+    },
+    { inverse: { op: 'update-properties', collectionId }, items, atomic: true },
+    async (tx) => {
+      if (renamed) {
+        await repo.renameCollection(tx, collectionId, patch.name, true);
+      }
+      if (pinChanged) {
+        await repo.updatePin(tx, collectionId, Boolean(patch.pinned), patch.pinned ? 'user' : null);
+      }
+      if (modeChanged) {
+        await repo.updatePublishMode(tx, collectionId, patch.publishMode);
+      }
+      for (const granteeId of revokeIds) {
+        await repo.deleteGrant(tx, collectionId, granteeId);
+        await repo.deleteDigestCursor(tx, granteeId, collectionId);
+      }
+      for (const grant of upserts) {
+        const existing = existingByGrantee.get(grant.granteeId);
+        if (existing && existing.role === grant.role) continue;
+        await repo.upsertGrant(tx, collectionId, grant.granteeId, grant.role, ctx.actor);
+        // A first grant IS intent to show; a role change preserves the existing
+        // hidden state (collectionShareService.md §2.4).
+        if (!existing) {
+          await repo.setVisible(tx, grant.granteeId, collectionId, false);
+        }
+      }
+      // User touch of a system collection auto-pins inside the same TX — EXCEPT
+      // an explicit unpin, which must persist (collectionsService.md §2.2).
+      if (patch.pinned !== false && previous.origin === 'system') {
+        await repo.setAutoPin(tx, collectionId);
+      }
+      return repo.getCollectionTx(tx, collectionId);
+    }
+  );
+  return withActionId(committed.result, committed);
+}
+
+/**
  * NON-JOURNALED (§4.9b): auto-pin on user touch of a system collection.
  * No-op when already pinned; only origin='system' rows.
  */
@@ -747,6 +887,7 @@ module.exports = {
   renameCollection,
   setPinned,
   setPublishMode,
+  updateCollectionProperties,
   setAutoPin,
   clearAutoPin,
   archiveCollection,

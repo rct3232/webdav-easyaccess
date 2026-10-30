@@ -133,7 +133,9 @@ Retention: rows survive 30d; at expiry `payload` is NULLed and `status` flips to
   409 `serverErrors.actions.fingerprintMismatch`, row stays `applied`. A
   command-unit row carrying an item-level inverse list applies per item and reports
   mixed results in the 200 body (the `11 undone, 1 skipped (state changed since)` toast copy
-  consumes these counts).
+  consumes these counts). An ATOMIC command row (`payload.atomic:true` — the
+  `update-properties` composite) refuses as a unit: one mismatched item aborts the
+  whole undo TX, earlier item effects unwind, and the row stays `applied`.
 - **Expired** (`status='expired'`, payload NULLed): 409 `serverErrors.actions.expired`.
 - **Already undone**: 409 `serverErrors.actions.alreadyUndone`.
 
@@ -230,6 +232,9 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
       the displayed flag and the guard always agree
 - [ ] Command row with item list, one item changed → 200 with
       `items_undone: 11, items_skipped: 1` (mixed-result report path)
+- [ ] Atomic `update-properties` row: undo restores the captured name/pin/publish
+      mode + grants in one TX; one mismatched item → 409
+      `fingerprintMismatch`, nothing restored, row stays `applied`
 - [ ] Expired row (payload NULLed) → 409 `actions.expired`
 - [ ] Permanent-delete contract: archived→purged collection leaves no undoable row —
       referenced id 404s

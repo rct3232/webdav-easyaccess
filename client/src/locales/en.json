@@ -1057,6 +1057,7 @@
       "pin": "pinned",
       "unpin": "unpinned",
       "set-publish-mode": "sharing mode changed",
+      "update-properties": "properties updated",
       "archive": "archived",
       "restore": "restored",
       "merge": "merged",

@@ -379,6 +379,7 @@ const FileManagerView = ({
     mobileShareFile,
     propertiesFile,
     propertiesCollections,
+    propertiesAiEnrichment,
     bulkDeleteFilePaths,
     bulkConflictData,
     setBulkConflictData,
@@ -1537,6 +1538,7 @@ const FileManagerView = ({
           onClose={closePropertiesDialog}
           file={propertiesFile}
           activeFileStorage={activeFileStorage}
+          aiEnrichment={isShareLinkMode ? null : propertiesAiEnrichment}
           collections={propertiesCollections}
           onOpenCollection={handleOpenCollectionFromProperties}
           {...(likeToggleHandler &&

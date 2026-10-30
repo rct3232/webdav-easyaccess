@@ -16,6 +16,7 @@ import {
   IconButton,
   Alert,
   Chip,
+  Divider,
 } from '@mui/material';
 import {
   Download as DownloadIcon,
@@ -39,6 +40,140 @@ import {
 import { getServerErrorDisplay } from '../../utils/errorUtils';
 import { getPermissionLabels, PERMISSION_ORDER } from '../../constants/permissions';
 
+/**
+ * §3.3 absent-not-disabled gate: a payload with only metadata (or an empty
+ * object) is NOT meaningful enough to earn a tab. `updated_at`/`schema_version`
+ * and provenance alone never count — there must be actual content to display.
+ */
+const hasMeaningfulAiEnrichment = (enrichment) => {
+  if (!enrichment || typeof enrichment !== 'object') return false;
+  const hasText = (value) => typeof value === 'string' && value.length > 0;
+  const tags = Array.isArray(enrichment.tags) ? enrichment.tags : [];
+  const media = enrichment.media;
+  const hasMediaFacts =
+    media &&
+    (media.duration_sec != null ||
+      media.width != null ||
+      media.height != null ||
+      (Array.isArray(media.codecs) && media.codecs.length > 0));
+  return Boolean(
+    tags.length > 0 ||
+    hasText(enrichment.summary) ||
+    hasText(enrichment.caption) ||
+    hasText(enrichment.transcript) ||
+    hasText(enrichment.media_kind) ||
+    hasMediaFacts ||
+    enrichment.truncated === true
+  );
+};
+
+const AiFact = ({ testid, label, children }) => (
+  <Box data-testid={testid} sx={{ py: 1 }}>
+    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.25 }}>
+      {label}
+    </Typography>
+    {children}
+  </Box>
+);
+
+const AiTextValue = ({ value }) => (
+  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+    {value}
+  </Typography>
+);
+
+/** §3.3 display-only AI Info pane. Zero input affordances by contract. */
+const AiInfoPane = ({ enrichment }) => {
+  const { t } = useTranslation();
+  const tags = Array.isArray(enrichment.tags) ? enrichment.tags : [];
+  const media = enrichment.media;
+  const provenance = enrichment.provenance || {};
+  const provenanceRows = [
+    ['features', provenance.features?.model_name, 'dialogs.fileAiProvenanceFeatures'],
+    ['caption', provenance.caption?.model_name, 'dialogs.fileAiProvenanceCaption'],
+    ['asr', provenance.asr?.model_name, 'dialogs.fileAiProvenanceAsr'],
+  ].filter(([, modelName]) => typeof modelName === 'string' && modelName.length > 0);
+  const mediaFacts = [];
+  if (media?.duration_sec != null) {
+    mediaFacts.push(`${t('dialogs.fileAiMediaDuration')}: ${media.duration_sec}s`);
+  }
+  if (media?.width != null && media?.height != null) {
+    mediaFacts.push(`${t('dialogs.fileAiMediaDimensions')}: ${media.width}×${media.height}`);
+  }
+  if (Array.isArray(media?.codecs) && media.codecs.length > 0) {
+    mediaFacts.push(`${t('dialogs.fileAiMediaCodecs')}: ${media.codecs.join(', ')}`);
+  }
+
+  return (
+    <Box data-testid="props-ai-info" sx={{ mt: 2 }}>
+      {tags.length > 0 && (
+        <AiFact testid="props-ai-tags" label={t('dialogs.fileAiTags')}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {tags.map((tag, index) => (
+              <Chip key={`${tag}-${index}`} data-testid="props-ai-tag" size="small" label={tag} />
+            ))}
+          </Box>
+        </AiFact>
+      )}
+      {typeof enrichment.summary === 'string' && enrichment.summary.length > 0 && (
+        <AiFact testid="props-ai-summary" label={t('dialogs.fileAiSummary')}>
+          <AiTextValue value={enrichment.summary} />
+        </AiFact>
+      )}
+      {typeof enrichment.caption === 'string' && enrichment.caption.length > 0 && (
+        <AiFact testid="props-ai-caption" label={t('dialogs.fileAiCaption')}>
+          <AiTextValue value={enrichment.caption} />
+        </AiFact>
+      )}
+      {typeof enrichment.transcript === 'string' && enrichment.transcript.length > 0 && (
+        <AiFact testid="props-ai-transcript" label={t('dialogs.fileAiTranscript')}>
+          <AiTextValue value={enrichment.transcript} />
+        </AiFact>
+      )}
+      {(typeof enrichment.media_kind === 'string' || mediaFacts.length > 0) && (
+        <AiFact testid="props-ai-media" label={t('dialogs.fileAiMedia')}>
+          {typeof enrichment.media_kind === 'string' && (
+            <Chip
+              size="small"
+              data-testid="props-ai-media-kind"
+              label={`${t('dialogs.fileAiMediaKind')}: ${enrichment.media_kind}`}
+              sx={{ mb: mediaFacts.length > 0 ? 1 : 0 }}
+            />
+          )}
+          {mediaFacts.map((fact) => (
+            <Typography key={fact} variant="body2" color="text.secondary">
+              {fact}
+            </Typography>
+          ))}
+        </AiFact>
+      )}
+      {enrichment.truncated === true && (
+        <Box data-testid="props-ai-truncated" sx={{ py: 1 }}>
+          <Chip size="small" color="warning" label={t('dialogs.fileAiTruncated')} />
+        </Box>
+      )}
+      {provenanceRows.length > 0 && (
+        <Box data-testid="props-ai-provenance" sx={{ py: 1 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+            {t('dialogs.fileAiProvenance')}
+          </Typography>
+          {provenanceRows.map(([key, modelName, labelKey]) => (
+            <Box key={key} data-testid={`props-ai-provenance-${key}`} sx={{ mb: 0.5 }}>
+              <Typography variant="caption" color="text.secondary">
+                {t(labelKey)}
+              </Typography>
+              <Divider sx={{ my: 0.25 }} />
+              <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
+                {modelName}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+};
+
 const FilePropertiesDialog = ({
   open,
   onClose,
@@ -49,6 +184,7 @@ const FilePropertiesDialog = ({
   onToggleLike,
   collections = [],
   onOpenCollection,
+  aiEnrichment = null,
 }) => {
   const { t } = useTranslation();
   const permissionLabels = getPermissionLabels(t);
@@ -74,6 +210,14 @@ const FilePropertiesDialog = ({
   // DEF-11: the versions tab is offered only for files in S3 storage mode.
   // Trashed files are not-found for the versions route — the tab stays hidden.
   const versionsAvailable = activeFileStorage === 's3' && file?.type === 'file' && !isTrashed;
+  // §3.3: absent-not-disabled — no tab for null/empty/trashed payloads.
+  const aiAvailable = !isTrashed && hasMeaningfulAiEnrichment(aiEnrichment);
+  // If the active tab's data disappears (host clears AI info, storage mode
+  // changes), resolve back to Info instead of rendering an empty pane.
+  const resolvedTab =
+    (activeTab === 'ai' && !aiAvailable) || (activeTab === 'versions' && !versionsAvailable)
+      ? 'info'
+      : activeTab;
 
   useEffect(() => {
     if (!open || !file) {
@@ -152,6 +296,10 @@ const FilePropertiesDialog = ({
       loadVersions();
     }
   }, [open, activeTab, versionsAvailable, versionsRequested, versionsLoading, loadVersions]);
+
+  useEffect(() => {
+    if (activeTab === 'ai' && !aiAvailable) setActiveTab('info');
+  }, [activeTab, aiAvailable]);
 
   if (!file) return null;
 
@@ -267,11 +415,14 @@ const FilePropertiesDialog = ({
       <DialogTitle>{t('dialogs.propertiesTitle')}</DialogTitle>
       {/* DEF-11: tab bar between the title and the gradient thumbnail header */}
       <Tabs
-        value={versionsAvailable ? activeTab : 'info'}
+        value={resolvedTab}
         onChange={(_event, nextTab) => setActiveTab(nextTab)}
         sx={{ px: 2, borderBottom: 1, borderColor: 'divider' }}
       >
         <Tab data-testid="props-tab-info" label={t('dialogs.propertiesTabInfo')} value="info" />
+        {aiAvailable && (
+          <Tab data-testid="props-tab-ai" label={t('dialogs.propertiesTabAi')} value="ai" />
+        )}
         {versionsAvailable && (
           <Tab
             data-testid="props-tab-versions"
@@ -281,7 +432,7 @@ const FilePropertiesDialog = ({
         )}
       </Tabs>
       <DialogContent>
-        {activeTab === 'versions' && versionsAvailable ? (
+        {resolvedTab === 'versions' && versionsAvailable ? (
           <Box sx={{ mt: 2 }}>
             {notice && (
               <Alert severity={notice.type} sx={{ mb: 2 }} onClose={() => setNotice(null)}>
@@ -366,6 +517,8 @@ const FilePropertiesDialog = ({
                 </Box>
               ))}
           </Box>
+        ) : resolvedTab === 'ai' && aiAvailable ? (
+          <AiInfoPane enrichment={aiEnrichment} />
         ) : (
           <>
             {notice && (

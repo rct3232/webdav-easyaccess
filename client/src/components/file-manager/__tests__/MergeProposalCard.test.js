@@ -273,7 +273,7 @@ describe('MergeProposalCard', () => {
     expect(within(panel).getByTestId('merge-detail-reason')).toBeInTheDocument();
   });
 
-  it('centers a text-only reason and left-aligns it beside the shared strip', () => {
+  it('centers the reason with or without the shared strip', () => {
     const { rerender } = render({
       suggestions: [suggestion({ overlap_count: 0, merged_count: 2, overlap_sample: [] })],
     });
@@ -286,7 +286,7 @@ describe('MergeProposalCard', () => {
     rerender(<MergeProposalCard suggestions={[suggestion()]} onAction={jest.fn()} />);
     panel = hoverOpen();
     expect(getComputedStyle(within(panel).getByTestId('merge-detail-reason')).textAlign).toBe(
-      'left'
+      'center'
     );
   });
 

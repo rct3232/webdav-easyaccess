@@ -234,10 +234,6 @@ const MergeProposalCard = ({
 
   if (!topSuggestion) return null;
 
-  const hasSharedFiles = (suggestion) =>
-    (suggestion.overlap_sample ?? []).some((pair) => (pair.a_node_id ?? pair.b_node_id) != null) ||
-    (suggestion.overlap_count ?? 0) > 0;
-
   const renderSharedStrip = (suggestion) => {
     const sharedIds = [];
     (suggestion.overlap_sample ?? []).forEach((pair) => {
@@ -416,7 +412,7 @@ const MergeProposalCard = ({
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            textAlign: hasSharedFiles(suggestion) ? 'left' : 'center',
+            textAlign: 'center',
           }}
         >
           {reasonFor(suggestion)}

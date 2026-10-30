@@ -102,8 +102,9 @@ selection callbacks.
     (`merge-shared-more`) uses the TOTAL `overlap_count` (e.g. 7 shared → 3 tiles + `+4`,
     10 shared → 3 tiles + `+7`). No filenames are rendered on the mini tiles; thumbnails
     come from `thumbnailMap` with the generic file icon fallback.
-  - Desktop: `[shared strip] [reason]` in one row, reason left-aligned with ellipsis.
-  - Mobile: two rows — shared strip first, reason below.
+  - Desktop: `[shared strip] [reason]` in one row; the reason stays centered within the
+    remaining width with ellipsis.
+  - Mobile: two rows — shared strip first, reason below (centered).
   - No shared files ⇒ no strip; the reason keeps the row/full width.
   - Reason copy uses `recommendation.reason` verbatim when present (arbiter band only), else
     the deterministic counts sentence from `overlap_count`/`merged_count`

@@ -373,7 +373,7 @@ top-N is not instrumented in v1); evolution governance (hit rates, survival curv
 merge-accept rate, config-backed gate parameters with live impact counts and journaled
 rollback, tombstone counters; missing series are labelled not instrumented); model registry
 (per-role model/dimension, current-vs-stale distribution, backfill launcher across the
-feature/caption/transcript lineages); degraded-input histogram; kill switches. The launcher
+feature/caption/transcript lineages); per-role degraded counter; kill switches. The launcher
 covers text nodes plus the media coverage plan, is rate-limited, and supports cancelling
 pending jobs. Privacy: aggregates and identifiers only — never users' names, queries, or
 contents. **Constants provenance**: every numeric AI constant is a **release artifact measured

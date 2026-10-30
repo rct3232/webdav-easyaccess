@@ -794,7 +794,15 @@
         "killSwitches": "Kill switches",
         "impact": "Live impact",
         "saved": "Setting saved.",
-        "saveFail": "Failed to save the setting."
+        "saveFail": "Failed to save the setting.",
+        "impactMetric": "Live impact — {{metric}}: {{count}}",
+        "impactNoData": "Live impact — {{metric}}: no data",
+        "impactNotInstrumented": "Live impact: not instrumented",
+        "state": {
+          "on": "on",
+          "off": "off",
+          "unknown": "unknown"
+        }
       },
       "pipeline": {
         "queue": {
@@ -803,7 +811,8 @@
           "done": "Done",
           "failed": "Failed",
           "skipped": "Skipped",
-          "cancelled": "Cancelled"
+          "cancelled": "Cancelled",
+          "total": "Total"
         },
         "failed24h": "Failed (24h)",
         "failureRate": "Failure rate (24h)",
@@ -817,7 +826,16 @@
         "lastError": "Last error",
         "finishedAt": "Finished",
         "readiness": "Capability readiness",
-        "breakerNotInstrumented": "Breaker states require active observation and are not polled by this panel."
+        "breakerNotInstrumented": "Breaker states require active observation and are not polled by this panel.",
+        "finished24h": "Finished (24h)",
+        "status": "Status",
+        "createdAt": "Created",
+        "failedJobsLimit": "Showing the 20 most recent failed jobs.",
+        "breakerInstrumented": "Breaker states are instrumented.",
+        "breakerReasons": {
+          "active_observation_required": "Breaker states require active observation and are not polled by this panel.",
+          "unknown": "Breaker state is unavailable."
+        }
       },
       "cost": {
         "role": "Role",
@@ -845,7 +863,12 @@
         "history": "History rows",
         "none": "None",
         "profile": "Profile provenance — {{role}} model {{model}}",
-        "calibrated": "calibrated: {{value}}"
+        "calibrated": "calibrated: {{value}}",
+        "id": "ID",
+        "provider": "Provider",
+        "historyRows": "History rows",
+        "noHistory": "No history rows.",
+        "textPrefixes": "Text prefixes"
       },
       "coverage": {
         "embedded": "Embedded",
@@ -853,7 +876,16 @@
         "stale": "Stale space",
         "text": "Text coverage",
         "media": "Media coverage",
-        "unavailable": "Coverage is not instrumented until an active embedding model is registered."
+        "unavailable": "Coverage is not instrumented until an active embedding model is registered.",
+        "totalFiles": "Total files",
+        "totalMedia": "Total media",
+        "bySource": "By source",
+        "byMediaKind": "By media kind (embedded/media · missing · stale)",
+        "byCapability": "By capability",
+        "byCorpus": "By fallback corpus",
+        "capabilityCounts": "enabled {{enabled}} · disabled {{disabled}}",
+        "corpusCounts": "caption {{caption}} · transcript {{transcript}} · none {{none}}",
+        "unavailableReason": "Coverage is not instrumented ({{reason}})."
       },
       "launcher": {
         "description": "One rate-limited run covers missing/stale text nodes and the media coverage plan. The queue is the progress surface.",
@@ -871,7 +903,18 @@
         "launchSuccess": "Re-embed launched: {{count}} job(s) queued at generation {{generation}}.",
         "launchFail": "Failed to launch the re-embed.",
         "previewFail": "Failed to load the re-embed preview.",
-        "cancelPendingHint": "Undo cancels pending jobs only; running jobs finish and spent provider cost is not refunded."
+        "cancelPendingHint": "Undo cancels pending jobs only; running jobs finish and spent provider cost is not refunded.",
+        "available": "Availability",
+        "unavailable": "Unavailable",
+        "availableYes": "Available",
+        "activeJobs": "Active queued jobs",
+        "generationKinds": {
+          "embed": "Embed generation",
+          "features": "Features generation",
+          "caption": "Caption generation",
+          "asr": "ASR generation"
+        },
+        "previewUnavailable": "Preview is unavailable ({{reason}}); plan counts are not shown."
       },
       "probe": {
         "action": "Probe AI roles",
@@ -882,7 +925,28 @@
         "empty": "No settings journal rows.",
         "undo": "Undo",
         "undoSuccess": "Settings journal row undone.",
-        "undoFail": "Failed to undo the settings journal row."
+        "undoFail": "Failed to undo the settings journal row.",
+        "loadFail": "Failed to load the settings journal."
+      },
+      "generatedAt": "Updated {{time}}",
+      "notInstrumentedLine": "{{item}} — not instrumented",
+      "notInstrumentedLabels": {
+        "survival_curves": "Survival curves",
+        "merge_accept_series": "Merge-accept series",
+        "per_version_history": "Per-version history",
+        "per_user_top_n": "Per-user top-N"
+      },
+      "metrics": {
+        "night_eval_users": "night-eval users",
+        "night_eval_collections": "night-eval collections",
+        "night_eval_merge_suggested": "night-eval merge suggestions",
+        "pending_merge_suggestions": "pending merge suggestions",
+        "text_files": "text files"
+      },
+      "reasons": {
+        "model_unavailable": "No active embedding model is registered.",
+        "cooldown": "The launcher is in its 15-minute cooldown window.",
+        "active_run": "A previous re-embed run still has queued jobs."
       }
     }
   },

@@ -35,10 +35,40 @@ const SECTIONS = [
   ['journal', 'admin.aiPanel.sections.journal'],
 ];
 
+const GENERATION_KINDS = ['embed', 'features', 'caption', 'asr'];
+
 const asArray = (value) => (Array.isArray(value) ? value : []);
-const asNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
-const percent = (value) => `${Math.round(asNumber(value) * 100)}%`;
+const isNil = (value) => value === null || value === undefined;
 const boolValue = (value) => value === true || String(value) === 'true';
+const formatNumber = (value) =>
+  isNil(value) || !Number.isFinite(Number(value)) ? '—' : String(Number(value));
+const formatPercent = (value) =>
+  isNil(value) || !Number.isFinite(Number(value)) ? '—' : `${Math.round(Number(value) * 100)}%`;
+const formatText = (value) => (isNil(value) || value === '' ? '—' : String(value));
+const formatDateTime = (value) => {
+  if (isNil(value) || value === '') return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+};
+const formatList = (value) => {
+  const list = asArray(value).filter((item) => !isNil(item));
+  return list.length > 0 ? list.join(' · ') : '—';
+};
+const formatObject = (value) => {
+  if (!value || typeof value !== 'object') return '—';
+  const entries = Object.entries(value);
+  return entries.length > 0
+    ? entries.map(([key, child]) => `${key}: ${formatText(child)}`).join(' · ')
+    : '—';
+};
+const formatMediaKind = (bucket) => {
+  if (!bucket || typeof bucket !== 'object') return '—';
+  return [
+    `${formatNumber(bucket.embedded)}/${formatNumber(bucket.media)}`,
+    `missing ${formatNumber(bucket.missing)}`,
+    `stale ${formatNumber(bucket.stale)}`,
+  ].join(' · ');
+};
 
 function Section({ id, title, action, children }) {
   return (
@@ -58,20 +88,69 @@ function Metric({ label, value }) {
       <Typography variant="caption" color="text.secondary" display="block">
         {label}
       </Typography>
-      <Typography variant="body1">{value}</Typography>
+      <Typography variant="body1">{formatText(value)}</Typography>
     </Box>
+  );
+}
+
+function NotInstrumented({ items, testId }) {
+  const { t } = useTranslation();
+  const list = asArray(items);
+  if (list.length === 0) return null;
+  return (
+    <Typography
+      variant="caption"
+      color="text.secondary"
+      display="block"
+      data-testid={testId}
+      sx={{ mt: 0.5 }}
+    >
+      {list
+        .map((item) =>
+          t('admin.aiPanel.notInstrumentedLine', {
+            item: t(`admin.aiPanel.notInstrumentedLabels.${item}`, item),
+          })
+        )
+        .join(' · ')}
+    </Typography>
+  );
+}
+
+function impactText(entry, t) {
+  const metric = entry?.impact?.metric;
+  if (!metric) return null;
+  if (metric === 'not_instrumented') {
+    return t('admin.aiPanel.gates.impactNotInstrumented');
+  }
+  const label = t(`admin.aiPanel.metrics.${metric}`, metric);
+  if (entry.impact.count == null) {
+    return t('admin.aiPanel.gates.impactNoData', { metric: label });
+  }
+  return t('admin.aiPanel.gates.impactMetric', { metric: label, count: entry.impact.count });
+}
+
+function GateCaption({ entry, state }) {
+  const { t } = useTranslation();
+  const parts = [entry.source];
+  if (state) parts.push(t(`admin.aiPanel.gates.state.${state}`));
+  const impact = impactText(entry, t);
+  if (impact) parts.push(impact);
+  return (
+    <Typography variant="caption" color="text.secondary">
+      {parts.filter(Boolean).join(' · ')}
+    </Typography>
   );
 }
 
 function KillSwitchRow({ entry, busy, onSave }) {
   const { t } = useTranslation();
-  const checked = boolValue(entry.value);
+  const state = isNil(entry.value) ? 'unknown' : boolValue(entry.value) ? 'on' : 'off';
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2, mb: 1 }}>
       <Switch
         size="small"
-        checked={checked}
-        disabled={busy}
+        checked={state === 'on'}
+        disabled={busy || state === 'unknown'}
         onChange={(event) => onSave(entry.key, event.target.checked ? 'true' : 'false')}
         inputProps={{ 'data-testid': `kill-switch-${entry.key}` }}
       />
@@ -79,12 +158,7 @@ function KillSwitchRow({ entry, busy, onSave }) {
         <Typography variant="body2">
           {t(`admin.aiPanel.gateKey.${entry.key}`, entry.key)}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
-          {entry.source}
-          {entry.impact?.count != null
-            ? ` · ${t('admin.aiPanel.gates.impact')}: ${entry.impact.count}`
-            : ''}
-        </Typography>
+        <GateCaption entry={entry} state={state} />
       </Box>
     </Box>
   );
@@ -113,12 +187,7 @@ function GateRow({ entry, busy, onSave }) {
         <Typography variant="body2">
           {t(`admin.aiPanel.gateKey.${entry.key}`, entry.key)}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
-          {entry.source}
-          {entry.impact?.count != null
-            ? ` · ${t('admin.aiPanel.gates.impact')}: ${entry.impact.count}`
-            : ` · ${t('admin.aiPanel.notInstrumented')}`}
-        </Typography>
+        <GateCaption entry={entry} />
       </Box>
       <Button
         size="small"
@@ -131,7 +200,7 @@ function GateRow({ entry, busy, onSave }) {
   );
 }
 
-function CoverageBlock({ label, coverage }) {
+function CoverageBlock({ label, coverage, totalLabel, testId }) {
   const { t } = useTranslation();
   if (!coverage) {
     return (
@@ -142,23 +211,65 @@ function CoverageBlock({ label, coverage }) {
   }
   const totals = coverage.totals || {};
   return (
-    <Box sx={{ mb: 2 }}>
+    <Box sx={{ mb: 2 }} data-testid={testId}>
       <Typography variant="subtitle2">{label}</Typography>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', mt: 0.5 }}>
-        <Metric label={t('admin.aiPanel.coverage.embedded')} value={asNumber(totals.embedded)} />
-        <Metric label={t('admin.aiPanel.coverage.missing')} value={asNumber(totals.missing)} />
-        <Metric label={t('admin.aiPanel.coverage.stale')} value={asNumber(totals.stale)} />
+        <Metric label={totalLabel} value={formatNumber(totals.files ?? totals.media)} />
+        <Metric
+          label={t('admin.aiPanel.coverage.embedded')}
+          value={formatNumber(totals.embedded)}
+        />
+        <Metric label={t('admin.aiPanel.coverage.missing')} value={formatNumber(totals.missing)} />
+        <Metric label={t('admin.aiPanel.coverage.stale')} value={formatNumber(totals.stale)} />
       </Box>
-      <Typography variant="caption" color="text.secondary">
-        {Object.entries(coverage.by_source || {})
-          .map(([source, count]) => `${source}: ${count}`)
-          .join(' · ')}
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        display="block"
+        data-testid={`${testId}-by-source`}
+      >
+        {t('admin.aiPanel.coverage.bySource')}: {formatObject(coverage.by_source)}
       </Typography>
       {coverage.by_media_kind ? (
-        <Typography variant="caption" color="text.secondary" display="block">
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          display="block"
+          data-testid={`${testId}-by-media-kind`}
+        >
+          {t('admin.aiPanel.coverage.byMediaKind')}:{' '}
           {Object.entries(coverage.by_media_kind)
-            .map(([kind, bucket]) => `${kind}: ${bucket.embedded}/${bucket.media}`)
-            .join(' · ')}
+            .map(([kind, bucket]) => `${kind}: ${formatMediaKind(bucket)}`)
+            .join(' · ') || '—'}
+        </Typography>
+      ) : null}
+      {coverage.by_capability ? (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          display="block"
+          data-testid={`${testId}-by-capability`}
+        >
+          {t('admin.aiPanel.coverage.byCapability')}:{' '}
+          {t('admin.aiPanel.coverage.capabilityCounts', {
+            enabled: formatNumber(coverage.by_capability.enabled),
+            disabled: formatNumber(coverage.by_capability.disabled),
+          })}
+        </Typography>
+      ) : null}
+      {coverage.by_corpus ? (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          display="block"
+          data-testid={`${testId}-by-corpus`}
+        >
+          {t('admin.aiPanel.coverage.byCorpus')}:{' '}
+          {t('admin.aiPanel.coverage.corpusCounts', {
+            caption: formatNumber(coverage.by_corpus.caption),
+            transcript: formatNumber(coverage.by_corpus.transcript),
+            none: formatNumber(coverage.by_corpus.none),
+          })}
         </Typography>
       ) : null}
     </Box>
@@ -174,10 +285,12 @@ const AiAdminContent = () => {
     summary,
     preview,
     journal,
+    journalError,
     loading,
     error,
     busyKey,
     refresh,
+    refreshJournal,
     loadPreview,
     launch,
     saveSettings,
@@ -228,8 +341,8 @@ const AiAdminContent = () => {
       setConfirmOpen(false);
       message.showSuccess(
         t('admin.aiPanel.launcher.launchSuccess', {
-          count: asNumber(result?.enqueued),
-          generation: result?.generation,
+          count: formatNumber(result?.enqueued),
+          generation: formatNumber(result?.generation),
         })
       );
       scrollTo('pipeline');
@@ -300,12 +413,24 @@ const AiAdminContent = () => {
   const gates = summary.gates || { kill_switches: [], gates: [] };
   const launcher = summary.launcher || {};
   const busy = Boolean(busyKey);
+  const previewAvailable = preview ? preview.available !== false : false;
+  const previewUnion = preview?.plan?.union_count;
   const launchDisabled =
     launching ||
     busy ||
     launcher.available === false ||
     !preview ||
-    (preview.plan && preview.plan.union_count === 0);
+    !previewAvailable ||
+    (Number.isFinite(Number(previewUnion)) && Number(previewUnion) === 0);
+  const launcherReason = launcher.reason
+    ? t(`admin.aiPanel.reasons.${launcher.reason}`, launcher.reason)
+    : null;
+  const previewReason = preview?.reason
+    ? t(`admin.aiPanel.reasons.${preview.reason}`, preview.reason)
+    : null;
+  const coverageReason = coverage.reason
+    ? t(`admin.aiPanel.reasons.${coverage.reason}`, coverage.reason)
+    : null;
 
   return (
     <Box data-testid="ai-admin-content">
@@ -332,6 +457,10 @@ const AiAdminContent = () => {
           {t('admin.aiPanel.openSystemSettings')}
         </Button>
       </Box>
+
+      <Typography variant="caption" color="text.secondary" data-testid="ai-generated-at">
+        {t('admin.aiPanel.generatedAt', { time: formatDateTime(summary.generated_at) })}
+      </Typography>
 
       <Box
         sx={{
@@ -361,16 +490,24 @@ const AiAdminContent = () => {
             <Metric
               key={status}
               label={t(`admin.aiPanel.pipeline.queue.${status}`)}
-              value={asNumber(queue[status])}
+              value={formatNumber(queue[status])}
             />
           ))}
           <Metric
+            label={t('admin.aiPanel.pipeline.queue.total')}
+            value={formatNumber(queue.total)}
+          />
+          <Metric
             label={t('admin.aiPanel.pipeline.failed24h')}
-            value={asNumber(pipeline.failed_24h)}
+            value={formatNumber(pipeline.failed_24h)}
+          />
+          <Metric
+            label={t('admin.aiPanel.pipeline.finished24h')}
+            value={formatNumber(pipeline.finished_24h)}
           />
           <Metric
             label={t('admin.aiPanel.pipeline.failureRate')}
-            value={percent(pipeline.failure_rate_24h)}
+            value={formatPercent(pipeline.failure_rate_24h)}
           />
         </Box>
         <Typography variant="subtitle2" sx={{ mt: 1 }}>
@@ -378,6 +515,9 @@ const AiAdminContent = () => {
         </Typography>
         <Typography variant="caption" color="text.secondary" display="block">
           {t('admin.aiPanel.pipeline.failedJobsDisplayOnly')}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" display="block">
+          {t('admin.aiPanel.pipeline.failedJobsLimit')}
         </Typography>
         {asArray(pipeline.failed_jobs).length === 0 ? (
           <Typography variant="body2" color="text.secondary">
@@ -391,23 +531,27 @@ const AiAdminContent = () => {
                 <TableCell>{t('admin.aiPanel.pipeline.nodeId')}</TableCell>
                 <TableCell>{t('admin.aiPanel.pipeline.kind')}</TableCell>
                 <TableCell>{t('admin.aiPanel.pipeline.generation')}</TableCell>
+                <TableCell>{t('admin.aiPanel.pipeline.status')}</TableCell>
                 <TableCell>{t('admin.aiPanel.pipeline.attempt')}</TableCell>
                 <TableCell>{t('admin.aiPanel.pipeline.lastError')}</TableCell>
+                <TableCell>{t('admin.aiPanel.pipeline.createdAt')}</TableCell>
                 <TableCell>{t('admin.aiPanel.pipeline.finishedAt')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {asArray(pipeline.failed_jobs).map((job) => (
-                <TableRow key={job.id}>
-                  <TableCell>{job.id}</TableCell>
-                  <TableCell>{job.node_id}</TableCell>
-                  <TableCell>{job.kind}</TableCell>
-                  <TableCell>{job.generation}</TableCell>
-                  <TableCell>{job.attempt}</TableCell>
+              {asArray(pipeline.failed_jobs).map((job, index) => (
+                <TableRow key={job.id ?? index}>
+                  <TableCell>{formatNumber(job.id)}</TableCell>
+                  <TableCell>{formatNumber(job.node_id)}</TableCell>
+                  <TableCell>{formatText(job.kind)}</TableCell>
+                  <TableCell>{formatNumber(job.generation)}</TableCell>
+                  <TableCell>{formatText(job.status)}</TableCell>
+                  <TableCell>{formatNumber(job.attempt)}</TableCell>
                   <TableCell sx={{ maxWidth: 260, wordBreak: 'break-all' }}>
-                    {job.last_error || ''}
+                    {formatText(job.last_error)}
                   </TableCell>
-                  <TableCell>{job.finished_at || ''}</TableCell>
+                  <TableCell>{formatDateTime(job.created_at)}</TableCell>
+                  <TableCell>{formatDateTime(job.finished_at)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -427,7 +571,12 @@ const AiAdminContent = () => {
           ))}
         </Box>
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-          {t('admin.aiPanel.pipeline.breakerNotInstrumented')}
+          {pipeline.breaker_states?.instrumented
+            ? t('admin.aiPanel.pipeline.breakerInstrumented')
+            : t(
+                `admin.aiPanel.pipeline.breakerReasons.${pipeline.breaker_states?.reason || 'unknown'}`,
+                t('admin.aiPanel.pipeline.breakerNotInstrumented')
+              )}
         </Typography>
       </Section>
 
@@ -446,25 +595,25 @@ const AiAdminContent = () => {
           <TableBody>
             {asArray(cost.roles).map((row) => (
               <TableRow key={row.role}>
-                <TableCell>{row.role}</TableCell>
-                <TableCell>{asNumber(row.calls)}</TableCell>
-                <TableCell>{asNumber(row.input_chars)}</TableCell>
-                <TableCell>{asNumber(row.cached)}</TableCell>
-                <TableCell>{asNumber(row.degraded)}</TableCell>
-                <TableCell>{asNumber(row.failed_429)}</TableCell>
+                <TableCell>{formatText(row.role)}</TableCell>
+                <TableCell>{formatNumber(row.calls)}</TableCell>
+                <TableCell>{formatNumber(row.input_chars)}</TableCell>
+                <TableCell>{formatNumber(row.cached)}</TableCell>
+                <TableCell>{formatNumber(row.degraded)}</TableCell>
+                <TableCell>{formatNumber(row.failed_429)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
           {t('admin.aiPanel.cost.caps', {
-            calls: asNumber(cost.caps?.call_cap),
-            tokens: asNumber(cost.caps?.token_cap),
+            calls: formatNumber(cost.caps?.call_cap),
+            tokens: formatNumber(cost.caps?.token_cap),
           })}
         </Typography>
-        <Typography variant="caption" color="text.secondary" display="block">
-          {t('admin.aiPanel.cost.perUserNotInstrumented')}
-        </Typography>
+        {cost.per_user_top_n?.instrumented === false ? (
+          <NotInstrumented items={['per_user_top_n']} testId="cost-not-instrumented" />
+        ) : null}
       </Section>
 
       <Section id="evolution" title={t('admin.aiPanel.sections.evolution')}>
@@ -472,22 +621,22 @@ const AiAdminContent = () => {
           <Box>
             <Typography variant="body2">
               {t('admin.aiPanel.evolution.latestNightEval', {
-                id: evolution.latest_night_eval.id,
-                status: evolution.latest_night_eval.status,
+                id: formatNumber(evolution.latest_night_eval.id),
+                status: formatText(evolution.latest_night_eval.status),
               })}
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', mt: 0.5 }}>
               <Metric
                 label={t('admin.aiPanel.evolution.users')}
-                value={asNumber(evolution.latest_night_eval.totals?.users)}
+                value={formatNumber(evolution.latest_night_eval.totals?.users)}
               />
               <Metric
                 label={t('admin.aiPanel.evolution.collections')}
-                value={asNumber(evolution.latest_night_eval.totals?.collections)}
+                value={formatNumber(evolution.latest_night_eval.totals?.collections)}
               />
               <Metric
                 label={t('admin.aiPanel.evolution.mergeSuggested')}
-                value={asNumber(evolution.latest_night_eval.totals?.merge_suggested)}
+                value={formatNumber(evolution.latest_night_eval.totals?.merge_suggested)}
               />
             </Box>
           </Box>
@@ -498,12 +647,10 @@ const AiAdminContent = () => {
         )}
         <Typography variant="body2" sx={{ mt: 1 }}>
           {t('admin.aiPanel.evolution.pendingMerges', {
-            count: asNumber(evolution.pending_merge_suggestions),
+            count: formatNumber(evolution.pending_merge_suggestions),
           })}
         </Typography>
-        <Typography variant="caption" color="text.secondary" display="block">
-          {t('admin.aiPanel.evolution.notInstrumented')}
-        </Typography>
+        <NotInstrumented items={evolution.not_instrumented} testId="evolution-not-instrumented" />
       </Section>
 
       <Section id="models" title={t('admin.aiPanel.sections.models')}>
@@ -511,7 +658,9 @@ const AiAdminContent = () => {
           <TableHead>
             <TableRow>
               <TableCell>{t('admin.aiPanel.models.role')}</TableCell>
+              <TableCell>{t('admin.aiPanel.models.id')}</TableCell>
               <TableCell>{t('admin.aiPanel.models.active')}</TableCell>
+              <TableCell>{t('admin.aiPanel.models.provider')}</TableCell>
               <TableCell>{t('admin.aiPanel.models.engine')}</TableCell>
               <TableCell>{t('admin.aiPanel.models.history')}</TableCell>
             </TableRow>
@@ -519,16 +668,40 @@ const AiAdminContent = () => {
           <TableBody>
             {asArray(models.roles).map((row) => (
               <TableRow key={row.role}>
-                <TableCell>{row.role}</TableCell>
+                <TableCell>{formatText(row.role)}</TableCell>
+                <TableCell>{formatNumber(row.active?.id)}</TableCell>
                 <TableCell>
-                  {row.active ? row.active.model_name : t('admin.aiPanel.models.none')}
+                  {row.active ? formatText(row.active.model_name) : t('admin.aiPanel.models.none')}
                 </TableCell>
-                <TableCell>{row.active ? row.active.engine : ''}</TableCell>
+                <TableCell>{row.active ? formatText(row.active.provider) : '—'}</TableCell>
+                <TableCell>{row.active ? formatText(row.active.engine) : '—'}</TableCell>
                 <TableCell>{asArray(row.history).length}</TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
+        {asArray(models.roles).map((row) => (
+          <Box key={`history-${row.role}`} sx={{ mt: 1 }} data-testid={`model-history-${row.role}`}>
+            <Typography variant="subtitle2">{t('admin.aiPanel.models.historyRows')}</Typography>
+            {asArray(row.history).length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                {t('admin.aiPanel.models.noHistory')}
+              </Typography>
+            ) : (
+              asArray(row.history).map((model) => (
+                <Typography
+                  key={model.id}
+                  variant="body2"
+                  data-testid={`model-history-row-${model.id}`}
+                >
+                  {`#${formatNumber(model.id)} · ${formatText(model.model_name)} · ${formatText(
+                    model.provider
+                  )} · ${formatText(model.engine)}`}
+                </Typography>
+              ))
+            )}
+          </Box>
+        ))}
         {asArray(models.profiles).map((profile) => (
           <Box key={`${profile.role}-${profile.model_id}`} sx={{ mt: 1 }}>
             <Typography variant="body2">
@@ -538,7 +711,7 @@ const AiAdminContent = () => {
               })}
             </Typography>
             <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-              <Chip size="small" label={`dim ${profile.dim ?? '—'}`} />
+              <Chip size="small" label={`dim ${formatNumber(profile.dim)}`} />
               <Chip
                 size="small"
                 color={profile.calibrated ? 'success' : 'default'}
@@ -550,7 +723,16 @@ const AiAdminContent = () => {
               {profile.request_shape ? (
                 <Chip size="small" label={`shape ${profile.request_shape}`} />
               ) : null}
+              {profile.dtype ? <Chip size="small" label={`dtype ${profile.dtype}`} /> : null}
+              {profile.mrl_dims ? (
+                <Chip size="small" label={`mrl ${formatList(profile.mrl_dims)}`} />
+              ) : null}
             </Box>
+            {profile.text_prefixes ? (
+              <Typography variant="caption" color="text.secondary" display="block">
+                {t('admin.aiPanel.models.textPrefixes')}: {formatObject(profile.text_prefixes)}
+              </Typography>
+            ) : null}
           </Box>
         ))}
       </Section>
@@ -558,11 +740,25 @@ const AiAdminContent = () => {
       <Section id="coverage" title={t('admin.aiPanel.sections.coverage')}>
         {coverage.available ? (
           <Box>
-            <CoverageBlock label={t('admin.aiPanel.coverage.text')} coverage={coverage.text} />
-            <CoverageBlock label={t('admin.aiPanel.coverage.media')} coverage={coverage.media} />
+            <CoverageBlock
+              label={t('admin.aiPanel.coverage.text')}
+              coverage={coverage.text}
+              totalLabel={t('admin.aiPanel.coverage.totalFiles')}
+              testId="coverage-text"
+            />
+            <CoverageBlock
+              label={t('admin.aiPanel.coverage.media')}
+              coverage={coverage.media}
+              totalLabel={t('admin.aiPanel.coverage.totalMedia')}
+              testId="coverage-media"
+            />
           </Box>
         ) : (
-          <Alert severity="info">{t('admin.aiPanel.coverage.unavailable')}</Alert>
+          <Alert severity="info" data-testid="coverage-unavailable">
+            {coverageReason
+              ? t('admin.aiPanel.coverage.unavailableReason', { reason: coverageReason })
+              : t('admin.aiPanel.coverage.unavailable')}
+          </Alert>
         )}
       </Section>
 
@@ -579,39 +775,65 @@ const AiAdminContent = () => {
         <Box sx={{ display: 'flex', flexWrap: 'wrap', mt: 1 }}>
           <Metric
             label={t('admin.aiPanel.launcher.model')}
-            value={launcher.active_model_id ?? '—'}
+            value={formatNumber(launcher.active_model_id)}
           />
           <Metric
-            label={t('admin.aiPanel.launcher.generation')}
-            value={asNumber(launcher.generations?.embed)}
+            label={t('admin.aiPanel.launcher.available')}
+            value={t(
+              launcher.available === false
+                ? 'admin.aiPanel.launcher.unavailable'
+                : 'admin.aiPanel.launcher.availableYes'
+            )}
+          />
+          <Metric
+            label={t('admin.aiPanel.launcher.activeJobs')}
+            value={formatNumber(launcher.active_jobs)}
           />
           <Metric
             label={t('admin.aiPanel.launcher.cooldown')}
-            value={asNumber(launcher.retry_after_seconds)}
+            value={formatNumber(launcher.retry_after_seconds)}
           />
         </Box>
-        {launcher.reason === 'active_run' ? (
-          <Alert severity="info" sx={{ mb: 1 }}>
-            {t('admin.aiPanel.launcher.activeRun')}
+        <Box sx={{ display: 'flex', flexWrap: 'wrap' }} data-testid="launcher-generations">
+          {GENERATION_KINDS.map((kind) => (
+            <Metric
+              key={kind}
+              label={t(`admin.aiPanel.launcher.generationKinds.${kind}`)}
+              value={formatNumber(launcher.generations?.[kind])}
+            />
+          ))}
+        </Box>
+        {launcher.available === false && launcherReason ? (
+          <Alert severity="warning" sx={{ mb: 1 }} data-testid="launcher-unavailable">
+            {launcherReason}
           </Alert>
         ) : null}
-        {asNumber(launcher.retry_after_seconds) > 0 ? (
+        {formatNumber(launcher.retry_after_seconds) !== '—' &&
+        Number(launcher.retry_after_seconds) > 0 ? (
           <Alert severity="warning" sx={{ mb: 1 }}>
             {t('admin.aiPanel.launcher.retryAfter', {
-              seconds: asNumber(launcher.retry_after_seconds),
+              seconds: formatNumber(launcher.retry_after_seconds),
             })}
           </Alert>
         ) : null}
         {preview ? (
-          <Box sx={{ mb: 1 }} data-testid="reembed-preview">
-            <Typography variant="body2">
-              {t('admin.aiPanel.launcher.previewCounts', {
-                text: asNumber(preview.plan?.text_count),
-                media: asNumber(preview.plan?.media_count),
-                union: asNumber(preview.plan?.union_count),
+          previewAvailable ? (
+            <Box sx={{ mb: 1 }} data-testid="reembed-preview">
+              <Typography variant="body2">
+                {t('admin.aiPanel.launcher.previewCounts', {
+                  text: formatNumber(preview.plan?.text_count),
+                  media: formatNumber(preview.plan?.media_count),
+                  union: formatNumber(preview.plan?.union_count),
+                })}
+              </Typography>
+            </Box>
+          ) : (
+            <Alert severity="info" sx={{ mb: 1 }} data-testid="reembed-preview-unavailable">
+              {t('admin.aiPanel.launcher.previewUnavailable', {
+                reason: previewReason || t('admin.aiPanel.notInstrumented'),
               })}
-            </Typography>
-          </Box>
+            </Alert>
+          )
         ) : null}
         <Button variant="outlined" onClick={handlePreview} disabled={busy} sx={{ mr: 1 }}>
           {busyKey === 'preview' ? (
@@ -634,7 +856,20 @@ const AiAdminContent = () => {
       </Section>
 
       <Section id="journal" title={t('admin.aiPanel.sections.journal')}>
-        {asArray(journal).length === 0 ? (
+        {journalError ? (
+          <Alert
+            severity="error"
+            data-testid="journal-error"
+            action={
+              <Button size="small" onClick={refreshJournal}>
+                {t('admin.aiPanel.retry')}
+              </Button>
+            }
+          >
+            {getServerErrorDisplay(journalError?.response?.data, t) ||
+              t('admin.aiPanel.journal.loadFail')}
+          </Alert>
+        ) : asArray(journal).length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             {t('admin.aiPanel.journal.empty')}
           </Typography>
@@ -651,7 +886,7 @@ const AiAdminContent = () => {
                     {row.subject} · {row.action}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {row.status} · {row.created_at}
+                    {row.status} · {formatDateTime(row.created_at)}
                   </Typography>
                 </Box>
                 <Button
@@ -673,8 +908,14 @@ const AiAdminContent = () => {
         onConfirm={handleLaunch}
         title={t('admin.aiPanel.launcher.confirmTitle')}
         message={t('admin.aiPanel.launcher.confirmBody', {
-          text: asNumber(preview?.plan?.text_count ?? coverage.text?.totals?.missing ?? 0),
-          media: asNumber(preview?.plan?.media_count ?? coverage.media?.totals?.missing ?? 0),
+          text:
+            previewAvailable && !isNil(preview?.plan?.text_count)
+              ? formatNumber(preview.plan.text_count)
+              : '—',
+          media:
+            previewAvailable && !isNil(preview?.plan?.media_count)
+              ? formatNumber(preview.plan.media_count)
+              : '—',
         })}
         confirmText={t('admin.aiPanel.launcher.confirm')}
         loading={launching}

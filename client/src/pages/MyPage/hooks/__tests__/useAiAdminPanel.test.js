@@ -109,6 +109,61 @@ describe('useAiAdminPanel', () => {
     expect(service.getSettingsJournal).toHaveBeenCalledTimes(2);
   });
 
+  it('returns the journal rows and keeps a journal failure separate from summary errors', async () => {
+    const rows = [{ action_id: 1, subject: 'settings:AI_EVOLUTION_ENABLED' }];
+    const service = buildService({
+      getSettingsJournal: jest
+        .fn()
+        .mockResolvedValueOnce({ actions: [] })
+        .mockResolvedValueOnce({ actions: rows })
+        .mockRejectedValueOnce(new Error('journal down')),
+    });
+    const { result } = renderHook(() => useAiAdminPanel({ service, pollMs: 100000 }));
+    await act(async () => {});
+
+    let returned;
+    await act(async () => {
+      returned = await result.current.refreshJournal();
+    });
+    expect(returned).toEqual(rows);
+    expect(result.current.journal).toEqual(rows);
+    expect(result.current.journalError).toBeNull();
+    expect(result.current.error).toBeNull();
+
+    await act(async () => {
+      returned = await result.current.refreshJournal();
+    });
+    expect(returned).toEqual([]);
+    expect(result.current.journalError).toBeInstanceOf(Error);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('exposes the settings busy key while a gate save is in flight', async () => {
+    let resolveSave;
+    const service = buildService({
+      updateConfig: jest.fn(
+        () =>
+          new Promise((resolve) => {
+            resolveSave = resolve;
+          })
+      ),
+    });
+    const { result } = renderHook(() => useAiAdminPanel({ service, pollMs: 100000 }));
+    await act(async () => {});
+
+    let pending;
+    await act(async () => {
+      pending = result.current.saveSettings({ AI_EVOLUTION_ENABLED: 'false' });
+      await Promise.resolve();
+    });
+    expect(result.current.busyKey).toBe('settings');
+    await act(async () => {
+      resolveSave({ applied: [] });
+      await pending;
+    });
+    expect(result.current.busyKey).toBeNull();
+  });
+
   it('probes every role and isolates a per-role failure', async () => {
     const service = buildService({
       probeLlmRole: jest

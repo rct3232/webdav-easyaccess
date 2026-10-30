@@ -194,7 +194,7 @@ const s3Hermetic: E2EProject[] = [
   },
   {
     name: 's3-ai-desktop',
-    testMatch: /ai\.spec\.ts$/,
+    testMatch: /(?:^|\/)ai\.spec\.ts$/,
     use: desktopUse,
     baseURL: scratchBase(e2ePorts.scratchAi),
   },
@@ -206,6 +206,33 @@ const s3Hermetic: E2EProject[] = [
     use: desktopUse,
     baseURL: scratchBase(e2ePorts.scratchAiMatrix),
   },
+  {
+    // Model-backed admin panel: summary/launcher/gates/cancel cases.
+    name: 's3-admin-ai-model-desktop',
+    testMatch: /admin-ai\.spec\.ts$/,
+    grep: /E2E-ADMINAI-00[2-6]:/,
+    use: desktopUse,
+    baseURL: scratchBase(e2ePorts.scratchAdminAiModel),
+  },
+  {
+    // Model-free/empty states: visibility, cross-links, error/retry.
+    name: 's3-admin-ai-states-desktop',
+    testMatch: /admin-ai\.spec\.ts$/,
+    grep: /E2E-ADMINAI-00[178]:/,
+    use: desktopUse,
+    baseURL: scratchBase(e2ePorts.scratchAdminAiStates),
+  },
+  ...(process.env.E2E_ADMIN_AI_MOBILE === '1'
+    ? [
+        {
+          name: 's3-admin-ai-model-mobile',
+          testMatch: /admin-ai\.spec\.ts$/,
+          grep: /E2E-ADMINAI-002:/,
+          use: mobileUse,
+          baseURL: scratchBase(e2ePorts.scratchAdminAiMobile),
+        } satisfies E2EProject,
+      ]
+    : []),
   {
     name: 's3-trash-admin-desktop',
     testMatch: /trash-admin\.spec\.ts$/,

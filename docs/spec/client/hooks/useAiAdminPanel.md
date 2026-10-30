@@ -26,21 +26,22 @@
 
 ### 2.3 Return value
 
-| Key              | Type                             | Meaning                                                                 |
-| ---------------- | -------------------------------- | ----------------------------------------------------------------------- |
-| `summary`        | object \| null                   | Latest summary payload (snake_case).                                    |
-| `preview`        | object \| null                   | Latest re-embed preview.                                                |
-| `journal`        | array                            | Settings-domain journal feed rows.                                      |
-| `loading`        | boolean                          | Initial summary read in progress.                                       |
-| `error`          | string \| null                   | Last summary read error (`admin.aiPanel.loadFail` rendered by caller).  |
-| `busyKey`        | string \| null                   | Active operation key (`preview`, `launch`, `probe`, `journal`, `undo`). |
-| `refresh`        | () => Promise\<void\>            | Manual summary read (in-flight guarded).                                |
-| `loadPreview`    | () => Promise\<object\>          | Fetches the read-only launcher preview.                                 |
-| `launch`         | (params?) => Promise\<object\>   | Posts the launcher action; refreshes the summary on success.            |
-| `saveSettings`   | (values) => Promise\<object\>    | PUT config values, then refreshes summary + journal.                    |
-| `probeRoles`     | () => Promise\<Array\<object\>\> | Probes chat/vision/asr targets sequentially, then refreshes summary.    |
-| `refreshJournal` | () => Promise\<array\>           | Reads `GET /api/actions?domain=settings`.                               |
-| `undoJournal`    | (actionId) => Promise\<object\>  | Undoes a settings journal row, then refreshes summary + journal.        |
+| Key              | Type                             | Meaning                                                                  |
+| ---------------- | -------------------------------- | ------------------------------------------------------------------------ |
+| `summary`        | object \| null                   | Latest summary payload (snake_case).                                     |
+| `preview`        | object \| null                   | Latest re-embed preview.                                                 |
+| `journal`        | array                            | Settings-domain journal feed rows.                                       |
+| `journalError`   | Error \| null                    | Last journal read error, separate from the summary error.                |
+| `loading`        | boolean                          | Initial summary read in progress.                                        |
+| `error`          | Error \| null                    | Last summary read error (`admin.aiPanel.loadFail` rendered by caller).   |
+| `busyKey`        | string \| null                   | Active operation key (`preview`, `launch`, `settings`, `probe`, `undo`). |
+| `refresh`        | () => Promise\<void\>            | Manual summary read (in-flight guarded).                                 |
+| `loadPreview`    | () => Promise\<object\>          | Fetches the read-only launcher preview.                                  |
+| `launch`         | () => Promise\<object\>          | Posts the launcher action; refreshes the summary on success.             |
+| `saveSettings`   | (values) => Promise\<object\>    | PUT config values, then refreshes summary + journal.                     |
+| `probeRoles`     | () => Promise\<Array\<object\>\> | Probes chat/vision/asr targets sequentially, then refreshes summary.     |
+| `refreshJournal` | () => Promise\<array\>           | Reads `GET /api/actions?domain=settings` and returns its action rows.    |
+| `undoJournal`    | (actionId) => Promise\<object\>  | Undoes a settings journal row, then refreshes summary + journal.         |
 
 ### 2.4 Polling contract (U4)
 
@@ -55,8 +56,12 @@
 ### 2.5 Error handling
 
 - Summary failures set `error` and keep the previous payload (no fabricated empty data).
-- Launcher/gate/journal errors are thrown to the component, which renders the server
-  error code/params (rate-limit retry window included).
+- Journal read failures set `journalError` (the previous rows stay in state but the
+  journal block renders the error state) and do not overwrite `error`, so the block can
+  render an error/retry while the summary remains visible. Journal writes (undo/gate
+  save) still throw.
+- Launcher/gate/journal-write errors are thrown to the component, which renders the
+  server error code/params (rate-limit retry window included).
 - Probe failures are per-role and do not abort the remaining role probes.
 
 ### 2.6 Verification Scenarios
@@ -66,4 +71,5 @@
 - [ ] Unmount clears the interval and drops a late response.
 - [ ] Launch success refreshes the summary; preview does not mutate the summary.
 - [ ] Gate save refreshes both the summary and the settings journal feed.
+- [ ] A journal read failure sets `journalError` without overwriting the summary `error`.
 - [ ] Probe runs one call per role and isolates failures.

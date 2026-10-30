@@ -42,6 +42,15 @@ const CAPABILITIES = Object.freeze([
   'asr',
 ]);
 
+/** capability → owning role (admin readiness rows carry both). */
+const ROLE_BY_CAPABILITY = Object.freeze(
+  Object.fromEntries(
+    Object.entries(ROLE_CAPABILITIES).flatMap(([role, capabilities]) =>
+      capabilities.map((capability) => [capability, role])
+    )
+  )
+);
+
 /** capability → matrix row `{ capability, declared, probed, enabled, note, reason? }` */
 let entries = new Map();
 /** role → warning `{ role, capability, code, reason, hint }` */
@@ -167,6 +176,7 @@ function getEffectiveCapabilities() {
 /** The full seven-key matrix (admin card input): undeclared = OFF. */
 function getCapabilityEntries() {
   return CAPABILITIES.map((capability) => ({
+    role: ROLE_BY_CAPABILITY[capability] ?? null,
     ...(entries.get(capability) || emptyEntry(capability)),
   }));
 }

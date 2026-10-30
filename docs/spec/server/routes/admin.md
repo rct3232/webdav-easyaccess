@@ -126,7 +126,7 @@ and never returns a raw secret.
 | Method | Path                  | Auth          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ------ | --------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | GET    | `/ai/summary`         | Token + Admin | Polled operations snapshot: pipeline queue counts, 24 h failed count/rate, failed jobs (display-only), readiness tokens, today's `ai_usage_daily` per-role ledger + caps, evolution latest `night_eval` totals + pending merge count, model registry active/history rows + profile provenance, text/media coverage, curated config-backed gates with live impact counts, launcher availability/retry/generations, and the explicit `not_instrumented` list. |
-| GET    | `/ai/reembed/preview` | Token + Admin | Read-only deterministic text coverage + media coverage (counts and union plan count), current embed model id, per-kind generations and launcher `retry_after_seconds`. No enqueue and no names/paths.                                                                                                                                                                                                                                                       |
+| GET    | `/ai/reembed/preview` | Token + Admin | Read-only deterministic text coverage + media coverage (counts and union plan count), coverage/launcher `available` + `reason`, current embed model id, per-kind generations and launcher `retry_after_seconds`. No enqueue and no names/paths; unavailable coverage returns `text: null`/`media: null` and never fabricated zero counts.                                                                                                                   |
 | POST   | `/ai/reembed`         | Token + Admin | The ONE re-embed launcher. Under the global `ai-reembed-launcher` lock: 15-minute cooldown derived from the latest `settings:ai-reembed` journal row, global single-active guard, preview recomputed inside the lock, generation bump for `embed                                                                                                                                                                                                            | features | caption | asr`to the same`N`(internal`AI*GEN*<KIND>`settings, default 1),`enqueueMany`embed jobs for the text + media plan, and ONE settings-domain`ai-reembed`journal row whose inverse is`cancel-ai-jobs`carrying the job ids. Returns`{ job_ids, enqueued, generation, generations, model_id, undo: { action_id }, retry_after_seconds }`. 429 `serverErrors.admin.reembedRateLimited`with`params.retry_after_seconds`; 409 `serverErrors.admin.reembedAlreadyActive`/`serverErrors.admin.reembedModelUnavailable`. |
 
 Summary shape (all keys additive; IDs only where noted):
@@ -246,21 +246,25 @@ Summary shape (all keys additive; IDs only where noted):
     "merge_accept_series",
     "per_version_history",
     "per_user_top_n",
-    "degraded_input_histogram",
   ],
 }
 ```
 
 Rules:
 
-- `failed_jobs` is display-only in v1 (no retry/abandon action). `finished_at` is
-  written by `markFailed` so the 24 h window is DB-derived; `failure_rate_24h` is
-  `failed_24h / finished_24h` (0 when the denominator is 0).
+- `failed_jobs` is display-only in v1 (no retry/abandon action) and capped at the
+  20 newest rows (`listFailed({ limit: 20 })`). `finished_at` is written by `markFailed`
+  so the 24 h window is DB-derived; `failure_rate_24h` is `failed_24h / finished_24h`
+  (0 when the denominator is 0).
+- `coverage.reason` explains an unavailable coverage projection (`model_unavailable`);
+  `text`/`media` are `null` in that case. The preview returns the same
+  `available`/`reason` pair and never fabricates zero plan counts when unavailable.
 - Breaker states require active observation in the current adapter, so the panel
   exposes readiness tokens (the published capability matrix) plus an explicit
   `not_instrumented` marker instead of triggering provider work on a poll.
-- The degraded-input histogram uses `ai_usage_daily.degraded` when present and is
-  labelled `not_instrumented` when the adapter has not written it.
+- The per-role `ai_usage_daily.degraded` counter is the v1 degraded-input surface.
+  A degraded-input histogram and the per-user top-N list are low-value diagnostics
+  and remain API-only / `not_instrumented`; no v1 panel block renders them.
 - Gates are limited to the curated non-secret AI governance keys
   (`AI_EVOLUTION_*`, `AI_MERGE_*`, activity/retention keys and the AI kill switches).
   Impact counts derive from the latest `night_eval` totals and the live pending

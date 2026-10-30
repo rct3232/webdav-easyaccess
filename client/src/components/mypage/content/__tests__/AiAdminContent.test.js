@@ -9,6 +9,7 @@ const mockPanel = {
   summary: null,
   preview: null,
   journal: [],
+  journalError: null,
   loading: false,
   error: null,
   busyKey: null,

@@ -41,11 +41,15 @@ selection callbacks.
   `merged_count` likewise). `a_name`, `b_name`, `overlap_count`, `merged_count` verbatim
   (ko particle handling is a pure i18n formatter — a client-side particle picker; en copy is
   phrased without particles).
-- Buttons: icon-only `[Later(Snooze, gray)] [Keep separate(Block, gray)]
-[Merge(MergeType, primary)]` in that order on EVERY item, with no button background or
-  border. Each icon dispatches that item's id; the i18n label is both the aria-label and the
+- Buttons: `[Later(Snooze, icon-only, gray)] [Keep separate(Block, icon-only, gray)]
+[Merge(contained primary, MergeType icon + label)]` in that order on EVERY item.
+  Later/Keep have no background or border; Merge keeps the primary contained surface and
+  adds the icon. Each action dispatches that item's id; the i18n label is the aria-label and
   tooltip. The first item keeps `merge-accept`/`merge-keep-separate`/`merge-later`; expanded
   items use `merge-row-<action>-<suggestion_id>`.
+- Question line: only the two collection names are bold; the surrounding copy is normal
+  weight. In the row, each name shrinks with `ellipsis` while the static copy stays visible;
+  the detail title shows the full names with wrapping.
 - Body/footer structure: each item is a summary line + its actions (the hover/tap/keyboard
   target is the text block); the footer is a separate full-width strip after the list.
 - No thumbnail strip and no expand button: samples live in the detail panel (desktop hover /
@@ -83,7 +87,8 @@ selection callbacks.
   NO full-screen backdrop and does not follow the mouse. Item actions stay clickable.
 - Close behavior: 300ms hover-out grace, cancelled by pointer enter on the panel; Esc;
   outside pointer-down; the panel's close button (`merge-detail-close`).
-- Content: the title only (`mergeQuestion`, `merge-detail-title`), then two collection-card
+- Content: the full question title (`merge-detail-title`, names bold, surrounding copy normal,
+  wrapping allowed), then two collection-card
   preview panels in B(absorbed) → A(survivor) order (`merge-detail-tiles`):
   - left = `b_preview_items` 2×2 preview (`merge-detail-preview-b`,
     cells `merge-preview-b-<node_id>`);
@@ -140,7 +145,7 @@ separate` / `Later` live on every item and dispatch that item's id with the same
 
 ### 2.8 Dependencies
 
-- **imports:** MUI Box/Card/IconButton/Paper/Popper/Tooltip/Typography, icons
+- **imports:** MUI Box/Button/Card/IconButton/Paper/Popper/Tooltip/Typography, icons
   `Block`/`MergeType`/`Snooze`/`Close`/`ArrowForward`, `CollectionPreviewGrid` (shared with
   the collection cards), `useTranslation`, `utils/koParticleUtils.js` (pure particle picker),
   `hooks/useResponsive` (mobile tap vs desktop hover); **no** gateway/service imports
@@ -148,7 +153,9 @@ separate` / `Later` live on every item and dispatch that item's id with the same
 
 ### 2.9 i18n Keys
 
-- `fileManager.mergeQuestion`, `fileManager.mergeOverlapCount`, `fileManager.mergeAfter`,
+- `fileManager.mergeQuestion` (plain aria label), `fileManager.mergeQuestionBeforeB` /
+  `fileManager.mergeQuestionBetween` / `fileManager.mergeQuestionAfterA` (rich question
+  segments around the bold names), `fileManager.mergeOverlapCount`, `fileManager.mergeAfter`,
   `fileManager.mergeMore` (footer text), `fileManager.mergeAccept` (`Merge`),
   `fileManager.mergeKeepSeparate` (`Keep separate`), `fileManager.mergeLater` (`Later`),
   `fileManager.mergeReason` (deterministic counts sentence), `fileManager.mergeDetailsAria`
@@ -160,9 +167,11 @@ separate` / `Later` live on every item and dispatch that item's id with the same
 
 - [ ] One card for a non-empty set; top row is score-desc first; the same DOM node is reused
       when the set shrinks (no key remount).
-- [ ] Every item carries the icon-only `Later(Snooze, gray) → Keep separate(Block, gray) →
-Merge(MergeType, primary)` actions in that order, with no background/border; each
+- [ ] Every item carries `Later(Snooze, icon-only, gray) → Keep separate(Block, icon-only,
+gray) → Merge(contained primary, MergeType icon + label)` in that order; each
       dispatches `onAction` with that row's `suggestion_id`; no dialog opens.
+- [ ] Row collection names ellipsize individually and are the only bold text; the detail
+      title shows the full names with wrapping and only the names bold.
 - [ ] `suggestions.length > 1` renders the centered footer text (no chip/badge), with
       `role="button"` + `aria-expanded`; expanding lists ALL rows in a viewport-bounded
       scrollable accordion (`40vh` desktop / `50vh` mobile), keeps the footer below the

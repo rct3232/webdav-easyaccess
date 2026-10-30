@@ -3053,8 +3053,10 @@ refined by U4 below.
 - **Badges:** files-surface collection markers removed; `for-nodes` remains for
   AddToCollectionMenu checkmarks, FilePropertiesDialog “Member of”, and bulk add.
 - **Merge UI:** sticky region between toolbar and list; body/footer accordion with
-  icon-only Later(Snooze, gray) → Keep separate(Block, gray) → Merge(MergeType, primary)
-  actions; desktop hover/mobile tap detail; no active-pair cursor; two collection-card 2×2 preview panels
+  Later(Snooze, icon-only, gray) → Keep separate(Block, icon-only, gray) →
+  Merge(contained primary, MergeType icon + label) actions; row collection names ellipsize
+  individually and only names are bold, while the detail title wraps the full names; desktop
+  hover/mobile tap detail; no active-pair cursor; two collection-card 2×2 preview panels
   (B absorbed → A survivor, newest-added `preview_items`, no filename labels) shared with
   the collection grid; each side CONTAINER uses the grid-view `grey.100` + divider theme
   (cells stay transparent); a shared
@@ -3087,7 +3089,7 @@ refined by U4 below.
 - Release E2E: model-on 277/6 rc=0; model-free 276/7 rc=0; WebDAV 41/0 rc=0.
 - Merge detail portal + preview-parity follow-up: server `domains/collections`
   **332/332**; client `MergeProposalCard` + `CollectionsListView` + `FileManager`
-  **159/159**; COLLECTION-021 desktop+mobile **2/2** (portaled previews outside the
+  **160/160**; COLLECTION-021 desktop+mobile **2/2** (portaled previews outside the
   accordion, container-level grid-view theme, shared strip 3 tiles + `+N` centered with
   the reason on desktop and centered on two rows on mobile, mobile `50vh` accordion cap +
   footer clearance).

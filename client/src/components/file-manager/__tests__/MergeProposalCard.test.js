@@ -102,9 +102,13 @@ describe('MergeProposalCard', () => {
       'merge-keep-separate',
       'merge-accept',
     ]);
+    expect(screen.getByTestId('merge-later')).toHaveClass('MuiIconButton-root');
+    expect(screen.getByTestId('merge-keep-separate')).toHaveClass('MuiIconButton-root');
+    const mergeButton = screen.getByTestId('merge-accept');
+    expect(mergeButton).toHaveClass('MuiButton-contained');
+    expect(mergeButton).toHaveClass('MuiButton-colorPrimary');
+    expect(mergeButton).not.toHaveClass('MuiIconButton-root');
     actionButtons.forEach((button) => {
-      expect(button).toHaveClass('MuiIconButton-root');
-      expect(button).not.toHaveClass('MuiButton-contained');
       expect(button).not.toHaveClass('MuiButton-outlined');
     });
     expect(
@@ -113,12 +117,36 @@ describe('MergeProposalCard', () => {
     expect(
       screen.getByTestId('merge-keep-separate').querySelector('[data-testid="BlockIcon"]')
     ).toBeInTheDocument();
-    expect(
-      screen.getByTestId('merge-accept').querySelector('[data-testid="MergeTypeIcon"]')
-    ).toBeInTheDocument();
-    expect(screen.getByTestId('merge-accept')).toHaveClass('MuiIconButton-colorPrimary');
+    expect(mergeButton.querySelector('[data-testid="MergeTypeIcon"]')).toBeInTheDocument();
+    expect(mergeButton).toHaveTextContent('Merge');
     expect(screen.queryByTestId('merge-strip')).not.toBeInTheDocument();
     expect(screen.queryByTestId('merge-cycle-chip')).not.toBeInTheDocument();
+  });
+
+  it('ellipsizes the row collection names, shows full names in the detail, and bolds only names', () => {
+    render();
+    const row = screen.getByTestId('merge-card-body-text');
+    const rowB = within(row).getByText('2025 trip');
+    const rowA = within(row).getByText('Europe');
+    expect(getComputedStyle(rowB).fontWeight).toBe('600');
+    expect(getComputedStyle(rowA).fontWeight).toBe('600');
+    expect(getComputedStyle(rowB).textOverflow).toBe('ellipsis');
+    expect(getComputedStyle(rowA).textOverflow).toBe('ellipsis');
+    const prefix = Array.from(row.querySelectorAll('span')).find(
+      (span) => span.textContent === 'Merge "'
+    );
+    expect(prefix).toBeTruthy();
+    expect(getComputedStyle(prefix).fontWeight).not.toBe('600');
+
+    const panel = hoverOpen();
+    const title = within(panel).getByTestId('merge-detail-title');
+    expect(getComputedStyle(title).fontWeight).not.toBe('600');
+    const detailB = within(title).getByText('2025 trip');
+    const detailA = within(title).getByText('Europe');
+    expect(getComputedStyle(detailB).fontWeight).toBe('600');
+    expect(getComputedStyle(detailA).fontWeight).toBe('600');
+    expect(getComputedStyle(detailB).textOverflow).not.toBe('ellipsis');
+    expect(getComputedStyle(detailA).textOverflow).not.toBe('ellipsis');
   });
 
   it('renders no card DOM at all without suggestions (zero-footprint input)', () => {

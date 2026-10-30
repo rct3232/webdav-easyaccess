@@ -12,7 +12,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Box, Card, IconButton, Paper, Popper, Tooltip, Typography } from '@mui/material';
+import { Box, Button, Card, IconButton, Paper, Popper, Tooltip, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import BlockIcon from '@mui/icons-material/Block';
@@ -194,6 +194,89 @@ const MergeProposalCard = ({
     [t]
   );
 
+  const questionPartsFor = useCallback(
+    (suggestion) => ({
+      before: t('fileManager.mergeQuestionBeforeB'),
+      between: t('fileManager.mergeQuestionBetween', {
+        pObj: koObjectParticle(suggestion.b_name),
+      }),
+      after: t('fileManager.mergeQuestionAfterA', {
+        pWith: koWithParticle(suggestion.a_name),
+      }),
+      absorbed: suggestion.b_name,
+      survivor: suggestion.a_name,
+    }),
+    [t]
+  );
+
+  const renderQuestionRow = (suggestion) => {
+    const parts = questionPartsFor(suggestion);
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'baseline',
+          minWidth: 0,
+          maxWidth: '100%',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <Box component="span" sx={{ flexShrink: 0 }}>
+          {parts.before}
+        </Box>
+        <Box
+          component="span"
+          sx={{
+            flex: '0 1 auto',
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            fontWeight: 600,
+          }}
+        >
+          {parts.absorbed}
+        </Box>
+        <Box component="span" sx={{ flexShrink: 0 }}>
+          {parts.between}
+        </Box>
+        <Box
+          component="span"
+          sx={{
+            flex: '0 1 auto',
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            fontWeight: 600,
+          }}
+        >
+          {parts.survivor}
+        </Box>
+        <Box component="span" sx={{ flexShrink: 0 }}>
+          {parts.after}
+        </Box>
+      </Box>
+    );
+  };
+
+  const renderQuestionFull = (suggestion) => {
+    const parts = questionPartsFor(suggestion);
+    return (
+      <>
+        <Box component="span">{parts.before}</Box>
+        <Box component="span" sx={{ fontWeight: 600 }}>
+          {parts.absorbed}
+        </Box>
+        <Box component="span">{parts.between}</Box>
+        <Box component="span" sx={{ fontWeight: 600 }}>
+          {parts.survivor}
+        </Box>
+        <Box component="span">{parts.after}</Box>
+      </>
+    );
+  };
+
   const countsFor = useCallback(
     (suggestion) =>
       `${t('fileManager.mergeOverlapCount', { count: suggestion.overlap_count })} · ${t(
@@ -311,9 +394,9 @@ const MergeProposalCard = ({
           variant="subtitle1"
           component="h3"
           data-testid="merge-detail-title"
-          sx={{ flex: 1, minWidth: 0, fontWeight: 600 }}
+          sx={{ flex: 1, minWidth: 0 }}
         >
-          {questionFor(suggestion)}
+          {renderQuestionFull(suggestion)}
         </Typography>
         <IconButton
           size="small"
@@ -493,15 +576,25 @@ const MergeProposalCard = ({
               sx={{
                 display: 'flex',
                 flexDirection: { xs: 'column', sm: 'row' },
-                flexWrap: 'wrap',
+                alignItems: { xs: 'flex-start', sm: 'baseline' },
                 columnGap: 1,
                 rowGap: 0.25,
+                minWidth: 0,
               }}
             >
-              <Typography variant="body2" component="span" sx={{ fontWeight: 600 }}>
-                {questionFor(suggestion)}
+              <Typography
+                variant="body2"
+                component="div"
+                sx={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden' }}
+              >
+                {renderQuestionRow(suggestion)}
               </Typography>
-              <Typography variant="caption" color="text.secondary" component="span">
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                component="span"
+                sx={{ flexShrink: 0 }}
+              >
                 · {countsFor(suggestion)}
               </Typography>
             </Box>
@@ -546,18 +639,20 @@ const MergeProposalCard = ({
               </IconButton>
             </Tooltip>
             <Tooltip title={t('fileManager.mergeAccept')}>
-              <IconButton
-                size="small"
+              <Button
+                variant="contained"
                 color="primary"
+                size="small"
                 data-testid={actionTestId('accept')}
                 aria-label={t('fileManager.mergeAccept')}
+                startIcon={<MergeTypeIcon />}
                 onClick={(event) => {
                   event.stopPropagation();
                   dispatchAction(suggestion, 'merge');
                 }}
               >
-                <MergeTypeIcon fontSize="small" />
-              </IconButton>
+                {t('fileManager.mergeAccept')}
+              </Button>
             </Tooltip>
           </Box>
         </Box>

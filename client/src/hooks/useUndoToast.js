@@ -149,7 +149,7 @@ export const useUndoToast = ({ gateway, message, refresh } = {}) => {
     [msg]
   );
 
-  // Direct execution seam (T0.10 — CollectionDashboard journal feed): row
+  // Direct execution seam (T0.10 — CollectionsOverview journal feed): row
   // buttons undo WITHOUT the toast indirection; the ref keeps the handler
   // stable while runUndo rebinds fresh gateway/refresh props per render.
   const runUndoRef = useRef(runUndo);

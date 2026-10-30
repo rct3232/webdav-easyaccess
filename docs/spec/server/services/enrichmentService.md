@@ -56,8 +56,8 @@ Defaults resolve the real facades (`server/store/aiEnrichmentsStore.js`,
    emit ONLY `{ model_name }`; missing model row → `null`. Result shape is always
    `{ features, caption, asr }`.
 
-`category` is intentionally absent (owner decision: the AI Info surface does not promise a
-category field; only persisted tags/summary/caption/transcript/media/truncated ship).
+`category` is absent: there is no column and no producer for it. Only persisted
+tags/summary/caption/transcript/media/truncated ship.
 
 ### 2.4 Error/absence contracts
 

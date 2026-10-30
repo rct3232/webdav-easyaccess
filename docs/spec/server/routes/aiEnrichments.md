@@ -71,7 +71,7 @@ is unauthenticated → 401. The route is never mounted behind `authenticateToken
     },
     "truncated": false,
     "schema_version": 1,
-    "updated_at": "2026-10-30T10:00:00.000Z",
+    "updated_at": "2026-01-01T00:00:00.000Z",
     "provenance": {
       "features": { "model_name": "qwen2.5-7b" },
       "caption": { "model_name": "qwen2.5-vl-7b" },

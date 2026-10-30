@@ -36,11 +36,7 @@ import {
   rejectMerge,
   removeCollectionItems,
   restoreCollection,
-  acceptFileSuggestions,
-  dismissFileSuggestion,
   getActions,
-  getFileSuggestions,
-  getStorageUsageSeries,
   revokeGrant,
   revokeOwnGrant,
   runSearch,
@@ -48,6 +44,12 @@ import {
   undoAction,
   updateCollection,
 } from './collectionsRepository';
+import {
+  acceptStorageSuggestions,
+  dismissStorageSuggestion,
+  getStorageHygiene,
+  getStorageUsage,
+} from './storageRepository';
 import { onCollectionsChange } from './collectionsNotifier';
 import { getShowHiddenFiles } from '../utils/localStorage';
 import { filterOutUserOwnFolders } from '../utils/userUtils';
@@ -278,13 +280,14 @@ export { runSearch, recordSearchClick };
 // Undo execution seam (actions.md; collectionsRepository.md §2.5 structured result).
 export { undoAction };
 
-// Actions feed + Storage dashboard seams (T0.10; routes/{actions,dashboard}.md) —
-// repository absorbed-read/mutation shapes pass through verbatim.
-export { getActions, getFileSuggestions, acceptFileSuggestions, dismissFileSuggestion };
+// Actions feed seam (T0.10; routes/actions.md) — repository absorbed-read
+// shape passes through verbatim.
+export { getActions };
 
-// Storage-usage series read (`GET /api/dashboard/storage-usage`; T4.4):
-// absorbed failure ⇒ null so the dashboard omits the sparkline block.
-export const loadStorageUsageSeries = () => getStorageUsageSeries();
+// Personal storage domain seams (`GET /api/storage`, `GET /api/storage/usage`,
+// POST /api/storage/suggestions/{accept,dismiss}) — storageRepository absorbed
+// fallbacks (`{ suggestions: [] }` / `null` / `null`) pass through unchanged.
+export { getStorageHygiene, getStorageUsage, acceptStorageSuggestions, dismissStorageSuggestion };
 
 // -- File likes (T0.5; §2.6 file-likes group) — the fileLikesRepository       //
 // absorbed-read fallback ({ liked: [] }), payload ∥ null mutation and         //
@@ -396,12 +399,13 @@ const explorerGateway = {
   runSearch,
   recordSearchClick,
   undoAction,
-  // Actions feed + Storage dashboard (T0.10 — §2.6 dashboard group)
+  // Actions feed (T0.10 — §2.6 journal group)
   getActions,
-  getFileSuggestions,
-  loadStorageUsageSeries,
-  acceptFileSuggestions,
-  dismissFileSuggestion,
+  // Personal storage (storage client-domain split — §2.6 storage group)
+  getStorageHygiene,
+  getStorageUsage,
+  acceptStorageSuggestions,
+  dismissStorageSuggestion,
   // File likes (§2.6 file-likes group)
   loadFileLikes,
   loadLikedItems,

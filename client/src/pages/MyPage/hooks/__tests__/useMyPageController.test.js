@@ -54,6 +54,7 @@ describe('useMyPageController', () => {
       expect(result.current.sidebarItems.map((item) => item.id)).toEqual([
         'account',
         'sharing',
+        'collections',
         'storage',
         'preferences',
       ]);
@@ -72,6 +73,7 @@ describe('useMyPageController', () => {
     await waitFor(() => {
       expect(result.current.sidebarItems.map((item) => item.id)).not.toContain('storage');
     });
+    expect(result.current.sidebarItems.map((item) => item.id)).not.toContain('collections');
     expect(result.current.sidebarItems.map((item) => item.id)).toEqual([
       'account',
       'admin-users',
@@ -101,6 +103,28 @@ describe('useMyPageController', () => {
 
     await waitFor(() => {
       expect(result.current.selectedCategory).toBe('account');
+    });
+  });
+
+  it('rewrites the collections deep-link to the default section for admins (operator rule)', async () => {
+    useAuth.mockReturnValue({ user: { is_admin: true } });
+    useLocation.mockReturnValue({ state: { category: 'collections' } });
+
+    const { result } = renderHook(() => useMyPageController({ isMobile: false }));
+
+    await waitFor(() => {
+      expect(result.current.selectedCategory).toBe('account');
+    });
+  });
+
+  it('accepts the collections deep-link category id for non-admins without rewriting it', async () => {
+    useAuth.mockReturnValue({ user: { is_admin: false } });
+    useLocation.mockReturnValue({ state: { category: 'collections' } });
+
+    const { result } = renderHook(() => useMyPageController({ isMobile: false }));
+
+    await waitFor(() => {
+      expect(result.current.selectedCategory).toBe('collections');
     });
   });
 

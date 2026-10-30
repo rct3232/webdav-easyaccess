@@ -26,10 +26,6 @@ import {
   runSearch,
   recordSearchClick,
   getActions,
-  getFileSuggestions,
-  getStorageUsageSeries,
-  acceptFileSuggestions,
-  dismissFileSuggestion,
   notifyEvolutionHint,
 } from '../collectionsRepository';
 
@@ -355,7 +351,7 @@ describe('runSearch + recordSearchClick', () => {
 
 // -- Actions feed + Storage dashboard seams (T0.10) --------------------------
 
-describe('getActions / getFileSuggestions / acceptFileSuggestions (T0.10)', () => {
+describe('getActions (T0.10)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -398,83 +394,6 @@ describe('getActions / getFileSuggestions / acceptFileSuggestions (T0.10)', () =
     get.mockRejectedValueOnce(new Error('Network error'));
 
     await expect(getActions({ domain: 'collection' })).resolves.toEqual({ actions: [] });
-  });
-
-  it('getFileSuggestions returns the dashboard payload verbatim', async () => {
-    const payload = {
-      duplicates: { group_count: 1, duplicate_count: 2, reclaimable_bytes: 120 },
-      suggestions: [
-        {
-          node_id: 90211,
-          kind: 'exact_dup',
-          path: '/alice/b.bin',
-          size_bytes: 120,
-          reason: { kind: 'exact_dup', keep_node_id: 90210 },
-        },
-      ],
-      trash: { item_count: 0, total_bytes: 0, oldest_deleted_at: null, retention_days: 30 },
-    };
-    get.mockResolvedValueOnce({ data: payload });
-
-    await expect(getFileSuggestions()).resolves.toEqual(payload);
-    expect(get).toHaveBeenCalledWith('/dashboard');
-  });
-
-  it('getFileSuggestions absorbs failures into the { suggestions: [] } fallback', async () => {
-    get.mockRejectedValueOnce(new Error('Network error'));
-
-    await expect(getFileSuggestions()).resolves.toEqual({ suggestions: [] });
-  });
-
-  it('getStorageUsageSeries returns the series payload verbatim', async () => {
-    const payload = {
-      points: [
-        { day: '2026-10-01', bytes: 10 },
-        { day: '2026-10-02', bytes: 20 },
-      ],
-    };
-    get.mockResolvedValueOnce({ data: payload });
-
-    await expect(getStorageUsageSeries()).resolves.toEqual(payload);
-    expect(get).toHaveBeenCalledWith('/dashboard/storage-usage');
-  });
-
-  it('getStorageUsageSeries absorbs failures into null (sparkline omitted)', async () => {
-    get.mockRejectedValueOnce(new Error('Network error'));
-
-    await expect(getStorageUsageSeries()).resolves.toBeNull();
-  });
-
-  it('acceptFileSuggestions posts the camelCase body and notifies on real success', async () => {
-    post.mockResolvedValueOnce({ data: { trashed: [1, 2], rejected_not_owned: [], skipped: [] } });
-
-    const result = await acceptFileSuggestions([1, 2]);
-
-    expect(post).toHaveBeenCalledWith('/dashboard/suggestions/accept', { nodeIds: [1, 2] });
-    expect(result).toEqual({ trashed: [1, 2], rejected_not_owned: [], skipped: [] });
-    expect(notifyCollectionsChange).toHaveBeenCalledTimes(1);
-  });
-
-  it('acceptFileSuggestions honors silent option, absorbs failure to null, surfaces the envelope', async () => {
-    post.mockRejectedValueOnce(transportError(400, 'serverErrors.dashboard.emptyNodeIds'));
-    const onError = jest.fn();
-
-    await expect(acceptFileSuggestions([1], { silent: true, onError })).resolves.toBeNull();
-    expect(onError).toHaveBeenCalledWith({
-      errorCode: 'serverErrors.dashboard.emptyNodeIds',
-      params: {},
-    });
-    expect(notifyCollectionsChange).not.toHaveBeenCalled();
-  });
-
-  it('dismissFileSuggestion POSTs the camelCase body, returns the state row, absorbs failure to null', async () => {
-    post.mockResolvedValueOnce({ data: { id: 9, state: 'dismissed' } });
-
-    await expect(dismissFileSuggestion(9)).resolves.toEqual({ id: 9, state: 'dismissed' });
-    expect(post).toHaveBeenCalledWith('/dashboard/suggestions/dismiss', { suggestionId: 9 });
-
-    post.mockRejectedValueOnce(transportError(404, 'serverErrors.dashboard.suggestionNotFound'));
-    await expect(dismissFileSuggestion(99)).resolves.toBeNull();
   });
 });
 

@@ -28,10 +28,10 @@ Target-contract spec.
 | thumbnailMap        | object   | N        | null    | Host-owned `Map<nodeId, url>` of already-loaded sample thumbnails (the shared preview cache); a sample id without an entry renders a placeholder tile.                                                                                                                                                                                                                             |
 | onRequestThumbnails | function | N        | -       | Called with the displayed sample node ids when a detail panel opens (`(nodeIds) => void`); absent ⇒ tiles simply stay placeholders.                                                                                                                                                                                                                                                |
 
-Removed props (superseded by the current UX): `suggestion`, `remainingCount`, `onCycle`,
-`onMerge`, `onKeepSeparate`, `onLater`. The host never remounts the card with a `key` and
-never keeps a cursor — the top row is always `suggestions[0]`, so resolving the top pair
-promotes the next pending pair automatically.
+The host never remounts the card with a `key` and never keeps a cursor — the top row is
+always `suggestions[0]`, so resolving the top pair promotes the next pending pair
+automatically. The prop contract is exactly the four rows above; there are no per-row
+selection callbacks.
 
 ### 2.3 Card Body (collapsed)
 

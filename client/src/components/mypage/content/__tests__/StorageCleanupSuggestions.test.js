@@ -1,6 +1,6 @@
 /**
- * SuggestionsChecklist tests — Q4 checkbox contract
- * (docs/spec/client/components/mypage/content/SuggestionsChecklist.md §2.3):
+ * StorageCleanupSuggestions tests — Q4 checkbox contract
+ * (docs/spec/client/components/mypage/content/StorageCleanupSuggestions.md §2.3):
  * every row carries a checkbox; the ONLY accept control is `Accept selected (N)`;
  * dismiss stays per-row AND only for rows that carry an id (computed P0 rows
  * have none — §2.7 as-built note).
@@ -10,7 +10,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { renderWithProviders } from '../../../../test-utils';
-import SuggestionsChecklist from '../SuggestionsChecklist';
+import StorageCleanupSuggestions from '../StorageCleanupSuggestions';
 
 const row = (overrides = {}) => ({
   node_id: 101,
@@ -47,10 +47,13 @@ const nearRow = (overrides = {}) =>
     ...overrides,
   });
 
-describe('SuggestionsChecklist', () => {
+describe('StorageCleanupSuggestions', () => {
   it('renders unchecked checkbox rows and NO accept control at N=0 (absent, not disabled)', () => {
     renderWithProviders(
-      <SuggestionsChecklist suggestions={[row(), row({ node_id: 102 })]} onAccept={jest.fn()} />
+      <StorageCleanupSuggestions
+        suggestions={[row(), row({ node_id: 102 })]}
+        onAccept={jest.fn()}
+      />
     );
 
     const checkboxes = screen.getAllByTestId('suggestion-checkbox');
@@ -66,7 +69,7 @@ describe('SuggestionsChecklist', () => {
       .fn()
       .mockResolvedValue({ trashed: [102], rejected_not_owned: [], skipped: [] });
     renderWithProviders(
-      <SuggestionsChecklist suggestions={[row(), row({ node_id: 102 })]} onAccept={onAccept} />
+      <StorageCleanupSuggestions suggestions={[row(), row({ node_id: 102 })]} onAccept={onAccept} />
     );
 
     const [first, second] = screen.getAllByTestId('suggestion-checkbox');
@@ -90,7 +93,7 @@ describe('SuggestionsChecklist', () => {
 
   it('absorbed failure (null) keeps the checkboxes for retry', async () => {
     const onAccept = jest.fn().mockResolvedValue(null);
-    renderWithProviders(<SuggestionsChecklist suggestions={[row()]} onAccept={onAccept} />);
+    renderWithProviders(<StorageCleanupSuggestions suggestions={[row()]} onAccept={onAccept} />);
 
     await userEvent.click(screen.getByTestId('suggestion-checkbox'));
     await userEvent.click(screen.getByTestId('suggestions-accept'));
@@ -100,7 +103,7 @@ describe('SuggestionsChecklist', () => {
   });
 
   it('renders the basename + reason chip; computed rows (no id) get NO dismiss button', () => {
-    renderWithProviders(<SuggestionsChecklist suggestions={[row()]} onAccept={jest.fn()} />);
+    renderWithProviders(<StorageCleanupSuggestions suggestions={[row()]} onAccept={jest.fn()} />);
 
     expect(screen.getByText('beach copy.jpg')).toBeInTheDocument();
     expect(screen.getByText(/exact duplicate/i)).toBeInTheDocument();
@@ -111,7 +114,7 @@ describe('SuggestionsChecklist', () => {
   it('persisted rows (T3.3 shape) carry a per-row dismiss that only removes that row', async () => {
     const onDismiss = jest.fn();
     renderWithProviders(
-      <SuggestionsChecklist
+      <StorageCleanupSuggestions
         suggestions={[
           row({ id: 88, expires_at: new Date(Date.now() + 7 * 86400000).toISOString() }),
           row({ id: 89, node_id: 102 }),
@@ -129,7 +132,7 @@ describe('SuggestionsChecklist', () => {
 
   it('expiry footer gates on expires_at, not on id: retention-off rows (expires_at null) render no footer', () => {
     renderWithProviders(
-      <SuggestionsChecklist
+      <StorageCleanupSuggestions
         suggestions={[
           row({ id: 91, expires_at: null }),
           row({ id: 92, node_id: 102, expires_at: null }),
@@ -145,21 +148,25 @@ describe('SuggestionsChecklist', () => {
   });
 
   it('loading renders skeleton rows and no interactive controls', () => {
-    renderWithProviders(<SuggestionsChecklist suggestions={[]} onAccept={jest.fn()} loading />);
+    renderWithProviders(
+      <StorageCleanupSuggestions suggestions={[]} onAccept={jest.fn()} loading />
+    );
 
     expect(screen.getAllByTestId('suggestion-skeleton').length).toBeGreaterThan(0);
     expect(screen.queryByTestId('suggestions-accept')).not.toBeInTheDocument();
   });
 
   it('empty list (loaded) renders the empty note and no accept button', () => {
-    renderWithProviders(<SuggestionsChecklist suggestions={[]} onAccept={jest.fn()} />);
+    renderWithProviders(<StorageCleanupSuggestions suggestions={[]} onAccept={jest.fn()} />);
 
     expect(screen.getByText(/nothing to clean up/i)).toBeInTheDocument();
     expect(screen.queryByTestId('suggestions-accept')).not.toBeInTheDocument();
   });
 
   it('near-dup keep block: label + collapsed accessible "Why this keeper?" detail', async () => {
-    renderWithProviders(<SuggestionsChecklist suggestions={[nearRow()]} onAccept={jest.fn()} />);
+    renderWithProviders(
+      <StorageCleanupSuggestions suggestions={[nearRow()]} onAccept={jest.fn()} />
+    );
 
     expect(screen.getByText(/keep: report\.pdf · resolution/i)).toBeInTheDocument();
     const why = screen.getByRole('button', { name: /why this keeper\?/i });
@@ -181,7 +188,7 @@ describe('SuggestionsChecklist', () => {
 
   it('legacy near-dup rows without reason.keep render neither the label nor the disclosure', () => {
     renderWithProviders(
-      <SuggestionsChecklist
+      <StorageCleanupSuggestions
         suggestions={[nearRow({ reason: { kind: 'near_dup', keep_node_id: 201, score: 0.962 } })]}
         onAccept={jest.fn()}
       />
@@ -193,7 +200,7 @@ describe('SuggestionsChecklist', () => {
 
   it('exact-dup and rule rows never render keeper exposure', () => {
     renderWithProviders(
-      <SuggestionsChecklist
+      <StorageCleanupSuggestions
         suggestions={[
           row(),
           row({

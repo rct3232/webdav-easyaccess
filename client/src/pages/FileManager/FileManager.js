@@ -1648,13 +1648,14 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     user,
   ]);
 
-  // -- Collection-membership chips host (CollectionMembershipBadges.md §2.6) --
+  // -- Collection-membership read host (`FilePropertiesDialog.md` §3.2,
+  // `AddToCollectionMenu.md` §2.2) --
   // Batched `POST /collections/for-nodes` over the FILES-surface rows (session
-  // listing + the current search-zone snapshots — the zones render through the
-  // same row components). Names resolve through the already-fetched
-  // `useCollections` list; admin/share-link sessions ride the inert seam
-  // (operator rule: zero /api/collections IO). Listing payloads stay frozen:
-  // the chips consume this SEPARATE read as a dedicated prop chain.
+  // listing + the current search-zone snapshots) plus the opened properties
+  // target. The map feeds the dialog `Member of` chips and the add-menu
+  // all-target checkmarks; names resolve through the already-fetched
+  // `useCollections` list. Admin/share-link sessions ride the inert seam
+  // (operator rule: zero /api/collections IO). Listing payloads stay frozen.
   const membershipNodeIds = useMemo(() => {
     // Zone rows arrive in the hook's CONVERTED explorer shape (`nodeId`);
     // `node_id` stays a defensive fallback for raw snapshot carriers.
@@ -1755,14 +1756,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
     }
     return intersection ? Array.from(intersection) : [];
   }, [addMenu, membershipsByNodeId]);
-
-  const membershipModel = useMemo(
-    () =>
-      isShareLinkMode || user?.is_admin
-        ? undefined
-        : { membershipsByNodeId, onBulkAddToCollection: handleFilesBulkAddToCollection },
-    [isShareLinkMode, user, membershipsByNodeId, handleFilesBulkAddToCollection]
-  );
 
   const handleProductPathClick = useCallback(
     async (path, file) => {
@@ -2464,6 +2457,10 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       openCreateFolderDialog,
       onShareTargetSave,
       handleOpenCollectionFromProperties,
+      // Files-surface toolbar bulk add (BulkActionToolbar.md §3):
+      // callback-withheld for admin/share-link sessions (absent, not disabled).
+      handleFilesBulkAddToCollection:
+        isShareLinkMode || user?.is_admin ? undefined : handleFilesBulkAddToCollection,
     }),
     [
       handleOperationComplete,
@@ -2482,6 +2479,9 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
       openCreateFolderDialog,
       onShareTargetSave,
       handleOpenCollectionFromProperties,
+      handleFilesBulkAddToCollection,
+      isShareLinkMode,
+      user,
     ]
   );
 
@@ -2587,7 +2587,6 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         trashState={trashStateProps}
         collectionsModel={collectionsModel}
         searchResults={searchResults}
-        membershipModel={membershipModel}
       />
       {(isCollectionsMemberRoute || isCollectionsLikedRoute) && (
         <MemberRowControls

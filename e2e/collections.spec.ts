@@ -1679,9 +1679,9 @@ test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the rec
 });
 
 // ---------------------------------------------------------------------------
-// Files-surface membership badges + toolbar bulk add (T3.6 —
-// CollectionMembershipBadges.md, useCollectionMemberships.md,
-// BulkActionToolbar.md §3 merged idiom, pages/FileManager.md §7 operator rule)
+// Files-surface toolbar bulk add + add-menu checkmarks (T3.6 —
+// AddToCollectionMenu.md §2.2, BulkActionToolbar.md §3 merged idiom,
+// pages/FileManager.md §7 operator rule)
 // ---------------------------------------------------------------------------
 
 /** Dual-platform multi-select idiom (core-flow.shared `selectTwoFiles`): the
@@ -1724,14 +1724,13 @@ async function selectTwoForBulk(page: Page, isMobile: boolean, p1: string, p2: s
   }
 }
 
-test('E2E-S3-COLLECTION-025: files-surface rows badge their collections in grid and list with the cap plus overflow, the bulk toolbar add lands checkmarked on read-only granted rows and moves badges without reload, and an admin session stays badge-free and collections-IO-silent', async ({
+test('E2E-S3-COLLECTION-025: the context menu pre-checks containing collections, the bulk toolbar add lands checkmarked on read-only granted rows and re-opens with the new membership checked, while an admin session stays collections-IO-silent without the bulk entry', async ({
   page,
   request,
 }, testInfo) => {
   const isMobile = isMobileProject(testInfo);
   const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
   const fileA = await seedFile(request, token, base, testInfo, 'chip-a');
-  const fileB = await seedFile(request, token, base, testInfo, 'chip-b');
 
   const name1 = buildName(testInfo, 'chip-c1');
   const name2 = buildName(testInfo, 'chip-c2');
@@ -1739,9 +1738,8 @@ test('E2E-S3-COLLECTION-025: files-surface rows badge their collections in grid 
   const c1 = await createCollectionApi(request, token, name1);
   const c2 = await createCollectionApi(request, token, name2);
   const c3 = await createCollectionApi(request, token, name3);
-  // Two seeded memberships: fileA ∈ C1, fileB ∈ C2.
+  // Single-target checkmark anchor: fileA ∈ C1.
   await addItemsApi(request, token, c1, [fileA.nodeId]);
-  await addItemsApi(request, token, c2, [fileB.nodeId]);
 
   // Read-only host subtree: a SECOND regular user owns the granted folder —
   // the operator seeds the folder + files and grants the ACTOR READ (the
@@ -1794,71 +1792,38 @@ test('E2E-S3-COLLECTION-025: files-surface rows badge their collections in grid 
   // the perm-delete fallback runs it through the OPERATOR, dual-token idiom).
   trackWorkspaceCleanup(token, `/${hostCreds.username}/${roFolderName}`);
   // Both granted rows already live in C2: the checkmark anchor of the bulk
-  // menu (C2 contains ALL targets) + the badge-on-read-only-row anchor.
+  // menu (C2 contains ALL targets).
   await addItemsApi(request, token, c2, [ro1.nodeId, ro2.nodeId]);
 
-  // (a) HOME GRID: the batched for-nodes read badges both rows with the
-  //     collection NAMES (aria tooltip `membershipChip`, en bundle).
+  // (a) SINGLE-TARGET CONTEXT MENU: the menu pre-checks the containing
+  //     collection, the add closes it, and RE-OPENING after the notifier
+  //     re-read shows the new membership checked.
   await gotoFilesPath(page, request, `/${base}`);
   await expect(fileItem(page, fileA.path)).toBeVisible();
-  await page.getByTestId('view-mode-grid').click();
-  const badgeA1 = page.getByTestId(`membership-badge-${fileA.nodeId}-${c1}`);
-  await expect(badgeA1).toBeVisible({ timeout: 30_000 });
-  await expect(badgeA1).toHaveAttribute('aria-label', `Member of ${name1}`);
-  await expect(page.getByTestId(`membership-badge-${fileB.nodeId}-${c2}`)).toBeVisible();
-  await expect(page.locator('[data-testid^="membership-badge-"]')).toHaveCount(2);
-
-  // (b) HOME LIST: the SAME testids through the leading-column overlay.
-  await page.getByTestId('view-mode-list').click();
-  await expect(badgeA1).toBeVisible();
-  await expect(page.getByTestId(`membership-badge-${fileB.nodeId}-${c2}`)).toBeVisible();
-
-  // (c) Context-menu toggle of a SECOND collection on fileA: the single-target
-  //     menu pre-checks the containing collection (membershipIds), the add
-  //     lands the new badge on the spot (no reload — the notifier re-read).
   await openFileActions(page, fileA.path, isMobile);
   await page.getByTestId('collection-add').click();
   await expect(page.getByTestId(`collection-checked-${c1}`)).toBeVisible();
   await expect(page.getByTestId(`collection-checked-${c2}`)).toHaveCount(0);
   await page.getByTestId(`collection-option-${c2}`).click();
   await expect(page.getByText(/Added to collection/i)).toBeVisible();
-  await expect(page.getByTestId(`membership-badge-${fileA.nodeId}-${c2}`)).toBeVisible({
-    timeout: 15_000,
-  });
   // Let the 8 s undo toast expire before re-opening the row surface (the
   // bottom Snackbar overlays the mobile action anchor).
   await expect(page.getByText(/Added to collection/i)).toBeHidden({ timeout: 15_000 });
 
-  // (d) The THIRD membership collapses to the cap: exactly two collection
-  //     plates + the `+1 more` overflow naming the hidden collection.
   await openFileActions(page, fileA.path, isMobile);
   await page.getByTestId('collection-add').click();
-  await page.getByTestId(`collection-option-${c3}`).click();
-  await expect(page.getByText(/Added to collection/i)).toBeVisible();
-  const fileABadges = page.locator(`[data-testid^="membership-badge-${fileA.nodeId}-"]`);
-  const overflow = page.getByTestId(`membership-badge-more-${fileA.nodeId}`);
-  await expect(fileABadges).toHaveCount(2);
-  await expect(overflow).toBeVisible({ timeout: 15_000 });
-  const shownIds = await fileABadges.evaluateAll((els) =>
-    els.map((el) => Number(String(el.getAttribute('data-testid')).split('-').pop()))
-  );
-  const missingId = [c1, c2, c3].find((id) => !shownIds.includes(id));
-  const missingName = missingId === c1 ? name1 : missingId === c2 ? name2 : name3;
-  await expect(overflow).toHaveAttribute('aria-label', new RegExp(`\\+1 more — ${missingName}`));
+  await expect(page.getByTestId(`collection-checked-${c1}`)).toBeVisible();
+  await expect(page.getByTestId(`collection-checked-${c2}`)).toBeVisible({
+    timeout: 15_000,
+  });
+  await page.keyboard.press('Escape');
 
-  // (e) The granted (read-only) rows badge too — the batched read is
-  //     permission-agnostic and belongs to the FILES surfaces (shared routes
-  //     included). Then the bulk toolbar add lands on them.
+  // (b) BULK TOOLBAR ADD on read-only granted rows: the file-write gate still
+  //     holds (move disabled) while the membership write stays available for
+  //     readable rows (T3.6 ruling, §30.1).
   await gotoNodePage(page, roFolderId);
   await expect(fileItem(page, ro1.path)).toBeVisible();
-  await expect(page.getByTestId(`membership-badge-${ro1.nodeId}-${c2}`)).toBeVisible({
-    timeout: 30_000,
-  });
-  await expect(page.getByTestId(`membership-badge-${ro2.nodeId}-${c2}`)).toBeVisible();
-
   await selectTwoForBulk(page, isMobile, ro1.path, ro2.path);
-  // The file-write gate still holds (move disabled) while the membership
-  // write stays available for readable rows (T3.6 ruling, §30.1).
   await expect(page.getByText(/Selection includes read-only files/i)).toBeVisible();
   await expect(page.getByTestId('bulk-action-move')).toBeDisabled();
   const bulkAdd = page.getByTestId('bulk-collection-add');
@@ -1871,19 +1836,22 @@ test('E2E-S3-COLLECTION-025: files-surface rows badge their collections in grid 
   await expect(page.getByTestId(`collection-checked-${c3}`)).toHaveCount(0);
   await page.getByTestId(`collection-option-${c1}`).click();
 
-  // One undo toast per command (BulkActionToolbar.md §3) — NOT clicked; the
-  // badge re-read lands WITHOUT any reload (notifier refresh on the batched
-  // membership read).
+  // One undo toast per command (BulkActionToolbar.md §3) — NOT clicked.
   await expect(page.getByText(/Added to collection/i)).toBeVisible();
-  await expect(page.getByTestId(`membership-badge-${ro1.nodeId}-${c1}`)).toBeVisible({
+  // Let the toast expire, then RE-OPEN the bulk menu: the notifier re-read
+  // lands the new membership as a checkmark without any reload.
+  await expect(page.getByText(/Added to collection/i)).toBeHidden({ timeout: 15_000 });
+  await bulkAdd.click();
+  await expect(page.getByTestId(`collection-checked-${c1}`)).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByTestId(`membership-badge-${ro2.nodeId}-${c1}`)).toBeVisible();
-  await expect(page.locator(`[data-testid^="membership-badge-${ro1.nodeId}-"]`)).toHaveCount(2);
+  await expect(page.getByTestId(`collection-checked-${c2}`)).toBeVisible();
+  await expect(page.getByTestId(`collection-checked-${c3}`)).toHaveCount(0);
+  await page.keyboard.press('Escape');
 
-  // (f) ADMIN NEGATIVE (operator rule, pages/FileManager.md §7): the SAME tree
-  //     under the admin session renders zero badges, zero bulk-add entry and
-  //     issues ZERO /api/collections IO (inert gateway).
+  // (c) ADMIN NEGATIVE (operator rule, pages/FileManager.md §7): the SAME tree
+  //     under the admin session renders no bulk-add entry, no membership
+  //     chrome, and issues ZERO /api/collections IO (inert gateway).
   const collectionsCalls: string[] = [];
   const monitor = (req: Request) => {
     const url = new URL(req.url());

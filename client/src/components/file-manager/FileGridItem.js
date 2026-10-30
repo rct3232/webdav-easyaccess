@@ -7,9 +7,6 @@ import { pixelMiddleTruncate } from '../../utils/stringUtils';
 import CardTile from './CardTile';
 import HighlightedName from './HighlightedName';
 import MemberStateBadges, { hasMemberStateBadges } from './MemberStateBadges';
-import CollectionMembershipBadges, {
-  hasCollectionMembershipBadges,
-} from './CollectionMembershipBadges';
 import TileCornerBadge from './TileCornerBadge';
 
 /**
@@ -75,7 +72,6 @@ const FileGridItem = React.memo(
     showMoreButton,
     onMoreClick,
     isMobile,
-    memberships = null,
   }) => {
     const thumbnail = getThumbnail(file);
     const [containerWidth, setContainerWidth] = React.useState(150);
@@ -195,21 +191,13 @@ const FileGridItem = React.memo(
       );
     })();
 
-    // Corner-badge slot (CollectionMembershipBadges.md §2.4): member-state
-    // plates (member surfaces) and membership plates (files surfaces) are
-    // structurally exclusive today — the concatenation is defensive only.
-    // `null` when NEITHER set is present keeps the zero-DOM-delta anchor
-    // (CardTile renders no corner container over plain tiles).
-    const memberBadgePlates = hasMemberStateBadges(file) ? (
+    // Corner-badge slot (MemberStateBadges.md): member-state plates render on
+    // member surfaces only. `null` when the set is absent keeps the
+    // zero-DOM-delta anchor (CardTile renders no corner container over plain
+    // tiles).
+    const cornerBadgePlates = hasMemberStateBadges(file) ? (
       <MemberStateBadges file={file} variant="grid" />
     ) : null;
-    const membershipBadgePlates = hasCollectionMembershipBadges(memberships) ? (
-      <CollectionMembershipBadges nodeId={file.nodeId} entries={memberships} variant="grid" />
-    ) : null;
-    const cornerBadgePlates =
-      memberBadgePlates && membershipBadgePlates
-        ? [].concat(memberBadgePlates, membershipBadgePlates)
-        : memberBadgePlates || membershipBadgePlates;
 
     return (
       <CardTile
@@ -260,12 +248,7 @@ const FileGridItem = React.memo(
       prevProps.file.hasWritePermission === nextProps.file.hasWritePermission &&
       prevProps.file.hasReadPermission === nextProps.file.hasReadPermission &&
       prevProps.file.isSearchServerRow === nextProps.file.isSearchServerRow &&
-      prevProps.file.size === nextProps.file.size &&
-      // Membership chips ride the host-prepared slice — compared BY IDENTITY:
-      // stable across renders while no membership re-read lands; a re-read
-      // rebuilds the map wholesale (member-adapter remap class), so exactly
-      // the notify cycles re-render the badged rows.
-      prevProps.memberships === nextProps.memberships
+      prevProps.file.size === nextProps.file.size
     );
   }
 );

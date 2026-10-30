@@ -289,8 +289,6 @@
     "permanentDeleteConfirm1": "Permanently delete this collection?",
     "permanentDeleteConfirm2": "This cannot be undone. Members are only removed from the collection — files stay in place.",
     "addToCollection": "Add to collection",
-    "membershipChip": "Member of {{name}}",
-    "membershipChipMore": "+{{count}} more — {{names}}",
     "newCollectionInline": "New collection…",
     "seedCreate": "Make a collection like this file",
     "addRejectedNotReadable": "{{count}} excluded (not readable)",

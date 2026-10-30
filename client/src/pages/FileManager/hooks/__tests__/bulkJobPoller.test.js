@@ -250,7 +250,7 @@ describe('bulkJobPoller forced check + dispose', () => {
     let capturedSignal;
     const fetchStatus = jest.fn(
       (jobId, options) =>
-        new Promise((resolve) => {
+        new Promise((_resolve) => {
           capturedSignal = options.signal;
         })
     );

@@ -35,13 +35,9 @@ import { getSessionToken } from './helpers/resolvePath';
  *
  * Split out of `collections.spec.ts` (which keeps E2E-S3-COLLECTION-001..025):
  * both cases exercise storage routes/dashboards, not collection lifecycle, so
- * they own a dedicated spec. The storage projects reuse the collections
- * scratch slots (`:5013` desktop / `:5014` mobile) and declare Playwright
- * project dependencies on the corresponding collections projects; the
- * dependency edge guarantees the collections server is torn down before this
- * file boots its own on the same slot. The collections project's testMatch is
- * collections-only, and this file's testMatch is storage-only, so one project
- * never collects the other's cases.
+ * they own a dedicated spec. The storage projects own dedicated scratch slots
+ * (`:5022` desktop / `:5023` mobile): no other project shares them, so the
+ * suite never declares a Playwright project dependency.
  *
  * SCRATCH-HERMETIC per the destructive-case policy (docs/TESTING_STRATEGY.md):
  * this suite permanently trashes/restores nodes and reaches the regular user's
@@ -84,13 +80,9 @@ let operatorToken = '';
 
 test.beforeAll(async ({ request }, testInfo) => {
   const projectName = testInfo.project.name;
-  // Independent desktop/mobile worlds: each project owns its port slot, its
-  // scratch directory and its S3 bucket. The port slot is shared with the
-  // corresponding collections project, serialized by the project dependency
-  // declared in playwright.config.ts.
-  const port = isMobileProject(testInfo)
-    ? e2ePorts.scratchCollectionsMobile
-    : e2ePorts.scratchCollections;
+  // Independent desktop/mobile worlds: each project owns its dedicated port
+  // slot, its scratch directory and its S3 bucket.
+  const port = isMobileProject(testInfo) ? e2ePorts.scratchStorageMobile : e2ePorts.scratchStorage;
   scratch = scratchDirFor(CASE_ID, projectName);
   fs.rmSync(scratch, { recursive: true, force: true });
   fs.mkdirSync(scratch, { recursive: true });

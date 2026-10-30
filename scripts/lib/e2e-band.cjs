@@ -22,7 +22,7 @@
  *   4. `E2E_PORT_OFFSET` pins the band exactly (parallel-run scheduling);
  *      per-port `E2E_*_PORT` env vars override the effective ports last.
  *
- * BAND_STEP (20) must exceed the span of the scratch base ports (5002..5021)
+ * BAND_STEP (40) must exceed the span of the scratch base ports (5002..5023)
  * so two allocated bands can never overlap each other's slots.
  *
  * The module also regenerates `data/e2e-runtime.env` — a copy of the mode's
@@ -59,6 +59,10 @@ const PORT_BASES = {
   scratchTrashAdminMobile: 5019,
   scratchCollections: 5013,
   scratchCollectionsMobile: 5014,
+  // Dedicated storage-management slots: the storage suite must never share a
+  // scratch slot (and therefore never depend) on the collections projects.
+  scratchStorage: 5022,
+  scratchStorageMobile: 5023,
   scratchRetrieval: 5015,
   scratchRetrievalMobile: 5020,
   scratchAi: 5016,
@@ -71,8 +75,8 @@ const PORT_BASES = {
   s3Console: 9011,
 };
 
-const BAND_STEP = 20;
-const MAX_BANDS = 25; // offsets 0..480
+const BAND_STEP = 40;
+const MAX_BANDS = 25; // offsets 0..960
 
 // Ports browsers refuse to navigate to (Chromium/WebKit "restricted" list).
 // Auto-allocation never hands these out: offset 40 would map the
@@ -99,6 +103,8 @@ const PORT_ENV_OVERRIDES = {
   scratchTrashAdminMobile: 'E2E_SCRATCH_TRASH_ADMIN_MOBILE_PORT',
   scratchCollections: 'E2E_SCRATCH_COLLECTIONS_PORT',
   scratchCollectionsMobile: 'E2E_SCRATCH_COLLECTIONS_MOBILE_PORT',
+  scratchStorage: 'E2E_SCRATCH_STORAGE_PORT',
+  scratchStorageMobile: 'E2E_SCRATCH_STORAGE_MOBILE_PORT',
   scratchRetrieval: 'E2E_SCRATCH_RETRIEVAL_PORT',
   scratchRetrievalMobile: 'E2E_SCRATCH_RETRIEVAL_MOBILE_PORT',
   scratchAi: 'E2E_SCRATCH_AI_PORT',

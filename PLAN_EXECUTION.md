@@ -3067,8 +3067,9 @@ refined by U4 below.
   launcher/preview reasons, journal errors, and eight browser E2E cases.
 - **E2E:** browser AI matrix (`AI-008..012`, AI-015), admin-AI cases, and a dedicated
   storage suite (`STORAGE-001..002` in `e2e/storage.spec.ts`; the former COLLECTION-023
-  moved there) under dependent `s3-storage-desktop`/`s3-storage-mobile` projects. Default
-  inventory 283 (277 passed / 6 skipped model-on; 276/7 model-free), WebDAV 41/0.
+  moved there) under the independent `s3-storage-desktop`/`s3-storage-mobile` projects
+  (dedicated `:5022`/`:5023` scratch slots). Default inventory 283 (277 passed / 6 skipped
+  model-on; 276/7 model-free), WebDAV 41/0.
 
 **Verification (2026-10-30)**
 

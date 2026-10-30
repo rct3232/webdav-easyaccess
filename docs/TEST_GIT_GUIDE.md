@@ -221,11 +221,9 @@ Required assumptions:
   the platform bucket once. Global teardown empties the bucket and stops the
   services with a project-scoped `down -v`.
 - The active group selects the Playwright projects. Projects are independent
-  siblings except for the storage projects, which declare `dependencies` on the
-  corresponding collections projects to serialize reuse of the `:5013`/`:5014`
-  scratch slots (and set `workers: 1`). A storage-only run therefore includes
-  its collections dependency unless invoked with `--no-deps` after the ports
-  are free. Check the active set with `npx playwright test --list`.
+  siblings: every scratch suite owns its slot (the storage suite uses
+  `:5022`/`:5023`), so no project declares `dependencies` on another. Check the
+  active set with `npx playwright test --list`.
 - The `e2e:server` script chains the port-band provisioning + compose up +
   health wait, then boots the server with `DOTENV_CONFIG_PATH` pointing at the
   generated `data/e2e-runtime.env`. That file holds this checkout's band ports
@@ -246,8 +244,8 @@ Required assumptions:
   may reuse another project's bucket, database, scratch directory, or WebDAV
   root.
 - Desktop and mobile use separate scratch slots where a suite needs independent
-  process state; no suite shares a port through a dependency chain. All slots
-  shift with the checkout's port band. Concrete slot assignments live in
+  process state; no suite shares a port or declares a project dependency. All
+  slots shift with the checkout's port band. Concrete slot assignments live in
   [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
 - **Storage per backend:** S3 scratch servers set `WEA_FILE_STORAGE=s3`,
   `S3_BUCKET`, `S3_ENDPOINT`, and MinIO credentials; they seed no WebDAV
@@ -281,7 +279,7 @@ run their suites concurrently:
   share a directory basename, export a distinct `COMPOSE_PROJECT_NAME` per
   checkout.
 - **Host ports** — `scripts/lib/e2e-band.cjs` allocates one PORT BAND per
-  checkout: a single offset (steps of 20) applied to the whole base port set
+  checkout: a single offset (steps of 40) applied to the whole base port set
   (client, API, WebDAV, PG, S3, plus the scratch-slot range). Offset 0 is tried
   first and reproduces the fixed contract exactly, so a solo checkout sees no
   change. Allocation happens once per checkout and is persisted in
@@ -310,11 +308,13 @@ same band):
 # Checkout A (first / solo): uses offset 0 = today's fixed ports.
 npm run test:e2e
 
-# Checkout B (concurrent): base ports are busy → auto-allocates offset 20.
+# Checkout B (concurrent): base ports are busy → auto-allocates offset 80
+# (offset 40 is skipped because it maps a scratch slot onto the browser-
+# restricted SIP ports 5060/5061).
 npm run test:e2e
 
 # Deterministic pinning for orchestrated parallelism (e.g. CI fan-out):
-E2E_PORT_OFFSET=40 npm run test:e2e   # must be a multiple of 20
+E2E_PORT_OFFSET=40 npm run test:e2e   # must be a multiple of 40
 
 # Inspect the current checkout's band:
 cat data/e2e-runtime.json

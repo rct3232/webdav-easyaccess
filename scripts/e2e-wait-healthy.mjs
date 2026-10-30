@@ -93,7 +93,7 @@ console.log(
   `[e2e-wait-healthy] Port band offset ${bandOffset}: ` +
     `api=${bandPorts.api} client=${bandPorts.client} webdav=${needsWebdav ? bandPorts.webdav : 'off'} ` +
     `pg=${bandPorts.pg} s3=${bandPorts.s3}/${bandPorts.s3Console} ` +
-    `scratch=${bandPorts.scratchWizard},${bandPorts.scratchAdminConfig},${bandPorts.scratchMigration},${bandPorts.scratchTrashAdmin},${bandPorts.scratchCollections}`
+    `scratch=${bandPorts.scratchWizard},${bandPorts.scratchAdminConfig},${bandPorts.scratchMigration},${bandPorts.scratchTrashAdmin},${bandPorts.scratchCollections},${bandPorts.scratchStorage}`
 );
 
 function composePortsEnv() {

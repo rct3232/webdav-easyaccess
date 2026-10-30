@@ -89,11 +89,9 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   **auto-evolution mutates user data, so AI suites are scratch-only, never run against the
   shared E2E server/database.** Scratch servers are process isolation for boot config,
   global settings, DB, and restart; the project-scoped cwd, bucket, and WebDAV subtree only
-  isolate blobs. The collections and storage suites are the one deliberate slot-sharing
-  pair: `s3-storage-desktop`/`s3-storage-mobile` reuse the collections `:5013`/`:5014`
-  slots and declare Playwright project dependencies on the corresponding collections
-  projects (plus `workers: 1`), so the collections server is torn down before the storage
-  suite boots its own.
+  isolate blobs. Every scratch suite owns a dedicated slot: the storage projects use
+  `:5022`/`:5023` and the collections projects keep `:5013`/`:5014`, so no suite shares a
+  port with (or depends on) another project.
 - **E2E case identity:** case families use backend-qualified IDs where the backend is part
   of the contract, third-person declarative titles per the naming convention above, and the
   minimum lifecycle chain create→digest→archive→undo→restore→purge (CODING_STYLE.md Express
@@ -457,12 +455,9 @@ This section defines only the invariants every E2E suite must follow.
 
 ### Concurrency and isolation
 
-- Playwright project dependencies are allowed only to serialize reuse of a scratch
-  slot: `s3-storage-desktop`/`s3-storage-mobile` depend on the corresponding
-  collections projects because both suites boot on `:5013`/`:5014`, and the
-  storage projects also set `workers: 1`. Otherwise projects are independent
-  siblings; the worker count is the main concurrency throttle. Do not add a
-  fixed per-project `workers: 1` outside that slot-sharing exception; use
+- Playwright project dependencies are not used: every suite owns its scratch
+  slot, so projects are independent siblings and the worker count is the main
+  concurrency throttle. Do not add a fixed per-project `workers: 1`; use
   `serial` mode or `fullyParallel` as the suite requires.
 - Per-run seeding happens once. Isolation comes from case hermeticity and
   assertion-context containment, not from ordering.

@@ -45,6 +45,8 @@ export interface E2EPorts {
   scratchTrashAdminMobile: number;
   scratchCollections: number;
   scratchCollectionsMobile: number;
+  scratchStorage: number;
+  scratchStorageMobile: number;
   scratchRetrieval: number;
   scratchRetrievalMobile: number;
   scratchAi: number;

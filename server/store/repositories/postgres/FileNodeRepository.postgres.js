@@ -766,7 +766,7 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
-    // Dashboard trash-card aggregate (T0.10): trashed FILE rows of the subtree
+    // Storage trash-card aggregate (T0.10): trashed FILE rows of the subtree
     // (trash marking marks the whole subtree — children of trashed folders are
     // counted once each; directories carry no filecache size).
     async summarizeTrashedSubtree(ancestorId) {
@@ -792,26 +792,39 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
-    // Storage-usage aggregate (dashboardService §2.2): live + trash bytes of a
-    // subtree. S3 mode counts every active/history object version; WebDAV mode
-    // counts the current filecache row of each file. No `deleted_at` filter —
+    // Storage-usage breakdown aggregate (storageService §2.2): live + trash +
+    // version bytes of a subtree. S3 mode partitions active objects into
+    // live/trash by the node's `deleted_at` and counts every history object as
+    // version bytes; WebDAV mode counts the current filecache row of each file
+    // as live/trash and reports no version history. No `deleted_at` filter —
     // trash is part of the user's logical storage. NULL sizes are reported so
-    // the caller can skip a partial series.
+    // the caller can mark the aggregate incomplete.
     async summarizeSubtreeStorageUsage(ancestorId, { includeVersions = true } = {}) {
       try {
         const { rows } = includeVersions
           ? await executor.query(
               `SELECT COALESCE(SUM(om.size), 0) AS total_bytes,
+                      COALESCE(SUM(CASE WHEN om.status = 'active' AND n.deleted_at IS NULL THEN om.size ELSE 0 END), 0) AS live_bytes,
+                      COALESCE(SUM(CASE WHEN om.status = 'active' AND n.deleted_at IS NOT NULL THEN om.size ELSE 0 END), 0) AS trash_bytes,
+                      COALESCE(SUM(CASE WHEN om.status = 'history' THEN om.size ELSE 0 END), 0) AS version_bytes,
                       COUNT(*) AS item_count,
+                      COALESCE(SUM(CASE WHEN om.status = 'active' AND n.deleted_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS trash_item_count,
+                      MIN(CASE WHEN n.deleted_at IS NOT NULL AND n.type = 'file' THEN n.deleted_at END) AS oldest_trashed_at,
                       COALESCE(SUM(CASE WHEN om.size IS NULL THEN 1 ELSE 0 END), 0) AS null_size_count
                  FROM object_map om
                  JOIN node_ancestors a ON a.descendant_id = om.file_node_id
+                 JOIN file_nodes n ON n.id = om.file_node_id
                 WHERE a.ancestor_id = $1 AND om.status IN ('active', 'history')`,
               [Number(ancestorId)]
             )
           : await executor.query(
               `SELECT COALESCE(SUM(fc.size), 0) AS total_bytes,
+                      COALESCE(SUM(CASE WHEN n.deleted_at IS NULL THEN fc.size ELSE 0 END), 0) AS live_bytes,
+                      COALESCE(SUM(CASE WHEN n.deleted_at IS NOT NULL THEN fc.size ELSE 0 END), 0) AS trash_bytes,
+                      0 AS version_bytes,
                       COUNT(n.id) AS item_count,
+                      COALESCE(SUM(CASE WHEN n.deleted_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS trash_item_count,
+                      MIN(CASE WHEN n.deleted_at IS NOT NULL THEN n.deleted_at END) AS oldest_trashed_at,
                       COALESCE(SUM(CASE WHEN fc.size IS NULL THEN 1 ELSE 0 END), 0) AS null_size_count
                  FROM file_nodes n
                  JOIN node_ancestors a ON a.descendant_id = n.id
@@ -822,7 +835,12 @@ module.exports = function createPostgresFileNodeRepository(executor) {
         const row = rows[0] || {};
         return {
           bytes: Number(row.total_bytes ?? 0),
+          liveBytes: Number(row.live_bytes ?? 0),
+          trashBytes: Number(row.trash_bytes ?? 0),
+          versionBytes: Number(row.version_bytes ?? 0),
           itemCount: Number(row.item_count ?? 0),
+          trashItemCount: Number(row.trash_item_count ?? 0),
+          oldestTrashedAt: toIsoString(row.oldest_trashed_at ?? null),
           nullSizeCount: Number(row.null_size_count ?? 0),
         };
       } catch (error) {

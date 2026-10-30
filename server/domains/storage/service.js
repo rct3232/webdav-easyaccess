@@ -1,19 +1,19 @@
 'use strict';
 
 /**
- * dashboard domain service — Storage-dashboard composition for the §4.16/§4.17
- * blocks (docs/spec/server/services/dashboardService.md). Thin CONSUMER:
+ * storage domain service — Storage-dashboard composition for the §4.16/§4.17
+ * blocks (docs/spec/server/services/storageService.md). Thin CONSUMER:
  * exact dups come from dupFinderService (hash-first, LLM-free), the vector
  * near-dup leg from nearDupFinderService (profile θ_dup, hash-first
- * exclusion), the persisted suggestion rows from fileSuggestionsStore
+ * exclusion), the persisted suggestion rows from storageSuggestionsStore
  * (materialized during the read), the trash card from
  * FileNodeRepository.summarizeTrashedSubtree, the accept action from the
  * files-domain trash core JOURNALED as one `file`-domain command via
- * actionJournalStore (docs/spec/server/store/fileSuggestionsStore.md). No
+ * actionJournalStore (docs/spec/server/store/storageSuggestionsStore.md). No
  * raw SQL here, no LLM.
  */
 const { createFileNodesStore } = require('../../store/fileNodesStore');
-const fileSuggestionsStore = require('../../store/fileSuggestionsStore');
+const storageSuggestionsStore = require('../../store/storageSuggestionsStore');
 const storageUsageSnapshotsStore = require('../../store/storageUsageSnapshotsStore');
 const actionJournalStore = require('../../store/actionJournalStore');
 const aiEnrichmentsStore = require('../../store/aiEnrichmentsStore');
@@ -28,15 +28,15 @@ const { getComposition } = require('../../service/composition');
 const storage = require('../../store/storage');
 const { classifyCleanup, isShortDocument, KIND_RANK } = require('./suggestionsRules');
 const { computeGroupKeeper } = require('./keeperScore');
-const { FILE_SUGGESTION_STATE } = require('@webdav-easyaccess/shared/constants');
+const { STORAGE_SUGGESTION_STATE } = require('@webdav-easyaccess/shared/constants');
 // Module-load side effect: registers the `file`-domain undo executor for the
-// accept command rows committed below (dashboardService.md §2.6).
+// accept command rows committed below (storageService.md §2.6).
 require('./suggestionUndoService');
 
 // Same resolution contract as gcService Tier 3 (`0` = retention off).
 const DEFAULT_TRASH_RETENTION_DAYS = 30;
-// file_suggestions expiry horizon (§2.2, `0` = never expire) — same idiom.
-const DEFAULT_SUGGESTION_RETENTION_DAYS = 30;
+// storage_suggestions expiry horizon (§2.2, `0` = never expire) — same idiom.
+const DEFAULT_STORAGE_SUGGESTION_RETENTION_DAYS = 30;
 const MAX_ACCEPT_BATCH = 200;
 const DAY_MS = 86400000;
 const GENERATE_LOCK_TTL_MS = 30 * 60 * 1000;
@@ -58,14 +58,14 @@ async function resolveTrashRetentionDays() {
 }
 
 /**
- * AI_SUGGESTION_RETENTION_DAYS: config resolver → finite ≥0 wins, else 30.
+ * STORAGE_SUGGESTION_RETENTION_DAYS: config resolver → finite ≥0 wins, else 30.
  * `0` = rows never expire (expires_at NULL, retention pass is `retention_off`).
  * @returns {Promise<number>}
  */
-async function resolveSuggestionRetentionDays() {
-  const configured = await getSharedResolver().getConfig('AI_SUGGESTION_RETENTION_DAYS');
+async function resolveStorageSuggestionRetentionDays() {
+  const configured = await getSharedResolver().getConfig('STORAGE_SUGGESTION_RETENTION_DAYS');
   const days = Number(configured);
-  return Number.isFinite(days) && days >= 0 ? days : DEFAULT_SUGGESTION_RETENTION_DAYS;
+  return Number.isFinite(days) && days >= 0 ? days : DEFAULT_STORAGE_SUGGESTION_RETENTION_DAYS;
 }
 
 /** Build a display path by walking the parentId chain of subtree rows. */
@@ -84,7 +84,7 @@ function buildDisplayPath(row, byId) {
 /**
  * The shared hygiene compute: ONE exact-dup pass + (when available) the
  * vector near-dup pass + the live subtree read. Feeds both the persisted
- * generator and the summary blocks (routes/dashboard.md §2.4.2 "one pass").
+ * generator and the summary blocks (routes/storage.md §2.4.2 "one pass").
  */
 async function computeHygienePass(userId) {
   const store = createFileNodesStore();
@@ -196,7 +196,7 @@ async function buildNearCandidates(userId, near, byId, keepers) {
 }
 
 /**
- * Candidate set for the generator pass (dashboardService.md §2.5): exact
+ * Candidate set for the generator pass (storageService.md §2.5): exact
  * dup members, near-dup members (keeper composite + short-doc excluded),
  * rule-pattern rows. Keepers never list for ANY kind; one candidate per node
  * by kind priority (exact > near > temp > screenshot > installer).
@@ -246,13 +246,13 @@ async function buildCandidates(userId, pass) {
 
 /**
  * Persist the candidate set as pending rows and reconcile stale ones
- * (dashboardService.md §2.5). Idempotent; the per-user generate lock makes
+ * (storageService.md §2.5). Idempotent; the per-user generate lock makes
  * concurrent reads skip instead of double-insert (no unique index on the
  * table — store spec §2.4 rule 2). Returns { inserted, expired }.
  */
 async function materializeFromPass(userId, pass) {
   if (!pass.root) return { inserted: 0, expired: 0 };
-  const lockName = `file-suggestions-generate:${userId}`;
+  const lockName = `storage-suggestions-generate:${userId}`;
   let lock;
   try {
     lock = await lockManager.acquireLock(lockName, { ttlMs: GENERATE_LOCK_TTL_MS, waitMs: 0 });
@@ -262,7 +262,7 @@ async function materializeFromPass(userId, pass) {
   }
   try {
     const { candidates, byId } = await buildCandidates(userId, pass);
-    const retentionDays = await resolveSuggestionRetentionDays();
+    const retentionDays = await resolveStorageSuggestionRetentionDays();
     const expiresAt =
       retentionDays > 0 ? new Date(Date.now() + retentionDays * DAY_MS).toISOString() : null;
 
@@ -270,13 +270,13 @@ async function materializeFromPass(userId, pass) {
     // never re-inserted (dismissed = user intent, pending = already listed;
     // `expired` history and the accepted family do not block — accepted rows
     // whose node is a LIVE candidate again re-pend below).
-    const history = await fileSuggestionsStore.listKeys(userId);
+    const history = await storageSuggestionsStore.listKeys(userId);
     const blocked = new Set(
       history
         .filter(
           (key) =>
-            key.state === FILE_SUGGESTION_STATE.PENDING ||
-            key.state === FILE_SUGGESTION_STATE.DISMISSED
+            key.state === STORAGE_SUGGESTION_STATE.PENDING ||
+            key.state === STORAGE_SUGGESTION_STATE.DISMISSED
         )
         .map((key) => `${key.nodeId}:${key.kind}`)
     );
@@ -292,11 +292,11 @@ async function materializeFromPass(userId, pass) {
     const rePendIds = [];
     if (candidates.length > 0) {
       // eslint-disable-next-line no-await-in-loop
-      const accepted = await fileSuggestionsStore.listIdsByNodesTx(
+      const accepted = await storageSuggestionsStore.listIdsByNodesTx(
         storage.getExecutor(),
         Number(userId),
         [...new Set(candidates.map((candidate) => candidate.nodeId))],
-        FILE_SUGGESTION_STATE.ACCEPTED
+        STORAGE_SUGGESTION_STATE.ACCEPTED
       );
       for (const row of accepted) {
         const key = `${row.nodeId}:${row.kind}`;
@@ -308,16 +308,16 @@ async function materializeFromPass(userId, pass) {
     }
     if (rePendIds.length > 0) {
       // eslint-disable-next-line no-await-in-loop
-      await fileSuggestionsStore.flipStatesTx(storage.getExecutor(), {
+      await storageSuggestionsStore.flipStatesTx(storage.getExecutor(), {
         ids: rePendIds,
-        fromState: FILE_SUGGESTION_STATE.ACCEPTED,
-        toState: FILE_SUGGESTION_STATE.PENDING,
+        fromState: STORAGE_SUGGESTION_STATE.ACCEPTED,
+        toState: STORAGE_SUGGESTION_STATE.PENDING,
       });
     }
 
     let inserted = 0;
     const candidateKeys = new Set();
-    const pendingBefore = await fileSuggestionsStore.listPending(userId);
+    const pendingBefore = await storageSuggestionsStore.listPending(userId);
     const pendingByKey = new Map(
       pendingBefore.map((row) => [`${Number(row.nodeId)}:${row.kind}`, row])
     );
@@ -331,12 +331,12 @@ async function materializeFromPass(userId, pass) {
         const stored = pendingByKey.get(key);
         if (stored && shouldRefreshNearReason(stored, candidate.reason)) {
           // eslint-disable-next-line no-await-in-loop
-          await fileSuggestionsStore.updateReason(Number(userId), stored.id, candidate.reason);
+          await storageSuggestionsStore.updateReason(Number(userId), stored.id, candidate.reason);
         }
         continue;
       }
       // eslint-disable-next-line no-await-in-loop
-      await fileSuggestionsStore.insert({
+      await storageSuggestionsStore.insert({
         userId: Number(userId),
         nodeId: candidate.nodeId,
         kind: candidate.kind,
@@ -353,10 +353,10 @@ async function materializeFromPass(userId, pass) {
       .map((row) => row.id);
     let expired = 0;
     if (staleIds.length > 0) {
-      const flip = await fileSuggestionsStore.flipStatesTx(storage.getExecutor(), {
+      const flip = await storageSuggestionsStore.flipStatesTx(storage.getExecutor(), {
         ids: staleIds,
-        fromState: FILE_SUGGESTION_STATE.PENDING,
-        toState: FILE_SUGGESTION_STATE.EXPIRED,
+        fromState: STORAGE_SUGGESTION_STATE.PENDING,
+        toState: STORAGE_SUGGESTION_STATE.EXPIRED,
       });
       expired = flip.changes;
     }
@@ -367,24 +367,24 @@ async function materializeFromPass(userId, pass) {
 }
 
 /** Public generator entry (tests + reuse). */
-async function materializeSuggestions(userId) {
+async function materializeStorageSuggestions(userId) {
   const pass = await computeHygienePass(userId);
   return materializeFromPass(userId, pass);
 }
 
 /**
- * One-shot dashboard read: dup summaries + PERSISTED pending suggestion
+ * One-shot storage read: dup summaries + PERSISTED pending suggestion
  * rows (materialized first) + trash summary (camelCase domain object — the
  * ROUTE serializes snake_case).
  * @param {number|string} userId
  */
-async function getDashboardSummary(userId) {
+async function getStorageSummary(userId) {
   const pass = await computeHygienePass(userId);
   await materializeFromPass(userId, pass);
   const { dups, near, liveRows, root } = pass;
 
   const store = createFileNodesStore();
-  const pending = await fileSuggestionsStore.listPending(userId);
+  const pending = await storageSuggestionsStore.listPending(userId);
   const now = Date.now();
   const byId = new Map(liveRows.map((row) => [Number(row.nodeId), row]));
   const suggestions = pending
@@ -432,22 +432,58 @@ async function getDashboardSummary(userId) {
 }
 
 /**
- * Per-user daily storage-usage series (`GET /api/dashboard/storage-usage`).
- * Rows ascend by UTC day; fewer than two points returns an empty series —
- * a single snapshot is not a trend and the client omits the block
- * (routes/dashboard.md §2.4).
+ * Current logical-storage breakdown + per-user daily series
+ * (`GET /api/storage/usage`). The current block is a live aggregate over the
+ * requester's own root subtree: S3 counts every active object version as
+ * live/trash bytes and every history version as version bytes; WebDAV counts
+ * current filecache rows as live/trash and reports no version history. The
+ * series is snapshot-only, ascending by UTC day; fewer than two points
+ * returns an empty series — a single snapshot is not a trend and the client
+ * omits the block (routes/storage.md §2.4). A NULL size marks `incomplete`
+ * and makes the total a lower bound; it is never silently dropped.
  * @param {number|string} userId
- * @returns {Promise<{ points: Array<{ day: string, bytes: number }> }>}
+ * @returns {Promise<{ current: { totalBytes: number, liveBytes: number, trashBytes: number, versionBytes: number, versionHistorySupported: boolean, incomplete: boolean, asOf: string }, series: { points: Array<{ day: string, bytes: number }> } }>}
  */
-async function getStorageUsageSeries(userId) {
+async function getStorageUsage(userId) {
+  const store = createFileNodesStore();
+  const root = await store.getUserRootNode(Number(userId));
+  const versionHistorySupported = getComposition().fileStorageMode !== 'webdav';
+  const summary = root
+    ? await store.summarizeSubtreeStorageUsage(root.id, {
+        includeVersions: versionHistorySupported,
+      })
+    : {
+        bytes: 0,
+        liveBytes: 0,
+        trashBytes: 0,
+        versionBytes: 0,
+        itemCount: 0,
+        trashItemCount: 0,
+        oldestTrashedAt: null,
+        nullSizeCount: 0,
+      };
   const rows = await storageUsageSnapshotsStore.listForUser(Number(userId));
-  if (!Array.isArray(rows) || rows.length < 2) return { points: [] };
-  return { points: rows.map((row) => ({ day: row.day, bytes: row.bytes })) };
+  const points =
+    Array.isArray(rows) && rows.length >= 2
+      ? rows.map((row) => ({ day: row.day, bytes: row.bytes }))
+      : [];
+  return {
+    current: {
+      totalBytes: summary.bytes,
+      liveBytes: summary.liveBytes,
+      trashBytes: summary.trashBytes,
+      versionBytes: summary.versionBytes,
+      versionHistorySupported,
+      incomplete: Number(summary.nullSizeCount) > 0,
+      asOf: new Date().toISOString(),
+    },
+    series: { points },
+  };
 }
 
 /**
  * Accept checked suggestion rows → trash, journaled as ONE `file`-domain
- * command row (dashboardService.md §2.2/§2.6; routes/dashboard.md §2.4).
+ * command row (storageService.md §2.2/§2.6; routes/storage.md §2.4).
  * Rows flip `pending → accepted` inside the command TX; the response carries
  * `actionId` for the undo toast (`undo: { action_id }` at the route).
  * @param {number|string} userId
@@ -507,11 +543,11 @@ async function acceptSuggestions(userId, user, nodeIds) {
     // eslint-disable-next-line no-await-in-loop
     const nodeRow = await fileNodesStore.getNodeIncludingTrashed(nodeId);
     // eslint-disable-next-line no-await-in-loop
-    const rows = await fileSuggestionsStore.listIdsByNodesTx(
+    const rows = await storageSuggestionsStore.listIdsByNodesTx(
       storage.getExecutor(),
       Number(userId),
       [nodeId],
-      FILE_SUGGESTION_STATE.PENDING
+      STORAGE_SUGGESTION_STATE.PENDING
     );
     items.push({
       nodeId,
@@ -532,10 +568,10 @@ async function acceptSuggestions(userId, user, nodeIds) {
       for (const item of items) {
         if (item.suggestionIds.length === 0) continue;
         // eslint-disable-next-line no-await-in-loop
-        const flip = await fileSuggestionsStore.flipStatesTx(tx, {
+        const flip = await storageSuggestionsStore.flipStatesTx(tx, {
           ids: item.suggestionIds,
-          fromState: FILE_SUGGESTION_STATE.PENDING,
-          toState: FILE_SUGGESTION_STATE.ACCEPTED,
+          fromState: STORAGE_SUGGESTION_STATE.PENDING,
+          toState: STORAGE_SUGGESTION_STATE.ACCEPTED,
         });
         flipped += flip.changes;
       }
@@ -556,23 +592,23 @@ async function dismissSuggestion(userId, suggestionId) {
   if (!Number.isInteger(id) || id <= 0) {
     throw serviceError('invalidSuggestionId');
   }
-  const { changes } = await fileSuggestionsStore.dismiss(Number(userId), id);
+  const { changes } = await storageSuggestionsStore.dismiss(Number(userId), id);
   if (changes === 0) {
     // single 404 shape — unknown, foreign and non-pending never diverge
     throw serviceError('suggestionNotFound', 404);
   }
-  return { id, state: FILE_SUGGESTION_STATE.DISMISSED };
+  return { id, state: STORAGE_SUGGESTION_STATE.DISMISSED };
 }
 
 module.exports = {
   DEFAULT_TRASH_RETENTION_DAYS,
-  DEFAULT_SUGGESTION_RETENTION_DAYS,
+  DEFAULT_STORAGE_SUGGESTION_RETENTION_DAYS,
   MAX_ACCEPT_BATCH,
   resolveTrashRetentionDays,
-  resolveSuggestionRetentionDays,
-  getDashboardSummary,
-  getStorageUsageSeries,
-  materializeSuggestions,
+  resolveStorageSuggestionRetentionDays,
+  getStorageSummary,
+  getStorageUsage,
+  materializeStorageSuggestions,
   acceptSuggestions,
   dismissSuggestion,
 };

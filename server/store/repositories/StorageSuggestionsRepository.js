@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * FileSuggestionsRepository — domain interface over the `file_suggestions`
- * table (docs/spec/server/store/fileSuggestionsStore.md). Persisted cleanup/
- * duplicate suggestion rows (docs/features/collections-platform.md §4.17):
+ * StorageSuggestionsRepository — domain interface over the `storage_suggestions`
+ * table (docs/spec/server/store/storageSuggestionsStore.md). Persisted cleanup/
+ * duplicate suggestion rows (docs/features/storage-management.md):
  * ids for dismissal, `expires_at` for the retention pass, and the
  * `pending → accepted | dismissed | expired` state machine (`accepted →
  * pending` on undo) enforced HERE — the table ships no CHECK constraints
@@ -16,7 +16,7 @@
  * the `commitChange`/`undoAction` transaction of actionJournalStore, or the
  * executor itself (facade-dispatch precedent of ActionJournalRepository).
  *
- * @typedef {Object} FileSuggestionsRepository
+ * @typedef {Object} StorageSuggestionsRepository
  * @property {'sqlite'|'postgres'} dialect
  * @property {(row: { userId, nodeId, kind, reason?, expiresAt?: string|null }) => Promise<{ id: number }>} insert
  *   INSERT as `state='pending'`; `created_at` DB-default NOW(); `expires_at`
@@ -40,15 +40,15 @@
  *   (NULL exempt), flip to `expired`.
  *
  * @param {import('../../infrastructure/db/executor').DbExecutor} executor
- * @returns {FileSuggestionsRepository}
+ * @returns {StorageSuggestionsRepository}
  */
-module.exports = function createFileSuggestionsRepository(executor) {
+module.exports = function createStorageSuggestionsRepository(executor) {
   if (!executor || (executor.dialect !== 'sqlite' && executor.dialect !== 'postgres')) {
-    throw new TypeError('createFileSuggestionsRepository requires a DbExecutor');
+    throw new TypeError('createStorageSuggestionsRepository requires a DbExecutor');
   }
   const impl =
     executor.dialect === 'sqlite'
-      ? require('./sqlite/FileSuggestionsRepository.sqlite')
-      : require('./postgres/FileSuggestionsRepository.postgres');
+      ? require('./sqlite/StorageSuggestionsRepository.sqlite')
+      : require('./postgres/StorageSuggestionsRepository.postgres');
   return impl(executor);
 };

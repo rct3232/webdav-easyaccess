@@ -46,12 +46,16 @@
  * @property {(s3Key) => Promise<Object|null>} getObjectMapByS3Key
  * @property {(s3Key, size?: number|null) => Promise<{ changes: number }>} activateObject
  *   `size` is coalesced onto the row: omitting it keeps any already-known size.
- * @property {(ancestorId: number, opts?: { includeVersions?: boolean }) => Promise<{ bytes: number, itemCount: number, nullSizeCount: number }>} summarizeSubtreeStorageUsage
- *   Logical-storage aggregate over the subtree (live + trash; no `deleted_at`
- *   filter). `includeVersions` (S3 mode) sums `object_map.size` over
- *   active/history versions; false (WebDAV mode) sums `filecache.size` over
- *   file rows. `nullSizeCount` reports rows without a known size so callers
- *   can skip a partial snapshot.
+ * @property {(ancestorId: number, opts?: { includeVersions?: boolean }) => Promise<{ bytes: number, liveBytes: number, trashBytes: number, versionBytes: number, itemCount: number, trashItemCount: number, oldestTrashedAt: string|null, nullSizeCount: number }>} summarizeSubtreeStorageUsage
+ *   Logical-storage breakdown over the subtree (live + trash + versions; no
+ *   `deleted_at` filter). `includeVersions` (S3 mode) partitions active
+ *   `object_map.size` rows into live/trash bytes and sums history rows as
+ *   `versionBytes`; false (WebDAV mode) partitions `filecache.size` over file
+ *   rows and reports `versionBytes: 0`. `bytes` = live + trash + version.
+ *   `itemCount`/`trashItemCount` count the unit rows in the active backend
+ *   (object versions in S3, file rows in WebDAV); `oldestTrashedAt` is the
+ *   oldest trashed file timestamp. `nullSizeCount` reports counted rows
+ *   without a known size so callers can mark the aggregate incomplete.
  * @property {(s3Key) => Promise<{ changes: number }>} orphanObject
  * @property {(s3Key) => Promise<{ changes: number }>} demoteActiveToHistory
  * @property {(id) => Promise<{ changes: number }>} reactivateObjectMapRow
@@ -61,7 +65,7 @@
  * @property {(fileNodeId) => Promise<Object|null>} getCache
  * @property {(ancestorId) => Promise<Array<{ nodeId: number, parentId: number|null, name: string, type: string, createdAt: string|null, size: number|null, mimeType: string|null, contentHash: string|null }>>} listSubtreeCacheRows
  * @property {(ancestorId) => Promise<{ itemCount: number, totalBytes: number, oldestDeletedAt: string|null }>} summarizeTrashedSubtree
- *   Dashboard trash-card aggregate (T0.10): trashed FILE rows of the subtree
+ *   Storage trash-card aggregate (T0.10): trashed FILE rows of the subtree
  *   (`deleted_at IS NOT NULL`, `type='file'`) with `filecache` size sum and the
  *   oldest `deleted_at` (ISO) — the §4.16 retention-countdown read.
  *   AI-hygiene subtree read (T0.9): live subtree nodes with filecache columns

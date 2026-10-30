@@ -1,7 +1,7 @@
 'use strict';
 
-// Row-shaping helpers shared by the FileSuggestionsRepository dialect twins
-// (docs/spec/server/store/fileSuggestionsStore.md §2.2). jsonb (PG) round-trips
+// Row-shaping helpers shared by the StorageSuggestionsRepository dialect twins
+// (docs/spec/server/store/storageSuggestionsStore.md §2.2). jsonb (PG) round-trips
 // as an object; sqlite TEXT carries the JSON string — parseJsonColumn folds
 // both into the domain shape.
 

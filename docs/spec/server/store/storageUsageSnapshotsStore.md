@@ -4,8 +4,8 @@
 
 | Item       | Description                                                                                                                                                                                                                                                                                                     |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role       | Persistence for the per-user daily logical-storage series shown by the MyPage `Storage` dashboard (`docs/spec/client/components/mypage/content/CollectionDashboard.md`, `docs/spec/server/routes/dashboard.md`). One row per user per UTC day; the daily capture upserts the row and retention prunes old rows. |
-| Boundaries | The store persists snapshots only. It computes no sizes (the aggregate lives in `fileNodesStore.summarizeSubtreeStorageUsage` via `dashboardService`) and serves no HTTP surface (`GET /api/dashboard/storage-usage` delegates here through `dashboardService`).                                                |
+| Role       | Persistence for the per-user daily logical-storage series shown by the MyPage `Storage` dashboard (`docs/spec/client/components/mypage/content/CollectionDashboard.md`, `docs/spec/server/routes/storage.md`). One row per user per UTC day; the daily capture upserts the row and retention prunes old rows. |
+| Boundaries | The store persists snapshots only. It computes no sizes (the aggregate lives in `fileNodesStore.summarizeSubtreeStorageUsage` via `storageService`) and serves no HTTP surface (`GET /api/storage/usage` delegates here through `storageService`).                                                |
 
 ---
 
@@ -50,7 +50,7 @@ the day's first write and survives same-day replays.
 ### 2.4 Dependencies
 
 - `infrastructure/db/executor` (backend-neutral query/run seam; no SQL outside the repository twins).
-- `domains/dashboard/service` is the read consumer; `infrastructure/maintenanceScheduler` is the write/prune consumer.
+- `domains/storage/service` is the read consumer; `infrastructure/maintenanceScheduler` is the write/prune consumer.
 
 ### 2.5 Verification Scenarios
 

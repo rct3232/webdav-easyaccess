@@ -11,8 +11,8 @@
  * duplicates from unrelated content.
  *
  * Pure read/compute over `fileNodesStore.listSubtreeCacheRows` — proposals
- * persist on `file_suggestions` only with the T3.3 store/route specs; the
- * §4.16 dashboard consumes this through its (later) server surface.
+ * persist on `storage_suggestions` only with the T3.3 store/route specs; the
+ * §4.16 Storage surface consumes this through the storage domain.
  */
 
 const { createFileNodesStore } = require('../../store/fileNodesStore');

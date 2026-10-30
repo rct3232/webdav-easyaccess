@@ -14,7 +14,7 @@ const {
   JOURNAL_DOMAIN,
   LLM_ROLE,
   MERGE_SUGGESTION_STATE,
-  FILE_SUGGESTION_STATE,
+  STORAGE_SUGGESTION_STATE,
 } = require('@webdav-easyaccess/shared/constants');
 
 /** Assert an enum has the expected `KEY: value` pairs, `ALL` order and isValid behavior. */
@@ -110,9 +110,9 @@ describe('shared platform enums', () => {
     );
   });
 
-  it('FILE_SUGGESTION_STATE matches the file_suggestions lifecycle', () => {
+  it('STORAGE_SUGGESTION_STATE matches the storage_suggestions lifecycle', () => {
     expectEnum(
-      FILE_SUGGESTION_STATE,
+      STORAGE_SUGGESTION_STATE,
       {
         PENDING: 'pending',
         ACCEPTED: 'accepted',
@@ -123,9 +123,9 @@ describe('shared platform enums', () => {
     );
   });
 
-  it('keeps the merge and file suggestion state enums distinct', () => {
-    expect(MERGE_SUGGESTION_STATE.ALL).not.toEqual(FILE_SUGGESTION_STATE.ALL);
+  it('keeps the merge and storage suggestion state enums distinct', () => {
+    expect(MERGE_SUGGESTION_STATE.ALL).not.toEqual(STORAGE_SUGGESTION_STATE.ALL);
     expect(MERGE_SUGGESTION_STATE.isValid('accepted')).toBe(false);
-    expect(FILE_SUGGESTION_STATE.isValid('merged')).toBe(false);
+    expect(STORAGE_SUGGESTION_STATE.isValid('merged')).toBe(false);
   });
 });

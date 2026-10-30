@@ -1,13 +1,13 @@
 'use strict';
 
 /**
- * /api/dashboard routes integration tests (T0.10 — Storage dashboard v1).
- * @see docs/spec/server/routes/dashboard.md
+ * /api/storage routes integration tests (T0.10 — Storage dashboard v1).
+ * @see docs/spec/server/routes/storage.md
  *
  * The orchestrator (server/index.js) mounts this router at integration time;
  * this suite reproduces the intended mount exactly (after the app-level
  * migrationGate, with setupModeGuardInstance):
- *   app.use('/api/dashboard', setupModeGuardInstance, require('./domains/dashboard/routes'))
+ *   app.use('/api/storage', setupModeGuardInstance, require('./domains/storage/routes'))
  */
 const request = require('supertest');
 const express = require('express');
@@ -17,6 +17,7 @@ const {
   createAuthenticatedTestUser,
   createTestFileNode,
   dbQuery,
+  dbRun,
   grantTestPermissionByNodeId,
 } = require('@server/test-utils');
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
@@ -62,7 +63,7 @@ beforeAll(async () => {
   const setupModeGuard = require('@server/middleware/setupModeGuard');
   app = express();
   app.use(express.json());
-  app.use('/api/dashboard', setupModeGuard(), require('../routes'));
+  app.use('/api/storage', setupModeGuard(), require('../routes'));
   app.use(require('@server/utils/errorHandler').errorHandler);
 });
 
@@ -73,9 +74,9 @@ afterAll(async () => {
 
 // -- GET / -------------------------------------------------------------------
 
-describe('GET /api/dashboard', () => {
+describe('GET /api/storage', () => {
   it('rejects unauthenticated reads with 401', async () => {
-    const res = await request(app).get('/api/dashboard');
+    const res = await request(app).get('/api/storage');
     expect(res.status).toBe(401);
   });
 
@@ -103,7 +104,7 @@ describe('GET /api/dashboard', () => {
     ).rows[0];
     await createFileNodesStore().markSubtreeDeleted([Number(deep.id)]);
 
-    const res = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/api/storage').set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -139,7 +140,7 @@ describe('GET /api/dashboard', () => {
     const { token } = await createAuthenticatedTestUser({
       username: `dashrt-noroot-${Date.now()}`,
     });
-    const res = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/api/storage').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
     expect(res.body.duplicates).toEqual({
       group_count: 0,
@@ -164,10 +165,10 @@ describe('GET /api/dashboard', () => {
     await addFile(stranger.homeId, 'theirs-1.bin', { hash });
     await addFile(stranger.homeId, 'theirs-2.bin', { hash });
 
-    const res = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/api/storage').set('Authorization', `Bearer ${token}`);
     expect(res.body.duplicates.group_count).toBe(1);
     const resStranger = await request(app)
-      .get('/api/dashboard')
+      .get('/api/storage')
       .set('Authorization', `Bearer ${stranger.token}`);
     expect(resStranger.body.duplicates.group_count).toBe(1);
     const mineIds = res.body.suggestions.map((row) => row.node_id);
@@ -179,15 +180,15 @@ describe('GET /api/dashboard', () => {
 
 // -- POST /suggestions/accept --------------------------------------------------
 
-describe('POST /api/dashboard/suggestions/accept', () => {
+describe('POST /api/storage/suggestions/accept', () => {
   it('rejects unauthenticated accepts with 401', async () => {
     const res = await request(app)
-      .post('/api/dashboard/suggestions/accept')
+      .post('/api/storage/suggestions/accept')
       .send({ nodeIds: [1] });
     expect(res.status).toBe(401);
   });
 
-  it('validates nodeIds: missing/empty/over-cap ⇒ 400 dashboard.emptyNodeIds', async () => {
+  it('validates nodeIds: missing/empty/over-cap ⇒ 400 storage.emptyNodeIds', async () => {
     const { token } = await storageUser('val');
     for (const body of [
       {},
@@ -196,11 +197,11 @@ describe('POST /api/dashboard/suggestions/accept', () => {
       { nodeIds: Array.from({ length: 201 }, (_, i) => i + 1) },
     ]) {
       const res = await request(app)
-        .post('/api/dashboard/suggestions/accept')
+        .post('/api/storage/suggestions/accept')
         .set('Authorization', `Bearer ${token}`)
         .send(body);
       expect(res.status).toBe(400);
-      expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.dashboard.emptyNodeIds);
+      expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.storage.emptyNodeIds);
     }
   });
 
@@ -219,10 +220,10 @@ describe('POST /api/dashboard/suggestions/accept', () => {
     );
 
     // Materialize the pending exact_dup row for `dup`.
-    await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    await request(app).get('/api/storage').set('Authorization', `Bearer ${token}`);
 
     const res = await request(app)
-      .post('/api/dashboard/suggestions/accept')
+      .post('/api/storage/suggestions/accept')
       .set('Authorization', `Bearer ${token}`)
       .send({
         nodeIds: [Number(dup.nodeId), Number(foreign.nodeId), Number(already.nodeId), 999999999],
@@ -236,7 +237,7 @@ describe('POST /api/dashboard/suggestions/accept', () => {
       undo: { action_id: expect.any(Number) },
     });
 
-    const after = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    const after = await request(app).get('/api/storage').set('Authorization', `Bearer ${token}`);
     // only the kept member remains → no group, no suggestion; the accepted row left the list
     expect(after.body.duplicates.group_count).toBe(0);
     expect(after.body.suggestions).toEqual([]);
@@ -259,10 +260,10 @@ describe('POST /api/dashboard/suggestions/accept', () => {
 
 // -- POST /suggestions/dismiss -------------------------------------------------
 
-describe('POST /api/dashboard/suggestions/dismiss', () => {
+describe('POST /api/storage/suggestions/dismiss', () => {
   it('rejects unauthenticated dismisses with 401', async () => {
     const res = await request(app)
-      .post('/api/dashboard/suggestions/dismiss')
+      .post('/api/storage/suggestions/dismiss')
       .send({ suggestionId: 1 });
     expect(res.status).toBe(401);
   });
@@ -274,20 +275,20 @@ describe('POST /api/dashboard/suggestions/dismiss', () => {
     const member = await addFile(homeId, `member-${hash}.bin`, { hash });
     void member;
 
-    const first = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    const first = await request(app).get('/api/storage').set('Authorization', `Bearer ${token}`);
     expect(first.body.suggestions).toHaveLength(1);
     const row = first.body.suggestions[0];
 
     const res = await request(app)
-      .post('/api/dashboard/suggestions/dismiss')
+      .post('/api/storage/suggestions/dismiss')
       .set('Authorization', `Bearer ${token}`)
       .send({ suggestionId: row.id });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ id: row.id, state: 'dismissed' });
 
-    const second = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    const second = await request(app).get('/api/storage').set('Authorization', `Bearer ${token}`);
     expect(second.body.suggestions).toEqual([]);
-    const { rows } = await dbQuery('SELECT state FROM file_suggestions WHERE id = ?', [row.id]);
+    const { rows } = await dbQuery('SELECT state FROM storage_suggestions WHERE id = ?', [row.id]);
     expect(rows[0].state).toBe('dismissed');
   });
 
@@ -295,11 +296,11 @@ describe('POST /api/dashboard/suggestions/dismiss', () => {
     const { token } = await storageUser('dism-val');
     for (const body of [{}, { suggestionId: 0 }, { suggestionId: 'x' }, { suggestionId: -3 }]) {
       const res = await request(app)
-        .post('/api/dashboard/suggestions/dismiss')
+        .post('/api/storage/suggestions/dismiss')
         .set('Authorization', `Bearer ${token}`)
         .send(body);
       expect(res.status).toBe(400);
-      expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.dashboard.invalidSuggestionId);
+      expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.storage.invalidSuggestionId);
     }
   });
 
@@ -311,30 +312,30 @@ describe('POST /api/dashboard/suggestions/dismiss', () => {
     const m = await addFile(homeId, `m-${hash}.bin`, { hash });
     void m;
 
-    const read = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    const read = await request(app).get('/api/storage').set('Authorization', `Bearer ${token}`);
     const id = read.body.suggestions[0].id;
 
     const foreign = await request(app)
-      .post('/api/dashboard/suggestions/dismiss')
+      .post('/api/storage/suggestions/dismiss')
       .set('Authorization', `Bearer ${owner.token}`)
       .send({ suggestionId: id });
     expect(foreign.status).toBe(404);
-    expect(foreign.body.errorCode).toBe(SERVER_ERROR_CODES.dashboard.suggestionNotFound);
+    expect(foreign.body.errorCode).toBe(SERVER_ERROR_CODES.storage.suggestionNotFound);
 
     const unknown = await request(app)
-      .post('/api/dashboard/suggestions/dismiss')
+      .post('/api/storage/suggestions/dismiss')
       .set('Authorization', `Bearer ${token}`)
       .send({ suggestionId: 99999999 });
     expect(unknown.status).toBe(404);
-    expect(unknown.body.errorCode).toBe(SERVER_ERROR_CODES.dashboard.suggestionNotFound);
+    expect(unknown.body.errorCode).toBe(SERVER_ERROR_CODES.storage.suggestionNotFound);
 
     const ok = await request(app)
-      .post('/api/dashboard/suggestions/dismiss')
+      .post('/api/storage/suggestions/dismiss')
       .set('Authorization', `Bearer ${token}`)
       .send({ suggestionId: id });
     expect(ok.status).toBe(200);
     const reDismiss = await request(app)
-      .post('/api/dashboard/suggestions/dismiss')
+      .post('/api/storage/suggestions/dismiss')
       .set('Authorization', `Bearer ${token}`)
       .send({ suggestionId: id });
     expect(reDismiss.status).toBe(404);
@@ -352,23 +353,23 @@ describe('AI-block absence when embed is unconfigured (§4.12)', () => {
     await addFile(homeId, 'temp_artifact.bin', {});
 
     for (let pass = 0; pass < 2; pass += 1) {
-      const res = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+      const res = await request(app).get('/api/storage').set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(200);
       expect('near_duplicates' in res.body).toBe(false);
       expect(res.body.suggestions.every((row) => row.kind !== 'near_dup')).toBe(true);
     }
-    const { rows } = await dbQuery("SELECT kind FROM file_suggestions WHERE kind = 'near_dup'", []);
+    const { rows } = await dbQuery("SELECT kind FROM storage_suggestions WHERE kind = 'near_dup'", []);
     expect(rows).toEqual([]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Admin operator gate (owner pivot 2026-10-01, routes spec §2.3): the Storage
-// dashboard is a personal-storage surface — non-admin only. Both routes
-// respond 403 serverErrors.collections.forbidden for admin requesters.
+// Admin operator gate (owner pivot 2026-10-01, routes spec §2.3): the storage
+// domain is a personal-storage surface — non-admin only. All routes respond
+// 403 serverErrors.storage.forbidden for admin requesters.
 // ---------------------------------------------------------------------------
 
-describe('admin operator gate (dashboard 403 for admin requesters)', () => {
+describe('admin operator gate (storage 403 for admin requesters)', () => {
   async function adminStorageUser(tag) {
     const { user, token } = await createAuthenticatedTestUser({
       username: `dashopadm-${tag}-${Date.now()}`,
@@ -378,27 +379,27 @@ describe('admin operator gate (dashboard 403 for admin requesters)', () => {
     return { user, token, homeId: home.id };
   }
 
-  it('GET /api/dashboard → 403 forbidden', async () => {
+  it('GET /api/storage → 403 forbidden', async () => {
     const admin = await adminStorageUser('read');
     const res = await request(app)
-      .get('/api/dashboard')
+      .get('/api/storage')
       .set('Authorization', `Bearer ${admin.token}`);
     expect(res.status).toBe(403);
-    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.collections.forbidden);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.storage.forbidden);
   });
 
-  it('POST /api/dashboard/suggestions/accept → 403 forbidden, trashes nothing', async () => {
+  it('POST /api/storage/suggestions/accept → 403 forbidden, trashes nothing', async () => {
     const admin = await adminStorageUser('accept');
     const journalBefore = Number(
       (await dbQuery('SELECT COUNT(*) AS count FROM action_journal', [])).rows[0].count
     );
 
     const res = await request(app)
-      .post('/api/dashboard/suggestions/accept')
+      .post('/api/storage/suggestions/accept')
       .set('Authorization', `Bearer ${admin.token}`)
       .send({ nodeIds: [Number(admin.homeId)] });
     expect(res.status).toBe(403);
-    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.collections.forbidden);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.storage.forbidden);
 
     const { rows } = await dbQuery('SELECT deleted_at FROM file_nodes WHERE id = ?', [
       Number(admin.homeId),
@@ -410,18 +411,18 @@ describe('admin operator gate (dashboard 403 for admin requesters)', () => {
     expect(journalAfter).toBe(journalBefore);
   });
 
-  it('POST /api/dashboard/suggestions/dismiss → 403 forbidden', async () => {
+  it('POST /api/storage/suggestions/dismiss → 403 forbidden', async () => {
     const admin = await adminStorageUser('dismiss');
     const res = await request(app)
-      .post('/api/dashboard/suggestions/dismiss')
+      .post('/api/storage/suggestions/dismiss')
       .set('Authorization', `Bearer ${admin.token}`)
       .send({ suggestionId: 1 });
     expect(res.status).toBe(403);
-    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.collections.forbidden);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.storage.forbidden);
   });
 });
 
-describe('GET /api/dashboard — vector near-dup block', () => {
+describe('GET /api/storage — vector near-dup block', () => {
   const llmModelsStore = require('@server/store/llmModelsStore');
   const embeddingsStore = require('@server/store/embeddingsStore');
   const presets = require('@server/infrastructure/adapters/llm/presets');
@@ -473,7 +474,7 @@ describe('GET /api/dashboard — vector near-dup block', () => {
       contentHash: null,
     });
 
-    const res = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/api/storage').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
     expect(res.body.near_duplicates).toEqual({ group_count: 1, duplicate_count: 2 });
     const nearRows = res.body.suggestions.filter((row) => row.kind === 'near_dup');
@@ -521,18 +522,18 @@ describe('GET /api/dashboard — vector near-dup block', () => {
     const { token, homeId } = await storageUser('nearoff');
     await addFile(homeId, 'solo.txt', { hash: `rt-nd-off-${Date.now()}` });
 
-    const res = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/api/storage').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
     expect(res.body).not.toHaveProperty('near_duplicates');
     expect(res.body.suggestions.every((row) => row.kind === 'exact_dup')).toBe(true);
   });
 });
 
-// -- GET /storage-usage ------------------------------------------------------
+// -- GET /usage ----------------
 
-describe('GET /api/dashboard/storage-usage', () => {
+describe('GET /api/storage/usage', () => {
   it('rejects unauthenticated reads with 401', async () => {
-    const res = await request(app).get('/api/dashboard/storage-usage');
+    const res = await request(app).get('/api/storage/usage');
     expect(res.status).toBe(401);
   });
 
@@ -542,10 +543,10 @@ describe('GET /api/dashboard/storage-usage', () => {
       isAdmin: true,
     });
     const res = await request(app)
-      .get('/api/dashboard/storage-usage')
+      .get('/api/storage/usage')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(403);
-    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.collections.forbidden);
+    expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.storage.forbidden);
   });
 
   it('returns the requester own rows ascending, snake_case-only, when at least two exist', async () => {
@@ -569,16 +570,28 @@ describe('GET /api/dashboard/storage-usage', () => {
     });
 
     const res = await request(app)
-      .get('/api/dashboard/storage-usage')
+      .get('/api/storage/usage')
       .set('Authorization', `Bearer ${mine.token}`);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      points: [
-        { day: '2031-02-01', bytes: 111 },
-        { day: '2031-02-02', bytes: 222 },
-      ],
+      current: {
+        total_bytes: 0,
+        live_bytes: 0,
+        trash_bytes: 0,
+        version_bytes: 0,
+        version_history_supported: true,
+        incomplete: false,
+        as_of: expect.any(String),
+      },
+      series: {
+        points: [
+          { day: '2031-02-01', bytes: 111 },
+          { day: '2031-02-02', bytes: 222 },
+        ],
+      },
     });
+    expect(Number.isNaN(Date.parse(res.body.current.as_of))).toBe(false);
   });
 
   it('returns an empty series when fewer than two points exist (no partial trend)', async () => {
@@ -590,10 +603,52 @@ describe('GET /api/dashboard/storage-usage', () => {
     });
 
     const res = await request(app)
-      .get('/api/dashboard/storage-usage')
+      .get('/api/storage/usage')
       .set('Authorization', `Bearer ${mine.token}`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ points: [] });
+    expect(res.body).toEqual({
+      current: {
+        total_bytes: 0,
+        live_bytes: 0,
+        trash_bytes: 0,
+        version_bytes: 0,
+        version_history_supported: true,
+        incomplete: false,
+        as_of: expect.any(String),
+      },
+      series: { points: [] },
+    });
+  });
+
+  it('serializes the current S3 live/trash/version breakdown in snake_case', async () => {
+    const mine = await storageUser('su-current');
+    const live = await addFile(mine.homeId, 'current-live.bin', {});
+    const trashed = await addFile(mine.homeId, 'current-trash.bin', {});
+    const insertObject = (nodeId, key, version, status, size) =>
+      dbRun(
+        `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status, size)
+         VALUES (?, ?, 's3', ?, ?, ?)`,
+        [Number(nodeId), key, version, status, size]
+      );
+    await insertObject(live.nodeId, `su-current-live-${Date.now()}`, 1, 'active', 120);
+    await insertObject(live.nodeId, `su-current-history-${Date.now()}`, 2, 'history', 30);
+    await insertObject(trashed.nodeId, `su-current-trash-${Date.now()}`, 1, 'active', 70);
+    await createFileNodesStore().markSubtreeDeleted([Number(trashed.nodeId)]);
+
+    const res = await request(app)
+      .get('/api/storage/usage')
+      .set('Authorization', `Bearer ${mine.token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.current).toMatchObject({
+      total_bytes: 220,
+      live_bytes: 120,
+      trash_bytes: 70,
+      version_bytes: 30,
+      version_history_supported: true,
+      incomplete: false,
+    });
+    expect(res.body.series).toEqual({ points: [] });
   });
 });

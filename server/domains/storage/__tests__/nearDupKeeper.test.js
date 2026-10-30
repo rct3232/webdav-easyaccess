@@ -2,7 +2,7 @@
 
 /**
  * Dashboard near-dup keeper composite integration (docs/spec/server/services/
- * dashboardService.md §2.5.1). Real DB + real stores: the keeper comes from
+ * storageService.md §2.5.1). Real DB + real stores: the keeper comes from
  * activity/enrichment rows, the `reason.keep` block rides the persisted row,
  * and refreshes are reason-only (id/expiry/state stable). Exact dups and rule
  * rows keep their existing shapes.
@@ -18,7 +18,7 @@ const {
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const composition = require('@server/service/composition');
-const dashboardService = require('@server/domains/dashboard/service');
+const storageService = require('@server/domains/storage/service');
 const llmModelsStore = require('@server/store/llmModelsStore');
 const embeddingsStore = require('@server/store/embeddingsStore');
 const usageStore = require('@server/store/usageStore');
@@ -88,7 +88,7 @@ async function setActivity(userId, nodeId, { score, lastSeenAtMs }) {
 }
 
 async function storedRows(userId) {
-  const { rows } = await dbQuery('SELECT * FROM file_suggestions WHERE user_id = ? ORDER BY id', [
+  const { rows } = await dbQuery('SELECT * FROM storage_suggestions WHERE user_id = ? ORDER BY id', [
     Number(userId),
   ]);
   return rows;
@@ -110,7 +110,7 @@ afterAll(async () => {
   await dbCleanup?.();
 });
 
-describe('getDashboardSummary — near-dup keeper composite v1', () => {
+describe('getStorageSummary — near-dup keeper composite v1', () => {
   afterEach(async () => {
     await dbQuery('DELETE FROM embeddings', []);
     await dbQuery("DELETE FROM llm_models WHERE role = 'embed'", []);
@@ -158,7 +158,7 @@ describe('getDashboardSummary — near-dup keeper composite v1', () => {
     });
     await setActivity(user.id, b.nodeId, { score: 2, lastSeenAtMs: Date.now() });
 
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
     const nearRows = summary.suggestions.filter((row) => row.kind === 'near_dup');
 
     expect(nearRows).toHaveLength(1);
@@ -194,7 +194,7 @@ describe('getDashboardSummary — near-dup keeper composite v1', () => {
       contentHash: null,
     });
 
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
     const nearRows = summary.suggestions.filter((row) => row.kind === 'near_dup');
 
     expect(nearRows).toHaveLength(1);
@@ -252,7 +252,7 @@ describe('getDashboardSummary — near-dup keeper composite v1', () => {
     await setActivity(user.id, b.nodeId, { score: 1, lastSeenAtMs: Date.now() });
     await setActivity(user.id, c.nodeId, { score: 1, lastSeenAtMs: Date.now() });
 
-    const first = await dashboardService.getDashboardSummary(user.id);
+    const first = await storageService.getStorageSummary(user.id);
     const firstRows = first.suggestions.filter((row) => row.kind === 'near_dup');
     expect(firstRows).toHaveLength(2);
     const target = firstRows.find((row) => row.nodeId === Number(b.nodeId));
@@ -262,7 +262,7 @@ describe('getDashboardSummary — near-dup keeper composite v1', () => {
 
     // Quality input changes (keeper resolution improves) while the keeper stays `a`.
     await aiEnrichmentsStore.upsert(Number(a.nodeId), { probe: { width: 6000, height: 6000 } });
-    const second = await dashboardService.getDashboardSummary(user.id);
+    const second = await storageService.getStorageSummary(user.id);
     const secondRows = second.suggestions.filter((row) => row.kind === 'near_dup');
     const refreshed = secondRows.find((row) => row.nodeId === Number(b.nodeId));
 
@@ -280,19 +280,19 @@ describe('getDashboardSummary — near-dup keeper composite v1', () => {
     const { user, homeId } = await storageUser('legacy');
     await seedNearPair(homeId, 'legacy');
 
-    const first = await dashboardService.getDashboardSummary(user.id);
+    const first = await storageService.getStorageSummary(user.id);
     const row = first.suggestions.find((r) => r.kind === 'near_dup');
     const legacyReason = {
       kind: 'near_dup',
       keep_node_id: row.reason.keep_node_id,
       score: row.reason.score,
     };
-    await dbRun('UPDATE file_suggestions SET reason = ? WHERE id = ?', [
+    await dbRun('UPDATE storage_suggestions SET reason = ? WHERE id = ?', [
       JSON.stringify(legacyReason),
       Number(row.id),
     ]);
 
-    const second = await dashboardService.getDashboardSummary(user.id);
+    const second = await storageService.getStorageSummary(user.id);
     const again = second.suggestions.find((r) => r.id === row.id);
     expect(again.reason).toEqual(legacyReason);
     expect(again.reason.keep).toBeUndefined();
@@ -305,7 +305,7 @@ describe('getDashboardSummary — near-dup keeper composite v1', () => {
     await addFile(homeId, 'dupe-b.bin', { hash });
     await addFile(homeId, 'temp_scratch.bin', {});
 
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
     const exact = summary.suggestions.filter((row) => row.kind === 'exact_dup');
     const rule = summary.suggestions.filter((row) => row.kind === 'temp_pattern');
     expect(exact.length).toBeGreaterThan(0);

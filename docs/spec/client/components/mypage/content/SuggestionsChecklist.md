@@ -1,6 +1,6 @@
 # SuggestionsChecklist Spec
 
-Target-contract spec (`docs/features/collections-platform.md` §4.16/§4.17 suggestions, §4.11 command-unit undo).
+Target-contract spec (`docs/features/storage-management.md`, `docs/features/collections-platform.md` §4.11 command-unit undo).
 
 ## 1. Overview
 
@@ -23,7 +23,7 @@ Target-contract spec (`docs/features/collections-platform.md` §4.16/§4.17 sugg
 
 | Name        | Type     | Required | Default | Description                                                                                                                                                                                        |
 | ----------- | -------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| suggestions | array    | Y        | -       | `file_suggestions` rows (snake_case: `id`, `node_id`, `kind`, `reason` JSONB, `created_at`, `expires_at`) + host-provided `path`/`size_bytes` (the dashboard read supplies them — no second fetch) |
+| suggestions | array    | Y        | -       | `storage_suggestions` rows (snake_case: `id`, `node_id`, `kind`, `reason` JSONB, `created_at`, `expires_at`) + host-provided `path`/`size_bytes` (the dashboard read supplies them — no second fetch) |
 | onAccept    | function | Y        | -       | `(nodeIds) => Promise<payload ∥ null>` — checked rows only; trash (not purge); undo toast from command `action_id`                                                                                 |
 | onDismiss   | function | Y        | -       | `(suggestionId) => void` — per-row only, rendered for rows carrying an `id`; dismissed rows leave the list without a toast                                                                         |
 | loading     | boolean  | N        | false   | Skeleton rows                                                                                                                                                                                      |
@@ -69,8 +69,8 @@ Target-contract spec (`docs/features/collections-platform.md` §4.16/§4.17 sugg
 
 - Node trashed by owner between listing and accept: server `items_skipped`/reject lists surface via the accept result toast text (mixed outcome path).
 - `expires_at` past render horizon: row simply absent (server filters) — no client expiry math.
-- **Persisted rows (the norm):** every checklist row is a `file_suggestions` row carrying an
-  `id`, `created_at` and `expires_at` (`routes/dashboard.md` §2.4 — plus host-provided `path`,
+- **Persisted rows (the norm):** every checklist row is a `storage_suggestions` row carrying an
+  `id`, `created_at` and `expires_at` (`routes/storage.md` §2.4 — plus host-provided `path`,
   `size_bytes` and `reason` with `keep_node_id`). The dismiss control renders only when the row
   carries an `id` AND the host passes `onDismiss` (the `Storage` dashboard passes it). The
   expiry footer renders only when at least one listed row carries a non-null `expires_at`

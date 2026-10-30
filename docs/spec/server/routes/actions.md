@@ -59,10 +59,10 @@ and with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 **Journal domains enum:** `collection | batch | settings | permissions | file | sharing`. **Writers = `collection`** (all silent/merge/settings-adjacent
 acts), **`batch`** (the batch worker's move/copy command rows —
 `services/batchOperationService.md` §5.4; their undo pointer also travels on the bulk-job
-terminal poll result, `routes/files.md`), **and `file`** (the dashboard cleanup-suggestion
+terminal poll result, `routes/files.md`), **and `file`** (the storage cleanup-suggestion
 accept command — one `action='cleanup-accept'` row per accepted batch,
 `subject='file:suggestion-accept:<userId>:<timestamp>'`, item-level
-`{ op: 'restore-from-trash' }` inverses — `routes/dashboard.md` §2.4), **and `settings`**
+`{ op: 'restore-from-trash' }` inverses — `routes/storage.md` §2.4), **and `settings`**
 (curated non-secret AI governance config writes on `PUT /api/admin/config`, subject
 `settings:<KEY>`, inverse `set-setting`; the re-embed launcher's one
 `settings:ai-reembed` row, inverse `cancel-ai-jobs` with job ids — `routes/admin.md`
@@ -184,8 +184,8 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
   mechanics stay domain-generic). Their undo applies the item-level inverse list:
   fingerprint-mismatched items skip, mixed counts surface in the 200 body
   (`items_undone`/`items_skipped`).
-- `file`-domain rows are the dashboard cleanup-accept command family
-  (`routes/dashboard.md` §2.4.2): one row per accept with a per-command timestamped subject,
+- `file`-domain rows are the storage cleanup-accept command family
+  (`routes/storage.md` (§2.4.2)): one row per accept with a per-command timestamped subject,
   so the row is normally its subject's tip (the cascade path exists but is unreachable in
   normal operation). Their item-level inverse restores still-matching trashed nodes through the
   trash core and flips the captured suggestion rows `accepted → pending`; per-item

@@ -5,13 +5,15 @@ const requireUser = require('../../middleware/requireUser');
 const requireNonAdmin = require('../../middleware/requireNonAdmin');
 const { asyncHandler, mapServiceError } = require('../../utils/errorHandler');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
-const dashboardService = require('./service');
+const storageService = require('./service');
 
 const ERROR_MAP = {
-  emptyNodeIds: SERVER_ERROR_CODES.dashboard.emptyNodeIds,
-  invalidSuggestionId: SERVER_ERROR_CODES.dashboard.invalidSuggestionId,
-  suggestionNotFound: SERVER_ERROR_CODES.dashboard.suggestionNotFound,
+  emptyNodeIds: SERVER_ERROR_CODES.storage.emptyNodeIds,
+  invalidSuggestionId: SERVER_ERROR_CODES.storage.invalidSuggestionId,
+  suggestionNotFound: SERVER_ERROR_CODES.storage.suggestionNotFound,
 };
+
+const requireStorageNonAdmin = requireNonAdmin.withCode(SERVER_ERROR_CODES.storage.forbidden);
 
 function serializeSuggestion(row) {
   return {
@@ -53,16 +55,33 @@ function serializeSummary(result) {
   };
 }
 
-// GET /api/dashboard — one-shot self-storage hygiene + persisted suggestions
+function serializeUsage(result) {
+  return {
+    current: {
+      total_bytes: result.current.totalBytes,
+      live_bytes: result.current.liveBytes,
+      trash_bytes: result.current.trashBytes,
+      version_bytes: result.current.versionBytes,
+      version_history_supported: result.current.versionHistorySupported,
+      incomplete: result.current.incomplete,
+      as_of: result.current.asOf,
+    },
+    series: {
+      points: result.series.points.map((point) => ({ day: point.day, bytes: point.bytes })),
+    },
+  };
+}
+
+// GET /api/storage — one-shot self-storage hygiene + persisted suggestions
 // read (the generator pass materializes pending rows inside the read).
 router.get(
   '/',
   authenticateToken,
   requireUser,
-  requireNonAdmin,
+  requireStorageNonAdmin,
   asyncHandler(async (req, res) => {
     try {
-      const result = await dashboardService.getDashboardSummary(req.user.full.id);
+      const result = await storageService.getStorageSummary(req.user.full.id);
       res.json(serializeSummary(result));
     } catch (e) {
       throw mapServiceError(e, ERROR_MAP);
@@ -70,34 +89,34 @@ router.get(
   })
 );
 
-// GET /api/dashboard/storage-usage — per-user daily logical-storage series.
-// Fewer than two persisted snapshots returns `{ points: [] }` (no partial
-// or fabricated trend — routes/dashboard.md §2.4).
+// GET /api/storage/usage — current logical-storage breakdown + the retained
+// daily series. Fewer than two persisted snapshots returns an empty series
+// (no partial or fabricated trend — routes/storage.md §2.4).
 router.get(
-  '/storage-usage',
+  '/usage',
   authenticateToken,
   requireUser,
-  requireNonAdmin,
+  requireStorageNonAdmin,
   asyncHandler(async (req, res) => {
     try {
-      res.json(await dashboardService.getStorageUsageSeries(req.user.full.id));
+      res.json(serializeUsage(await storageService.getStorageUsage(req.user.full.id)));
     } catch (e) {
       throw mapServiceError(e, ERROR_MAP);
     }
   })
 );
 
-// POST /api/dashboard/suggestions/accept — checked rows -> trash as ONE
-// journaled command (routes/dashboard.md §2.4); the response carries the
+// POST /api/storage/suggestions/accept — checked rows -> trash as ONE
+// journaled command (routes/storage.md §2.4); the response carries the
 // undo pointer, undo executes via POST /api/actions/:id/undo.
 router.post(
   '/suggestions/accept',
   authenticateToken,
   requireUser,
-  requireNonAdmin,
+  requireStorageNonAdmin,
   asyncHandler(async (req, res) => {
     try {
-      const result = await dashboardService.acceptSuggestions(
+      const result = await storageService.acceptSuggestions(
         req.user.full.id,
         req.user.full,
         req.body ? req.body.nodeIds : undefined
@@ -114,16 +133,16 @@ router.post(
   })
 );
 
-// POST /api/dashboard/suggestions/dismiss — per-row dismiss of a persisted
+// POST /api/storage/suggestions/dismiss — per-row dismiss of a persisted
 // suggestion (pending -> dismissed; no toast, no journal row).
 router.post(
   '/suggestions/dismiss',
   authenticateToken,
   requireUser,
-  requireNonAdmin,
+  requireStorageNonAdmin,
   asyncHandler(async (req, res) => {
     try {
-      const result = await dashboardService.dismissSuggestion(
+      const result = await storageService.dismissSuggestion(
         req.user.full.id,
         req.body ? req.body.suggestionId : undefined
       );

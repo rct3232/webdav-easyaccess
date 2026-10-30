@@ -2,8 +2,8 @@
 
 /**
  * suggestionsRules — pure, LLM-free cleanup matchers for the persisted
- * rule-variant generator (docs/spec/server/services/dashboardService.md §2.5,
- * docs/features/collections-platform.md §4.17). Filename/extension patterns +
+ * rule-variant generator (docs/spec/server/services/storageService.md §2.5,
+ * docs/features/storage-management.md). Filename/extension patterns +
  * age gates over subtree cache rows and the short-document sentence test that
  * gates the cosine near-dup variant. No IO, no DB: everything is a function
  * of (name, createdAt, summary) inputs.
@@ -48,7 +48,7 @@ const OLD_INSTALLER_DAYS = 90;
 /**
  * Candidate list order AND per-node kind priority (lowest rank wins a node's
  * single row): exact first, near after, rule patterns last
- * (docs/spec/server/routes/dashboard.md §2.4).
+ * (docs/spec/server/routes/storage.md §2.4).
  */
 const KIND_RANK = Object.freeze({
   exact_dup: 0,

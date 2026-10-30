@@ -202,6 +202,10 @@ const SERVER_ERROR_CODES = {
   storage: {
     invalidPathMapping: P('serverErrors.storage', 'invalidPathMapping'),
     postgresqlNotConfigured: P('serverErrors.storage', 'postgresqlNotConfigured'),
+    emptyNodeIds: P('serverErrors.storage', 'emptyNodeIds'),
+    invalidSuggestionId: P('serverErrors.storage', 'invalidSuggestionId'),
+    suggestionNotFound: P('serverErrors.storage', 'suggestionNotFound'),
+    forbidden: P('serverErrors.storage', 'forbidden'),
   },
   users: {
     emailRequired: P('serverErrors.users', 'emailRequired'),
@@ -247,12 +251,6 @@ const SERVER_ERROR_CODES = {
     fingerprintMismatch: P('serverErrors.actions', 'fingerprintMismatch'),
     expired: P('serverErrors.actions', 'expired'),
     alreadyUndone: P('serverErrors.actions', 'alreadyUndone'),
-  },
-  // Storage dashboard (T0.10, docs/spec/server/routes/dashboard.md §2.4.1).
-  dashboard: {
-    emptyNodeIds: P('serverErrors.dashboard', 'emptyNodeIds'),
-    invalidSuggestionId: P('serverErrors.dashboard', 'invalidSuggestionId'),
-    suggestionNotFound: P('serverErrors.dashboard', 'suggestionNotFound'),
   },
   utilsAuth: {
     accessTokenRequired: P('serverErrors.utilsAuth', 'accessTokenRequired'),

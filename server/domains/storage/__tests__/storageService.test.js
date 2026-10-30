@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * dashboardService tests (docs/spec/server/services/dashboardService.md —
- * persisted file_suggestions leg). Real DB; the accept path delegates to the
+ * storageService tests (docs/spec/server/services/storageService.md —
+ * persisted storage_suggestions leg). Real DB; the accept path delegates to the
  * files-domain trash core, so composition is overridden the same way
  * trash.test.js does it (S3 mode = zero physical I/O on trash).
  */
@@ -17,8 +17,8 @@ const {
 const { createFileNodesStore } = require('@server/store/fileNodesStore');
 const { createFileNodeService } = require('@server/service/fileNodeService');
 const composition = require('@server/service/composition');
-const dashboardService = require('@server/domains/dashboard/service');
-const fileSuggestionsStore = require('@server/store/fileSuggestionsStore');
+const storageService = require('@server/domains/storage/service');
+const storageSuggestionsStore = require('@server/store/storageSuggestionsStore');
 const storageUsageSnapshotsStore = require('@server/store/storageUsageSnapshotsStore');
 const aiEnrichmentsStore = require('@server/store/aiEnrichmentsStore');
 const llmModelsStore = require('@server/store/llmModelsStore');
@@ -70,7 +70,7 @@ async function journalRows() {
 }
 
 async function allSuggestionRows(userId) {
-  const { rows } = await dbQuery('SELECT * FROM file_suggestions WHERE user_id = ? ORDER BY id', [
+  const { rows } = await dbQuery('SELECT * FROM storage_suggestions WHERE user_id = ? ORDER BY id', [
     Number(userId),
   ]);
   return rows;
@@ -92,7 +92,7 @@ afterAll(async () => {
   await dbCleanup?.();
 });
 
-describe('getDashboardSummary — persisted suggestions', () => {
+describe('getStorageSummary — persisted suggestions', () => {
   it('materializes exact-dup rows with id/expiresAt; keep = smallest node id; ONE pass', async () => {
     const { user, homeId } = await storageUser('dup');
     const hash = `dash-dup-${Date.now()}`;
@@ -102,7 +102,7 @@ describe('getDashboardSummary — persisted suggestions', () => {
     const c = await addFile(homeId, 'c.bin', { hash, size: 120 });
     await addFile(homeId, 'solo.bin', { hash: `solo-${Date.now()}` });
 
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
 
     expect(summary.duplicates).toMatchObject({
       groupCount: 1,
@@ -136,9 +136,9 @@ describe('getDashboardSummary — persisted suggestions', () => {
     await addFile(homeId, 'one.bin', { hash });
     await addFile(homeId, 'two.bin', { hash });
 
-    const first = await dashboardService.getDashboardSummary(user.id);
+    const first = await storageService.getStorageSummary(user.id);
     const before = await allSuggestionRows(user.id);
-    const second = await dashboardService.getDashboardSummary(user.id);
+    const second = await storageService.getStorageSummary(user.id);
     const after = await allSuggestionRows(user.id);
 
     expect(JSON.stringify(second)).toEqual(JSON.stringify(first));
@@ -151,16 +151,16 @@ describe('getDashboardSummary — persisted suggestions', () => {
     await addFile(homeId, `keep-${hash}.bin`, { hash });
     const member = await addFile(homeId, `member-${hash}.bin`, { hash });
 
-    const first = await dashboardService.getDashboardSummary(user.id);
+    const first = await storageService.getStorageSummary(user.id);
     expect(first.suggestions).toHaveLength(1);
     const row = first.suggestions[0];
 
-    await expect(dashboardService.dismissSuggestion(user.id, row.id)).resolves.toEqual({
+    await expect(storageService.dismissSuggestion(user.id, row.id)).resolves.toEqual({
       id: row.id,
       state: 'dismissed',
     });
 
-    const second = await dashboardService.getDashboardSummary(user.id);
+    const second = await storageService.getStorageSummary(user.id);
     expect(second.suggestions).toEqual([]);
     const stored = await allSuggestionRows(user.id);
     expect(stored).toHaveLength(1);
@@ -173,7 +173,7 @@ describe('getDashboardSummary — persisted suggestions', () => {
     const x = await addFile(homeId, `x-${Date.now()}.bin`, { hash: null, size: 999 });
     const y = await addFile(homeId, `y-${Date.now()}.bin`, { hash: null, size: 999 });
 
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
     const ids = [...summary.suggestions.map((row) => row.nodeId)];
     expect(ids).not.toContain(Number(x.nodeId));
     expect(ids).not.toContain(Number(y.nodeId));
@@ -184,7 +184,7 @@ describe('getDashboardSummary — persisted suggestions', () => {
   it('expired-but-unflipped rows are filtered from the list server-side', async () => {
     const { user, homeId } = await storageUser('expired');
     const node = await addFile(homeId, 'old-expiry.bin', {});
-    await fileSuggestionsStore.insert({
+    await storageSuggestionsStore.insert({
       userId: user.id,
       nodeId: Number(node.nodeId),
       kind: 'temp_pattern',
@@ -192,7 +192,7 @@ describe('getDashboardSummary — persisted suggestions', () => {
       expiresAt: new Date(Date.now() - 1000).toISOString(),
     });
 
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
     expect(summary.suggestions.some((row) => row.nodeId === Number(node.nodeId))).toBe(false);
   });
 
@@ -202,11 +202,11 @@ describe('getDashboardSummary — persisted suggestions', () => {
     await addFile(homeId, `keep-${hash}.bin`, { hash });
     const member = await addFile(homeId, `member-${hash}.bin`, { hash });
 
-    const first = await dashboardService.getDashboardSummary(user.id);
+    const first = await storageService.getStorageSummary(user.id);
     expect(first.suggestions).toHaveLength(1);
 
     await createFileNodesStore().markSubtreeDeleted([Number(member.nodeId)]);
-    const second = await dashboardService.getDashboardSummary(user.id);
+    const second = await storageService.getStorageSummary(user.id);
     expect(second.suggestions).toEqual([]);
     const stored = await allSuggestionRows(user.id);
     expect(stored.find((r) => Number(r.node_id) === Number(member.nodeId)).state).toBe('expired');
@@ -222,7 +222,7 @@ describe('getDashboardSummary — persisted suggestions', () => {
     await ageFile(fresh.nodeId, 2);
     await ageFile(installer.nodeId, 91);
 
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
     const byKind = Object.fromEntries(summary.suggestions.map((r) => [r.kind, r]));
     expect(byKind.temp_pattern.nodeId).toBe(Number(temp.nodeId));
     expect(byKind.temp_pattern.reason).toEqual({ kind: 'temp_pattern', pattern: 'temp' });
@@ -240,7 +240,7 @@ describe('getDashboardSummary — persisted suggestions', () => {
     const keeper = await addFile(homeId, 'temp_keeper.bin', { hash }); // keeper + temp name
     const member = await addFile(homeId, 'temp_member.bin', { hash }); // member + temp name
 
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
     expect(summary.suggestions).toHaveLength(1);
     expect(summary.suggestions[0].nodeId).toBe(Number(member.nodeId));
     expect(summary.suggestions[0].kind).toBe('exact_dup');
@@ -260,7 +260,7 @@ describe('getDashboardSummary — persisted suggestions', () => {
       Number(solo.nodeId),
     ]);
 
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
 
     expect(summary.trash.itemCount).toBe(2);
     expect(summary.trash.totalBytes).toBe(350);
@@ -272,7 +272,7 @@ describe('getDashboardSummary — persisted suggestions', () => {
   it('empty trash ⇒ zeros with oldestDeletedAt null; retention defaults to 30', async () => {
     const { user, homeId } = await storageUser('empty');
     void homeId;
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
     expect(summary.trash).toEqual({
       itemCount: 0,
       totalBytes: 0,
@@ -285,7 +285,7 @@ describe('getDashboardSummary — persisted suggestions', () => {
 
   it('a user without a root node reads as all-zero (no error)', async () => {
     const { user } = await createAuthenticatedTestUser({ username: `dash-noroot-${Date.now()}` });
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
     expect(summary.duplicates.groupCount).toBe(0);
     expect(summary.suggestions).toEqual([]);
     expect(summary.trash.itemCount).toBe(0);
@@ -307,10 +307,10 @@ describe('acceptSuggestions — journaled command', () => {
     await createFileNodesStore().markSubtreeDeleted([Number(alreadyGone.nodeId)]);
 
     // Materialize so `one` carries a pending exact_dup row.
-    await dashboardService.getDashboardSummary(user.id);
+    await storageService.getStorageSummary(user.id);
 
     const journalBefore = await journalRowCount();
-    const result = await dashboardService.acceptSuggestions(user.id, userArg(user), [
+    const result = await storageService.acceptSuggestions(user.id, userArg(user), [
       Number(one.nodeId),
       Number(two.nodeId),
       Number(foreign.nodeId),
@@ -361,14 +361,14 @@ describe('acceptSuggestions — journaled command', () => {
     const oneRows = stored.filter((r) => Number(r.node_id) === Number(one.nodeId));
     expect(oneRows.length).toBeGreaterThan(0);
     expect(oneRows.every((r) => r.state === 'accepted')).toBe(true);
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
     expect(summary.suggestions.some((r) => r.nodeId === Number(one.nodeId))).toBe(false);
   });
 
   it('nothing trashed ⇒ NO command row (actionId null, journal count unchanged)', async () => {
     const { user } = await storageUser('accept-empty');
     const journalBefore = await journalRowCount();
-    const result = await dashboardService.acceptSuggestions(user.id, userArg(user), [999999997]);
+    const result = await storageService.acceptSuggestions(user.id, userArg(user), [999999997]);
     expect(result.trashed).toEqual([]);
     expect(result.actionId).toBeNull();
     expect(await journalRowCount()).toBe(journalBefore);
@@ -377,17 +377,17 @@ describe('acceptSuggestions — journaled command', () => {
   it('validates the batch BEFORE any work: [], missing, >200 ⇒ emptyNodeIds, zero journal rows', async () => {
     const { user } = await storageUser('validate');
     const journalBefore = await journalRowCount();
-    await expect(dashboardService.acceptSuggestions(user.id, {}, [])).rejects.toThrow(
+    await expect(storageService.acceptSuggestions(user.id, {}, [])).rejects.toThrow(
       'emptyNodeIds'
     );
-    await expect(dashboardService.acceptSuggestions(user.id, {}, undefined)).rejects.toThrow(
+    await expect(storageService.acceptSuggestions(user.id, {}, undefined)).rejects.toThrow(
       'emptyNodeIds'
     );
-    await expect(dashboardService.acceptSuggestions(user.id, {}, 'nope')).rejects.toThrow(
+    await expect(storageService.acceptSuggestions(user.id, {}, 'nope')).rejects.toThrow(
       'emptyNodeIds'
     );
     await expect(
-      dashboardService.acceptSuggestions(
+      storageService.acceptSuggestions(
         user.id,
         {},
         Array.from({ length: 201 }, (_, i) => i + 1)
@@ -410,7 +410,7 @@ describe('acceptSuggestions — journaled command', () => {
       });
 
     try {
-      const result = await dashboardService.acceptSuggestions(user.id, { id: user.id }, [
+      const result = await storageService.acceptSuggestions(user.id, { id: user.id }, [
         Number(ok.nodeId),
         Number(bad.nodeId),
       ]);
@@ -431,50 +431,50 @@ describe('dismissSuggestion', () => {
   it("flips the requester's pending row; unknown/foreign/non-pending ⇒ suggestionNotFound", async () => {
     const { user, homeId } = await storageUser('dismiss-svc');
     const node = await addFile(homeId, 'temp_dismiss.bin', {});
-    const { id } = await fileSuggestionsStore.insert({
+    const { id } = await storageSuggestionsStore.insert({
       userId: user.id,
       nodeId: Number(node.nodeId),
       kind: 'temp_pattern',
       reason: { kind: 'temp_pattern', pattern: 'temp' },
     });
 
-    await expect(dashboardService.dismissSuggestion(user.id, id)).resolves.toEqual({
+    await expect(storageService.dismissSuggestion(user.id, id)).resolves.toEqual({
       id,
       state: 'dismissed',
     });
-    await expect(dashboardService.dismissSuggestion(user.id, id)).rejects.toThrow(
+    await expect(storageService.dismissSuggestion(user.id, id)).rejects.toThrow(
       'suggestionNotFound'
     );
-    await expect(dashboardService.dismissSuggestion(999999, id)).rejects.toThrow(
+    await expect(storageService.dismissSuggestion(999999, id)).rejects.toThrow(
       'suggestionNotFound'
     );
-    await expect(dashboardService.dismissSuggestion(user.id, 999999)).rejects.toThrow(
+    await expect(storageService.dismissSuggestion(user.id, 999999)).rejects.toThrow(
       'suggestionNotFound'
     );
   });
 
   it('non-numeric or ≤0 suggestionId ⇒ invalidSuggestionId', async () => {
     const { user } = await storageUser('dismiss-invalid');
-    await expect(dashboardService.dismissSuggestion(user.id, 'x')).rejects.toThrow(
+    await expect(storageService.dismissSuggestion(user.id, 'x')).rejects.toThrow(
       'invalidSuggestionId'
     );
-    await expect(dashboardService.dismissSuggestion(user.id, 0)).rejects.toThrow(
+    await expect(storageService.dismissSuggestion(user.id, 0)).rejects.toThrow(
       'invalidSuggestionId'
     );
-    await expect(dashboardService.dismissSuggestion(user.id, undefined)).rejects.toThrow(
+    await expect(storageService.dismissSuggestion(user.id, undefined)).rejects.toThrow(
       'invalidSuggestionId'
     );
   });
 });
 
-describe('resolveSuggestionRetentionDays', () => {
+describe('resolveStorageSuggestionRetentionDays', () => {
   it('defaults to the shipped 30-day horizon (finite ≥0 registry values win)', async () => {
-    const days = await dashboardService.resolveSuggestionRetentionDays();
+    const days = await storageService.resolveStorageSuggestionRetentionDays();
     expect(days).toBe(30);
   });
 });
 
-describe('getDashboardSummary — vector near-dup feed + persisted variant (nearDupFinderService.md)', () => {
+describe('getStorageSummary — vector near-dup feed + persisted variant (nearDupFinderService.md)', () => {
   const THETA = presets.getPresetByFamilyRole('embedded', 'embed').profile.thetaDup;
 
   afterEach(async () => {
@@ -523,7 +523,7 @@ describe('getDashboardSummary — vector near-dup feed + persisted variant (near
       contentHash: null,
     });
 
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
     expect(summary.nearDuplicates).toEqual({ groupCount: 0, duplicateCount: 0 });
     expect(summary.suggestions.filter((r) => r.kind === 'near_dup')).toEqual([]);
     // grep-gate corollary: the leg reads the ACTIVE profile, never a hardcoded
@@ -570,7 +570,7 @@ describe('getDashboardSummary — vector near-dup feed + persisted variant (near
       contentHash: null,
     });
 
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
 
     expect(summary.nearDuplicates).toEqual({ groupCount: 1, duplicateCount: 2 });
     const nearRows = summary.suggestions.filter((row) => row.kind === 'near_dup');
@@ -638,7 +638,7 @@ describe('getDashboardSummary — vector near-dup feed + persisted variant (near
     });
     await aiEnrichmentsStore.upsert(Number(b.nodeId), { summary: 'A single short line.' });
 
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
     const nearRows = summary.suggestions.filter((r) => r.kind === 'near_dup');
     expect(nearRows.map((r) => r.nodeId).sort((x, y) => x - y)).toEqual([Number(c.nodeId)]);
     expect(nearRows[0].reason.keep_node_id).toBe(Number(a.nodeId));
@@ -656,7 +656,7 @@ describe('getDashboardSummary — vector near-dup feed + persisted variant (near
     await addFile(homeId, `m-${hash}.bin`, { hash });
     await addFile(homeId, 'temp_z.bin', {});
 
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
     expect(summary.nearDuplicates).toBeUndefined();
     expect(summary.suggestions.every((r) => r.kind !== 'near_dup')).toBe(true);
     const stored = await allSuggestionRows(user.id);
@@ -670,7 +670,7 @@ describe('getDashboardSummary — vector near-dup feed + persisted variant (near
 describe('undo (accept command rows)', () => {
   const userArg = (user) => ({ id: user.id, username: user.username, is_admin: user.is_admin });
   const actionJournalStore = require('@server/store/actionJournalStore');
-  require('@server/domains/dashboard/suggestionUndoService'); // ensure the file-domain executor is registered
+  require('@server/domains/storage/suggestionUndoService'); // ensure the file-domain executor is registered
 
   it('full restore: nodes live again, rows pending, re-listed with the SAME ids', async () => {
     const { user, homeId } = await storageUser('undo-full');
@@ -679,11 +679,11 @@ describe('undo (accept command rows)', () => {
     const m1 = await addFile(homeId, `m1-${hash}.bin`, { hash });
     const m2 = await addFile(homeId, `m2-${hash}.bin`, { hash });
 
-    await dashboardService.getDashboardSummary(user.id);
-    const before = await dashboardService.getDashboardSummary(user.id);
+    await storageService.getStorageSummary(user.id);
+    const before = await storageService.getStorageSummary(user.id);
     const ids = before.suggestions.map((r) => r.id);
 
-    const accept = await dashboardService.acceptSuggestions(user.id, userArg(user), [
+    const accept = await storageService.acceptSuggestions(user.id, userArg(user), [
       Number(m1.nodeId),
       Number(m2.nodeId),
     ]);
@@ -701,7 +701,7 @@ describe('undo (accept command rows)', () => {
       id: Number(m2.nodeId),
     });
 
-    const after = await dashboardService.getDashboardSummary(user.id);
+    const after = await storageService.getStorageSummary(user.id);
     expect(after.suggestions.map((r) => r.id).sort((x, y) => x - y)).toEqual(
       [...ids].sort((x, y) => x - y)
     );
@@ -716,8 +716,8 @@ describe('undo (accept command rows)', () => {
     const m1 = await addFile(homeId, `x1-${h1}.bin`, { hash: h1 });
     const m2 = await addFile(homeId, `x2-${h2}.bin`, { hash: h2 });
 
-    await dashboardService.getDashboardSummary(user.id);
-    const accept = await dashboardService.acceptSuggestions(user.id, userArg(user), [
+    await storageService.getStorageSummary(user.id);
+    const accept = await storageService.acceptSuggestions(user.id, userArg(user), [
       Number(m1.nodeId),
       Number(m2.nodeId),
     ]);
@@ -745,8 +745,22 @@ describe('undo (accept command rows)', () => {
   });
 });
 
-describe('getStorageUsageSeries', () => {
-  it('returns an empty series below the two-point minimum', async () => {
+describe('getStorageUsage', () => {
+  async function insertObject(nodeId, suffix, version, status, size) {
+    await dbRun(
+      `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status, size)
+       VALUES (?, ?, 's3', ?, ?, ?)`,
+      [
+        Number(nodeId),
+        `svc-usage-${suffix}-${Date.now()}-${Math.random()}`,
+        version,
+        status,
+        size,
+      ]
+    );
+  }
+
+  it('returns current zeros and an empty series below the two-point minimum', async () => {
     const { user } = await storageUser('su-svc-one');
     await storageUsageSnapshotsStore.upsertSnapshot({
       userId: user.id,
@@ -754,7 +768,20 @@ describe('getStorageUsageSeries', () => {
       bytes: 7,
     });
 
-    await expect(dashboardService.getStorageUsageSeries(user.id)).resolves.toEqual({ points: [] });
+    const result = await storageService.getStorageUsage(user.id);
+    expect(result).toEqual({
+      current: {
+        totalBytes: 0,
+        liveBytes: 0,
+        trashBytes: 0,
+        versionBytes: 0,
+        versionHistorySupported: true,
+        incomplete: false,
+        asOf: expect.any(String),
+      },
+      series: { points: [] },
+    });
+    expect(Number.isNaN(Date.parse(result.current.asOf))).toBe(false);
   });
 
   it('maps retained rows to day/bytes points in ascending day order', async () => {
@@ -770,11 +797,78 @@ describe('getStorageUsageSeries', () => {
       bytes: 10,
     });
 
-    await expect(dashboardService.getStorageUsageSeries(user.id)).resolves.toEqual({
+    const result = await storageService.getStorageUsage(user.id);
+    expect(result.series).toEqual({
       points: [
         { day: '2032-02-01', bytes: 10 },
         { day: '2032-02-02', bytes: 20 },
       ],
     });
+  });
+
+  it('S3 current partitions live, trash and history bytes (total = sum)', async () => {
+    const { user, homeId } = await storageUser('su-svc-breakdown');
+    const live = await addFile(homeId, 'live.bin', { hash: `su-live-${Date.now()}` });
+    const trashed = await addFile(homeId, 'trashed.bin', { hash: `su-trash-${Date.now()}` });
+    await insertObject(live.nodeId, 'live-active', 1, 'active', 100);
+    await insertObject(live.nodeId, 'live-history', 2, 'history', 50);
+    await insertObject(trashed.nodeId, 'trash-active', 1, 'active', 200);
+    await insertObject(trashed.nodeId, 'trash-pending', 2, 'pending', 900);
+    await createFileNodesStore().markSubtreeDeleted([Number(trashed.nodeId)]);
+
+    const result = await storageService.getStorageUsage(user.id);
+    expect(result.current).toMatchObject({
+      totalBytes: 350,
+      liveBytes: 100,
+      trashBytes: 200,
+      versionBytes: 50,
+      versionHistorySupported: true,
+      incomplete: false,
+    });
+  });
+
+  it('marks the current total incomplete when a counted size is NULL', async () => {
+    const { user, homeId } = await storageUser('su-svc-incomplete');
+    const file = await addFile(homeId, 'null-size.bin', { hash: `su-null-${Date.now()}` });
+    await insertObject(file.nodeId, 'null-active', 1, 'active', null);
+
+    const result = await storageService.getStorageUsage(user.id);
+    expect(result.current).toMatchObject({
+      totalBytes: 0,
+      liveBytes: 0,
+      trashBytes: 0,
+      versionBytes: 0,
+      incomplete: true,
+    });
+  });
+
+  it('WebDAV current sums live + trash filecache and reports no version history', async () => {
+    const { user, homeId } = await storageUser('su-svc-webdav');
+    await addFile(homeId, 'live-webdav.bin', { size: 30, hash: null });
+    const trashed = await addFile(homeId, 'trashed-webdav.bin', { size: 40, hash: null });
+    await createFileNodesStore().markSubtreeDeleted([Number(trashed.nodeId)]);
+    composition.__setCompositionForTests({
+      fileStorageMode: 'webdav',
+      blobStore: s3BlobStub(),
+      fileNodeService,
+    });
+
+    try {
+      const result = await storageService.getStorageUsage(user.id);
+      expect(result.current).toMatchObject({
+        totalBytes: 70,
+        liveBytes: 30,
+        trashBytes: 40,
+        versionBytes: 0,
+        versionHistorySupported: false,
+        incomplete: false,
+      });
+    } finally {
+      composition.__setCompositionForTests({
+        fileStorageMode: 's3',
+        blobStore: s3BlobStub(),
+        fileNodeService,
+      });
+    }
   });
 });

@@ -1,24 +1,25 @@
-# dashboard routes Spec
+# storage routes Spec
 
-Contract spec for the user dashboard `Storage`: the hygiene read surfaces plus the persisted
-cleanup-suggestion lifecycle (accept → journaled command, dismiss, expiry).
+Contract spec for the `Storage` surface: the hygiene read surfaces, the current usage
+breakdown with its persisted daily series, and the persisted cleanup-suggestion lifecycle
+(accept → journaled command, dismiss, expiry).
 
 ## 1. Overview
 
 | Item       | Description                                                                                                                                                          |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Mount path | `/api/dashboard`                                                                                                                                                     |
-| Role       | Storage-dashboard server surface: hygiene/suggestions read (one GET, persists pending rows as part of the read) + cleanup accept (POST) + suggestion dismiss (POST). |
+| Mount path | `/api/storage`                                                                                                                                                     |
+| Role       | Storage server surface: hygiene/suggestions/usage read (the hygiene GET persists pending rows as part of the read) + cleanup accept (POST) + suggestion dismiss (POST). |
 
 **Ownership boundary:** this router is a thin CONSUMER — it composes existing surfaces and
-adds no new state machines beyond the `file_suggestions` row lifecycle. Dups/suggestions
+adds no new state machines beyond the `storage_suggestions` row lifecycle. Dups/suggestions
 delegate to `domains/ai/dupFinderService` (hash-first, LLM-free), to
 `domains/ai/nearDupFinderService` (the §4.17 vector variant — `nearDupFinderService.md`) and
-to the persisted-row generator (`dashboardService.md` §2.5, `store/fileSuggestionsStore.md`);
+to the persisted-row generator (`storageService.md` §2.5, `store/storageSuggestionsStore.md`);
 the trash card delegates to the `FileNodeRepository` subtree trash read
 (`store/fileNodesStore.md`); the accept action delegates to the files-domain trash core
 (`fileService.deleteNode`) and journals its command via `actionJournalStore`; the dismiss
-action delegates to `fileSuggestionsStore`. The journal feed, collections status and grants
+action delegates to `storageSuggestionsStore`. The journal feed, collections status and grants
 blocks ride the EXISTING `/api/actions`, `/api/collections`, `/api/collections/:id/grants`
 mounts — nothing here duplicates them.
 
@@ -28,32 +29,33 @@ mounts — nothing here duplicates them.
 
 ### 2.1 File Path
 
-- **Source:** `server/domains/dashboard/routes.js`
-- **Service:** `server/domains/dashboard/service.js` (see
-  [dashboardService.md](../services/dashboardService.md); bare string codes translated by
+- **Source:** `server/domains/storage/routes.js`
+- **Service:** `server/domains/storage/service.js` (see
+  [storageService.md](../services/storageService.md); bare string codes translated by
   route-level `ERROR_MAP`/`mapServiceError`)
-- **Test file:** `server/domains/dashboard/__tests__/dashboard.test.js`
+- **Test file:** `server/domains/storage/__tests__/storage.test.js`
 
 **Mount:** `server/index.js` registers the router **after** the app-level migrationGate and
 with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
-`app.use('/api/dashboard', setupModeGuardInstance, require('./domains/dashboard/routes'))`.
+`app.use('/api/storage', setupModeGuardInstance, require('./domains/storage/routes'))`.
 
 ### 2.2 Route List (sync with api.md)
 
 | Method | Path                   | Auth  | Description                                                                                                                      |
 | ------ | ---------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/`                    | Token | One-shot dashboard read: dup summary + persisted suggestion rows + trash summary; materializes pending rows as part of the read. |
-| GET    | `/storage-usage`       | Token | Per-user daily logical-storage series (fewer than two points ⇒ empty).                                                           |
+| GET    | `/`                    | Token | One-shot storage read: dup summary + persisted suggestion rows + trash summary; materializes pending rows as part of the read. |
+| GET    | `/usage`               | Token | Current logical-storage breakdown + the per-user daily series (fewer than two points ⇒ empty series).                          |
 | POST   | `/suggestions/accept`  | Token | Accept selected rows → trash as ONE journaled command (owner-only, per-node result, undo pointer).                               |
 | POST   | `/suggestions/dismiss` | Token | Dismiss one persisted suggestion row (`pending → dismissed`).                                                                    |
 
 ### 2.3 Middleware Used
 
-- `authenticateToken`, `requireUser`, `requireNonAdmin` (per-router, in that order; domain layout per recentFiles precedent)
-- **Actor restriction (operator rule):** every route (GET `/`, GET `/storage-usage`, POST
+- `authenticateToken`, `requireUser`, `requireNonAdmin.withCode(serverErrors.storage.forbidden)`
+  (per-router, in that order; domain layout per recentFiles precedent)
+- **Actor restriction (operator rule):** every route (GET `/`, GET `/usage`, POST
   `/suggestions/accept`, POST `/suggestions/dismiss`) responds **403
-  `serverErrors.collections.forbidden`** when the requester is an ADMIN — the Storage
-  dashboard is a non-admin-only personal-storage surface.
+  `serverErrors.storage.forbidden`** when the requester is an ADMIN — the storage surface is
+  non-admin-only.
 - `setupModeGuardInstance` at mount (see §2.1)
 
 ### 2.4 Request/Response Spec
@@ -132,15 +134,15 @@ Field rules:
   finite profile `θ_dup` and scoped canonical pooled rows); when the leg is unavailable the key
   is OMITTED entirely (absent section, never an error — §4.12). Hash-twin nodes (equal non-NULL
   `content_hash`) NEVER appear here — exact dups own them.
-- `suggestions`: PERSISTED `file_suggestions` rows (`store/fileSuggestionsStore.md`) — the
-  read materializes pending rows first (`dashboardService.md` §2.5: the rule variant from the
+- `suggestions`: PERSISTED `storage_suggestions` rows (`store/storageSuggestionsStore.md`) — the
+  read materializes pending rows first (`storageService.md` §2.5: the rule variant from the
   hash pass + filename/temp/screenshot/installer patterns, the vector variant from the near-dup
   pass at the ACTIVE profile `θ_dup` with hash-twin members excluded and the short-document
   cosine exception), then lists the user's `pending`, unexpired rows. Row shape: `id`,
   `node_id`, `kind`, `path`, `size_bytes`, `reason` (the stored JSONB, snake_case verbatim),
   `created_at`, `expires_at`. `kind: 'exact_dup'`/`'near_dup'` carry `keep_node_id` = the
   group keeper (exact: smallest node id; near-dup: highest keeper composite, tie ⇒ smallest
-  node id — `dashboardService.md` §2.5.1); the keeper is never listed as a row — only group
+  node id — `storageService.md` §2.5.1); the keeper is never listed as a row — only group
   members beyond it persist. Near-dup rows additionally carry `reason.keep` (additive on
   new/re-materialized rows; no legacy backfill): `{ name (keeper basename only),
 relative_score (0..1, group-relative), confidence high|medium|low, basis
@@ -153,7 +155,7 @@ centrality}, unopened_30d, score_version:'v1' }` — raw activity counts/timesta
   The vector generator leg runs ONLY when
   `nearDupFinderService` is available (active embed model with a finite profile `θ_dup`);
   an embed-unconfigured deployment lists rule/exact rows and nothing else
-  (§4.12 absent-not-disabled). `expires_at` is `created_at + AI_SUGGESTION_RETENTION_DAYS`
+  (§4.12 absent-not-disabled). `expires_at` is `created_at + STORAGE_SUGGESTION_RETENTION_DAYS`
   (`0` ⇒ `null` = never expires); a row past `expires_at` is absent from the list (server-side
   filter) — the client performs no expiry math.
 - `duplicates`/`near_duplicates`/`trash` summaries remain COMPUTED hygiene reads (the card
@@ -169,31 +171,53 @@ centrality}, unopened_30d, score_version:'v1' }` — raw activity counts/timesta
 - No user root ⇒ `duplicates`/`suggestions` zero/empty, `trash` zeros (no error — the
   dashboard renders absent blocks per "zero/absent renders nothing").
 
-- **GET /storage-usage:** No query. Scope is always the requester's OWN snapshot rows
-  (`storage_usage_snapshots.user_id`) — the series is self-storage. 200:
+- **GET /usage:** No query. Scope is always the requester's OWN root subtree and snapshot
+  rows (`storage_usage_snapshots.user_id`) — usage is self-storage. 200:
 
 ```json
 {
-  "points": [
-    { "day": "2025-10-01", "bytes": 1048576 },
-    { "day": "2025-10-02", "bytes": 2097152 }
-  ]
+  "current": {
+    "total_bytes": 3145728,
+    "live_bytes": 2097152,
+    "trash_bytes": 1048576,
+    "version_bytes": 0,
+    "version_history_supported": false,
+    "incomplete": false,
+    "as_of": "2025-10-02T03:00:00.000Z"
+  },
+  "series": {
+    "points": [
+      { "day": "2025-10-01", "bytes": 1048576 },
+      { "day": "2025-10-02", "bytes": 2097152 }
+    ]
+  }
 }
 ```
 
 Field rules:
 
-- `points` ascends by UTC `day` (`YYYY-MM-DD`); `bytes` is the captured logical-storage
-  total (live + trash subtree plus all active/history object versions in S3 mode; current
-  filecache bytes in WebDAV mode).
-- **Two-point minimum:** fewer than two retained snapshots returns `{ "points": [] }` —
-  the route never fabricates an intermediate point or exposes a one-point trend. The
-  client omits the sparkline block on an empty series.
-- The read is snapshot-only: it does not capture, backfill or compute storage on demand;
-  the daily scheduler owns writes and retention (`maintenanceScheduler.md` §3.7).
+- `current` is a LIVE aggregate over the requester's root subtree (not a snapshot read):
+  `live_bytes` covers current files that are not trashed, `trash_bytes` covers trashed
+  files, and `version_bytes` covers retained object history. `total_bytes` =
+  `live_bytes + trash_bytes + version_bytes`. S3 mode counts every `object_map` row with
+  status `active` or `history`: active rows partition by the node's trash state, history
+  rows count as `version_bytes`, and `version_history_supported` is `true`. WebDAV mode
+  sums current `filecache.size` over file rows, reports `version_bytes: 0` and
+  `version_history_supported: false`.
+- `incomplete` is `true` when any counted row has a NULL size (missing filecache row or
+  NULL `object_map.size`); those rows contribute zero to their bucket, so `total_bytes`
+  is a lower bound. No quota, capacity or fabricated total exists.
+- `as_of` is the ISO-8601 UTC timestamp of the aggregate read.
+- `series.points` ascends by UTC `day` (`YYYY-MM-DD`); `bytes` is the captured logical
+  total (same S3/WebDAV split as `current`). **Two-point minimum:** fewer than two retained
+  snapshots returns `{ "points": [] }` — the route never fabricates an intermediate point
+  or exposes a one-point trend. The client omits the sparkline block on an empty series.
+- The series is snapshot-only: it does not capture, backfill or compute storage on demand;
+  the daily scheduler owns writes and retention (`maintenanceScheduler.md` §3.7). The
+  `current` block never depends on snapshot availability.
 
 - **POST /suggestions/accept:** Body `{ nodeIds: [ … ] }` (1–200, else 400
-  `serverErrors.dashboard.emptyNodeIds`). Per node: requester must OWN the node
+  `serverErrors.storage.emptyNodeIds`). Per node: requester must OWN the node
   (owner-root closure via `ownerNodeResolver`) — anything else (granted, foreign, unknown,
   already trashed) lands in `rejected_not_owned`; a trash-core failure lands in `skipped`.
   Accepted nodes move to TRASH (never purge). 200:
@@ -207,7 +231,8 @@ Field rules:
 }
 ```
 
-**Accept is one journaled command** (docs/features/collections-platform.md §4.11/§4.17): the
+**Accept is one journaled command** (`docs/features/collections-platform.md` §4.11,
+`docs/features/storage-management.md`): the
 trashed nodes and the `pending → accepted` flips of their suggestion rows land in ONE
 `action_journal` command row (`domain='file'`,
 `subject='file:suggestion-accept:<userId>:<timestamp>'`, `action='cleanup-accept'`,
@@ -216,18 +241,18 @@ deletedAt, suggestionIds } ] }` — checked count = inverse count, per-item fing
 captured `deletedAt`). The response carries `undo: { action_id }` (the toast contract,
 `store/actionJournalStore.md` §2.3); undo executes through the generic
 `POST /api/actions/:id/undo` and restores each still-trashed, fingerprint-matching node via
-the trash core (skips are per item; mixed results allowed). See `dashboardService.md` §2.6
+the trash core (skips are per item; mixed results allowed). See `storageService.md` §2.6
 for the undo executor contract. The row flip covers exactly the `pending` rows whose node was
 trashed; a trashed node without a pending row contributes an item with an empty
 `suggestionIds` list (the file undo still applies).
 
 - **POST /suggestions/dismiss:** Body `{ suggestionId }` (one persisted row). 200 on the
   `pending → dismissed` flip of the requester's own row; unknown id, another user's row or a
-  non-pending target → 404 `serverErrors.dashboard.suggestionNotFound` (single code — no
+  non-pending target → 404 `serverErrors.storage.suggestionNotFound` (single code — no
   existence leak); missing/non-numeric/≤0 `suggestionId` → 400
-  `serverErrors.dashboard.invalidSuggestionId`. Dismissed rows leave the list; the kind is
+  `serverErrors.storage.invalidSuggestionId`. Dismissed rows leave the list; the kind is
   never re-inserted for the same node while a non-expired row of it exists
-  (`store/fileSuggestionsStore.md` §2.2). No toast, no journal row (self-reversing UI
+  (`store/storageSuggestionsStore.md` §2.2). No toast, no journal row (self-reversing UI
   preference, not a file mutation). 200:
 
 ```json
@@ -236,12 +261,12 @@ trashed; a trashed node without a pending row contributes an item with an empty
 
 ### 2.4.1 Error Codes (SERVER_ERROR_CODES style)
 
-| HTTP | errorCode                                    | Trigger                                                                                |
-| ---- | -------------------------------------------- | -------------------------------------------------------------------------------------- |
-| 400  | `serverErrors.dashboard.emptyNodeIds`        | Missing/empty/non-array/over-cap (200) `nodeIds`.                                      |
-| 400  | `serverErrors.dashboard.invalidSuggestionId` | Missing/non-numeric/≤0 `suggestionId` (dismiss).                                       |
-| 404  | `serverErrors.dashboard.suggestionNotFound`  | Dismiss target unknown, not the requester's, or not `pending`.                         |
-| 403  | `serverErrors.collections.forbidden`         | ADMIN requester — operator-rule gate (`requireNonAdmin`); dashboard is non-admin-only. |
+| HTTP | errorCode                                  | Trigger                                                                             |
+| ---- | ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| 400  | `serverErrors.storage.emptyNodeIds`        | Missing/empty/non-array/over-cap (200) `nodeIds`.                                   |
+| 400  | `serverErrors.storage.invalidSuggestionId` | Missing/non-numeric/≤0 `suggestionId` (dismiss).                                    |
+| 404  | `serverErrors.storage.suggestionNotFound`  | Dismiss target unknown, not the requester's, or not `pending`.                      |
+| 403  | `serverErrors.storage.forbidden`           | ADMIN requester — operator-rule gate; the storage surface is non-admin-only.        |
 
 All errors follow the shared envelope (`errorCode` + optional `params`,
 [shared-contracts.md](../../../shared-contracts.md)); client locale mirror mandatory.
@@ -250,7 +275,7 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
 
 - One GET feeds the hygiene cards and the suggestion list; the client maps it to the blocks
   in `CollectionDashboard.md` §2.3.
-- Route path `/api/dashboard` (singular).
+- Route path `/api/storage` (singular).
 - The near-dup block rides the SAME payload: `near_duplicates` (summary, present only when the
   vector leg is available) + `near_dup` rows appended to `suggestions` — no second endpoint.
   The suggestion array is the persisted pending set (exact rows, near-dup rows, rule-pattern
@@ -263,9 +288,9 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
   §2.2/§2.4): `domain='file'`, subject `file:suggestion-accept:<userId>:<timestamp>`
   (multi-node command rows carry the accept-command subject format; single-node file subjects
   stay `file:<nodeId>` for the rename family), `action='cleanup-accept'`. Undo executes via
-  the generic `POST /api/actions/:id/undo` (actor visibility), never through a dashboard
+  the generic `POST /api/actions/:id/undo` (actor visibility), never through a storage
   route.
-- Near-dup keepers follow the keeper composite (`dashboardService.md` §2.5.1) and the
+- Near-dup keepers follow the keeper composite (`storageService.md` §2.5.1) and the
   exposure block rides `reason.keep`; the client renders the label and the collapsible
   "Why this keeper?" detail from that block only
   (`/docs/spec/client/components/mypage/content/SuggestionsChecklist.md` §2.3).
@@ -274,17 +299,20 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
 
 - [api.md](../../../api.md), [shared-contracts.md](../../../shared-contracts.md),
   [dupFinderService.md](../services/dupFinderService.md),
-  [dashboardService.md](../services/dashboardService.md),
-  [fileSuggestionsStore.md](../store/fileSuggestionsStore.md),
+  [storageService.md](../services/storageService.md),
+  [storageSuggestionsStore.md](../store/storageSuggestionsStore.md),
   [actionJournalStore.md](../store/actionJournalStore.md),
   [fileNodesStore.md](../store/fileNodesStore.md), [actions.md](actions.md) (feed stays there),
-  `docs/features/collections-platform.md` §4.16/§4.17.
+  `docs/features/storage-management.md`.
 
 ### 2.6 Integration Test Scenarios
 
 - [ ] Unauthenticated → 401 on all four routes; setup-mode mount returns the guard response
-- [ ] GET `/storage-usage` returns the requester's own rows ascending in snake_case;
-      another user's rows never appear; one row ⇒ `{ points: [] }`; admin ⇒ 403
+- [ ] GET `/usage` returns `current` (total = live + trash + version; S3 includes history,
+      WebDAV reports `version_bytes: 0` / `version_history_supported: false`) plus the
+      requester's own rows ascending in snake_case; another user's rows never appear; one
+      row ⇒ `{ points: [] }`; a NULL counted size ⇒ `incomplete: true` with a lower-bound
+      total; admin ⇒ 403 `storage.forbidden`
 - [ ] GET returns snake_case-only fields; two hashed copies + one unique + two NULL-hash
       identical rows → `group_count 1`, one suggestion row (the higher node_id, `keep_node_id`
       = lower), NULL rows appear in NO count and NO row; every listed row carries `id`,
@@ -298,15 +326,16 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
       pending rows flip to `accepted` and are absent from the next GET; foreign/unknown/
       already-trashed ids → `rejected_not_owned`; response carries `undo.action_id`; ONE
       `action_journal` command row (`domain='file'`, item count = `trashed.length`);
-      `{ nodeIds: [] }` / missing / >200 → 400 `dashboard.emptyNodeIds` with ZERO new
+      `{ nodeIds: [] }` / missing / >200 → 400 `storage.emptyNodeIds` with ZERO new
       journal rows
 - [ ] Undo (via `POST /api/actions/:id/undo`): trashed nodes return to live, their rows flip
       back to `pending` and re-list; a node already restored by hand is per-item SKIPPED
       (mixed-result undo), the command row still flips to `undone`
 - [ ] Dismiss: own pending row → `{ id, state: 'dismissed' }`, row absent from the next GET
       and never re-inserted for the same node+kind; foreign/unknown/non-pending → 404
-      `dashboard.suggestionNotFound`; `{ suggestionId: 0 }` / missing → 400
-      `dashboard.invalidSuggestionId`; admin requester → 403 on the new route as well
+      `storage.suggestionNotFound`; `{ suggestionId: 0 }` / missing → 400
+      `storage.invalidSuggestionId`; admin requester → 403 `storage.forbidden` on the new
+      route as well
 - [ ] Rule variants: temp-pattern / stale-screenshot / old-installer files list one row each
       (`reason.pattern` + `age_days`), fresh or non-matching files none; every rule kind ships
       with NO embed model configured

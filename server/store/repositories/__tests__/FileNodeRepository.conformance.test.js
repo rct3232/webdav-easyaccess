@@ -1084,17 +1084,27 @@ describe('FileNodeRepository conformance', () => {
 
       await expect(repo.summarizeSubtreeStorageUsage(root.id)).resolves.toEqual({
         bytes: 650,
+        liveBytes: 300,
+        trashBytes: 300,
+        versionBytes: 50,
         itemCount: 4,
+        trashItemCount: 1,
+        oldestTrashedAt: expect.any(String),
         nullSizeCount: 0,
       });
 
-      // A NULL size on a counted version marks the series incomplete.
+      // A NULL size on a counted version marks the aggregate incomplete.
       await insertObject(fileB.id, uniqueName('fn-sus-s3-b4'), 4, 'active', null);
       await expect(
         repo.summarizeSubtreeStorageUsage(root.id, { includeVersions: true })
       ).resolves.toEqual({
         bytes: 650,
+        liveBytes: 300,
+        trashBytes: 300,
+        versionBytes: 50,
         itemCount: 5,
+        trashItemCount: 1,
+        oldestTrashedAt: expect.any(String),
         nullSizeCount: 1,
       });
     });
@@ -1111,7 +1121,12 @@ describe('FileNodeRepository conformance', () => {
         repo.summarizeSubtreeStorageUsage(root.id, { includeVersions: false })
       ).resolves.toEqual({
         bytes: 30,
+        liveBytes: 10,
+        trashBytes: 20,
+        versionBytes: 0,
         itemCount: 3,
+        trashItemCount: 1,
+        oldestTrashedAt: expect.any(String),
         nullSizeCount: 1, // fileC has no filecache row
       });
 
@@ -1120,7 +1135,12 @@ describe('FileNodeRepository conformance', () => {
         repo.summarizeSubtreeStorageUsage(root.id, { includeVersions: false })
       ).resolves.toEqual({
         bytes: 70,
+        liveBytes: 50,
+        trashBytes: 20,
+        versionBytes: 0,
         itemCount: 3,
+        trashItemCount: 1,
+        oldestTrashedAt: expect.any(String),
         nullSizeCount: 0,
       });
     });
@@ -1128,7 +1148,12 @@ describe('FileNodeRepository conformance', () => {
     it('reports zeros for an unknown subtree root', async () => {
       await expect(repo.summarizeSubtreeStorageUsage(999999999)).resolves.toEqual({
         bytes: 0,
+        liveBytes: 0,
+        trashBytes: 0,
+        versionBytes: 0,
         itemCount: 0,
+        trashItemCount: 0,
+        oldestTrashedAt: null,
         nullSizeCount: 0,
       });
     });

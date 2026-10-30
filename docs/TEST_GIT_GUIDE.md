@@ -220,9 +220,12 @@ Required assumptions:
   re-seeds the base users and home roots, ensures the MinIO buckets, and empties
   the platform bucket once. Global teardown empties the bucket and stops the
   services with a project-scoped `down -v`.
-- The active group selects the Playwright projects. No project has
-  `dependencies`; all are independent siblings. Check the active set with
-  `npx playwright test --list`.
+- The active group selects the Playwright projects. Projects are independent
+  siblings except for the storage projects, which declare `dependencies` on the
+  corresponding collections projects to serialize reuse of the `:5013`/`:5014`
+  scratch slots (and set `workers: 1`). A storage-only run therefore includes
+  its collections dependency unless invoked with `--no-deps` after the ports
+  are free. Check the active set with `npx playwright test --list`.
 - The `e2e:server` script chains the port-band provisioning + compose up +
   health wait, then boots the server with `DOTENV_CONFIG_PATH` pointing at the
   generated `data/e2e-runtime.env`. That file holds this checkout's band ports

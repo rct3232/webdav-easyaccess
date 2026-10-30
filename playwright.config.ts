@@ -108,6 +108,10 @@ interface E2EProject {
   use: typeof desktopUse | typeof mobileUse;
   baseURL?: string;
   grep?: RegExp;
+  /** Projects that must finish before this one (shared scratch-slot reuse). */
+  dependencies?: string[];
+  /** Per-project worker cap (slot serialization for a dependent suite). */
+  workers?: number;
 }
 
 const projects: PlaywrightProject[] = [];
@@ -118,6 +122,8 @@ const pushProjects = (entries: E2EProject[]) => {
       name: entry.name,
       testMatch: entry.testMatch,
       grep: entry.grep,
+      ...(entry.dependencies ? { dependencies: entry.dependencies } : {}),
+      ...(entry.workers ? { workers: entry.workers } : {}),
       use: {
         ...entry.use,
         ...(entry.baseURL ? { baseURL: entry.baseURL } : {}),
@@ -179,6 +185,26 @@ const s3Hermetic: E2EProject[] = [
     testMatch: /collections\.spec\.ts$/,
     use: mobileUse,
     baseURL: scratchBase(e2ePorts.scratchCollectionsMobile),
+  },
+  {
+    // Storage management shares the collections scratch slots; the dependency
+    // edge serializes the two projects so the collections server is gone before
+    // this suite boots its own on the same port. workers:1 keeps the slot owned
+    // by one test at a time even if the dependency is bypassed.
+    name: 's3-storage-desktop',
+    testMatch: /storage\.spec\.ts$/,
+    use: desktopUse,
+    baseURL: scratchBase(e2ePorts.scratchCollections),
+    dependencies: ['s3-collections-desktop'],
+    workers: 1,
+  },
+  {
+    name: 's3-storage-mobile',
+    testMatch: /storage\.spec\.ts$/,
+    use: mobileUse,
+    baseURL: scratchBase(e2ePorts.scratchCollectionsMobile),
+    dependencies: ['s3-collections-mobile'],
+    workers: 1,
   },
   {
     name: 's3-retrieval-desktop',

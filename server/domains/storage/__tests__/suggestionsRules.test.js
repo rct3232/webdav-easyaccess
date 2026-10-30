@@ -2,7 +2,7 @@
 
 /**
  * suggestionsRules — pure LLM-free cleanup matchers + the short-document
- * sentence test (docs/spec/server/services/dashboardService.md §2.5).
+ * sentence test (docs/spec/server/services/storageService.md §2.5).
  * No DB, no IO: row classification over (name, createdAt) inputs.
  */
 

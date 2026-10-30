@@ -4,7 +4,7 @@
  * nearDupFinderService — the §4.17 vector near-dup variant
  * (docs/spec/server/services/nearDupFinderService.md). Read-only compute over
  * the canonical pooled embeddings of the ACTIVE embed model; feeds the
- * Storage-dashboard `near_duplicates` block and `near_dup` suggestion rows.
+ * Storage dashboard `near_duplicates` block and `near_dup` suggestion rows.
  *
  * HASH-FIRST PRECEDENCE (dupFinderService precedent): nodes already grouped
  * as exact dups (equal non-NULL `content_hash`) are removed from the vector
@@ -31,7 +31,7 @@ const { createFileNodesStore } = require('../../store/fileNodesStore');
 const { parseVector, cosineSimilarity } = require('./vectorStore/vectorMath');
 const { createTextVectorJs } = require('./vectorStore/TextVectorJs');
 
-/** Operational cap of returned near-dup groups (routes/dashboard.md §2.4). */
+/** Operational cap of returned near-dup groups (routes/storage.md §2.4). */
 const MAX_NEAR_DUP_GROUPS = 50;
 
 function emptyResult() {

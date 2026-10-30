@@ -43,7 +43,7 @@ const EXPECTED_TABLES = [
   'node_activity',
   'action_journal',
   // §5 suggestions + admin reports
-  'file_suggestions',
+  'storage_suggestions',
   'admin_reports',
   'storage_usage_snapshots',
   // §5 AI foundation

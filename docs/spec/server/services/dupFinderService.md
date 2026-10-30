@@ -1,14 +1,14 @@
 # dupFinderService Spec
 
 Target-contract spec (LLM-free hygiene items). Design owner sections:
-`docs/features/collections-platform.md` §4.16/§4.17.
+`docs/features/storage-management.md`.
 
 ## 1. Overview
 
 | Item       | Description                                                                                                                                                                                                                                                                                                                         |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role       | Exact-duplicate finder — HASH-FIRST (`filecache.content_hash` group-by; cosine-1.0 vector detection is REDUNDANT) and the vector near-dup path is P1, not here. Read-only compute; feeds the Storage-dashboard hygiene cards and the rule-variant cleanup suggestions.                                                              |
-| Boundaries | No persistence (proposals/rows ride `file_suggestions` — a separate store/route surface; this service computes groups on demand). No LLM, no vectors. Files only; requester's OWN root subtree (hygiene is self-storage: the accept action moves files to the owner's trash, and the reclaimable-GB number is the user's capacity). |
+| Boundaries | No persistence (proposals/rows ride `storage_suggestions` — a separate store/route surface; this service computes groups on demand). No LLM, no vectors. Files only; requester's OWN root subtree (hygiene is self-storage: the accept action moves files to the owner's trash, and the reclaimable-GB number is the user's capacity). |
 | Hard rule  | **`content_hash IS NULL` rows NEVER form a dup group** (accepted pre-backfill coverage gap; NULL ≠ a hash of anything).                                                                                                                                                                                                             |
 
 ---
@@ -30,8 +30,8 @@ Target-contract spec (LLM-free hygiene items). Design owner sections:
 - Pure READ — idempotent by nature; two consecutive calls on unchanged data return
   byte-identical results (asserted in tests).
 - Empty result fast path: no root node / no hashed files ⇒ `{ groups: [], ... }` zeros.
-- No route of its own; consumed by [dashboardService](dashboardService.md) via the
-  mounted `GET /api/dashboard`.
+- No route of its own; consumed by [storageService](storageService.md) via the
+  mounted `GET /api/storage`.
 
 ### 2.3 Errors & transactions
 

@@ -21,9 +21,10 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 
 const LOCALE_DIR = path.join(__dirname, '..', '..', 'client', 'src', 'locales');
 const NEW_DOMAINS = ['collections', 'ai'];
-// The Storage-dashboard domain joined with the persisted-suggestions routes
-// (accept/dismiss) — same mirror discipline, asserted explicitly.
-const DASHBOARD_DOMAIN = 'dashboard';
+// The storage domain carries the persisted-suggestions routes
+// (accept/dismiss) plus its legacy path-mapping codes — same mirror
+// discipline, asserted explicitly.
+const STORAGE_DOMAIN = 'storage';
 
 function loadLocale(name) {
   return JSON.parse(fs.readFileSync(path.join(LOCALE_DIR, name), 'utf8'));
@@ -118,32 +119,29 @@ describe('SERVER_ERROR_CODES ↔ client locale mirror (collections + ai domains)
     ]);
   });
 
-  describe('dashboard domain mirror (persisted-suggestions routes)', () => {
-    const domain = DASHBOARD_DOMAIN;
+  describe('storage domain mirror (persisted-suggestions routes)', () => {
+    const domain = STORAGE_DOMAIN;
 
-    it('maps every SERVER_ERROR_CODES.dashboard key to serverErrors.dashboard.<key>', () => {
+    it('maps every SERVER_ERROR_CODES.storage key to serverErrors.storage.<key>', () => {
       for (const [key, value] of Object.entries(SERVER_ERROR_CODES[domain])) {
         expect(value).toBe(i18nKey(domain, key));
       }
     });
 
-    it.each(['en', 'ko'])(
-      'mirrors every SERVER_ERROR_CODES.dashboard key into %s.json',
-      (locale) => {
-        const block = (locale === 'en' ? en : ko).serverErrors[domain];
-        expect(block).toBeDefined();
-        const codeKeys = Object.keys(SERVER_ERROR_CODES[domain]);
-        expect(codeKeys.length).toBeGreaterThan(0);
-        for (const key of codeKeys) {
-          expect(block[key]).toBeDefined();
-          expect(typeof block[key]).toBe('string');
-          expect(block[key].length).toBeGreaterThan(0);
-        }
+    it.each(['en', 'ko'])('mirrors every SERVER_ERROR_CODES.storage key into %s.json', (locale) => {
+      const block = (locale === 'en' ? en : ko).serverErrors[domain];
+      expect(block).toBeDefined();
+      const codeKeys = Object.keys(SERVER_ERROR_CODES[domain]);
+      expect(codeKeys.length).toBeGreaterThan(0);
+      for (const key of codeKeys) {
+        expect(block[key]).toBeDefined();
+        expect(typeof block[key]).toBe('string');
+        expect(block[key].length).toBeGreaterThan(0);
       }
-    );
+    });
 
     it.each(['en', 'ko'])(
-      'has no %s dashboard locale key missing from SERVER_ERROR_CODES (vice versa)',
+      'has no %s storage locale key missing from SERVER_ERROR_CODES (vice versa)',
       (locale) => {
         const codeKeys = new Set(Object.keys(SERVER_ERROR_CODES[domain]));
         for (const key of Object.keys((locale === 'en' ? en : ko).serverErrors[domain] || {})) {
@@ -155,7 +153,10 @@ describe('SERVER_ERROR_CODES ↔ client locale mirror (collections + ai domains)
     it('exposes the shared-contracts key set', () => {
       expect(Object.keys(SERVER_ERROR_CODES[domain]).sort()).toEqual([
         'emptyNodeIds',
+        'forbidden',
+        'invalidPathMapping',
         'invalidSuggestionId',
+        'postgresqlNotConfigured',
         'suggestionNotFound',
       ]);
     });

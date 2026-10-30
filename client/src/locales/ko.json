@@ -805,7 +805,7 @@
         "AI_ACTIVITY_HALF_LIFE_DAYS": "활동 반감기(일)",
         "AI_USAGE_EVENT_RETENTION_DAYS": "사용 이벤트 보존(일)",
         "ARCHIVE_RETENTION_DAYS": "아카이브 보존(일)",
-        "AI_SUGGESTION_RETENTION_DAYS": "제안 보존(일)"
+        "STORAGE_SUGGESTION_RETENTION_DAYS": "제안 보존(일)"
       },
       "gates": {
         "killSwitches": "킬 스위치",
@@ -1303,11 +1303,6 @@
       "expired": "되돌리기 기간이 만료되어 이 작업은 더 이상 되돌릴 수 없습니다.",
       "alreadyUndone": "이 작업은 이미 되돌려졌습니다."
     },
-    "dashboard": {
-      "emptyNodeIds": "최소 하나의 파일 또는 폴더를 선택해 주세요.",
-      "invalidSuggestionId": "숨길 유효한 제안을 선택해 주세요.",
-      "suggestionNotFound": "이 제안은 더 이상 존재하지 않습니다."
-    },
     "collections": {
       "nameRequired": "컬렉션 이름이 필요합니다.",
       "invalidName": "컬렉션 이름이 유효하지 않습니다.",
@@ -1478,7 +1473,11 @@
     },
     "storage": {
       "invalidPathMapping": "잘못된 경로 매핑입니다.",
-      "postgresqlNotConfigured": "PostgreSQL이 설정되지 않았습니다. .env의 WEA_DB_* 설정을 확인하세요."
+      "postgresqlNotConfigured": "PostgreSQL이 설정되지 않았습니다. .env의 WEA_DB_* 설정을 확인하세요.",
+      "emptyNodeIds": "최소 하나의 파일 또는 폴더를 선택해 주세요.",
+      "invalidSuggestionId": "숨길 유효한 제안을 선택해 주세요.",
+      "suggestionNotFound": "이 제안은 더 이상 존재하지 않습니다.",
+      "forbidden": "관리자 계정에서는 이 스토리지 화면을 사용할 수 없습니다."
     },
     "utilsAuth": {
       "accessTokenRequired": "액세스 토큰이 필요합니다.",

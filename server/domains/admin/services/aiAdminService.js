@@ -62,7 +62,7 @@ const GATE_DEFS = Object.freeze([
   { key: 'AI_ACTIVITY_HALF_LIFE_DAYS', metric: 'night_eval_users' },
   { key: 'AI_USAGE_EVENT_RETENTION_DAYS', metric: 'not_instrumented' },
   { key: 'ARCHIVE_RETENTION_DAYS', metric: 'night_eval_collections' },
-  { key: 'AI_SUGGESTION_RETENTION_DAYS', metric: 'not_instrumented' },
+  { key: 'STORAGE_SUGGESTION_RETENTION_DAYS', metric: 'not_instrumented' },
 ]);
 
 const NOT_INSTRUMENTED = Object.freeze([

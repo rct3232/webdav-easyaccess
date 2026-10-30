@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * keeperScore tests (docs/spec/server/services/dashboardService.md §2.5.1).
+ * keeperScore tests (docs/spec/server/services/storageService.md §2.5.1).
  * Pure module: no IO, no clock reads — every input is passed in. Covers the
  * v1 weights, the 30d-unopened PENALTY (never an exclusion), media
  * resolution/size quality, name originality, centrality from nearDupFinder
@@ -13,7 +13,7 @@ const {
   WEIGHTS,
   UNOPENED_MULTIPLIER,
   computeGroupKeeper,
-} = require('@server/domains/dashboard/keeperScore');
+} = require('@server/domains/storage/keeperScore');
 
 const DAY_MS = 86400000;
 const NOW = Date.parse('2026-10-28T12:00:00Z');

@@ -335,7 +335,7 @@ CREATE INDEX IF NOT EXISTS action_journal_created_idx ON action_journal (created
 -- §5 Suggestions + admin reports (P0/P3/P4)
 -- -----------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS file_suggestions (
+CREATE TABLE IF NOT EXISTS storage_suggestions (
   id BIGSERIAL PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   node_id BIGINT NOT NULL REFERENCES file_nodes(id) ON DELETE CASCADE,
@@ -346,7 +346,7 @@ CREATE TABLE IF NOT EXISTS file_suggestions (
   expires_at TIMESTAMPTZ DEFAULT NULL
 );
 
-CREATE INDEX IF NOT EXISTS file_suggestions_user_state_idx ON file_suggestions (user_id, state);
+CREATE INDEX IF NOT EXISTS storage_suggestions_user_state_idx ON storage_suggestions (user_id, state);
 
 CREATE TABLE IF NOT EXISTS admin_reports (
   id BIGSERIAL PRIMARY KEY,

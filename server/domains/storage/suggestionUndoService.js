@@ -2,7 +2,7 @@
 
 /**
  * suggestionUndoService — the `file`-domain undo executor for cleanup-
- * suggestion accept commands (docs/spec/server/services/dashboardService.md
+ * suggestion accept commands (docs/spec/server/services/storageService.md
  * §2.6). Registers at module load via actionJournalStore.registerUndoExecutor;
  * the actions router dispatches generically (POST /api/actions/:id/undo).
  *
@@ -19,9 +19,9 @@
  */
 
 const { createFileNodesStore } = require('../../store/fileNodesStore');
-const fileSuggestionsStore = require('../../store/fileSuggestionsStore');
+const storageSuggestionsStore = require('../../store/storageSuggestionsStore');
 const actionJournalStore = require('../../store/actionJournalStore');
-const { FILE_SUGGESTION_STATE, JOURNAL_DOMAIN } = require('@webdav-easyaccess/shared/constants');
+const { STORAGE_SUGGESTION_STATE, JOURNAL_DOMAIN } = require('@webdav-easyaccess/shared/constants');
 const { getComposition } = require('../../service/composition');
 const { buildTrashPath } = require('../../service/webdavRemoteOps');
 
@@ -52,7 +52,7 @@ function resolveRestoreName(name, takenNames) {
  * Factory. DI seams (tests); production resolves the shared facades.
  * @param {Object} [opts]
  * @param {Object} [opts.fileNodesStore] - facade instance (default: created)
- * @param {Object} [opts.suggestionsStore] - fileSuggestionsStore facade
+ * @param {Object} [opts.suggestionsStore] - storageSuggestionsStore facade
  * @param {() => Object} [opts.composition] - getComposition seam
  */
 function createSuggestionUndoService({
@@ -61,7 +61,7 @@ function createSuggestionUndoService({
   composition: compositionGetter,
 } = {}) {
   const nodes = () => fileNodesStore || createFileNodesStore();
-  const suggestions = () => suggestionsStore || fileSuggestionsStore;
+  const suggestions = () => suggestionsStore || storageSuggestionsStore;
   const compose = () => (compositionGetter || getComposition)();
 
   async function flipSuggestionsToPending(item, tx) {
@@ -69,8 +69,8 @@ function createSuggestionUndoService({
     if (ids.length === 0) return;
     await suggestions().flipStatesTx(tx, {
       ids,
-      fromState: FILE_SUGGESTION_STATE.ACCEPTED,
-      toState: FILE_SUGGESTION_STATE.PENDING,
+      fromState: STORAGE_SUGGESTION_STATE.ACCEPTED,
+      toState: STORAGE_SUGGESTION_STATE.PENDING,
     });
   }
 

@@ -1,6 +1,6 @@
 # CollectionDashboard Spec
 
-Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surface), §4.12, §4.14/§4.15 (admin entry), §4.16; registry shape per CODING_STYLE.md Express Patterns, consumers `useMyPageController.md` §3).
+Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surface), §4.12, §4.14/§4.15 (admin entry); storage surface in `docs/features/storage-management.md`; registry shape per CODING_STYLE.md Express Patterns, consumers `useMyPageController.md` §3).
 
 ## 1. Overview
 
@@ -36,12 +36,12 @@ Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surfa
 2. **System-changes feed (journal)** — `GET /api/actions` rows (30d, `snake_case` verbatim): `subject_label` + `action` → i18n label map (`mypage.journalAction.${action}`), `actor: "system"` → `auto` tag, `created_at` formatted. Per row: `undo_available` + `is_tip` → undo button; non-tip → cascade-confirm dialog with `params.laterChanges` count then re-post; `not recoverable` badge for report-only rows (permanent delete/empty-trash parity contract); `status:'undone'` → strikethrough label, no action. `payload` never fetched/needed (feed contract).
 3. **My-collections status** — counts (active/archived), grants received/granted (revoke inline = `DELETE /:id/grants`, instant), recent merge/archive facts from the feed subset with undo (same row renderer).
 4. **Suggestions** — `SuggestionsChecklist` block (its spec owns the accept protocol).
-5. **Storage-usage sparkline** — ONLY a sparkline, no insight prose. Seam `loadStorageUsageSeries()` (`explorerGateway.md` §2.6) returns `{ points: [{ day, bytes }] }` from `GET /api/dashboard/storage-usage`; the block renders ONLY when at least two points exist. Absent data, an absorbed read failure (`null`) or a one-point series ⇒ block omitted entirely (the server already applies the two-point minimum; the client never fabricates a point). The retained `data-testid="capacity-sparkline"` and `mypage.capacityTitle` key are stable identifiers for the Storage sparkline.
+5. **Storage-usage sparkline** — ONLY a sparkline, no insight prose. Seam `loadStorageUsageSeries()` (`explorerGateway.md` §2.6) returns `{ current, series: { points: [{ day, bytes }] } }` from `GET /api/storage/usage`; the sparkline consumes `series.points` and renders ONLY when at least two points exist. Absent data, an absorbed read failure (`null`) or a one-point series ⇒ block omitted entirely (the server already applies the two-point minimum; the client never fabricates a point). The retained `data-testid="capacity-sparkline"` and `mypage.capacityTitle` key are stable identifiers for the Storage sparkline.
 
 #### 2.3.1 Data seams
 
 - Hygiene cards + Suggestions block read the ONE gateway seam `getFileSuggestions()`
-  (`GET /api/dashboard` — `collectionsRepository.md` §2.3): `duplicates` feeds the dup card
+  (`GET /api/storage` — `collectionsRepository.md` §2.3): `duplicates` feeds the dup card
   (+ the `near_duplicates` near-dup line when present), `suggestions` feeds both the
   suggestions-count card and the `SuggestionsChecklist` (exact-dup AND `near_dup` rows — the
   row shape is kind-generic, so near-dup rows render with no component change; the reason
@@ -57,7 +57,7 @@ Target-contract spec (`docs/features/collections-platform.md` §4.11 (feed surfa
   view; trash card → `onNavigate('/files/__trash__')`.
 - Feed member-op rows render `subject_label` (collection name captured at
   commit time — `store/collectionsStore.md` §2.1).
-- Accept: the response carries `undo.action_id` (ONE journaled command — `routes/dashboard.md`
+- Accept: the response carries `undo.action_id` (ONE journaled command — `routes/storage.md`
   §2.4) → `showUndoToast({ actionId, text: 'mypage.suggestionsTrashed', params: { count } })`
   from the already-mounted `useUndoToast` bundle ("Moved N items to Trash" + Undo; the undo
   executes through the generic `POST /api/actions/:id/undo`). A response WITHOUT `undo`

@@ -257,7 +257,7 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
 - T3.2 sharing: grants, live resolution, publish pipeline/modes, cross-leak rule, viewer
   chip, grant UI in props tabs, leave (§4.7). Cross-user writes move `is_tip` to
   per-subject server-side computation (register (e)).
-- T3.3 `file_suggestions` rule variant + accept/undo (`thetaDup` is read from the active
+- T3.3 `storage_suggestions` rule variant + accept/undo (`thetaDup` is read from the active
   profile; EG2 is 0.955, not the superseded generic 0.97), short-doc cosine exception,
   §4.17; dashboard AI-block appears when embed is configured (§4.12); vector variant rides
   T1.7.
@@ -319,13 +319,13 @@ infrastructure specs live under `docs/spec/server/`.
 - T1.3 `docs/spec/`services/aiJobService.md
 - T1.6/T1.7/T2.1-T2.5 `docs/spec/`services/{collectionsService,evolutionService,aiJobService}.md, store/aiTagStore.md (derived-facet scope), components/file-manager/MergeProposalCard.md
 - T3.1/T3.1b/T3.2 `docs/spec/`routes/collections.md, services/{collectionsService,collectionShareService}.md, store/collectionsStore.md, components/dialogs/CollectionPropertiesDialog.md, components/mypage/content/SuggestionsChecklist.md (publish/leave + suggestion routes are flagged sync items there — write at T3.2/T3.3 docs step)
-- T3.3 `docs/spec/`components/mypage/content/SuggestionsChecklist.md (+ file_suggestions store/route specs at its docs step)
+- T3.3 `docs/spec/`components/mypage/content/SuggestionsChecklist.md (+ storage_suggestions store/route specs at its docs step)
 - T3.4 `docs/spec/`services/searchService.md, routes/search.md, hooks/useSearchResults.md
 - T3.5 `docs/spec/`store/actionJournalStore.md, hooks/{useFileOperations,useUndoToast}.md
 - T3.6 `docs/spec/`routes/collections.md, services/collectionsService.md
 - T4.1/T4.2/T4.3 `docs/spec/`infrastructure/{llmPresets,llmAdapter}.md, services/aiJobService.md, routes/admin.md, store/aiJobsStore.md, store/actionJournalStore.md, routes/actions.md, client/components/mypage/content/AiAdminContent.md, docs/SETUP.md + testing: docs/TESTING_STRATEGY.md (AI tiers)
 - T4.4 docs-first adds the storage-usage contract: `docs/spec/server/store/storageUsageSnapshotsStore.md`
-  (new), `docs/spec/server/routes/dashboard.md`, `docs/spec/server/infrastructure/maintenanceScheduler.md`,
+  (new), `docs/spec/server/routes/storage.md`, `docs/spec/server/infrastructure/maintenanceScheduler.md`,
   `docs/spec/server/infrastructure/configRegistry.md`, `docs/api.md`,
   `docs/spec/client/services/explorerGateway.md`, and
   `docs/spec/client/components/mypage/content/CollectionDashboard.md`.

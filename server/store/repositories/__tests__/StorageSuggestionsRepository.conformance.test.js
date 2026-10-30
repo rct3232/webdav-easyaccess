@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * FileSuggestionsRepository L2 conformance (docs/spec/server/store/
- * fileSuggestionsStore.md §2.6). Runs against the ACTIVE backend via
+ * StorageSuggestionsRepository L2 conformance (docs/spec/server/store/
+ * storageSuggestionsStore.md §2.6). Runs against the ACTIVE backend via
  * createTestDatabase() (sqlite default leg; real PG adapter leg). Covers the
  * persisted-suggestion row contract: insert id + reason JSON round-trip,
  * pending listing/ordering, user-scoped dismiss, TX-bound state flips
@@ -17,9 +17,9 @@ const {
   dbQuery,
 } = require('@server/test-utils');
 const storage = require('@server/store/storage');
-const createFileSuggestionsRepository = require('@server/store/repositories/FileSuggestionsRepository');
+const createStorageSuggestionsRepository = require('@server/store/repositories/StorageSuggestionsRepository');
 
-describe('FileSuggestionsRepository conformance', () => {
+describe('StorageSuggestionsRepository conformance', () => {
   let dbCleanup;
   let repo;
   let user;
@@ -28,7 +28,7 @@ describe('FileSuggestionsRepository conformance', () => {
   beforeAll(async () => {
     const db = await createTestDatabase();
     dbCleanup = db.cleanup;
-    repo = createFileSuggestionsRepository(storage.getExecutor());
+    repo = createStorageSuggestionsRepository(storage.getExecutor());
     const User = require('@server/models/User');
     seq += 1;
     const stamp = `${Date.now()}-${seq}`;
@@ -283,13 +283,13 @@ describe('FileSuggestionsRepository conformance', () => {
 
   it('FK violation inside a transaction leaves no partial row', async () => {
     const executor = storage.getExecutor();
-    const { rows: before } = await dbQuery('SELECT COUNT(*) AS cnt FROM file_suggestions', []);
+    const { rows: before } = await dbQuery('SELECT COUNT(*) AS cnt FROM storage_suggestions', []);
     await expect(
       executor.transaction(async () => {
         await repo.insert({ userId: user.id, nodeId: 999999998, kind: 'exact_dup' });
       })
     ).rejects.toBeDefined();
-    const { rows: after } = await dbQuery('SELECT COUNT(*) AS cnt FROM file_suggestions', []);
+    const { rows: after } = await dbQuery('SELECT COUNT(*) AS cnt FROM storage_suggestions', []);
     expect(Number(after[0].cnt)).toBe(Number(before[0].cnt));
   });
 });

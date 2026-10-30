@@ -1,14 +1,14 @@
 'use strict';
 
 /**
- * fileSuggestionsStore facade — persisted cleanup/duplicate suggestions
- * (docs/spec/server/store/fileSuggestionsStore.md). Thin dialect dispatch on
+ * storageSuggestionsStore facade — persisted cleanup/duplicate suggestions
+ * (docs/spec/server/store/storageSuggestionsStore.md). Thin dialect dispatch on
  * `storage.getExecutor()` — no SQL here (PLAN §6 persistence rule). `*Tx`
  * methods forward a caller-owned queryable (the actionJournalStore
  * commit/undo transaction or the executor itself).
  */
 const storage = require('./storage');
-const createFileSuggestionsRepository = require('./repositories/FileSuggestionsRepository');
+const createStorageSuggestionsRepository = require('./repositories/StorageSuggestionsRepository');
 
 // One repository per dialect; `getExecutor()` switches on the active backend
 // (including the jest test-only override) — recentFiles precedent.
@@ -18,7 +18,7 @@ function getRepository() {
   const executor = storage.getExecutor();
   let repo = reposByDialect.get(executor.dialect);
   if (!repo) {
-    repo = createFileSuggestionsRepository(executor);
+    repo = createStorageSuggestionsRepository(executor);
     reposByDialect.set(executor.dialect, repo);
   }
   return repo;

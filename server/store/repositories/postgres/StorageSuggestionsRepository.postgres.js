@@ -1,16 +1,16 @@
 'use strict';
 
 const { mapDatabaseError } = require('../../../utils/errorHandler');
-const { mapSuggestionRow, inPlaceholders } = require('../fileSuggestionsShared');
-const { FILE_SUGGESTION_STATE } = require('@webdav-easyaccess/shared/constants');
+const { mapSuggestionRow, inPlaceholders } = require('../storageSuggestionsShared');
+const { STORAGE_SUGGESTION_STATE } = require('@webdav-easyaccess/shared/constants');
 
 /**
- * postgres implementation of FileSuggestionsRepository (`$n` placeholders).
+ * postgres implementation of StorageSuggestionsRepository (`$n` placeholders).
  * `reason` binds with an explicit `::jsonb` cast; the pg driver returns JSONB
  * already parsed, so the shared mapper consumes it as an object directly.
  * @param {import('../../../infrastructure/db/executor').DbExecutor} executor
  */
-module.exports = function createPostgresFileSuggestionsRepository(executor) {
+module.exports = function createPostgresStorageSuggestionsRepository(executor) {
   return {
     dialect: 'postgres',
 
@@ -19,8 +19,8 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
         // executor.run() injects `RETURNING id` for INSERTs (the pgExecutor
         // single-PK idiom) and reports the generated id as `lastId`.
         const result = await executor.run(
-          `INSERT INTO file_suggestions (user_id, node_id, kind, reason, state, created_at, expires_at)
-           VALUES ($1, $2, $3, $4::jsonb, '${FILE_SUGGESTION_STATE.PENDING}', NOW(), $5::timestamptz)`,
+          `INSERT INTO storage_suggestions (user_id, node_id, kind, reason, state, created_at, expires_at)
+           VALUES ($1, $2, $3, $4::jsonb, '${STORAGE_SUGGESTION_STATE.PENDING}', NOW(), $5::timestamptz)`,
           [
             Number(userId),
             Number(nodeId),
@@ -38,8 +38,8 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
     async listPending(userId) {
       try {
         const { rows } = await executor.query(
-          `SELECT * FROM file_suggestions
-            WHERE user_id = $1 AND state = '${FILE_SUGGESTION_STATE.PENDING}'
+          `SELECT * FROM storage_suggestions
+            WHERE user_id = $1 AND state = '${STORAGE_SUGGESTION_STATE.PENDING}'
             ORDER BY id`,
           [Number(userId)]
         );
@@ -52,7 +52,7 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
     async listKeys(userId) {
       try {
         const { rows } = await executor.query(
-          'SELECT node_id, kind, state FROM file_suggestions WHERE user_id = $1 ORDER BY id',
+          'SELECT node_id, kind, state FROM storage_suggestions WHERE user_id = $1 ORDER BY id',
           [Number(userId)]
         );
         return rows.map((row) => ({
@@ -68,8 +68,8 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
     async dismiss(userId, id) {
       try {
         const result = await executor.run(
-          `UPDATE file_suggestions SET state = '${FILE_SUGGESTION_STATE.DISMISSED}'
-            WHERE id = $1 AND user_id = $2 AND state = '${FILE_SUGGESTION_STATE.PENDING}'`,
+          `UPDATE storage_suggestions SET state = '${STORAGE_SUGGESTION_STATE.DISMISSED}'
+            WHERE id = $1 AND user_id = $2 AND state = '${STORAGE_SUGGESTION_STATE.PENDING}'`,
           [Number(id), Number(userId)]
         );
         return { changes: result.changes };
@@ -81,8 +81,8 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
     async updateReason(userId, id, reason) {
       try {
         const result = await executor.run(
-          `UPDATE file_suggestions SET reason = $1::jsonb
-            WHERE id = $2 AND user_id = $3 AND state = '${FILE_SUGGESTION_STATE.PENDING}'`,
+          `UPDATE storage_suggestions SET reason = $1::jsonb
+            WHERE id = $2 AND user_id = $3 AND state = '${STORAGE_SUGGESTION_STATE.PENDING}'`,
           [
             reason === null || reason === undefined ? null : JSON.stringify(reason),
             Number(id),
@@ -100,7 +100,7 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
       try {
         const params = [Number(userId), String(state), ...nodeIds.map(Number)];
         const { rows } = await tx.query(
-          `SELECT id, node_id, kind FROM file_suggestions
+          `SELECT id, node_id, kind FROM storage_suggestions
             WHERE user_id = $1 AND state = $2 AND node_id IN (${inPlaceholders(nodeIds.length, 3)})
             ORDER BY id`,
           params
@@ -120,7 +120,7 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
       try {
         const params = [String(toState), String(fromState), ...ids.map(Number)];
         const result = await tx.run(
-          `UPDATE file_suggestions SET state = $1
+          `UPDATE storage_suggestions SET state = $1
             WHERE state = $2 AND id IN (${inPlaceholders(ids.length, 3)})`,
           params
         );
@@ -135,16 +135,16 @@ module.exports = function createPostgresFileSuggestionsRepository(executor) {
         const cutoff = new Date(now ?? Date.now()).toISOString();
         const cap = Number.isInteger(limit) && limit > 0 ? limit : 1000;
         const { rows } = await executor.query(
-          `SELECT id FROM file_suggestions
-            WHERE state = '${FILE_SUGGESTION_STATE.PENDING}' AND expires_at IS NOT NULL AND expires_at < $1::timestamptz
+          `SELECT id FROM storage_suggestions
+            WHERE state = '${STORAGE_SUGGESTION_STATE.PENDING}' AND expires_at IS NOT NULL AND expires_at < $1::timestamptz
             ORDER BY id LIMIT $2::int`,
           [cutoff, cap]
         );
         const ids = rows.map((row) => Number(row.id));
         if (ids.length === 0) return { changes: 0, ids: [] };
         const result = await executor.run(
-          `UPDATE file_suggestions SET state = '${FILE_SUGGESTION_STATE.EXPIRED}'
-            WHERE state = '${FILE_SUGGESTION_STATE.PENDING}' AND id IN (${inPlaceholders(ids.length)})`,
+          `UPDATE storage_suggestions SET state = '${STORAGE_SUGGESTION_STATE.EXPIRED}'
+            WHERE state = '${STORAGE_SUGGESTION_STATE.PENDING}' AND id IN (${inPlaceholders(ids.length)})`,
           ids
         );
         return { changes: result.changes, ids };

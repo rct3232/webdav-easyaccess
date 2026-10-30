@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * File-suggestions expiry core + scheduler
+ * Storage-suggestions expiry core + scheduler
  * (docs/spec/server/infrastructure/maintenanceScheduler.md §3.6). Unit suite —
  * no test database: the store facade is mocked, configResolver is stubbed, the
  * lock is a fake seam (the admin-reports retention tests are the precedent).
@@ -9,7 +9,7 @@
 
 let mockGetConfigSync = () => undefined;
 
-jest.mock('../../store/fileSuggestionsStore', () => ({
+jest.mock('../../store/storageSuggestionsStore', () => ({
   expireStale: jest.fn(() => Promise.resolve({ changes: 0, ids: [] })),
 }));
 
@@ -20,11 +20,11 @@ jest.mock('../configResolver', () => ({
 }));
 
 const {
-  shouldSkipSuggestionExpiry,
-  resolveSuggestionExpiryIntervalMs,
-  resolveSuggestionExpiryBatch,
-  runFileSuggestionsExpiry,
-  startFileSuggestionsExpiryScheduler,
+  shouldSkipStorageSuggestionExpiry,
+  resolveStorageSuggestionExpiryIntervalMs,
+  resolveStorageSuggestionExpiryBatch,
+  runStorageSuggestionExpiry,
+  startStorageSuggestionExpiryScheduler,
 } = require('../maintenanceScheduler');
 
 const DAY_MS = 86400000;
@@ -54,19 +54,19 @@ function fakeStore(batches) {
   };
 }
 
-describe('runFileSuggestionsExpiry (§3.6)', () => {
+describe('runStorageSuggestionExpiry (§3.6)', () => {
   afterEach(() => {
     mockGetConfigSync = () => undefined;
-    delete process.env.WEA_SKIP_SUGGESTION_EXPIRY;
+    delete process.env.WEA_SKIP_STORAGE_SUGGESTION_EXPIRY;
   });
 
   it('flips pending-past-expiry rows in bounded batches under the expiry lock', async () => {
     const store = fakeStore([3, 3, 1]);
     const locks = fakeLockManager();
     const now = () => Date.UTC(2030, 0, 1);
-    mockGetConfigSync = (key) => (key === 'AI_SUGGESTION_EXPIRY_BATCH' ? '3' : undefined);
+    mockGetConfigSync = (key) => (key === 'STORAGE_SUGGESTION_EXPIRY_BATCH' ? '3' : undefined);
 
-    const result = await runFileSuggestionsExpiry({ store, now, lockManager: locks });
+    const result = await runStorageSuggestionExpiry({ store, now, lockManager: locks });
 
     expect(result).toEqual({
       expired: 7,
@@ -77,7 +77,7 @@ describe('runFileSuggestionsExpiry (§3.6)', () => {
       now: Date.UTC(2030, 0, 1),
       limit: 3,
     });
-    expect(locks.acquireLock).toHaveBeenCalledWith('file-suggestions-expiry', {
+    expect(locks.acquireLock).toHaveBeenCalledWith('storage-suggestions-expiry', {
       ttlMs: 30 * 60 * 1000,
       waitMs: 0,
     });
@@ -88,7 +88,7 @@ describe('runFileSuggestionsExpiry (§3.6)', () => {
     const store = fakeStore([5]);
     const locks = fakeLockManager(false);
     await expect(
-      runFileSuggestionsExpiry({ store, now: () => 1234, lockManager: locks })
+      runStorageSuggestionExpiry({ store, now: () => 1234, lockManager: locks })
     ).resolves.toEqual({
       expired: 0,
       skipped: 'locked',
@@ -99,7 +99,7 @@ describe('runFileSuggestionsExpiry (§3.6)', () => {
   it('rejections propagate to the caller (the scheduler logs)', async () => {
     const store = { expireStale: jest.fn(() => Promise.reject(new Error('db down'))) };
     await expect(
-      runFileSuggestionsExpiry({
+      runStorageSuggestionExpiry({
         store,
         now: () => Date.UTC(2030, 0, 1),
         lockManager: fakeLockManager(),
@@ -108,31 +108,31 @@ describe('runFileSuggestionsExpiry (§3.6)', () => {
   });
 });
 
-describe('startFileSuggestionsExpiryScheduler (§3.6)', () => {
+describe('startStorageSuggestionExpiryScheduler (§3.6)', () => {
   afterEach(() => {
     mockGetConfigSync = () => undefined;
-    delete process.env.WEA_SKIP_SUGGESTION_EXPIRY;
+    delete process.env.WEA_SKIP_STORAGE_SUGGESTION_EXPIRY;
     jest.useRealTimers();
   });
 
-  it('returns null under the WEA_SKIP_SUGGESTION_EXPIRY seam', () => {
-    process.env.WEA_SKIP_SUGGESTION_EXPIRY = '1';
-    expect(startFileSuggestionsExpiryScheduler({ store: fakeStore([0]) })).toBeNull();
+  it('returns null under the WEA_SKIP_STORAGE_SUGGESTION_EXPIRY seam', () => {
+    process.env.WEA_SKIP_STORAGE_SUGGESTION_EXPIRY = '1';
+    expect(startStorageSuggestionExpiryScheduler({ store: fakeStore([0]) })).toBeNull();
   });
 
   it('returns null when the interval resolves to 0 (disabled)', () => {
-    mockGetConfigSync = (key) => (key === 'AI_SUGGESTION_EXPIRY_INTERVAL_MS' ? '0' : undefined);
-    expect(startFileSuggestionsExpiryScheduler({ store: fakeStore([0]) })).toBeNull();
+    mockGetConfigSync = (key) => (key === 'STORAGE_SUGGESTION_EXPIRY_INTERVAL_MS' ? '0' : undefined);
+    expect(startStorageSuggestionExpiryScheduler({ store: fakeStore([0]) })).toBeNull();
   });
 
   it('re-arms at the hot interval and runs the expiry pass per tick', async () => {
     jest.useFakeTimers();
     const store = fakeStore([2, 0]);
     mockGetConfigSync = (key) =>
-      key === 'AI_SUGGESTION_EXPIRY_INTERVAL_MS' ? String(DAY_MS) : undefined;
+      key === 'STORAGE_SUGGESTION_EXPIRY_INTERVAL_MS' ? String(DAY_MS) : undefined;
     const locks = fakeLockManager();
 
-    const timer = startFileSuggestionsExpiryScheduler({
+    const timer = startStorageSuggestionExpiryScheduler({
       store,
       lockManager: locks,
       now: () => 999,
@@ -153,16 +153,16 @@ describe('expiry seam resolvers', () => {
     mockGetConfigSync = () => undefined;
   });
 
-  it('shouldSkipSuggestionExpiry follows the truthy env idiom', () => {
-    delete process.env.WEA_SKIP_SUGGESTION_EXPIRY;
-    expect(shouldSkipSuggestionExpiry()).toBe(false);
-    process.env.WEA_SKIP_SUGGESTION_EXPIRY = 'true';
-    expect(shouldSkipSuggestionExpiry()).toBe(true);
-    delete process.env.WEA_SKIP_SUGGESTION_EXPIRY;
+  it('shouldSkipStorageSuggestionExpiry follows the truthy env idiom', () => {
+    delete process.env.WEA_SKIP_STORAGE_SUGGESTION_EXPIRY;
+    expect(shouldSkipStorageSuggestionExpiry()).toBe(false);
+    process.env.WEA_SKIP_STORAGE_SUGGESTION_EXPIRY = 'true';
+    expect(shouldSkipStorageSuggestionExpiry()).toBe(true);
+    delete process.env.WEA_SKIP_STORAGE_SUGGESTION_EXPIRY;
   });
 
   it('interval default is 24h; batch default is 1000', () => {
-    expect(resolveSuggestionExpiryIntervalMs()).toBe(DAY_MS);
-    expect(resolveSuggestionExpiryBatch()).toBe(1000);
+    expect(resolveStorageSuggestionExpiryIntervalMs()).toBe(DAY_MS);
+    expect(resolveStorageSuggestionExpiryBatch()).toBe(1000);
   });
 });

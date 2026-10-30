@@ -199,7 +199,7 @@ app.use(
   setupModeGuardInstance,
   require('./domains/collections/fileLikesRoutes')
 );
-app.use('/api/dashboard', setupModeGuardInstance, require('./domains/dashboard/routes'));
+app.use('/api/storage', setupModeGuardInstance, require('./domains/storage/routes'));
 
 app.use('/api', require('./infrastructure/healthRoutes'));
 
@@ -508,8 +508,8 @@ async function runBoot() {
             startEvolutionScheduler,
             runAdminReportsRetention,
             startAdminReportsRetentionScheduler,
-            runFileSuggestionsExpiry,
-            startFileSuggestionsExpiryScheduler,
+            runStorageSuggestionExpiry,
+            startStorageSuggestionExpiryScheduler,
             startStorageUsageSnapshotScheduler,
           } = require('./infrastructure/maintenanceScheduler');
           const { getUsageService } = require('./infrastructure/usageService');
@@ -532,16 +532,16 @@ async function runBoot() {
               console.error('Admin-reports retention on startup failed:', err.message)
             );
           startAdminReportsRetentionScheduler();
-          runFileSuggestionsExpiry()
+          runStorageSuggestionExpiry()
             .then((r) => {
               if (r && r.expired > 0) {
-                console.log(`✓ File-suggestions expiry pruned ${r.expired} row(s)`);
+                console.log(`✓ Storage-suggestions expiry pruned ${r.expired} row(s)`);
               }
             })
             .catch((err) =>
-              console.error('File-suggestions expiry on startup failed:', err.message)
+              console.error('Storage-suggestions expiry on startup failed:', err.message)
             );
-          startFileSuggestionsExpiryScheduler();
+          startStorageSuggestionExpiryScheduler();
           startStorageUsageSnapshotScheduler();
           if (computeSetupStatus(process.env).setup_complete) {
             const { startAiWorker } = require('./domains/ai/jobService');

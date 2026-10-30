@@ -7,7 +7,8 @@ Data shapes, endpoints, and component contracts belong to the specs below, not t
 Canonical contract sources: the route, store, service, and infrastructure specs under
 `docs/spec/server/**` and the client specs under `docs/spec/client/**` for the collections, search,
 actions, sharing, AI-job, embedding, tag, LLM-adapter, preset, and vector-store surfaces; plus
-`docs/shared-contracts.md` and `docs/api.md`.
+`docs/shared-contracts.md`, `docs/api.md`, and `docs/features/storage-management.md` for the
+separate storage surface.
 
 ---
 
@@ -109,10 +110,10 @@ Member rows render per read with a live permission check: normal; revoked (gray 
 name/thumbnail); trashed-by-owner (hidden); purged (gone).
 Foreign-owned files never render in live-shared views (cross-leak rule; `Not owner's file — not shared`
 chip in the owner's view), though adding them stays allowed — you may add what you can read. Operator
-rule: the ADMIN actor never participates in collections/likes/dashboard —
-these are personal-storage surfaces and every collection endpoint is server-gated 403
-(`collections.forbidden`) for admin requesters, so an admin-owned collection is unreachable by
-definition. The `permissionPolicy.js` convention (admin owns the whole tree) remains scoped to
+rule: the ADMIN actor never participates in collections/likes/storage —
+these are personal-storage surfaces; every collection/file-likes endpoint is server-gated 403
+(`collections.forbidden`) and every storage endpoint uses `storage.forbidden`, so an admin-owned
+collection is unreachable by definition. The `permissionPolicy.js` convention (admin owns the whole tree) remains scoped to
 file-ACL surfaces.
 Member-row controls omit move/copy/rename/delete — a collection is a view, not a workspace —
 offering exclude, publish (owner/editor — own collections included), download (per file ACL), `Reveal original location`, read-only
@@ -347,7 +348,7 @@ exist. For admins it is **visible-disabled**: a nav item plus a per-role health 
 unconfigured endpoints answer "not configured", never a misleading 404. Partial configuration shows
 no filler — template names read as ordinary names and missing fields stay absent — and
 insufficiency is admin-visible only. Disambiguation: the admin **visible-disabled** shape applies to
-AI-CONFIG surfaces only. The personal-storage surfaces — collections, likes, dashboard — are
+AI-CONFIG surfaces only. The personal-storage surfaces — collections, likes, storage — are
 **ABSENT** for the admin actor (never grayed-out-but-clickable): server-gated 403 (§3.2 operator rule).
 
 ### 4.13 Vector backend behavior
@@ -388,31 +389,13 @@ product gates are not part of the panel surface.
 
 ### 4.16 User dashboard `Storage`
 
-A MyPage section: hygiene cards (duplicates + reclaimable space, trash + retention countdown,
-suggestion count) deep-linking into the action context — a pull-overview, not an action center; a
-30-day system-changes feed with undo; collections status (grants, merges, archives with undo); and
-the suggestions checklist — every row carries a checkbox, and the only accept control is
-`Accept selected (N)` (checked → trash, command-unit undo per §4.11; no per-file or threshold-specific
-variants). Storage usage sparkline only; no insight prose. The series is per-user logical
-storage usage (live + trash + all active/history object versions); version history is S3-mode
-only, so WebDAV graphs current+trash bytes. No data ⇒ the block is omitted. Non-admin-only: the
-dashboard is a personal-storage surface — `/api/dashboard` is server-gated 403 for the ADMIN actor
-and the MyPage section never renders for admins (§3.2 operator rule).
+The Storage MyPage section is a separate personal-storage surface; its product contract lives in
+[storage-management.md](storage-management.md).
 
 ### 4.17 Cleanup and duplicate suggestions
 
-Always **proposals** (they mutate files), shown as row chips and in the §4.16 checklist. Rule
-variant (LLM-free): temp patterns, stale screenshots, old installers, exact duplicates by content
-fingerprint **first** (cosine-1.0 detection is redundant). Vector variant: near-duplicate groups
-at the ACTIVE embed model's profile `θ_dup` (EG2 reference set 0.955 —
-`docs/spec/server/infrastructure/llmPresets.md` §2.3; hash-twin members are excluded from the
-vector pass entirely), with keeper selection by an LLM-free quality composite v1 among the
-grouped members (activity 0.45 / media quality 0.30 / name originality 0.15 / centrality 0.10,
-each normalized within the group; 30-days-unopened is a 0.25 activity penalty, never an
-exclusion; `docs/spec/server/services/dashboardService.md` §2.5.1); **short-document exception** —
-sentence-or-less files skip similarity near-dup and use the hash path. Dismiss is per row;
-unaccepted expire with retention; accepting is checked → trash as one undoable command — the
-checkbox _is_ the confirmation.
+The cleanup/duplicate suggestion lifecycle is a separate personal-storage surface; its product
+contract lives in [storage-management.md](storage-management.md).
 
 ### 4.18 Tags: description only
 

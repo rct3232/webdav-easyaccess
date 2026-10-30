@@ -805,7 +805,7 @@
         "AI_ACTIVITY_HALF_LIFE_DAYS": "Activity half-life (days)",
         "AI_USAGE_EVENT_RETENTION_DAYS": "Usage-event retention (days)",
         "ARCHIVE_RETENTION_DAYS": "Archive retention (days)",
-        "AI_SUGGESTION_RETENTION_DAYS": "Suggestion retention (days)"
+        "STORAGE_SUGGESTION_RETENTION_DAYS": "Suggestion retention (days)"
       },
       "gates": {
         "killSwitches": "Kill switches",
@@ -1303,11 +1303,6 @@
       "expired": "This action can no longer be undone because the undo window has expired.",
       "alreadyUndone": "This action has already been undone."
     },
-    "dashboard": {
-      "emptyNodeIds": "Please select at least one file or folder.",
-      "invalidSuggestionId": "Please select a valid suggestion to dismiss.",
-      "suggestionNotFound": "This suggestion no longer exists."
-    },
     "collections": {
       "nameRequired": "A collection name is required.",
       "invalidName": "This collection name is not valid.",
@@ -1478,7 +1473,11 @@
     },
     "storage": {
       "invalidPathMapping": "Invalid path mapping",
-      "postgresqlNotConfigured": "PostgreSQL is not configured. Check the WEA_DB_* settings in .env."
+      "postgresqlNotConfigured": "PostgreSQL is not configured. Check the WEA_DB_* settings in .env.",
+      "emptyNodeIds": "Please select at least one file or folder.",
+      "invalidSuggestionId": "Please select a valid suggestion to dismiss.",
+      "suggestionNotFound": "This suggestion no longer exists.",
+      "forbidden": "This storage surface is not available to administrator accounts."
     },
     "utilsAuth": {
       "accessTokenRequired": "Access token required",

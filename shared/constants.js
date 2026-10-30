@@ -160,11 +160,11 @@ const MERGE_SUGGESTION_STATE = {
 };
 
 /**
- * `file_suggestions.state` — deliberately NOT merged with
+ * `storage_suggestions.state` — deliberately NOT merged with
  * `MERGE_SUGGESTION_STATE`: the two tables share only `pending`/`dismissed`,
- * and `accepted`/`expired` are file-only while `merged`/`rejected` are merge-only.
+ * and `accepted`/`expired` are storage-only while `merged`/`rejected` are merge-only.
  */
-const FILE_SUGGESTION_STATE = {
+const STORAGE_SUGGESTION_STATE = {
   PENDING: 'pending',
   ACCEPTED: 'accepted',
   DISMISSED: 'dismissed',
@@ -191,5 +191,5 @@ module.exports = {
   JOURNAL_DOMAIN,
   LLM_ROLE,
   MERGE_SUGGESTION_STATE,
-  FILE_SUGGESTION_STATE,
+  STORAGE_SUGGESTION_STATE,
 };

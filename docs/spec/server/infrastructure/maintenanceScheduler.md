@@ -138,24 +138,24 @@ interval resolution, log-never-throw).
 their §2 contracts verbatim; boot wiring (`server/index.js`) gains the new scheduler calls
 next to the existing ones, after migrationGate/init like the GC scheduler.
 
-### 3.6 File-suggestions expiry (pending rows past `expires_at`)
+### 3.6 Storage-suggestions expiry (pending rows past `expires_at`)
 
-- `runFileSuggestionsExpiry({ store?, now?, batchSize?, lockManager?, log? })` is the ONE
+- `runStorageSuggestionExpiry({ store?, now?, batchSize?, lockManager?, log? })` is the ONE
   expiry core (the persisted-suggestion retention leg of
-  `docs/features/collections-platform.md` §4.17): resolve `AI_SUGGESTION_EXPIRY_BATCH`
+  `docs/features/storage-management.md`): resolve `STORAGE_SUGGESTION_EXPIRY_BATCH`
   (T2/dbOnly, default 1000) at call time; call the store facade
-  (`store/fileSuggestionsStore.md` §2.3 `expireStale({ now, limit })`) in bounded batches
+  (`store/storageSuggestionsStore.md` §2.3 `expireStale({ now, limit })`) in bounded batches
   until fewer than one batch remains — `pending` rows with `expires_at < now` flip to
   `expired` (rows survive; `expires_at IS NULL` never expires under retention `0`); return
   `{ expired, ids? }`-style counts (`{ expired, cutoffMs }`). It holds the
-  `file-suggestions-expiry` lock (`lockManager.acquireLock`, TTL 30 min, `waitMs: 0`);
+  `storage-suggestions-expiry` lock (`lockManager.acquireLock`, TTL 30 min, `waitMs: 0`);
   a held lock ⇒ `{ expired: 0, skipped: 'locked' }`. Failures reject to the caller (the
   scheduler logs); the job writes no `admin_reports` row.
-- `startFileSuggestionsExpiryScheduler({ ...seams })` returns `null` under
-  `WEA_SKIP_SUGGESTION_EXPIRY` or when `AI_SUGGESTION_EXPIRY_INTERVAL_MS` (T2/dbOnly,
+- `startStorageSuggestionExpiryScheduler({ ...seams })` returns `null` under
+  `WEA_SKIP_STORAGE_SUGGESTION_EXPIRY` or when `STORAGE_SUGGESTION_EXPIRY_INTERVAL_MS` (T2/dbOnly,
   default 86400000, `0` = disabled) is non-positive; otherwise it re-arms a `setTimeout` at
   the resolved interval (hot read per arm), logs failures and never throws out of the timer.
-- Boot calls `runFileSuggestionsExpiry()` once (fire-and-forget, same posture as §3.4) and
+- Boot calls `runStorageSuggestionExpiry()` once (fire-and-forget, same posture as §3.4) and
   starts the periodic scheduler; both gated by the same skip seam.
 
 ### 3.7 Storage-usage snapshots (daily per-user series)
@@ -165,10 +165,11 @@ next to the existing ones, after migrationGate/init like the GC scheduler.
   (`lockManager.acquireLock`, TTL 30 min, `waitMs: 0`); a held lock ⇒
   `{ captured: 0, skipped: 'locked' }`. For every NON-ADMIN user with a root node it calls
   `fileNodesStore.summarizeSubtreeStorageUsage(root.id, { includeVersions })` and upserts
-  `{ userId, day: <UTC YYYY-MM-DD>, bytes }` into `storage_usage_snapshots` (same-day
-  overwrite keeps `created_at`). `includeVersions` is true in S3 mode (all active/history
-  object versions) and false in WebDAV mode (current filecache rows). A non-zero
-  `nullSizeCount` skips THAT user with a warning — a partial series is never persisted.
+  `{ userId, day: <UTC YYYY-MM-DD>, bytes: summary.bytes }` into `storage_usage_snapshots`
+  (same-day overwrite keeps `created_at`). `includeVersions` is true in S3 mode (active
+  objects partition into live/trash; history objects count as version bytes) and false in
+  WebDAV mode (current filecache rows; no version history). A non-zero `nullSizeCount`
+  skips THAT user with a warning — a partial series is never persisted.
   After capture it prunes rows with `day < today − STORAGE_USAGE_RETENTION_DAYS` (UTC;
   `0` = no prune). Returns `{ captured, skippedUsers, pruned, day }`. DB failures reject to
   the caller (the scheduler logs; idempotent upserts make the retry safe).
@@ -189,10 +190,10 @@ next to the existing ones, after migrationGate/init like the GC scheduler.
       `now − ADMIN_REPORTS_RETENTION_DAYS` rows in `..._BATCH` chunks under the
       `admin-reports-retention` lock, returns `retention_off`/`locked` skips, and
       the scheduler re-arms at `..._INTERVAL_MS` (0 = disabled)
-- [ ] Expiry: `runFileSuggestionsExpiry` flips `pending` rows past `expires_at` in
-      `AI_SUGGESTION_EXPIRY_BATCH` chunks under the `file-suggestions-expiry` lock
+- [ ] Expiry: `runStorageSuggestionExpiry` flips `pending` rows past `expires_at` in
+      `STORAGE_SUGGESTION_EXPIRY_BATCH` chunks under the `storage-suggestions-expiry` lock
       (`NULL` `expires_at` exempt), returns `locked` skips, and the scheduler re-arms at
-      `AI_SUGGESTION_EXPIRY_INTERVAL_MS` (0 = disabled, `WEA_SKIP_SUGGESTION_EXPIRY` seam)
+      `STORAGE_SUGGESTION_EXPIRY_INTERVAL_MS` (0 = disabled, `WEA_SKIP_STORAGE_SUGGESTION_EXPIRY` seam)
 - [ ] Storage-usage snapshot: one row per non-admin user with a root under the
       `storage-usage-snapshot` lock; NULL sizes skip that user with a warning; WebDAV mode
       aggregates current filecache bytes; the scheduler re-arms at

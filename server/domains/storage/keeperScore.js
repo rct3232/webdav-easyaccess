@@ -2,11 +2,11 @@
 
 /**
  * keeperScore — the §4.17 near-dup keeper quality composite v1
- * (docs/spec/server/services/dashboardService.md §2.5.1).
+ * (docs/spec/server/services/storageService.md §2.5.1).
  *
  * PURE module: every input (members, activity rows, enrichment probes,
  * nearDupFinder pairScores, clock) is passed in; no IO, no clock reads, no
- * persistence. The dashboard service loads the inputs in ONE batched read per
+ * persistence. The storage service loads the inputs in ONE batched read per
  * source and calls `computeGroupKeeper` per group.
  *
  * Factors (min-max normalized WITHIN the group; all-equal ⇒ 0.5):

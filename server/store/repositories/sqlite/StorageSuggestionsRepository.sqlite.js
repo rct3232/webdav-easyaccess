@@ -1,18 +1,18 @@
 'use strict';
 
 const { mapDatabaseError } = require('../../../utils/errorHandler');
-const { mapSuggestionRow } = require('../fileSuggestionsShared');
-const { FILE_SUGGESTION_STATE } = require('@webdav-easyaccess/shared/constants');
+const { mapSuggestionRow } = require('../storageSuggestionsShared');
+const { STORAGE_SUGGESTION_STATE } = require('@webdav-easyaccess/shared/constants');
 
 /**
- * sqlite implementation of FileSuggestionsRepository (`?` placeholders).
+ * sqlite implementation of StorageSuggestionsRepository (`?` placeholders).
  * `reason` binds as the JSON string (JSONB → TEXT in the sqlite conversion);
  * the shared mapper parses it back at the boundary. Methods taking `tx` run
  * against a caller-owned transaction OR the executor itself (same queryable
  * shape — actionJournalRepository precedent).
  * @param {import('../../../infrastructure/db/executor').DbExecutor} executor
  */
-module.exports = function createSqliteFileSuggestionsRepository(executor) {
+module.exports = function createSqliteStorageSuggestionsRepository(executor) {
   const placeholders = (count) => Array.from({ length: count }, () => '?').join(', ');
 
   return {
@@ -21,8 +21,8 @@ module.exports = function createSqliteFileSuggestionsRepository(executor) {
     async insert({ userId, nodeId, kind, reason, expiresAt }) {
       try {
         const result = await executor.run(
-          `INSERT INTO file_suggestions (user_id, node_id, kind, reason, state, created_at, expires_at)
-           VALUES (?, ?, ?, ?, '${FILE_SUGGESTION_STATE.PENDING}', CURRENT_TIMESTAMP, ?)`,
+          `INSERT INTO storage_suggestions (user_id, node_id, kind, reason, state, created_at, expires_at)
+           VALUES (?, ?, ?, ?, '${STORAGE_SUGGESTION_STATE.PENDING}', CURRENT_TIMESTAMP, ?)`,
           [
             Number(userId),
             Number(nodeId),
@@ -40,8 +40,8 @@ module.exports = function createSqliteFileSuggestionsRepository(executor) {
     async listPending(userId) {
       try {
         const { rows } = await executor.query(
-          `SELECT * FROM file_suggestions
-            WHERE user_id = ? AND state = '${FILE_SUGGESTION_STATE.PENDING}'
+          `SELECT * FROM storage_suggestions
+            WHERE user_id = ? AND state = '${STORAGE_SUGGESTION_STATE.PENDING}'
             ORDER BY id`,
           [Number(userId)]
         );
@@ -54,7 +54,7 @@ module.exports = function createSqliteFileSuggestionsRepository(executor) {
     async listKeys(userId) {
       try {
         const { rows } = await executor.query(
-          'SELECT node_id, kind, state FROM file_suggestions WHERE user_id = ? ORDER BY id',
+          'SELECT node_id, kind, state FROM storage_suggestions WHERE user_id = ? ORDER BY id',
           [Number(userId)]
         );
         return rows.map((row) => ({
@@ -70,8 +70,8 @@ module.exports = function createSqliteFileSuggestionsRepository(executor) {
     async dismiss(userId, id) {
       try {
         const result = await executor.run(
-          `UPDATE file_suggestions SET state = '${FILE_SUGGESTION_STATE.DISMISSED}'
-            WHERE id = ? AND user_id = ? AND state = '${FILE_SUGGESTION_STATE.PENDING}'`,
+          `UPDATE storage_suggestions SET state = '${STORAGE_SUGGESTION_STATE.DISMISSED}'
+            WHERE id = ? AND user_id = ? AND state = '${STORAGE_SUGGESTION_STATE.PENDING}'`,
           [Number(id), Number(userId)]
         );
         return { changes: result.changes };
@@ -83,8 +83,8 @@ module.exports = function createSqliteFileSuggestionsRepository(executor) {
     async updateReason(userId, id, reason) {
       try {
         const result = await executor.run(
-          `UPDATE file_suggestions SET reason = ?
-            WHERE id = ? AND user_id = ? AND state = '${FILE_SUGGESTION_STATE.PENDING}'`,
+          `UPDATE storage_suggestions SET reason = ?
+            WHERE id = ? AND user_id = ? AND state = '${STORAGE_SUGGESTION_STATE.PENDING}'`,
           [
             reason === null || reason === undefined ? null : JSON.stringify(reason),
             Number(id),
@@ -101,7 +101,7 @@ module.exports = function createSqliteFileSuggestionsRepository(executor) {
       if (!Array.isArray(nodeIds) || nodeIds.length === 0) return [];
       try {
         const { rows } = await tx.query(
-          `SELECT id, node_id, kind FROM file_suggestions
+          `SELECT id, node_id, kind FROM storage_suggestions
             WHERE user_id = ? AND state = ? AND node_id IN (${placeholders(nodeIds.length)})
             ORDER BY id`,
           [Number(userId), String(state), ...nodeIds.map(Number)]
@@ -120,7 +120,7 @@ module.exports = function createSqliteFileSuggestionsRepository(executor) {
       if (!Array.isArray(ids) || ids.length === 0) return { changes: 0 };
       try {
         const result = await tx.run(
-          `UPDATE file_suggestions SET state = ?
+          `UPDATE storage_suggestions SET state = ?
             WHERE state = ? AND id IN (${placeholders(ids.length)})`,
           [String(toState), String(fromState), ...ids.map(Number)]
         );
@@ -135,16 +135,16 @@ module.exports = function createSqliteFileSuggestionsRepository(executor) {
         const cutoff = new Date(now ?? Date.now()).toISOString();
         const cap = Number.isInteger(limit) && limit > 0 ? limit : 1000;
         const { rows } = await executor.query(
-          `SELECT id FROM file_suggestions
-            WHERE state = '${FILE_SUGGESTION_STATE.PENDING}' AND expires_at IS NOT NULL AND expires_at < ?
+          `SELECT id FROM storage_suggestions
+            WHERE state = '${STORAGE_SUGGESTION_STATE.PENDING}' AND expires_at IS NOT NULL AND expires_at < ?
             ORDER BY id LIMIT ?`,
           [cutoff, cap]
         );
         const ids = rows.map((row) => Number(row.id));
         if (ids.length === 0) return { changes: 0, ids: [] };
         const result = await executor.run(
-          `UPDATE file_suggestions SET state = '${FILE_SUGGESTION_STATE.EXPIRED}'
-            WHERE state = '${FILE_SUGGESTION_STATE.PENDING}' AND id IN (${placeholders(ids.length)})`,
+          `UPDATE storage_suggestions SET state = '${STORAGE_SUGGESTION_STATE.EXPIRED}'
+            WHERE state = '${STORAGE_SUGGESTION_STATE.PENDING}' AND id IN (${placeholders(ids.length)})`,
           ids
         );
         return { changes: result.changes, ids };

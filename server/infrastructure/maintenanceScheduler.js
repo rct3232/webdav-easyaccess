@@ -16,8 +16,8 @@
  *   WEA_SKIP_GC_SCHEDULER       - test seam; any truthy value disables GC scheduling
  *   WEA_SKIP_ROLLUP_SCHEDULER   - test seam; any truthy value disables the
  *                                 nightly usage-rollup schedule (§3.1)
- *   AI_SUGGESTION_EXPIRY_INTERVAL_MS - file-suggestions expiry schedule period
- *                                 (§3.6; 0 = disabled, hot re-read per arm)
+ *   STORAGE_SUGGESTION_EXPIRY_INTERVAL_MS - storage-suggestions expiry schedule
+ *                                 period (§3.6; 0 = disabled, hot re-read per arm)
  *
  * §4.14 Tier A: each scheduled GC run and the startup fail-safe scan persist
  * an admin_reports row (kind gc / failsafe) via the best-effort writer in
@@ -659,33 +659,33 @@ function startStorageUsageSnapshotScheduler({
   return timer;
 }
 
-// ── File-suggestions expiry (§4.17 retention leg / maintenanceScheduler.md §3.6) ──
+// ── Storage-suggestions expiry (§4.17 retention leg / maintenanceScheduler.md §3.6) ──
 
-const SUGGESTION_EXPIRY_LOCK_NAME = 'file-suggestions-expiry';
+const SUGGESTION_EXPIRY_LOCK_NAME = 'storage-suggestions-expiry';
 const SUGGESTION_EXPIRY_LOCK_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_SUGGESTION_EXPIRY_INTERVAL_MS = DAY_MS;
 const DEFAULT_SUGGESTION_EXPIRY_BATCH = 1000;
 
-function shouldSkipSuggestionExpiry() {
-  const skip = (process.env.WEA_SKIP_SUGGESTION_EXPIRY || '').toLowerCase();
+function shouldSkipStorageSuggestionExpiry() {
+  const skip = (process.env.WEA_SKIP_STORAGE_SUGGESTION_EXPIRY || '').toLowerCase();
   return ['1', 'true', 'yes', 'on'].includes(skip);
 }
 
-function resolveSuggestionExpiryIntervalMs() {
+function resolveStorageSuggestionExpiryIntervalMs() {
   const { getSharedResolver } = require('./configResolver');
-  const raw = Number(getSharedResolver().getConfigSync('AI_SUGGESTION_EXPIRY_INTERVAL_MS'));
+  const raw = Number(getSharedResolver().getConfigSync('STORAGE_SUGGESTION_EXPIRY_INTERVAL_MS'));
   if (!Number.isFinite(raw)) return DEFAULT_SUGGESTION_EXPIRY_INTERVAL_MS;
   return raw > 0 ? raw : 0;
 }
 
-function resolveSuggestionExpiryBatch() {
+function resolveStorageSuggestionExpiryBatch() {
   const { getSharedResolver } = require('./configResolver');
-  const raw = Number(getSharedResolver().getConfigSync('AI_SUGGESTION_EXPIRY_BATCH'));
+  const raw = Number(getSharedResolver().getConfigSync('STORAGE_SUGGESTION_EXPIRY_BATCH'));
   return Number.isInteger(raw) && raw > 0 ? raw : DEFAULT_SUGGESTION_EXPIRY_BATCH;
 }
 
 /**
- * ONE expiry pass: flip `pending` file_suggestions rows past `expires_at` to
+ * ONE expiry pass: flip `pending` storage_suggestions rows past `expires_at` to
  * `expired` in bounded batches under the cross-replica lock (rows survive —
  * state flip only, audit-friendly). `expires_at IS NULL` (retention `0`) is
  * exempt. Returns `{ expired, cutoffMs }` or `{ expired: 0, skipped }` when
@@ -693,14 +693,14 @@ function resolveSuggestionExpiryBatch() {
  * caller logs and retries next interval).
  *
  * @param {Object} [opts]
- * @param {Object} [opts.store] fileSuggestionsStore facade
+ * @param {Object} [opts.store] storageSuggestionsStore facade
  * @param {() => number} [opts.now] epoch-ms clock seam
  * @param {number} [opts.batchSize] override (tests); default hot config
  * @param {Object} [opts.lockManager] lock seam (tests)
  * @param {Object} [opts.log] logger seam
  * @returns {Promise<{expired: number, cutoffMs?: number, skipped?: string}>}
  */
-async function runFileSuggestionsExpiry({
+async function runStorageSuggestionExpiry({
   store,
   now = Date.now,
   batchSize,
@@ -711,10 +711,10 @@ async function runFileSuggestionsExpiry({
   const batch =
     Number.isInteger(Number(batchSize)) && Number(batchSize) > 0
       ? Number(batchSize)
-      : resolveSuggestionExpiryBatch();
+      : resolveStorageSuggestionExpiryBatch();
   const clock = Number(now());
   const cutoffMs = Number.isFinite(clock) ? clock : Date.now();
-  const suggestionsStore = store || require('../store/fileSuggestionsStore');
+  const suggestionsStore = store || require('../store/storageSuggestionsStore');
 
   const locks = lockManager || require('./lockManager');
   let lock = null;
@@ -737,7 +737,7 @@ async function runFileSuggestionsExpiry({
       if (changes < batch) break;
     }
     if (expired > 0 && typeof logger.log === 'function') {
-      logger.log(`[file-suggestions-expiry] expired ${expired} row(s)`);
+      logger.log(`[storage-suggestions-expiry] expired ${expired} row(s)`);
     }
     return { expired, cutoffMs };
   } finally {
@@ -749,7 +749,7 @@ async function runFileSuggestionsExpiry({
  * Periodic expiry schedule. `null` under the skip seam or interval 0.
  * Re-arms with the hot interval at fire time; failures log and retry.
  */
-function startFileSuggestionsExpiryScheduler({
+function startStorageSuggestionExpiryScheduler({
   store,
   now,
   batchSize,
@@ -757,20 +757,20 @@ function startFileSuggestionsExpiryScheduler({
   log,
   intervalMs,
 } = {}) {
-  if (shouldSkipSuggestionExpiry()) return null;
+  if (shouldSkipStorageSuggestionExpiry()) return null;
   const resolveInterval = () =>
     intervalMs !== undefined && Number.isFinite(Number(intervalMs))
       ? Number(intervalMs)
-      : resolveSuggestionExpiryIntervalMs();
+      : resolveStorageSuggestionExpiryIntervalMs();
   const initial = resolveInterval();
   if (!initial || initial <= 0) return null;
 
   let timer = null;
   const tick = async () => {
     try {
-      await runFileSuggestionsExpiry({ store, now, batchSize, lockManager, log });
+      await runStorageSuggestionExpiry({ store, now, batchSize, lockManager, log });
     } catch (err) {
-      console.error('Scheduled file-suggestions expiry failed:', err.message);
+      console.error('Scheduled storage-suggestions expiry failed:', err.message);
     } finally {
       const next = resolveInterval();
       if (next > 0) timer = setTimeout(tick, next);
@@ -801,9 +801,9 @@ module.exports = {
   resolveStorageUsageRetentionDays,
   runStorageUsageSnapshot,
   startStorageUsageSnapshotScheduler,
-  shouldSkipSuggestionExpiry,
-  resolveSuggestionExpiryIntervalMs,
-  resolveSuggestionExpiryBatch,
-  runFileSuggestionsExpiry,
-  startFileSuggestionsExpiryScheduler,
+  shouldSkipStorageSuggestionExpiry,
+  resolveStorageSuggestionExpiryIntervalMs,
+  resolveStorageSuggestionExpiryBatch,
+  runStorageSuggestionExpiry,
+  startStorageSuggestionExpiryScheduler,
 };

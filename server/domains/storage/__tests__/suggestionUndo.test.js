@@ -2,7 +2,7 @@
 
 /**
  * Suggestion-accept command undo executor
- * (docs/spec/server/services/dashboardService.md §2.6). Real DB; composition
+ * (docs/spec/server/services/storageService.md §2.6). Real DB; composition
  * toggles between S3 (zero physical I/O) and WebDAV (move-back asserted
  * through the stubbed blobStore — the trash.test.js precedent).
  */
@@ -19,8 +19,8 @@ const { createFileNodeService } = require('@server/service/fileNodeService');
 const composition = require('@server/service/composition');
 const actionJournalStore = require('@server/store/actionJournalStore');
 const storage = require('@server/store/storage');
-const { createSuggestionUndoService } = require('@server/domains/dashboard/suggestionUndoService');
-const dashboardService = require('@server/domains/dashboard/service');
+const { createSuggestionUndoService } = require('@server/domains/storage/suggestionUndoService');
+const storageService = require('@server/domains/storage/service');
 
 let fileNodeService;
 let dbCleanup;
@@ -78,7 +78,7 @@ function setMode(mode) {
 
 async function suggestionState(userId, nodeId) {
   const { rows } = await dbQuery(
-    'SELECT state FROM file_suggestions WHERE user_id = ? AND node_id = ?',
+    'SELECT state FROM storage_suggestions WHERE user_id = ? AND node_id = ?',
     [Number(userId), Number(nodeId)]
   );
   return rows.map((r) => r.state);
@@ -101,8 +101,8 @@ async function acceptDupPair(tag) {
   const hash = `${tag}-${Date.now()}`;
   await addFile(homeId, `k-${hash}.bin`, { hash }); // keeper first (smallest node id)
   const member = await addFile(homeId, `m-${hash}.bin`, { hash });
-  await dashboardService.getDashboardSummary(user.id);
-  const accept = await dashboardService.acceptSuggestions(user.id, userArg(user), [
+  await storageService.getStorageSummary(user.id);
+  const accept = await storageService.acceptSuggestions(user.id, userArg(user), [
     Number(member.nodeId),
   ]);
   return { user, member, accept };
@@ -123,7 +123,7 @@ describe('restore-from-trash undo', () => {
     expect((await suggestionState(user.id, member.nodeId))[0]).toBe('pending');
     expect(blobStub.moveBlob).not.toHaveBeenCalled();
 
-    const summary = await dashboardService.getDashboardSummary(user.id);
+    const summary = await storageService.getStorageSummary(user.id);
     expect(summary.suggestions.map((r) => r.nodeId)).toContain(Number(member.nodeId));
   });
 

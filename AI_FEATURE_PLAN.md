@@ -783,9 +783,9 @@ descriptor branch. Blocks: hygiene cards (exact/near dups count + reclaimable GB
   written daily to `storage_usage_snapshots`; no data ⇒ the block is omitted. Version
   history is S3-mode only, so WebDAV deployments graph current+trash bytes.
 
-Contract specs (binding, MUST read before implementing this section): `docs/spec/client/components/mypage/content/CollectionDashboard.md`, `docs/spec/client/hooks/useMyPageController.md`, `docs/spec/client/pages/MyPage.md`
+Contract specs (binding, MUST read before implementing this section): `docs/features/storage-management.md`, `docs/spec/server/routes/storage.md`, `docs/spec/server/services/storageService.md`, `docs/spec/server/store/storageUsageSnapshotsStore.md`, `docs/spec/client/components/mypage/content/CollectionDashboard.md`, `docs/spec/client/hooks/useMyPageController.md`, `docs/spec/client/pages/MyPage.md`
 
-### 4.17 Cleanup/duplicate suggestions (`file_suggestions`)
+### 4.17 Cleanup/duplicate suggestions (`storage_suggestions`)
 
 Rule variant (LLM-free): filename/temp patterns, stale screenshots, old installers, exact
 dups via **content_hash first (T0.9a — cosine 1.0 detection redundant, E2)**. Vector
@@ -793,7 +793,7 @@ variant: low-quality picks among near-dup groups at **θ_dup = 0.97** (E2v2: rea
 P10 = 0.977 vs unrelated P99 = 0.471 — separation measured; the earlier 0.98 guess was
 near-miss), with keeper selection by the LLM-free quality composite v1 (activity 0.45 / media
 quality 0.30 / name originality 0.15 / centrality 0.10, normalized within the group; 30d
-unopened is a 0.25 activity penalty, not an exclusion — `dashboardService.md` §2.5.1). θ_dup
+unopened is a 0.25 activity penalty, not an exclusion — `storageService.md` §2.5.1). θ_dup
 is a per-profile text-space constant —
 EG2 reference-set measured **0.955** (near-dup overall P10 0.9746 vs same-topic P90
 0.8105 / unrelated P99 0.7294; separable for near-dup only, topic/unrelated overlap
@@ -812,7 +812,7 @@ suggestions are computed, carrying no id/dismiss/expiry (§12.5).** Undo = comma
 un-journaled, trash-restore is the undo (§12.5); no extra confirm dialog — the checkbox IS the
 selection confirmation.
 
-Contract specs (binding, MUST read before implementing this section): `docs/spec/client/components/mypage/content/SuggestionsChecklist.md (file_suggestions store/route specs land with the T3.3 docs step)`
+Contract specs (binding, MUST read before implementing this section): `docs/features/storage-management.md`, `docs/spec/server/store/storageSuggestionsStore.md`, `docs/spec/server/routes/storage.md`, `docs/spec/server/services/storageService.md`, `docs/spec/client/components/mypage/content/SuggestionsChecklist.md`
 
 ### 4.18 Tags: descriptive words only — no vocabulary machinery (dissolved 2026-10-16)
 
@@ -1260,7 +1260,7 @@ CHECK(applied|undone|expired), created_at, undone_at, expires_at)`;
 state, dismissed_at, rejected_at, arbiter_verdict TEXT NULL, arbiter_reason TEXT NULL,
 created_at, UNIQUE(a,b))` (arbiter columns: advisory prefill on the §4.4 card, never
   auto-executes)
-- `file_suggestions(id, user_id, node_id, kind, reason JSONB, state, created_at,
+- `storage_suggestions(id, user_id, node_id, kind, reason JSONB, state, created_at,
 expires_at)`
 - `admin_reports(id, kind CHECK(gc|migration|failsafe|night_eval|cleanup), status, payload
 JSONB, created_at)` — the startup fail-safe scan (`failsafe`) carries a
@@ -1511,17 +1511,17 @@ New open questions get appended here before/at their named task.
 
 - **A7 + P0 scope** (decision 2026-09-22) _amends_ §4.16/§4.17: P0 ships hygiene READ surfaces +
   computed exact-dup suggestions + ACCEPT only; no LLM/vector blocks. Suggestions are COMPUTED,
-  not persisted — persisted `file_suggestions` (ids, dismiss, expiry) rides T3.3; the §4.17
+  not persisted — persisted `storage_suggestions` (ids, dismiss, expiry) rides T3.3; the §4.17
   "expire with the retention job" wording is scoped to the PERSISTED rows (computed rows carry no
   `id`/`expires_at`, render no dismiss control).
 - **Accept is NOT journaled at P0** _amends_ §4.11/§4.16/§4.17: journal writers = collections-only
   until P3.5/T3.3; the trash-restore UX IS the undo path; accept returns a report toast WITHOUT an
-  Undo button; the command-unit journal row ships with the T3.3 `file_suggestions` route spec.
+  Undo button; the command-unit journal row ships with the T3.3 `storage_suggestions` route spec.
 - **Keep rule = smallest `node_id`** in each dup group — P0 has no keeper-adjudicator (chat role);
   deterministic stability beats cleverness; users re-check siblings via the checkbox list.
   (Heuristic ordering is also the §4.19 "chat off ⇒ fallback" column, correct by construction.)
 - **One GET** feeds hygiene cards and the suggestion list (single dup pass, one round trip);
-  **`/api/dashboard` is singular** (`/api/search` precedent — a personal surface, not a
+  **`/api/storage` is singular** (`/api/search` precedent — a personal surface, not a
   collection); empty storage / missing user root = ZEROS, never 404 (pull-overview stance §4.16).
 - **register (a)** (wave-2, `PLAN_EXECUTION.md` §9): `search_hit` + list-entry-click recording rides a DEDICATED
   `POST /api/search/click` (`action='open'`) — search-result opens are pure client navigation and

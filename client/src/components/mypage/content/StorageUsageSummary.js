@@ -49,13 +49,15 @@ const StorageUsageSummary = ({ current, series }) => {
   // Canonical wire names are `*_bytes`; the plain aliases keep the view
   // tolerant of an older/current-less server naming without changing layout.
   const sizeOf = (key) => Number(current[`${key}_bytes`] ?? current[key]) || 0;
+  // [rowKey, labelKey, value] — rowKey feeds the stable testid
+  // (`storage-usage-<rowKey>`, E2E-S3-STORAGE-001); the label stays i18n-owned.
   const rows = [
-    ['mypage.storageUsageTotal', sizeOf('total')],
-    ['mypage.storageUsageLive', sizeOf('live')],
-    ['mypage.storageUsageTrash', sizeOf('trash')],
+    ['total', 'mypage.storageUsageTotal', sizeOf('total')],
+    ['live', 'mypage.storageUsageLive', sizeOf('live')],
+    ['trash', 'mypage.storageUsageTrash', sizeOf('trash')],
   ];
   if (current.version_history_supported !== false) {
-    rows.push(['mypage.storageUsageVersions', sizeOf('versions')]);
+    rows.push(['versions', 'mypage.storageUsageVersions', sizeOf('versions')]);
   }
 
   const points = Array.isArray(series?.points) ? series.points : [];
@@ -67,8 +69,8 @@ const StorageUsageSummary = ({ current, series }) => {
         {t('mypage.storageUsageTitle')}
       </Typography>
       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-        {rows.map(([labelKey, value]) => (
-          <Box key={labelKey}>
+        {rows.map(([rowKey, labelKey, value]) => (
+          <Box key={rowKey} data-testid={`storage-usage-${rowKey}`}>
             <Typography variant="caption" color="text.secondary" display="block">
               {t(labelKey)}
             </Typography>

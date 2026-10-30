@@ -1,6 +1,4 @@
-import fs from 'node:fs';
 import path from 'node:path';
-import type { ChildProcess } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 
 import { APIRequestContext, expect, test } from '@playwright/test';
@@ -8,26 +6,23 @@ import { APIRequestContext, expect, test } from '@playwright/test';
 import {
   createFakeLlmServer,
   FAKE_PARSE_DELTA_MIN_BYTES,
-  type FakeLlmMode,
   type FakeLlmServer,
 } from './helpers/fakeLlm';
-import { seedScratchSettings } from './helpers/scratchSettings';
 import {
-  killScratch,
-  prepareScratchS3,
-  s3ScratchEnv,
-  scratchDirFor,
-  spawnScratchServer,
-  waitForScratchHealth,
-  writeScratchEnv,
-} from './helpers/setupScratch';
+  bootColumn,
+  CHAT_SETTINGS,
+  EMBED_SETTINGS,
+  publicAi,
+  shutdownColumn,
+  VISION_SETTINGS,
+  waitForAiFlags,
+  waitForChatProbeSettled,
+  waitForEmbedProbeSettled,
+  waitForVisionProbeSettled,
+  type ColumnScratch,
+} from './helpers/aiMatrixColumn';
 import { e2ePorts } from './helpers/ports';
-import {
-  ensureScratchRegularUser,
-  loginScratchAdmin,
-  type ScratchUserCreds,
-} from './helpers/scratchUser';
-import { resolveNodeId } from './helpers/resolvePath';
+import { type ScratchUserCreds } from './helpers/scratchUser';
 import { readTestFileFixture, uploadFileAt } from './helpers/files';
 import { TEST_FILES } from './fixtures/test-data';
 
@@ -65,23 +60,6 @@ const USER_CREDS: ScratchUserCreds = {
   email: 'ai-matrix-user@e2etest.com',
 };
 
-const WORKER_SETTINGS = { AI_WORKER_POLL_MS: '500' };
-const EMBED_SETTINGS = (baseUrl: string) => ({
-  LLM_EMBED_BASE_URL: baseUrl,
-  LLM_EMBED_API_KEY: 'sk-fake-embed',
-  LLM_EMBED_MODEL: 'embeddinggemma-2',
-});
-const CHAT_SETTINGS = (baseUrl: string) => ({
-  LLM_CHAT_BASE_URL: baseUrl,
-  LLM_CHAT_API_KEY: 'sk-fake-chat',
-  LLM_CHAT_MODEL: 'gemma-4-12b-it',
-});
-const VISION_SETTINGS = (baseUrl: string) => ({
-  LLM_VISION_BASE_URL: baseUrl,
-  LLM_VISION_API_KEY: 'sk-fake-vision',
-  LLM_VISION_MODEL: 'gemma-4-12b-it',
-});
-
 const QUERY = 'banana harvest festival';
 const DOC_BODY = [
   'The banana harvest festival opens the season in the riverside valley.',
@@ -92,15 +70,6 @@ const DOC_BODY = [
 const IMAGE_BYTES = readTestFileFixture(TEST_FILES.smallImage);
 
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
-
-interface ColumnScratch {
-  scratch: string;
-  child: ChildProcess;
-  /** Scratch admin bearer — OPERATOR duties only (config changes). */
-  operatorToken: string;
-  userToken: string;
-  homeNodeId: number;
-}
 
 type PredicateAtom = Record<string, unknown>;
 
@@ -146,92 +115,19 @@ function scratchRows<T>(scratchDir: string, query: string, ...params: Array<stri
   }
 }
 
-async function bootColumn(
+/** This suite's API-only columns all share scratch slot `:5021`. */
+function boot(
   request: APIRequestContext,
   projectName: string,
   column: string,
   settings: Record<string, string>
 ): Promise<ColumnScratch> {
-  const scratch = scratchDirFor(`ai-matrix-${column}`, projectName);
-  fs.rmSync(scratch, { recursive: true, force: true });
-  fs.mkdirSync(scratch, { recursive: true });
-  const bucket = await prepareScratchS3(projectName, `e2e-ai-matrix-${column}`);
-  writeScratchEnv(scratch, {
-    PORT: String(SCRATCH_PORT),
-    ...s3ScratchEnv(bucket),
-    JWT_SECRET: 'ai-matrix-jwt-secret',
-    ADMIN_DEFAULT_PASSWORD: ADMIN_PASSWORD,
-    WEA_SKIP_EMBED_MODEL: '1',
+  return bootColumn(request, projectName, column, settings, {
+    port: SCRATCH_PORT,
+    adminPassword: ADMIN_PASSWORD,
+    userCreds: USER_CREDS,
+    jwtSecret: 'ai-matrix-jwt-secret',
   });
-  seedScratchSettings(scratch, { ...WORKER_SETTINGS, ...settings });
-  const child = spawnScratchServer(scratch, SCRATCH_PORT);
-  await waitForScratchHealth(child, SCRATCH_PORT);
-  const operatorToken = await loginScratchAdmin(request, ADMIN_PASSWORD);
-  const userToken = await ensureScratchRegularUser(request, operatorToken, USER_CREDS);
-  const homeNodeId = await resolveNodeId(request, userToken, `/${USER_CREDS.username}`);
-  return { scratch, child, operatorToken, userToken, homeNodeId };
-}
-
-async function shutdownColumn(column: ColumnScratch | undefined): Promise<void> {
-  if (!column) return;
-  await killScratch(column.child);
-  fs.rmSync(column.scratch, { recursive: true, force: true });
-}
-
-async function publicAi(request: APIRequestContext): Promise<{ embed: boolean; chat: boolean }> {
-  const res = await request.get('/api/settings/public');
-  expect(res.status()).toBe(200);
-  const body = (await res.json()) as { ai: { embed: boolean; chat: boolean } };
-  return body.ai;
-}
-
-async function waitForAiFlags(
-  request: APIRequestContext,
-  expected: { embed: boolean; chat: boolean }
-): Promise<void> {
-  await expect
-    .poll(
-      async () => {
-        const ai = await publicAi(request);
-        return `${ai.embed}/${ai.chat}`;
-      },
-      { timeout: 60_000, intervals: [200, 500] }
-    )
-    .toBe(`${expected.embed}/${expected.chat}`);
-}
-
-/** Wait until the one-shot activation probe has made its media calls. */
-async function waitForEmbedProbeSettled(fake: FakeLlmServer, mode: FakeLlmMode): Promise<void> {
-  const minimum = mode === 'media-capable' ? 6 : 4;
-  await expect
-    .poll(() => fake.counters.mediaCalls, { timeout: 60_000, intervals: [100, 250] })
-    .toBeGreaterThanOrEqual(minimum);
-  // The publish follows the last probe response; give it one event-loop turn.
-  await new Promise((resolve) => setTimeout(resolve, 250));
-}
-
-/**
- * Vision probe = one image-bearing caption call + one plain chat call; it
- * starts after the chat probe (one plain call). Its publish follows the
- * second chat response.
- */
-async function waitForVisionProbeSettled(fake: FakeLlmServer): Promise<void> {
-  await expect
-    .poll(() => fake.counters.visionCalls, { timeout: 60_000, intervals: [100, 250] })
-    .toBeGreaterThan(0);
-  await expect
-    .poll(() => fake.counters.chatCalls, { timeout: 60_000, intervals: [100, 250] })
-    .toBeGreaterThanOrEqual(2);
-  await new Promise((resolve) => setTimeout(resolve, 250));
-}
-
-/** Wait until the one-shot chat probe has made its call. */
-async function waitForChatProbeSettled(fake: FakeLlmServer): Promise<void> {
-  await expect
-    .poll(() => fake.counters.chatCalls, { timeout: 60_000, intervals: [100, 250] })
-    .toBeGreaterThan(0);
-  // The publish follows the probe response; give it one event-loop turn.
-  await new Promise((resolve) => setTimeout(resolve, 250));
 }
 
 /**
@@ -326,7 +222,7 @@ test.describe('degradation matrix — None column', () => {
   let column: ColumnScratch | undefined;
 
   test.beforeAll(async ({ request }, testInfo) => {
-    column = await bootColumn(request, testInfo.project.name, 'none', {});
+    column = await boot(request, testInfo.project.name, 'none', {});
   });
 
   test.afterAll(async () => {
@@ -393,7 +289,7 @@ test.describe('degradation matrix — embed column', () => {
 
   test.beforeAll(async ({ request }, testInfo) => {
     fake = await createFakeLlmServer({ mode: 'text-only' });
-    column = await bootColumn(request, testInfo.project.name, 'embed', {
+    column = await boot(request, testInfo.project.name, 'embed', {
       ...EMBED_SETTINGS(fake.baseUrl),
     });
     await waitForEmbedProbeSettled(fake, 'text-only');
@@ -478,7 +374,7 @@ test.describe('degradation matrix — embed+media column', () => {
 
   test.beforeAll(async ({ request }, testInfo) => {
     fake = await createFakeLlmServer({ mode: 'media-capable' });
-    column = await bootColumn(request, testInfo.project.name, 'media', {
+    column = await boot(request, testInfo.project.name, 'media', {
       ...EMBED_SETTINGS(fake.baseUrl),
     });
     await waitForEmbedProbeSettled(fake, 'media-capable');
@@ -527,7 +423,7 @@ test.describe('degradation matrix — embed+chat+vision column', () => {
 
   test.beforeAll(async ({ request }, testInfo) => {
     fake = await createFakeLlmServer({ mode: 'text-only' });
-    column = await bootColumn(request, testInfo.project.name, 'vision', {
+    column = await boot(request, testInfo.project.name, 'vision', {
       ...EMBED_SETTINGS(fake.baseUrl),
       ...CHAT_SETTINGS(fake.baseUrl),
       ...VISION_SETTINGS(fake.baseUrl),
@@ -582,7 +478,7 @@ test.describe('parser delta leg — fake embed+chat', () => {
 
   test.beforeAll(async ({ request }, testInfo) => {
     fake = await createFakeLlmServer({ mode: 'text-only', chatParseMode: 'parse-ok' });
-    column = await bootColumn(request, testInfo.project.name, 'parser', {
+    column = await boot(request, testInfo.project.name, 'parser', {
       ...EMBED_SETTINGS(fake.baseUrl),
       ...CHAT_SETTINGS(fake.baseUrl),
     });

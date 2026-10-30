@@ -371,4 +371,16 @@ test('E2E-S3-AI-001: a semantic search returns an uploaded document no name matc
   await savedCard.dblclick({ position: { x: 8, y: 8 } });
   await expect(page.getByTestId('members-list')).toBeVisible();
   await expect(page.getByTestId(`member-row-${nodeId}`)).toBeVisible();
+
+  // E2E-S3-AI-015 (P2): the search-origin collection exposes its AI
+  // provenance through the properties dialog AI Info tab (the embed role is
+  // configured in this suite, so the tab is available to the owner).
+  await page.goto('/files/__collections__');
+  await page.getByTestId(`card-menu-button-${createdBody.collection.collection_id}`).click();
+  await page.getByTestId('card-menu-option-sharing').click();
+  await expect(page.getByTestId('collection-props-tab-sharing')).toBeVisible();
+  await page.getByTestId('collection-props-tab-ai').click();
+  await expect(page.getByTestId('collection-ai-facts')).toBeVisible();
+  await expect(page.getByTestId('collection-ai-kind-row')).toContainText(/search/i);
+  await expect(page.getByTestId('collection-ai-provenance-row')).toBeVisible();
 });

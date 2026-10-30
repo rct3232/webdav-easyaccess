@@ -77,8 +77,9 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   (`:5008`) boots without an embed model for visibility, cross-link/polling-cleanup, empty
   and error/retry cases. Each case resets `ai_jobs`, `action_journal`, `AI_GEN_*`,
   `ai_usage_daily` and `admin_reports` in the scratch sqlite, and seeds queue/usage/report
-  rows directly for the render matrix. An optional mobile summary project (`:5009`,
-  `E2E_ADMIN_AI_MOBILE=1`) re-runs `E2E-ADMINAI-002`.
+  rows directly for the render matrix. The former optional mobile summary project was
+  dropped on 2026-10-30 (mobile admin AI is not required); `:5009` now belongs to the
+  browser AI degradation-matrix UI project.
 - **Hermetic scratch projects:** each destructive AI E2E suite (evolution passes, merge
   execution, archive/purge lifecycles) gets its **own scratch server project** following the
   destructive-suite precedent. Scratch slots are project-scoped with separate desktop and
@@ -99,7 +100,10 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   absent lock/weights fixture ⇒ `roleConfigured('embed')` false), `embed` (fake embed only),
   `embed+media` (fake media-capable embed), `embed+chat+vision` (fake embed+chat+vision) —
   and the **None and embed columns must pass green with no real adapter present** (the
-  "never-a-render-dependency" invariant, verified by construction).
+  "never-a-render-dependency" invariant, verified by construction). The wire contract lives
+  in the API-only project (`E2E-S3-AI-002..007`); the browser consequences (FAB glyph, Zone
+  C/save chip, media findability, parser kill-switch shape, admin health card) live in the
+  UI project (`E2E-S3-AI-008..012`).
 - **Fake-LLM E2E harness contract (T4.3 Wave 1):** `e2e/helpers/fakeLlm.ts` starts a
   `node:http` listener inside the Playwright process on an ephemeral `127.0.0.1` port
   (`listen(0)`) and serves root + `/v1` aliases for `POST /embeddings`,
@@ -121,10 +125,13 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   env can never select a provider; the scratch child env strips `WEA_SKIP_AI_WORKER` (the
   worker is enabled by absence, never set to `'0'` — the seam is a truthy check) and sets
   `WEA_SKIP_EMBED_MODEL=1` so the built-in engine never provisions, while a remote role
-  override still takes precedence. The matrix owns scratch slot `5021` in the API-only
-  `s3-ai-matrix-desktop` project: it uses `RequestContext` + direct sqlite reads, never a
-  `page`, so a pinned band mapping the slot to the browser-restricted `5061` cannot break
-  it. Each column gets its own scratch directory, S3 bucket, and server lifecycle.
+  override still takes precedence. The matrix has two projects that share the column boot
+  (`e2e/helpers/aiMatrixColumn.ts`): `s3-ai-matrix-desktop` (`:5021`, API-only —
+  `RequestContext` + direct sqlite reads, never a `page`, so a pinned band mapping the slot
+  to the browser-restricted `5061` cannot break it) and `s3-ai-matrix-ui-desktop`
+  (`:5009`, browser-safe — the page-driving cases `E2E-S3-AI-008..012`; this slot must never
+  be moved onto `5021`/`5061`). Each column gets its own scratch directory, S3 bucket, and
+  server lifecycle.
 - **Parser legs (`parse.nl`):** verified hermetically by unit/integration suites with an
   adapter-injected fake chat (the same seam the fake-embed adapter uses) — RED targets: parse
   cache hit ⇒ zero chat calls, schema-checked grammar-constrained output, chat-off ⇒

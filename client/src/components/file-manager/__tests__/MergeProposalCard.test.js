@@ -105,7 +105,7 @@ describe('MergeProposalCard', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('footer is centered text with aria-expanded, expands the remaining rows and caps the list at 40vh', () => {
+  it('footer is centered text with aria-expanded, expands the remaining rows and caps the list at 40vh on desktop', () => {
     render({ suggestions: [suggestion(), secondSuggestion()] });
     expect(screen.queryByTestId('merge-cycle-chip')).not.toBeInTheDocument();
     const footer = screen.getByTestId('merge-more-toggle');
@@ -369,6 +369,13 @@ describe('MergeProposalCard', () => {
     fireEvent.keyDown(document.body, { key: 'Escape' });
     fireEvent.keyDown(body, { key: ' ' });
     expect(screen.getByTestId('merge-detail-panel')).toBeInTheDocument();
+  });
+
+  it('uses the 50vh accordion cap on mobile', () => {
+    useResponsive.mockReturnValue({ isMobile: true, isTablet: false, isDesktop: false });
+    render({ suggestions: [suggestion(), secondSuggestion()] });
+    fireEvent.click(screen.getByTestId('merge-more-toggle'));
+    expect(screen.getByTestId('merge-suggestion-list')).toHaveStyle({ maxHeight: '50vh' });
   });
 
   it('mobile tap opens the detail; an accordion row tap opens that row', () => {

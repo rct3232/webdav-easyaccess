@@ -576,7 +576,7 @@ const MergeProposalCard = ({
             sx={{
               flex: '1 1 auto',
               overflowY: moreOpen ? 'auto' : 'visible',
-              maxHeight: moreOpen ? '40vh' : undefined,
+              maxHeight: moreOpen ? (isMobile ? '50vh' : '40vh') : undefined,
               // Keep the last row clear of the footer when scrolled to the end.
               pb: moreOpen ? 1 : 0,
             }}

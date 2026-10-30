@@ -3086,9 +3086,10 @@ refined by U4 below.
 - Release E2E: model-on 277/6 rc=0; model-free 276/7 rc=0; WebDAV 41/0 rc=0.
 - Merge detail portal + preview-parity follow-up: server `domains/collections`
   **332/332**; client `MergeProposalCard` + `CollectionsListView` + `FileManager`
-  **158/158**; COLLECTION-021 desktop+mobile **2/2** (portaled previews outside the
+  **159/159**; COLLECTION-021 desktop+mobile **2/2** (portaled previews outside the
   accordion, container-level grid-view theme, shared strip 3 tiles + `+N` centered with
-  the reason on desktop and centered on two rows on mobile, accordion footer clearance).
+  the reason on desktop and centered on two rows on mobile, mobile `50vh` accordion cap +
+  footer clearance).
   The E2E C/D fixture seeds 10 shared + one unique per side for visual count review (no
   C/D count assertions).
 - `docsStatePurity` 3/3; Prettier/ESLint clean on changed files; docs/DOM count pins

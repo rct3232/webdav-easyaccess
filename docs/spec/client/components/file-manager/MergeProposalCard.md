@@ -62,10 +62,11 @@ selection callbacks.
   remaining rows.
 - Expanded accordion (`merge-suggestion-list`) lists ALL suggestions in server order,
   including the first item, as rows with the same question/count/actions UI. The list has a
-  viewport-bounded `maxHeight` (never taller than the collection-list area) with vertical
-  scroll, so the first item scrolls with the rest. When expanded, the list reserves bottom
-  padding so the last row is never flush with or covered by the footer. The footer stays
-  BELOW the scroll list at the bottom of the card.
+  viewport-bounded `maxHeight` (`40vh` desktop / `50vh` mobile) with vertical scroll, so the
+  first item scrolls with the rest. On mobile, `50vh` lets the common two-row set fit
+  without clipping the second row at the footer; longer sets still scroll. When expanded,
+  the list reserves bottom padding so the last row is never flush with or covered by the
+  footer. The footer stays BELOW the scroll list at the bottom of the card.
 - Row interaction: desktop click is a NO-OP (hover opens the detail); mobile tap opens the
   detail. A row's text block is keyboard-focusable and Enter/Space opens the detail. No
   active-pair selection state exists.
@@ -161,8 +162,9 @@ separate` / `Later` live on every item and dispatch that item's id with the same
       `onAction` with that row's `suggestion_id`; no dialog opens.
 - [ ] `suggestions.length > 1` renders the centered footer text (no chip/badge), with
       `role="button"` + `aria-expanded`; expanding lists ALL rows in a viewport-bounded
-      scrollable accordion, keeps the footer below the list, and shifts the collection grid
-      down. The first row scrolls with the list.
+      scrollable accordion (`40vh` desktop / `50vh` mobile), keeps the footer below the
+      list, and shifts the collection grid down. The first row scrolls with the list; a
+      two-row mobile set clears the footer without requiring a scroll.
 - [ ] `suggestions.length === 0` ⇒ component tree contains no card DOM node.
 - [ ] Desktop hover opens the detail panel after 200ms; leaving keeps it open for 300ms;
       pointer enter on the panel cancels the close; Esc/outside/close button closes.

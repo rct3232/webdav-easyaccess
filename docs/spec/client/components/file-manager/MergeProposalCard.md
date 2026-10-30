@@ -41,17 +41,18 @@ selection callbacks.
   `merged_count` likewise). `a_name`, `b_name`, `overlap_count`, `merged_count` verbatim
   (ko particle handling is a pure i18n formatter — a client-side particle picker; en copy is
   phrased without particles).
-- Buttons: `[Merge(primary)] [Keep separate(ghost)] [Later(text)]`, each dispatching the
-  top row's id (`merge-accept`, `merge-keep-separate`, `merge-later`).
-- Body/footer structure: the body is the summary line (the hover/tap/keyboard target); the
-  footer is a separate full-width strip.
+- Buttons: `[Merge(primary)] [Keep separate(ghost)] [Later(text)]` on EVERY item, each
+  dispatching that item's id. The first item keeps `merge-accept`/`merge-keep-separate`/
+  `merge-later`; expanded items use `merge-row-<action>-<suggestion_id>`.
+- Body/footer structure: each item is a summary line + its actions (the hover/tap/keyboard
+  target is the text block); the footer is a separate full-width strip after the list.
 - No thumbnail strip and no expand button: samples live in the detail panel (desktop hover /
   mobile tap). The body carries `role="button"`, `tabIndex=0`, `aria-expanded` and an
   Enter/Space keyboard path so the detail stays reachable without hover.
-- Mobile: the CardContent is a column — summary text on top, the three action buttons at the
-  bottom, footer below. Desktop: summary left, actions right, footer below.
-- `recommendation` is never rendered on the collapsed card; its `reason` is the detail
-  panel's one-line reason (§2.5).
+- Mobile: each item is a column — summary text on top, the three action buttons at the
+  bottom. Desktop: summary left, actions right. Footer below the list.
+- `recommendation` is never rendered on the collapsed card; its `reason` is the inline
+  detail's one-line reason (§2.5).
 
 ### 2.4 Pending Accordion (footer)
 
@@ -59,21 +60,22 @@ selection callbacks.
   `role="button"`, `tabIndex=0`, `aria-expanded`, data-testid `merge-more-toggle`, and toggles
   the accordion on click or Enter/Space. Copy = `fileManager.mergeMore` with the count of
   remaining rows.
-- Expanded accordion (`merge-suggestion-list`) lists `suggestions.slice(1)` in server order as
-  rows (`merge-suggestion-row-<suggestion_id>`), each showing the same question/count grammar.
-  The list has `maxHeight: 40vh` with vertical scroll. Expansion is in normal flow inside the
-  sticky region, so it pushes the collection grid down.
+- Expanded accordion (`merge-suggestion-list`) lists ALL suggestions in server order,
+  including the first item, as rows with the same question/count/actions UI. The list has a
+  viewport-bounded `maxHeight` (never taller than the collection-list area) with vertical
+  scroll, so the first item scrolls with the rest. The footer stays BELOW the scroll list at
+  the bottom of the card.
 - Row interaction: desktop click is a NO-OP (hover opens the detail); mobile tap opens the
-  detail. A row is keyboard-focusable and Enter/Space opens the detail. No active pair
-  selection state exists.
+  detail. A row's text block is keyboard-focusable and Enter/Space opens the detail. No
+  active-pair selection state exists.
 
 ### 2.5 Detail Panel (non-modal)
 
 - Opens on desktop hover with 200ms intent, or on mobile tap. There is NO expand button. The
-  panel is a MUI `Popper` anchored to the card for the top row and to the accordion row for
-  lower rows; `flip` + `preventOverflow` move lower-row panels above when the viewport is
-  tight. It is rendered below the sticky region, covers the collection list, and adds NO
-  full-screen backdrop and NO mouse-follow positioning. Card actions stay clickable.
+  panel is rendered INLINE inside the accordion, immediately below the hovered/tapped item
+  (or immediately above it when the lower viewport half cannot fit). It never portals outside
+  the accordion, adds NO full-screen backdrop, and does not follow the mouse. Item actions
+  stay clickable.
 - Close behavior: 300ms hover-out grace, cancelled by pointer enter on the panel; Esc;
   outside pointer-down; the panel's close button (`merge-detail-close`).
 - Content: the title only (`mergeQuestion`, `merge-detail-title`), then two large sample
@@ -83,15 +85,16 @@ selection callbacks.
   - right = `a_unique_sample` tiles (`merge-unique-a-<node_id>`, name caption).
     Shared members are represented by the reason/counts, not by a third tile column.
     Thumbnails come from `thumbnailMap`; unloaded samples stay placeholders (zero fabrication).
-    Tiles fill their panel (`aspect-ratio: 1`) with no 300px ceiling; mobile stacks B above A.
+    Tiles use `aspect-ratio: 1` at roughly three quarters of the previous fill size; mobile
+    keeps the same horizontal B → A direction.
 - Bottom one-line reason (`merge-detail-reason`, single line with ellipsis): use
   `recommendation.reason` verbatim when present (arbiter band only), else the deterministic
   counts sentence from `overlap_count`/`merged_count` (`fileManager.mergeReason`, e.g.
   `41 of 58 files are shared; merging keeps them in one collection.`). No LLM call ever
   generates this sentence.
-- The panel contains its own `Merge` / `Keep separate` / `Later` actions
-  (`merge-detail-accept`, `merge-detail-keep-separate`, `merge-detail-later`), dispatching the
-  displayed row's id with the same `onAction` contract and closing the panel.
+- The panel contains a close control only. It has NO action buttons: `Merge` / `Keep
+separate` / `Later` live on every item and dispatch that item's id with the same `onAction`
+  contract.
 
 ### 2.6 Zero-Footprint Rule
 
@@ -131,29 +134,31 @@ selection callbacks.
 
 - [ ] One card for a non-empty set; top row is score-desc first; the same DOM node is reused
       when the set shrinks (no key remount).
-- [ ] Distinct `Merge`/`Keep separate`/`Later` actions dispatch `onAction` with the top row's
-      `suggestion_id` and the matching action string; no dialog opens.
+- [ ] Every item carries distinct `Merge`/`Keep separate`/`Later` actions that dispatch
+      `onAction` with that row's `suggestion_id`; no dialog opens.
 - [ ] `suggestions.length > 1` renders the centered footer text (no chip/badge), with
-      `role="button"` + `aria-expanded`; expanding lists the remaining rows in a 40vh
-      scrollable accordion and the collection grid shifts down.
+      `role="button"` + `aria-expanded`; expanding lists ALL rows in a viewport-bounded
+      scrollable accordion, keeps the footer below the list, and shifts the collection grid
+      down. The first row scrolls with the list.
 - [ ] `suggestions.length === 0` ⇒ component tree contains no card DOM node.
 - [ ] Desktop hover opens the detail panel after 200ms; leaving keeps it open for 300ms;
       pointer enter on the panel cancels the close; Esc/outside/close button closes.
 - [ ] Mobile tap on the card body or an accordion row opens the detail; desktop accordion-row
       click is a no-op; Enter/Space opens from a focused body/row.
-- [ ] Detail shows only the title, then B-unique → arrow → A-unique large tiles, then a
-      bottom one-line reason; `recommendation.reason` wins when present, otherwise the
-      deterministic counts sentence.
-- [ ] Detail actions dispatch the displayed row's id and close the panel; card actions remain
-      clickable while the panel is open.
+- [ ] Detail is inline immediately above/below the hovered row (never outside the accordion),
+      shows only the title, then horizontal B-unique → arrow → A-unique tiles, then a bottom
+      one-line reason; `recommendation.reason` wins when present, otherwise the deterministic
+      counts sentence.
+- [ ] Detail has no action buttons; the row's own actions remain clickable while it is open.
 - [ ] `onRequestThumbnails` fires with the displayed sample node ids when a detail opens.
 - [ ] E2E/BDD selector anchors (`data-testid`): `merge-proposal-card`, `merge-card-body`,
       `merge-card-actions`, `merge-more-toggle`, `merge-suggestion-list`,
       `merge-suggestion-row-<suggestion_id>`, `merge-detail-panel`, `merge-detail-title`,
       `merge-detail-tiles`, `merge-detail-arrow`, `merge-detail-reason`, `merge-detail-close`,
       `merge-unique-a-<node_id>`, `merge-unique-b-<node_id>`,
-      `merge-accept`, `merge-keep-separate`, `merge-later`, `merge-detail-accept`,
-      `merge-detail-keep-separate`, `merge-detail-later`.
+      `merge-accept`, `merge-keep-separate`, `merge-later`,
+      `merge-row-accept-<suggestion_id>`, `merge-row-keep-separate-<suggestion_id>`,
+      `merge-row-later-<suggestion_id>`.
 
 ### 2.11 Edge Cases
 

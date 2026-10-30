@@ -706,7 +706,12 @@ const CollectionPropertiesDialog = ({
               {saving ? t('common.saving') : t('common.save')}
             </Button>
           )}
-          <Button data-testid="collection-props-close" onClick={requestClose} disabled={saving}>
+          <Button
+            data-testid="collection-props-close"
+            onClick={requestClose}
+            variant="contained"
+            disabled={saving}
+          >
             {t('common.close')}
           </Button>
         </DialogActions>

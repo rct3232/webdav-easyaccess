@@ -41,7 +41,7 @@ Target-contract spec.
 - `dirty` is derived by comparing the draft against the baseline: a trimmed name different from the baseline name (Save is disabled when the draft name is empty), a different publish mode, a different pinned flag, or any grant row added/removed/role-changed.
 - **No write happens before Save.** Rename, publish-mode radio, unpin, add-user, role change, and remove only mutate the draft. The client plan sent to `onSave` contains only changed top-level keys and, when grant rows changed, `grants: { upsert: [{ userId, role }], revoke: [userId] }`.
 - Save is available from every tab; it sends the whole draft plan regardless of the active tab.
-- The footer always ends with the default-text `Close` button; while dirty, an outlined-primary `Save` button is inserted immediately before it so Close never shifts position. Save is disabled while saving or when the draft name is empty.
+- The footer always ends with the contained-primary `Close` button; while dirty, an outlined-primary `Save` button is inserted immediately before it so Close never shifts position. Save is disabled while saving or when the draft name is empty.
 - Closing through the Close button, Escape, or the backdrop while clean calls `onClose`; while dirty it opens a local three-action confirmation (`Save` / `Discard` / `Cancel`). `Cancel` returns to the dialog with the draft intact, `Discard` closes without saving, and `Save` runs the normal save path. While a save is in flight every close path is blocked.
 
 ### 2.4 Tabs

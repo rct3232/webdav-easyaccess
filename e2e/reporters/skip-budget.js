@@ -9,7 +9,7 @@ const path = require('node:path');
  * group (see `docs/E2E_COVERAGE_PLAN.md`). Any extra `test.skip` — a new inline
  * platform branch, a resource fallback that slipped past the CI skip policy, a
  * disabled case — silently shrinks the gate. `E2E_EXPECTED_SKIPS` is set by the
- * release npm scripts (default 7, core 3, WebDAV 0); when it is absent the
+ * release npm scripts (default 6, core 3, WebDAV 0); when it is absent the
  * reporter is a no-op, so ordinary local runs keep their current behavior.
  *
  * Registered from playwright.config.ts `reporter`. A thrown reporter error is

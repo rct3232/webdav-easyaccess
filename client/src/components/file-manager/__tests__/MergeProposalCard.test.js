@@ -121,7 +121,8 @@ describe('MergeProposalCard', () => {
     expect(row).toHaveTextContent('Osaka');
 
     fireEvent.click(footer);
-    expect(screen.queryByTestId('merge-suggestion-list')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('merge-suggestion-row-89')).not.toBeInTheDocument();
+    expect(screen.getByTestId('merge-suggestion-list')).toBeInTheDocument();
   });
 
   it('omits the footer entirely when only one suggestion is pending', () => {
@@ -243,13 +244,15 @@ describe('MergeProposalCard', () => {
     expect(screen.queryByTestId('merge-detail-panel')).not.toBeInTheDocument();
   });
 
-  it('detail actions dispatch the displayed row and close the panel', () => {
+  it('every accordion item carries the same actions; the detail itself has none', () => {
     const onAction = jest.fn();
     render({ suggestions: [suggestion(), secondSuggestion()], onAction });
     fireEvent.click(screen.getByTestId('merge-more-toggle'));
     const panel = hoverOpen('merge-suggestion-row-89');
     expect(within(panel).getByTestId('merge-detail-title')).toHaveTextContent('Kyoto');
-    fireEvent.click(within(panel).getByTestId('merge-detail-later'));
+    expect(within(panel).queryByTestId('merge-detail-accept')).not.toBeInTheDocument();
+    expect(screen.getByTestId('merge-row-accept-89')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('merge-row-later-89'));
     expect(onAction).toHaveBeenCalledWith(89, 'later');
     expect(screen.queryByTestId('merge-detail-panel')).not.toBeInTheDocument();
   });
@@ -257,7 +260,7 @@ describe('MergeProposalCard', () => {
   it('desktop accordion-row click is a no-op; keyboard Enter opens the row detail', () => {
     render({ suggestions: [suggestion(), secondSuggestion()] });
     fireEvent.click(screen.getByTestId('merge-more-toggle'));
-    const row = screen.getByTestId('merge-suggestion-row-89');
+    const row = screen.getByTestId('merge-row-text-89');
     fireEvent.click(row);
     expect(screen.queryByTestId('merge-detail-panel')).not.toBeInTheDocument();
 
@@ -268,7 +271,7 @@ describe('MergeProposalCard', () => {
 
   it('keyboard Enter/Space on the body opens the detail', () => {
     render();
-    const body = screen.getByTestId('merge-card-body');
+    const body = screen.getByTestId('merge-card-body-text');
     fireEvent.keyDown(body, { key: 'Enter' });
     expect(screen.getByTestId('merge-detail-panel')).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: 'Escape' });

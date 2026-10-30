@@ -1361,17 +1361,12 @@ test('E2E-S3-COLLECTION-021: the merge proposal card expands the pending accordi
   const aBox = await aTile.boundingBox();
   expect(bBox).not.toBeNull();
   expect(aBox).not.toBeNull();
-  if (isMobile) {
-    expect(bBox!.y).toBeLessThan(aBox!.y);
-  } else {
-    expect(bBox!.x).toBeLessThan(aBox!.x);
-  }
+  expect(bBox!.x).toBeLessThan(aBox!.x);
   await expect(detail.getByTestId('merge-detail-reason')).toContainText(
     '1 of 3 files are shared; merging keeps them in one collection.'
   );
-  await expect(detail.getByTestId('merge-detail-accept')).toBeVisible();
-  await expect(detail.getByTestId('merge-detail-keep-separate')).toBeVisible();
-  await expect(detail.getByTestId('merge-detail-later')).toBeVisible();
+  await expect(detail.getByTestId('merge-detail-accept')).toHaveCount(0);
+  await expect(card.getByTestId('merge-accept')).toBeVisible();
 
   // The card IS the confirmation and stays clickable with the panel open:
   // Merge dispatches with NO extra dialog. The resolved row leaves the set
@@ -1444,9 +1439,8 @@ test('E2E-S3-COLLECTION-022: Later defers the pair into a DB-dormant card remova
   await expect(detail.getByTestId('merge-detail-reason')).toContainText(
     '2 of 2 files are shared; merging keeps them in one collection.'
   );
-  await expect(detail.getByTestId('merge-detail-accept')).toBeVisible();
-  await expect(detail.getByTestId('merge-detail-keep-separate')).toBeVisible();
-  await expect(detail.getByTestId('merge-detail-later')).toBeVisible();
+  await expect(detail.getByTestId('merge-detail-accept')).toHaveCount(0);
+  await expect(card.getByTestId('merge-accept')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(detail).toHaveCount(0);
 
@@ -1473,10 +1467,7 @@ test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the rec
   page,
   request,
 }, testInfo) => {
-  test.skip(
-    isMobileProject(testInfo),
-    'E2E-S3-COLLECTION-024 is a desktop-only leg (mobile sharing parity stays deferred with the card-menu surfaces)'
-  );
+  const isMobile = isMobileProject(testInfo);
 
   // Second regular user (grantee) on the scratch instance — provisioned via
   // the OPERATOR admin API (identity pivot, PLAN §14).
@@ -1575,7 +1566,7 @@ test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the rec
 
   // Members view as a grantee: the published owner-owned member renders
   // (cross-leak rule §4.7 — foreign rows are never delivered server-side).
-  await openCollectionCard(page, name, false);
+  await openCollectionCard(page, name, isMobile);
   await expect(page.getByTestId(`member-row-${fileA.nodeId}`)).toBeVisible({ timeout: 30_000 });
 
   // Leaving is Path-1 self-revocation: the grantee card menu carries
@@ -1597,6 +1588,7 @@ test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the rec
   expect(regrantRes.ok()).toBeTruthy();
   await page.goto('/files/__collections__');
   await expect(collectionCard(page, name)).toBeVisible({ timeout: 30_000 });
+  await openFolderTreeSection(page, isMobile);
   const toggle = page.getByTestId('collections-toggle');
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
     await toggle.click();

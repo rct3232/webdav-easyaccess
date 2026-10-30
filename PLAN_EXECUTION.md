@@ -3058,9 +3058,9 @@ refined by U4 below.
   stay clickable; deterministic count sentence with optional arbiter reason.
 - **Properties:** dialog-wide draft, Save/Discard/Cancel, cross-tab save, role badge toggle,
   hierarchical `onBack`, one atomic `PUT /:id/properties` TX and one composite undo;
-  role changes preserve the grantee hidden flag; new grants clear it. The footer keeps a
-  default-text Close at the far right and inserts an outlined-primary Save before it only
-  while dirty, so the Close position never shifts.
+  role changes preserve the grantee hidden flag; new grants clear it. The footer keeps the
+  contained-primary Close at the far right and inserts an outlined-primary Save before it
+  only while dirty, so the Close position never shifts.
 - **File AI:** read-gated AI Info tab with tags/summary/caption/transcript/safe media/
   provenance; no category/degraded fabrication.
 - **Admin AI:** rendered/API-only contract manifest, sentinel fixture, null-safe rendering,
@@ -3068,7 +3068,7 @@ refined by U4 below.
 - **E2E:** browser AI matrix (`AI-008..012`, AI-015), admin-AI cases, and a dedicated
   storage suite (`STORAGE-001..002` in `e2e/storage.spec.ts`; the former COLLECTION-023
   moved there) under dependent `s3-storage-desktop`/`s3-storage-mobile` projects. Default
-  inventory 283 (276 passed / 7 skipped model-on; 275/8 model-free), WebDAV 41/0.
+  inventory 283 (277 passed / 6 skipped model-on; 276/7 model-free), WebDAV 41/0.
 
 **Verification (2026-10-30)**
 
@@ -3076,7 +3076,7 @@ refined by U4 below.
 - Client `test:ci`: 197 suites / 2390 tests passed.
 - PostgreSQL adapter leg on a freshly recreated `webdav_test`: 32 suites / 492 passed +
   1 skipped.
-- Release E2E: model-on 276/7 rc=0; model-free 275/8 rc=0; WebDAV 41/0 rc=0.
+- Release E2E: model-on 277/6 rc=0; model-free 276/7 rc=0; WebDAV 41/0 rc=0.
 - `docsStatePurity` 3/3; Prettier/ESLint clean on changed files; docs/DOM count pins
   updated.
 - `client/TEST_SUMMARY.md`, `server/TEST_SUMMARY.md`, `PLAN.md`, and

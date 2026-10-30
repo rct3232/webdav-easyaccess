@@ -88,9 +88,10 @@ async function setActivity(userId, nodeId, { score, lastSeenAtMs }) {
 }
 
 async function storedRows(userId) {
-  const { rows } = await dbQuery('SELECT * FROM storage_suggestions WHERE user_id = ? ORDER BY id', [
-    Number(userId),
-  ]);
+  const { rows } = await dbQuery(
+    'SELECT * FROM storage_suggestions WHERE user_id = ? ORDER BY id',
+    [Number(userId)]
+  );
   return rows;
 }
 

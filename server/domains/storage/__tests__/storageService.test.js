@@ -70,9 +70,10 @@ async function journalRows() {
 }
 
 async function allSuggestionRows(userId) {
-  const { rows } = await dbQuery('SELECT * FROM storage_suggestions WHERE user_id = ? ORDER BY id', [
-    Number(userId),
-  ]);
+  const { rows } = await dbQuery(
+    'SELECT * FROM storage_suggestions WHERE user_id = ? ORDER BY id',
+    [Number(userId)]
+  );
   return rows;
 }
 
@@ -377,9 +378,7 @@ describe('acceptSuggestions — journaled command', () => {
   it('validates the batch BEFORE any work: [], missing, >200 ⇒ emptyNodeIds, zero journal rows', async () => {
     const { user } = await storageUser('validate');
     const journalBefore = await journalRowCount();
-    await expect(storageService.acceptSuggestions(user.id, {}, [])).rejects.toThrow(
-      'emptyNodeIds'
-    );
+    await expect(storageService.acceptSuggestions(user.id, {}, [])).rejects.toThrow('emptyNodeIds');
     await expect(storageService.acceptSuggestions(user.id, {}, undefined)).rejects.toThrow(
       'emptyNodeIds'
     );
@@ -750,13 +749,7 @@ describe('getStorageUsage', () => {
     await dbRun(
       `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status, size)
        VALUES (?, ?, 's3', ?, ?, ?)`,
-      [
-        Number(nodeId),
-        `svc-usage-${suffix}-${Date.now()}-${Math.random()}`,
-        version,
-        status,
-        size,
-      ]
+      [Number(nodeId), `svc-usage-${suffix}-${Date.now()}-${Math.random()}`, version, status, size]
     );
   }
 

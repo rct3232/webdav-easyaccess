@@ -121,7 +121,8 @@ describe('startStorageSuggestionExpiryScheduler (§3.6)', () => {
   });
 
   it('returns null when the interval resolves to 0 (disabled)', () => {
-    mockGetConfigSync = (key) => (key === 'STORAGE_SUGGESTION_EXPIRY_INTERVAL_MS' ? '0' : undefined);
+    mockGetConfigSync = (key) =>
+      key === 'STORAGE_SUGGESTION_EXPIRY_INTERVAL_MS' ? '0' : undefined;
     expect(startStorageSuggestionExpiryScheduler({ store: fakeStore([0]) })).toBeNull();
   });
 

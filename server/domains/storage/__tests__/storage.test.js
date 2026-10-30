@@ -358,7 +358,10 @@ describe('AI-block absence when embed is unconfigured (§4.12)', () => {
       expect('near_duplicates' in res.body).toBe(false);
       expect(res.body.suggestions.every((row) => row.kind !== 'near_dup')).toBe(true);
     }
-    const { rows } = await dbQuery("SELECT kind FROM storage_suggestions WHERE kind = 'near_dup'", []);
+    const { rows } = await dbQuery(
+      "SELECT kind FROM storage_suggestions WHERE kind = 'near_dup'",
+      []
+    );
     expect(rows).toEqual([]);
   });
 });

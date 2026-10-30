@@ -197,29 +197,29 @@ surface) — NOT AI-profile numbers. The same defaults live in
 `server/infrastructure/usage/activityScore.js` (single semantic source; registry
 defaults are kept in parity by test).
 
-| key                                   | tier | secret | default    | notes                                                                                                                            |
-| ------------------------------------- | ---- | ------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `AI_USAGE_W_OPEN`                     | T2   | no     | `1`        | `usage_events` weight w_open (§3.4)                                                                                              |
-| `AI_USAGE_W_PREVIEW`                  | T2   | no     | `2`        | weight w_preview                                                                                                                 |
-| `AI_USAGE_W_DOWNLOAD`                 | T2   | no     | `3`        | weight w_download                                                                                                                |
-| `AI_USAGE_W_SEARCH_HIT`               | T2   | no     | `1`        | weight w_search_hit                                                                                                              |
-| `AI_USAGE_W_LIKE`                     | T2   | no     | `5`        | weight w_like                                                                                                                    |
-| `AI_ACTIVITY_HALF_LIFE_DAYS`          | T2   | no     | `30`       | item accumulator half-life H (§3.4)                                                                                              |
-| `AI_USAGE_EVENT_RETENTION_DAYS`       | T2   | no     | `90`       | raw `usage_events` roll-off horizon (`0` = retention off)                                                                        |
-| `AI_NIGHTLY_ANCHOR_HOUR_UTC`          | T2   | no     | `3`        | nightly scheduler anchor hour (maintenanceScheduler §3.3)                                                                        |
-| `ARCHIVE_RETENTION_DAYS`              | T2   | no     | `30`       | purge horizon / tombstone lifetime (collectionsService §3, Q1)                                                                   |
-| `ADMIN_REPORTS_RETENTION_DAYS`        | T2   | no     | `30`       | `admin_reports` retention horizon (scheduled prune; `0` = off)                                                                   |
-| `ADMIN_REPORTS_RETENTION_INTERVAL_MS` | T2   | no     | `86400000` | retention scheduler interval (`0` = disabled)                                                                                    |
-| `ADMIN_REPORTS_RETENTION_BATCH`       | T2   | no     | `1000`     | bounded delete batch size per retention pass                                                                                     |
-| `WEA_SKIP_ROLLUP_SCHEDULER`           | T2   | no     | —          | test seam, env-allowed (NOT dbOnly — same idiom as `WEA_SKIP_AI_WORKER`)                                                         |
-| `WEA_SKIP_ADMIN_REPORTS_RETENTION`    | T2   | no     | —          | retention scheduler test seam, env-allowed                                                                                       |
-| `STORAGE_SUGGESTION_RETENTION_DAYS`        | T2   | no     | `30`       | pending `storage_suggestions` expiry horizon (`0` = rows never expire — `storageService.md` §2.2, `maintenanceScheduler.md` §3.6) |
-| `STORAGE_SUGGESTION_EXPIRY_INTERVAL_MS`    | T2   | no     | `86400000` | suggestions expiry scheduler interval (`0` = disabled)                                                                           |
-| `STORAGE_SUGGESTION_EXPIRY_BATCH`          | T2   | no     | `1000`     | bounded flip batch size per expiry pass                                                                                          |
-| `WEA_SKIP_STORAGE_SUGGESTION_EXPIRY`          | T2   | no     | —          | expiry scheduler test seam, env-allowed                                                                                          |
-| `STORAGE_USAGE_SNAPSHOT_INTERVAL_MS`  | T2   | no     | `86400000` | storage-usage capture interval (`0` = disabled, hot re-read — `maintenanceScheduler.md` §3.7)                                    |
-| `STORAGE_USAGE_RETENTION_DAYS`        | T2   | no     | `30`       | storage-usage snapshot retention (`0` = no prune)                                                                                |
-| `WEA_SKIP_STORAGE_USAGE_SNAPSHOT`     | T2   | no     | —          | storage-usage scheduler test seam, env-allowed                                                                                   |
+| key                                     | tier | secret | default    | notes                                                                                                                             |
+| --------------------------------------- | ---- | ------ | ---------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `AI_USAGE_W_OPEN`                       | T2   | no     | `1`        | `usage_events` weight w_open (§3.4)                                                                                               |
+| `AI_USAGE_W_PREVIEW`                    | T2   | no     | `2`        | weight w_preview                                                                                                                  |
+| `AI_USAGE_W_DOWNLOAD`                   | T2   | no     | `3`        | weight w_download                                                                                                                 |
+| `AI_USAGE_W_SEARCH_HIT`                 | T2   | no     | `1`        | weight w_search_hit                                                                                                               |
+| `AI_USAGE_W_LIKE`                       | T2   | no     | `5`        | weight w_like                                                                                                                     |
+| `AI_ACTIVITY_HALF_LIFE_DAYS`            | T2   | no     | `30`       | item accumulator half-life H (§3.4)                                                                                               |
+| `AI_USAGE_EVENT_RETENTION_DAYS`         | T2   | no     | `90`       | raw `usage_events` roll-off horizon (`0` = retention off)                                                                         |
+| `AI_NIGHTLY_ANCHOR_HOUR_UTC`            | T2   | no     | `3`        | nightly scheduler anchor hour (maintenanceScheduler §3.3)                                                                         |
+| `ARCHIVE_RETENTION_DAYS`                | T2   | no     | `30`       | purge horizon / tombstone lifetime (collectionsService §3, Q1)                                                                    |
+| `ADMIN_REPORTS_RETENTION_DAYS`          | T2   | no     | `30`       | `admin_reports` retention horizon (scheduled prune; `0` = off)                                                                    |
+| `ADMIN_REPORTS_RETENTION_INTERVAL_MS`   | T2   | no     | `86400000` | retention scheduler interval (`0` = disabled)                                                                                     |
+| `ADMIN_REPORTS_RETENTION_BATCH`         | T2   | no     | `1000`     | bounded delete batch size per retention pass                                                                                      |
+| `WEA_SKIP_ROLLUP_SCHEDULER`             | T2   | no     | —          | test seam, env-allowed (NOT dbOnly — same idiom as `WEA_SKIP_AI_WORKER`)                                                          |
+| `WEA_SKIP_ADMIN_REPORTS_RETENTION`      | T2   | no     | —          | retention scheduler test seam, env-allowed                                                                                        |
+| `STORAGE_SUGGESTION_RETENTION_DAYS`     | T2   | no     | `30`       | pending `storage_suggestions` expiry horizon (`0` = rows never expire — `storageService.md` §2.2, `maintenanceScheduler.md` §3.6) |
+| `STORAGE_SUGGESTION_EXPIRY_INTERVAL_MS` | T2   | no     | `86400000` | suggestions expiry scheduler interval (`0` = disabled)                                                                            |
+| `STORAGE_SUGGESTION_EXPIRY_BATCH`       | T2   | no     | `1000`     | bounded flip batch size per expiry pass                                                                                           |
+| `WEA_SKIP_STORAGE_SUGGESTION_EXPIRY`    | T2   | no     | —          | expiry scheduler test seam, env-allowed                                                                                           |
+| `STORAGE_USAGE_SNAPSHOT_INTERVAL_MS`    | T2   | no     | `86400000` | storage-usage capture interval (`0` = disabled, hot re-read — `maintenanceScheduler.md` §3.7)                                     |
+| `STORAGE_USAGE_RETENTION_DAYS`          | T2   | no     | `30`       | storage-usage snapshot retention (`0` = no prune)                                                                                 |
+| `WEA_SKIP_STORAGE_USAGE_SNAPSHOT`       | T2   | no     | —          | storage-usage scheduler test seam, env-allowed                                                                                    |
 
 ---
 

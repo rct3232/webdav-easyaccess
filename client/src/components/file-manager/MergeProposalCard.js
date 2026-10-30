@@ -110,9 +110,11 @@ const MergeProposalCard = ({
       if (!suggestion) return;
       clearOpenTimer();
       clearCloseTimer();
+      const anchor = anchorEl ?? cardRef.current;
       setDetail({
         suggestionId: suggestion.suggestion_id,
-        anchorEl: anchorEl ?? cardRef.current,
+        anchorEl: anchor,
+        isTopCard: anchor === cardRef.current,
       });
     },
     [clearOpenTimer, clearCloseTimer]
@@ -127,9 +129,11 @@ const MergeProposalCard = ({
       clearCloseTimer();
       openTimerRef.current = setTimeout(() => {
         openTimerRef.current = null;
+        const anchor = anchorEl ?? cardRef.current;
         setDetail({
           suggestionId: suggestion.suggestion_id,
-          anchorEl: anchorEl ?? cardRef.current,
+          anchorEl: anchor,
+          isTopCard: anchor === cardRef.current,
         });
       }, HOVER_OPEN_DELAY_MS);
     },
@@ -494,12 +498,16 @@ const MergeProposalCard = ({
             {
               name: 'flip',
               enabled: true,
-              options: { fallbackPlacements: ['top-start', 'bottom-end', 'top-end'] },
+              options: {
+                fallbackPlacements: detail?.isTopCard
+                  ? ['bottom-end']
+                  : ['top-start', 'bottom-end', 'top-end'],
+              },
             },
             {
               name: 'preventOverflow',
               enabled: true,
-              options: { altAxis: true, padding: 8 },
+              options: { altAxis: !detail?.isTopCard, padding: 8 },
             },
           ]}
           sx={{ zIndex: (theme) => theme.zIndex.modal - 1, maxWidth: '100vw' }}
@@ -515,7 +523,7 @@ const MergeProposalCard = ({
             onMouseLeave={isMobile ? undefined : scheduleClose}
             sx={{
               width: { xs: 'calc(100vw - 24px)', sm: 'min(1080px, calc(100vw - 48px))' },
-              maxHeight: '80vh',
+              maxHeight: detail?.isTopCard ? 'min(60vh, 520px)' : '80vh',
               overflow: 'auto',
               p: 2,
               borderRadius: 2,

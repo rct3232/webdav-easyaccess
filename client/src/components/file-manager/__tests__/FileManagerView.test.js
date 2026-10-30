@@ -1650,7 +1650,7 @@ describe('FileManagerView', () => {
   });
 });
 
-describe('FileManagerView — membershipModel (files-surface badges + bulk add)', () => {
+describe('FileManagerView — files-surface bulk add', () => {
   beforeEach(() => {
     // Same gateway/mock settling as the sibling `FileManagerView` suite —
     // CRA resetMocks strips the seam implementations between cases.
@@ -1679,41 +1679,33 @@ describe('FileManagerView — membershipModel (files-surface badges + bulk add)'
     });
   };
 
+  const withFilesBulkAdd = (handler) => {
+    const base = createProps();
+    return filesProps({
+      explorerHandlers: {
+        ...base.explorerHandlers,
+        commands: {
+          ...base.explorerHandlers.commands,
+          handleFilesBulkAddToCollection: handler,
+        },
+      },
+    });
+  };
+
   it('renders bulk-collection-add on the files surface and forwards the selection keys', () => {
     const onBulkAdd = jest.fn();
-    renderWithProviders(
-      <FileManagerView
-        {...filesProps({
-          membershipModel: { membershipsByNodeId: {}, onBulkAddToCollection: onBulkAdd },
-        })}
-      />
-    );
+    renderWithProviders(<FileManagerView {...withFilesBulkAdd(onBulkAdd)} />);
     const button = screen.getByTestId('bulk-collection-add');
     fireEvent.click(button);
     expect(onBulkAdd).toHaveBeenCalledWith(['/docs/a.txt']);
   });
 
-  it('threads membershipsByNodeId into the LIST renderer (badge DOM on the row)', () => {
-    renderWithProviders(
-      <FileManagerView
-        {...filesProps({
-          membershipModel: {
-            membershipsByNodeId: { 1: [{ id: 17, name: 'Beach' }] },
-            onBulkAddToCollection: jest.fn(),
-          },
-        })}
-      />
-    );
-    expect(screen.getByTestId('membership-badge-1-17')).toBeInTheDocument();
-  });
-
-  it('absent membershipModel ⇒ no files-surface button and zero badge DOM (withhold + regression)', () => {
+  it('absent files-surface handler ⇒ no files-surface button (withhold + regression)', () => {
     renderWithProviders(<FileManagerView {...filesProps({})} />);
     expect(screen.queryByTestId('bulk-collection-add')).not.toBeInTheDocument();
-    expect(screen.queryByTestId(/^membership-badge/)).not.toBeInTheDocument();
   });
 
-  it('members surface keeps its own handler even when membershipModel is present', async () => {
+  it('members surface keeps its own handler even when the files-surface handler is present', async () => {
     const memberModel = {
       mode: 'members',
       items: [
@@ -1768,7 +1760,13 @@ describe('FileManagerView — membershipModel (files-surface badges + bulk add)'
             },
           },
           collectionsModel: memberModel,
-          membershipModel: { membershipsByNodeId: {}, onBulkAddToCollection: onFilesBulkAdd },
+          explorerHandlers: {
+            ...base.explorerHandlers,
+            commands: {
+              ...base.explorerHandlers.commands,
+              handleFilesBulkAddToCollection: onFilesBulkAdd,
+            },
+          },
         })}
       />
     );

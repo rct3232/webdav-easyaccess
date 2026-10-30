@@ -3255,9 +3255,7 @@ describe('FileManager', () => {
       });
 
       expect(collectionsCalls).toBe(0);
-      // Membership chips are a personal-storage surface: zero badge DOM and
-      // the files-surface bulk add button never renders for admin.
-      expect(document.querySelector('[data-testid^="membership-badge-"]')).toBeNull();
+      // The files-surface bulk add button never renders for admin.
       const fileRow = document.querySelector('[data-file-node-id="1"]');
       fireEvent.click(fileRow, { ctrlKey: true });
       expect(await screen.findByTestId('bulk-action-move')).toBeInTheDocument();
@@ -3266,7 +3264,7 @@ describe('FileManager', () => {
   });
 });
 
-describe('FileManager — files-surface membership chips + bulk add (CollectionMembershipBadges.md)', () => {
+describe('FileManager — files-surface bulk add + all-target checkmarks', () => {
   const BEACH = {
     collection_id: 17,
     name: 'Beach',
@@ -3293,131 +3291,26 @@ describe('FileManager — files-surface membership chips + bulk add (CollectionM
     await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
   };
 
-  it('badges the rows from the batched for-nodes read and re-reads on the collections notifier', async () => {
-    let fixture = { 1: [17] };
-    let forNodesCalls = 0;
-    server.use(
-      http.get('/api/collections', () => HttpResponse.json({ collections: [BEACH, WORK] })),
-      http.get('/api/collections/merge-suggestions', () => HttpResponse.json({ suggestions: [] })),
-      http.post('/api/collections/for-nodes', async ({ request }) => {
-        const body = await request.json();
-        forNodesCalls += 1;
-        return HttpResponse.json({
-          memberships: body.nodeIds
-            .filter((nodeId) => fixture[nodeId])
-            .map((nodeId) => ({ node_id: nodeId, collection_ids: fixture[nodeId] })),
-        });
-      })
-    );
-
-    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
-    await settleListing();
-
-    expect(await screen.findByTestId('membership-badge-1-17')).toBeInTheDocument();
-    expect(screen.queryByTestId('membership-badge-1-23')).not.toBeInTheDocument();
-    expect(screen.queryByTestId(/^membership-badge-[23]-/)).not.toBeInTheDocument();
-
-    // Server-side membership change + the coarse notifier event ⇒ re-read.
-    fixture = { 1: [17, 23] };
-    const callsBefore = forNodesCalls;
-    await act(async () => {
-      notifyCollectionsChange();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    });
-    expect(await screen.findByTestId('membership-badge-1-23')).toBeInTheDocument();
-    expect(forNodesCalls).toBeGreaterThan(callsBefore);
-  }, 15000);
-
-  it('a failed membership read degrades to NO chips (listing stays intact)', async () => {
-    server.use(
-      http.get('/api/collections', () => HttpResponse.json({ collections: [BEACH] })),
-      http.get('/api/collections/merge-suggestions', () => HttpResponse.json({ suggestions: [] })),
-      http.post('/api/collections/for-nodes', () =>
-        HttpResponse.json(
-          { errorCode: 'serverErrors.collections.forbidden', params: {} },
-          { status: 403 }
-        )
-      )
-    );
-
-    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
-    await settleListing();
-    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
-
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(document.querySelector('[data-testid^="membership-badge-"]')).toBeNull();
-    expect(screen.getByText(/test\.txt/i)).toBeInTheDocument();
-  }, 15000);
-
-  it('badges cover search-zone snapshot rows (the batched read spans the files surfaces)', async () => {
-    const forNodesIdSets = [];
-    server.use(
-      http.get('/api/collections', () => HttpResponse.json({ collections: [BEACH, WORK] })),
-      http.get('/api/collections/merge-suggestions', () => HttpResponse.json({ suggestions: [] })),
-      http.post('/api/collections/for-nodes', async ({ request }) => {
-        const body = await request.json();
-        forNodesIdSets.push(body.nodeIds);
-        return HttpResponse.json({
-          memberships: body.nodeIds
-            .filter((nodeId) => nodeId === 55)
-            .map((nodeId) => ({ node_id: nodeId, collection_ids: [17] })),
-        });
-      }),
-      http.post('/api/search', () =>
-        HttpResponse.json({
-          name_matches: [{ node_id: 55, name: 'zone-file.pdf' }],
-          counts: { name: 1, semantic: 0, total: 1, name_truncated: false },
-          result_ref: 'sr1.abc',
-          semantic_unavailable_reason: 'not_configured',
-        })
-      ),
-      http.post('/api/files/metadata', async ({ request }) => {
-        const body = await request.json();
-        return HttpResponse.json(
-          (body.nodeIds || []).map((nodeId) => ({
-            nodeId,
-            name: 'zone-file.pdf',
-            type: 'file',
-            size: 5,
-            lastmod: null,
-            mime: 'application/pdf',
-            hasReadPermission: true,
-            hasWritePermission: true,
-          }))
-        );
-      })
-    );
-
-    await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
-    await settleListing();
-
-    const searchbox = screen.getByRole('searchbox');
-    fireEvent.change(searchbox, { target: { value: 'zone' } });
-    fireEvent.keyDown(searchbox, { key: 'Enter' });
-
-    expect(await screen.findByTestId('server-search-row-55')).toBeInTheDocument();
-    expect(await screen.findByTestId('membership-badge-55-17')).toBeInTheDocument();
-    expect(forNodesIdSets.some((ids) => ids.includes(55))).toBe(true);
-  }, 20000);
-
-  it('toolbar bulk add on the files surface opens the menu with all-target checkmarks and posts the add', async () => {
+  it('toolbar bulk add opens the menu with all-target checkmarks, posts the add and re-opens with the new membership checked', async () => {
+    const fixture = { 1: [17, 23], 2: [17] };
     let addItemBody = null;
     server.use(
       http.get('/api/collections', () => HttpResponse.json({ collections: [BEACH, WORK] })),
       http.get('/api/collections/merge-suggestions', () => HttpResponse.json({ suggestions: [] })),
       http.post('/api/collections/for-nodes', async ({ request }) => {
         const body = await request.json();
-        // node 1 ∈ BOTH collections, node 2 (docs) ∈ Beach only ⇒ the
-        // {1,2} target set has Beach as its only all-member row.
-        const fixture = { 1: [17, 23], 2: [17] };
         return HttpResponse.json({
           memberships: body.nodeIds
             .filter((nodeId) => fixture[nodeId])
             .map((nodeId) => ({ node_id: nodeId, collection_ids: fixture[nodeId] })),
         });
       }),
-      http.post('/api/collections/17/items', async ({ request }) => {
+      http.post('/api/collections/23/items', async ({ request }) => {
         addItemBody = await request.json();
+        // The server-side membership lands before the notifier re-read.
+        for (const nodeId of addItemBody.nodeIds) {
+          fixture[nodeId] = [...(fixture[nodeId] || []), 23];
+        }
         return HttpResponse.json({
           added: 2,
           already_members: 0,
@@ -3431,23 +3324,24 @@ describe('FileManager — files-surface membership chips + bulk add (CollectionM
     await settleListing();
 
     // Ctrl+click the two seeded rows → selection mode with {test.txt, docs}.
-    fireEvent.click(await screen.findByTestId('membership-badge-1-17'), {
-      ctrlKey: true,
-      metaKey: false,
-    });
+    fireEvent.click(document.querySelector('[data-file-node-id="1"]'), { ctrlKey: true });
     await waitFor(() => expect(screen.getByTestId('bulk-action-move')).toBeInTheDocument());
-    const docsRow = document.querySelector('[data-file-node-id="2"]');
-    fireEvent.click(docsRow, { ctrlKey: true });
+    fireEvent.click(document.querySelector('[data-file-node-id="2"]'), { ctrlKey: true });
 
-    const addButton = screen.getByTestId('bulk-collection-add');
-    fireEvent.click(addButton);
+    fireEvent.click(screen.getByTestId('bulk-collection-add'));
 
+    // Checkmark rows = collections containing ALL targets: {1,2} ∈ Beach only.
     expect(await screen.findByTestId('collection-option-17')).toBeInTheDocument();
     expect(screen.getByTestId('collection-checked-17')).toBeInTheDocument();
     expect(screen.getByTestId('collection-option-23')).toBeInTheDocument();
     expect(screen.queryByTestId('collection-checked-23')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('collection-option-17'));
+    fireEvent.click(screen.getByTestId('collection-option-23'));
     await waitFor(() => expect(addItemBody).toEqual({ nodeIds: [1, 2] }));
+
+    // Re-open after the notifier re-read: Work now contains both targets.
+    fireEvent.click(screen.getByTestId('bulk-collection-add'));
+    expect(await screen.findByTestId('collection-checked-23')).toBeInTheDocument();
+    expect(screen.getByTestId('collection-checked-17')).toBeInTheDocument();
   }, 20000);
 });

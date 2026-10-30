@@ -34,7 +34,6 @@ const FileDetail = ({
   processingMap,
   loading = false,
   emptyText,
-  membershipsByNodeId = null,
 }) => {
   const { t } = useTranslation();
   const { isMobile } = useResponsive();
@@ -128,9 +127,6 @@ const FileDetail = ({
                   isSelected={isSelected}
                   selectionMode={selectionMode}
                   isMobile={isMobile}
-                  memberships={
-                    membershipsByNodeId ? (membershipsByNodeId[file.nodeId] ?? null) : null
-                  }
                   dragHandlers={dragHandlers}
                   dropHandlers={dropHandlers}
                   maxPixelWidth={maxPixelWidth}

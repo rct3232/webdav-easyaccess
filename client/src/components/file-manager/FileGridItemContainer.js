@@ -22,7 +22,6 @@ const FileGridItemContainer = ({
   isSelected,
   selectionMode,
   isMobile,
-  memberships = null,
   dragHandlers,
   dropHandlers,
 }) => {
@@ -92,7 +91,6 @@ const FileGridItemContainer = ({
         showMoreButton={showMoreButton ?? !selectionMode}
         onMoreClick={onMoreClick}
         isMobile={isMobile}
-        memberships={memberships}
       />
     </Box>
   );

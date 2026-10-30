@@ -23,24 +23,23 @@
 
 ### 2.2 Props
 
-| Name                | Type     | Required | Default | Description                                                                                                                                                                                         |
-| ------------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| files               | array    | Y        | -       | File objects                                                                                                                                                                                        |
-| onFileClick         | function | Y        | -       | Click handler; receives (file, event) for modifier detection                                                                                                                                        |
-| onMoreClick         | function | Y        | -       | More button click handler (file); opens FileActionSheet                                                                                                                                             |
-| onLongPressSelect   | function | Y        | -       | Long-press handler for mobile: enters selection mode and selects file                                                                                                                               |
-| onContextMenu       | function | Y        | -       | Context menu handler                                                                                                                                                                                |
-| onFileDrop          | function | N        | -       | Drop handler                                                                                                                                                                                        |
-| selectionMode       | boolean  | Y        | -       | Selection mode active; no checkboxes; selection indicated by card background highlight (see FileGridItem).                                                                                          |
-| selectedFiles       | Set      | Y        | -       | Selected paths                                                                                                                                                                                      |
-| onFileCheck         | function | Y        | -       | Selection toggle handler (e.g. called when card is clicked in selection mode); no checkbox UI.                                                                                                      |
-| processingMap       | object   | N        | -       | Processing state map                                                                                                                                                                                |
-| loading             | boolean  | N        | false   | Loading state                                                                                                                                                                                       |
-| onThumbnailsLoaded  | function | N        | -       | Thumbnail callback                                                                                                                                                                                  |
-| loadMoreRef         | ref      | N        | -       | Infinite scroll ref                                                                                                                                                                                 |
-| hasMore             | boolean  | N        | -       | More items flag                                                                                                                                                                                     |
-| shareToken          | string   | N        | -       | Share token                                                                                                                                                                                         |
-| membershipsByNodeId | object   | N        | null    | `{ [nodeId]: [{ id, name }] }` membership map (`CollectionMembershipBadges.md` §2.6); each card receives `memberships={membershipsByNodeId?.[file.nodeId] ?? null}` through `FileGridItemContainer` |
+| Name               | Type     | Required | Default | Description                                                                                                |
+| ------------------ | -------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------- |
+| files              | array    | Y        | -       | File objects                                                                                               |
+| onFileClick        | function | Y        | -       | Click handler; receives (file, event) for modifier detection                                               |
+| onMoreClick        | function | Y        | -       | More button click handler (file); opens FileActionSheet                                                    |
+| onLongPressSelect  | function | Y        | -       | Long-press handler for mobile: enters selection mode and selects file                                      |
+| onContextMenu      | function | Y        | -       | Context menu handler                                                                                       |
+| onFileDrop         | function | N        | -       | Drop handler                                                                                               |
+| selectionMode      | boolean  | Y        | -       | Selection mode active; no checkboxes; selection indicated by card background highlight (see FileGridItem). |
+| selectedFiles      | Set      | Y        | -       | Selected paths                                                                                             |
+| onFileCheck        | function | Y        | -       | Selection toggle handler (e.g. called when card is clicked in selection mode); no checkbox UI.             |
+| processingMap      | object   | N        | -       | Processing state map                                                                                       |
+| loading            | boolean  | N        | false   | Loading state                                                                                              |
+| onThumbnailsLoaded | function | N        | -       | Thumbnail callback                                                                                         |
+| loadMoreRef        | ref      | N        | -       | Infinite scroll ref                                                                                        |
+| hasMore            | boolean  | N        | -       | More items flag                                                                                            |
+| shareToken         | string   | N        | -       | Share token                                                                                                |
 
 ### 2.3 Callback Signatures
 

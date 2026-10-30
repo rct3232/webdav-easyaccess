@@ -289,8 +289,6 @@
     "permanentDeleteConfirm1": "이 컬렉션을 영구 삭제할까요?",
     "permanentDeleteConfirm2": "되돌릴 수 없습니다. 메버는 컬렉션에서만 제거되며 파일은 그대로 유지됩니다.",
     "addToCollection": "컬렉션에 추가",
-    "membershipChip": "{{name}} 컬렉션에 포함",
-    "membershipChipMore": "+{{count}}개 더 — {{names}}",
     "newCollectionInline": "새 컬렉션…",
     "seedCreate": "이 파일과 유사한 컬렉션 만들기",
     "addRejectedNotReadable": "{{count}}개 제외됨(읽기 권한 없음)",

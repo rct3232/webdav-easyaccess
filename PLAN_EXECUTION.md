@@ -3020,3 +3020,67 @@ refined by U4 below.
 - **Artifact inventory for the pre-closure review:** `docs/E2E_COVERAGE_PLAN.md` carries the
   P1–P4 E2E rows; the phase-by-phase case inventory requested for the exit-gate review is
   recorded in the session report (not duplicated in this ledger).
+
+### 34. Post-P4 UI/UX hardening closure (2026-10-30)
+
+> Owner directive: apply all recommended UI/UX and test hardening before the P4 exit gate;
+> exclude hysteresis calibration and exit-gate closure itself. This overlay does not change
+> the §33 exit-gate status: it stays `[wip]`, and `ai-feature`→`dev` remains unmerged.
+
+**Merged units**
+
+| Unit                                                                                             | Branch                                      | Merge      |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------- | ---------- |
+| File-list membership badges removed (visual only; hook/API/checkmarks/properties chips retained) | `refactor/remove-file-membership-badges`    | `46de4c1b` |
+| FilePropertiesDialog AI Info tab + `GET /api/ai/enrichments/:nodeId`                             | `feature/file-ai-info-tab`                  | `64b58d5a` |
+| Atomic collection properties server endpoint + composite undo                                    | `feature/collection-properties-atomic-save` | `fac27bbf` |
+| Collection properties draft save / `onBack` / role-badge sharing UX                              | `feature/collection-properties-draft-save`  | `7e03b4d4` |
+| Merge recommendation sticky/accordion/hover-tap detail/B→A/reason redesign                       | `feature/merge-recommendation-ui`           | `dc46b511` |
+| Storage server domain split + `/api/storage/usage` breakdown                                     | `feature/storage-domain-server`             | `345987c6` |
+| Storage client split + `StorageDashboard`/usage UI + `CollectionsOverview`                       | `feature/storage-domain-client`             | `6f3e757e` |
+| Admin AI panel parity + contract manifest/fixture + `admin-ai` E2E                               | `feature/admin-ai-parity`                   | `95591029` |
+| AI matrix browser UI + storage usage E2E + inventory re-pin                                      | `test/p4-ui-e2e`                            | `9e29592d` |
+| Admin AI i18n gate-key alignment after storage rename                                            | (direct test fix)                           | `4e56ab3e` |
+
+**Resulting state**
+
+- **Storage ownership:** `server/domains/storage`, `/api/storage`,
+  `storage_suggestions`, `StorageDashboard`, `StorageCleanupSuggestions`,
+  `storageRepository`; collection status/journal moved to `CollectionsOverview`. Storage
+  and collections no longer import each other.
+- **New user usage feature:** current total/live/trash/version breakdown + 30-day series,
+  S3/WebDAV semantics, `incomplete` on NULL sizes, 2-point minimum, no quota/capacity.
+- **Badges:** files-surface collection markers removed; `for-nodes` remains for
+  AddToCollectionMenu checkmarks, FilePropertiesDialog “Member of”, and bulk add.
+- **Merge UI:** sticky region between toolbar and list; body/footer accordion; desktop
+  hover/mobile tap detail; no active-pair cursor; B(absorbed)→A(survivor) large samples;
+  deterministic count sentence with optional arbiter reason.
+- **Properties:** dialog-wide draft, Save/Discard/Cancel, cross-tab save, role badge toggle,
+  hierarchical `onBack`, one atomic `PUT /:id/properties` TX and one composite undo;
+  role changes preserve the grantee hidden flag; new grants clear it.
+- **File AI:** read-gated AI Info tab with tags/summary/caption/transcript/safe media/
+  provenance; no category/degraded fabrication.
+- **Admin AI:** rendered/API-only contract manifest, sentinel fixture, null-safe rendering,
+  launcher/preview reasons, journal errors, and eight browser E2E cases.
+- **E2E:** browser AI matrix (`AI-008..012`, AI-015), `STORAGE-001`, and admin-AI cases;
+  default inventory 283 (276 passed / 7 skipped model-on; 275/8 model-free), WebDAV 41/0.
+
+**Verification (2026-10-30)**
+
+- Server `test:ci`: 205 passed + 1 skipped suites; 3496 passed + 28 skipped tests.
+- Client `test:ci`: 197 suites / 2390 tests passed.
+- PostgreSQL adapter leg on a freshly recreated `webdav_test`: 32 suites / 492 passed +
+  1 skipped.
+- Release E2E: model-on 276/7 rc=0; model-free 275/8 rc=0; WebDAV 41/0 rc=0.
+- `docsStatePurity` 3/3; Prettier/ESLint clean on changed files; docs/DOM count pins
+  updated.
+- `client/TEST_SUMMARY.md`, `server/TEST_SUMMARY.md`, `PLAN.md`, and
+  `docs/E2E_COVERAGE_PLAN.md` carry these current pins; §33.10/§33.11 remain historical
+  pre-hardening snapshots.
+
+**Excluded / still open**
+
+- Hysteresis calibration remains the owner-run post-release item (§33.11).
+- P4 exit gate stays `[wip]`; no `ai-feature`→`dev` merge has been performed.
+- Predicate/delta chips remain deferred to the future conversational-search phase.
+- P3 was not rolled back as a whole; only the files-surface membership badges were removed.

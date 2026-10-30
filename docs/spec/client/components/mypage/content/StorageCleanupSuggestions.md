@@ -21,12 +21,12 @@ Target-contract spec (storage cleanup suggestions; `storageRepository.md`, `Stor
 
 ### 2.2 Props
 
-| Name        | Type     | Required | Default | Description                                                                                                                                                                                        |
-| ----------- | -------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| suggestions | array    | Y        | -       | `file_suggestions` rows (snake_case: `id`, `node_id`, `kind`, `reason` JSONB, `created_at`, `expires_at`) + host-provided `path`/`size_bytes` (the dashboard read supplies them — no second fetch) |
-| onAccept    | function | Y        | -       | `(nodeIds) => Promise<payload ∥ null>` — checked rows only; trash (not purge); undo toast from command `action_id`                                                                                 |
-| onDismiss   | function | Y        | -       | `(suggestionId) => void` — per-row only, rendered for rows carrying an `id`; dismissed rows leave the list without a toast                                                                         |
-| loading     | boolean  | N        | false   | Skeleton rows                                                                                                                                                                                      |
+| Name        | Type     | Required | Default | Description                                                                                                                                                                                           |
+| ----------- | -------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| suggestions | array    | Y        | -       | `storage_suggestions` rows (snake_case: `id`, `node_id`, `kind`, `reason` JSONB, `created_at`, `expires_at`) + host-provided `path`/`size_bytes` (the dashboard read supplies them — no second fetch) |
+| onAccept    | function | Y        | -       | `(nodeIds) => Promise<payload ∥ null>` — checked rows only; trash (not purge); undo toast from command `action_id`                                                                                    |
+| onDismiss   | function | Y        | -       | `(suggestionId) => void` — per-row only, rendered for rows carrying an `id`; dismissed rows leave the list without a toast                                                                            |
+| loading     | boolean  | N        | false   | Skeleton rows                                                                                                                                                                                         |
 
 ### 2.3 Contract Rules (checkbox in ALL cases)
 
@@ -73,7 +73,7 @@ Target-contract spec (storage cleanup suggestions; `storageRepository.md`, `Stor
 
 - Node trashed by owner between listing and accept: the server `rejected_not_owned`/`skipped` lists surface via the accept result handling (mixed outcome path).
 - `expires_at` past render horizon: row simply absent (server filters) — no client expiry math.
-- **Persisted rows (the norm):** every checklist row is a `file_suggestions` row carrying an
+- **Persisted rows (the norm):** every checklist row is a `storage_suggestions` row carrying an
   `id`, `created_at` and `expires_at` (`storageRepository.md` §2.2 — plus host-provided
   `path`, `size_bytes` and `reason` with `keep_node_id`). The dismiss control renders only
   when the row carries an `id` AND the host passes `onDismiss` (the `Storage` dashboard

@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                                                                     |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role       | Persistence for the per-user daily logical-storage series shown by the MyPage `Storage` dashboard (`docs/spec/client/components/mypage/content/CollectionDashboard.md`, `docs/spec/server/routes/storage.md`). One row per user per UTC day; the daily capture upserts the row and retention prunes old rows. |
-| Boundaries | The store persists snapshots only. It computes no sizes (the aggregate lives in `fileNodesStore.summarizeSubtreeStorageUsage` via `storageService`) and serves no HTTP surface (`GET /api/storage/usage` delegates here through `storageService`).                                                |
+| Item       | Description                                                                                                                                                                                                                                                                                                |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role       | Persistence for the per-user daily logical-storage series shown by the MyPage `Storage` dashboard (`docs/spec/client/components/mypage/content/StorageDashboard.md`, `docs/spec/server/routes/storage.md`). One row per user per UTC day; the daily capture upserts the row and retention prunes old rows. |
+| Boundaries | The store persists snapshots only. It computes no sizes (the aggregate lives in `fileNodesStore.summarizeSubtreeStorageUsage` via `storageService`) and serves no HTTP surface (`GET /api/storage/usage` delegates here through `storageService`).                                                         |
 
 ---
 

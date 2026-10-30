@@ -6,9 +6,9 @@ breakdown with its persisted daily series, and the persisted cleanup-suggestion 
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                          |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Mount path | `/api/storage`                                                                                                                                                     |
+| Item       | Description                                                                                                                                                             |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mount path | `/api/storage`                                                                                                                                                          |
 | Role       | Storage server surface: hygiene/suggestions/usage read (the hygiene GET persists pending rows as part of the read) + cleanup accept (POST) + suggestion dismiss (POST). |
 
 **Ownership boundary:** this router is a thin CONSUMER — it composes existing surfaces and
@@ -41,12 +41,12 @@ with `setupModeGuardInstance` (coverage invariant, ARCHITECTURE §1.3):
 
 ### 2.2 Route List (sync with api.md)
 
-| Method | Path                   | Auth  | Description                                                                                                                      |
-| ------ | ---------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Method | Path                   | Auth  | Description                                                                                                                    |
+| ------ | ---------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------ |
 | GET    | `/`                    | Token | One-shot storage read: dup summary + persisted suggestion rows + trash summary; materializes pending rows as part of the read. |
 | GET    | `/usage`               | Token | Current logical-storage breakdown + the per-user daily series (fewer than two points ⇒ empty series).                          |
-| POST   | `/suggestions/accept`  | Token | Accept selected rows → trash as ONE journaled command (owner-only, per-node result, undo pointer).                               |
-| POST   | `/suggestions/dismiss` | Token | Dismiss one persisted suggestion row (`pending → dismissed`).                                                                    |
+| POST   | `/suggestions/accept`  | Token | Accept selected rows → trash as ONE journaled command (owner-only, per-node result, undo pointer).                             |
+| POST   | `/suggestions/dismiss` | Token | Dismiss one persisted suggestion row (`pending → dismissed`).                                                                  |
 
 ### 2.3 Middleware Used
 
@@ -261,12 +261,12 @@ trashed; a trashed node without a pending row contributes an item with an empty
 
 ### 2.4.1 Error Codes (SERVER_ERROR_CODES style)
 
-| HTTP | errorCode                                  | Trigger                                                                             |
-| ---- | ------------------------------------------ | ----------------------------------------------------------------------------------- |
-| 400  | `serverErrors.storage.emptyNodeIds`        | Missing/empty/non-array/over-cap (200) `nodeIds`.                                   |
-| 400  | `serverErrors.storage.invalidSuggestionId` | Missing/non-numeric/≤0 `suggestionId` (dismiss).                                    |
-| 404  | `serverErrors.storage.suggestionNotFound`  | Dismiss target unknown, not the requester's, or not `pending`.                      |
-| 403  | `serverErrors.storage.forbidden`           | ADMIN requester — operator-rule gate; the storage surface is non-admin-only.        |
+| HTTP | errorCode                                  | Trigger                                                                      |
+| ---- | ------------------------------------------ | ---------------------------------------------------------------------------- |
+| 400  | `serverErrors.storage.emptyNodeIds`        | Missing/empty/non-array/over-cap (200) `nodeIds`.                            |
+| 400  | `serverErrors.storage.invalidSuggestionId` | Missing/non-numeric/≤0 `suggestionId` (dismiss).                             |
+| 404  | `serverErrors.storage.suggestionNotFound`  | Dismiss target unknown, not the requester's, or not `pending`.               |
+| 403  | `serverErrors.storage.forbidden`           | ADMIN requester — operator-rule gate; the storage surface is non-admin-only. |
 
 All errors follow the shared envelope (`errorCode` + optional `params`,
 [shared-contracts.md](../../../shared-contracts.md)); client locale mirror mandatory.
@@ -274,7 +274,7 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
 ### 2.4.2 Contract clarifications
 
 - One GET feeds the hygiene cards and the suggestion list; the client maps it to the blocks
-  in `CollectionDashboard.md` §2.3.
+  in `StorageDashboard.md` §2.3.
 - Route path `/api/storage` (singular).
 - The near-dup block rides the SAME payload: `near_duplicates` (summary, present only when the
   vector leg is available) + `near_dup` rows appended to `suggestions` — no second endpoint.
@@ -293,7 +293,7 @@ All errors follow the shared envelope (`errorCode` + optional `params`,
 - Near-dup keepers follow the keeper composite (`storageService.md` §2.5.1) and the
   exposure block rides `reason.keep`; the client renders the label and the collapsible
   "Why this keeper?" detail from that block only
-  (`/docs/spec/client/components/mypage/content/SuggestionsChecklist.md` §2.3).
+  (`/docs/spec/client/components/mypage/content/StorageCleanupSuggestions.md` §2.3).
 
 ### 2.5 Related Documents
 

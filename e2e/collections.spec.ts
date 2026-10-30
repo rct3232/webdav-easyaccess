@@ -1608,7 +1608,7 @@ test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the rec
   expect(recipientUser).toBeTruthy();
 
   // 1) OWNER UI — the `sharing` card-menu dispatch opens the dialog on the
-  //    Sharing tab (CollectionPropertiesDialog.md §2.3).
+  //    Sharing tab (CollectionPropertiesDialog.md §2.4).
   await page.goto('/files/__collections__');
   await openCardMenu(page, name, 'sharing');
   await expect(page.getByTestId('collection-props-tab-sharing')).toHaveAttribute(
@@ -1617,11 +1617,8 @@ test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the rec
   );
   await expect(page.getByTestId('collection-publish-mode-exposure-note')).toBeVisible();
 
-  // Add grant via the UserSelectionMenu picker (default role viewer).
-  await expect(page.getByTestId('collection-grant-role-viewer')).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
+  // Add grant via the UserSelectionMenu picker (default role viewer). The row
+  // is a DRAFT: no request fires until Save.
   await page.getByTestId('collection-grant-add').click();
   // The picker row carries username (span) AND email (<p>) — the email is a
   // superstring of the username, so the click must be EXACT (strict mode).
@@ -1629,15 +1626,43 @@ test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the rec
   const grantRow = page.getByTestId(`collection-grant-row-${recipientUser.id}`);
   await expect(grantRow).toBeVisible({ timeout: 15_000 });
   await expect(grantRow).toContainText('Viewer'); // localized chip, never the raw enum
-  await expect(page.getByText(/Collection shared/i)).toBeVisible();
-  // The undo toast is NOT clicked: the lifecycle leg below is the intended
-  // re-grant path (revoke-undo = re-grant only behind an explicit click).
 
-  // publish_mode ask→auto PUT through the radio (exposure copy visible above).
+  // Role badge click toggles the draft viewer→editor.
+  await page.getByTestId(`collection-grant-role-${recipientUser.id}`).click();
+  await expect(grantRow).toContainText('Editor');
+
+  // Stage publish_mode ask→auto through the radio (exposure copy visible above).
   await page.getByTestId('collection-publish-mode-auto').click();
-  await expect(page.getByText(/Publish mode updated/i)).toBeVisible();
 
-  await page.getByRole('button', { name: 'Close' }).last().click();
+  // Cross-tab: Info reads the DRAFT chip; Switching back preserves row + radio.
+  await page.getByTestId('collection-props-tab-info').click();
+  await expect(page.getByTestId('collection-publish-mode-chip')).toContainText('Auto');
+  await page.getByTestId('collection-props-tab-sharing').click();
+  await expect(page.getByTestId('collection-publish-mode-auto')).toBeChecked();
+  await expect(grantRow).toContainText('Editor');
+
+  // ONE atomic Save sends the whole staged plan and closes on success.
+  await page.getByTestId('collection-props-save').click();
+  await expect(page.getByText(/Collection properties saved/i)).toBeVisible();
+  await expect(page.getByTestId('collection-props-tab-sharing')).toHaveCount(0);
+
+  // Server state confirms the atomic plan (editor grant + auto publish mode).
+  const grantsAfter = await request.get(`/api/collections/${collectionId}/grants`, {
+    headers: auth(token),
+  });
+  expect(grantsAfter.ok()).toBeTruthy();
+  expect(
+    (await grantsAfter.json()).grants.find(
+      (grant: { grantee_id: number }) => grant.grantee_id === recipientUser.id
+    )?.role
+  ).toBe('editor');
+  const listAfter = await request.get('/api/collections', { headers: auth(token) });
+  expect(listAfter.ok()).toBeTruthy();
+  expect(
+    (await listAfter.json()).collections.find(
+      (collection: { collection_id: number }) => collection.collection_id === collectionId
+    )?.publish_mode
+  ).toBe('auto');
 
   // 2) RECIPIENT UI — switch sessions (clear + re-login as the grantee).
   await page.evaluate(() => window.localStorage.clear());

@@ -247,6 +247,9 @@ members never
 render in shared views; revocation is instant, though already-seen metadata cannot be re-taken.
 Admin-as-grantee is PROHIBITED at grant creation: `POST /:id/grants` with an admin grantee 403s
 (`collections.forbidden`, service-level ban) — collections never reference admins (§3.2 operator rule).
+Owner property edits (name, publish mode, pin, grants) are staged across the properties tabs and committed
+as one atomic `PUT /:id/properties` plan; closing a dirty dialog asks Save/Discard/Cancel, and no
+property or grant mutation fires before Save.
 
 ### 4.8 Digest
 

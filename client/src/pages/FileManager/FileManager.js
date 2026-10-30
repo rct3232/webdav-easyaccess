@@ -799,48 +799,22 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
 
   const closeCollectionProps = useCallback(() => setCollectionPropsTarget(null), []);
 
-  /** `onPatch` mapping: dialog writes → existing CRUD seams (undo toasts ride). */
-  const handleCollectionPropsPatch = useCallback(
-    (patch) => {
-      if (collectionPropsId == null || !patch) return;
-      if (typeof patch.name === 'string' && patch.name !== '') {
-        collectionsApi.renameCollection(collectionPropsId, patch.name);
-      }
-      if (typeof patch.pinned === 'boolean') {
-        collectionsApi.setPinned(collectionPropsId, patch.pinned);
-      }
-      if (typeof patch.publishMode === 'string') {
-        collectionsApi.setPublishMode(collectionPropsId, patch.publishMode);
-      }
+  /**
+   * `onSave` mapping (CollectionPropertiesDialog.md §2.3): ONE atomic
+   * `PUT /:id/properties` for the whole changed-key plan. No property/grant
+   * mutation fires before the dialog's Save; the response refreshes the list
+   * via the hook (notifier) and the host emits the single summary toast.
+   */
+  const handleCollectionPropsSave = useCallback(
+    async (plan) => {
+      if (collectionPropsId == null || !plan) return false;
+      const payload = await collectionsApi.saveCollectionProperties(collectionPropsId, plan);
+      if (!payload) return false;
+      if (Array.isArray(payload.grants)) setCollectionGrants(payload.grants);
+      messageBundle.showSuccess(t('collections.propertiesSaved'));
+      return true;
     },
-    [collectionPropsId, collectionsApi]
-  );
-
-  /** Grant list updates from the POST response row (PK replace by grantee_id). */
-  const handleCollectionGrant = useCallback(
-    async (userId, role) => {
-      if (collectionPropsId == null) return;
-      const payload = await collectionsApi.grantCollection(collectionPropsId, { userId, role });
-      if (!payload || !payload.grant) return;
-      setCollectionGrants((prev) => [
-        ...(prev ?? []).filter((row) => row.grantee_id !== payload.grant.grantee_id),
-        payload.grant,
-      ]);
-    },
-    [collectionPropsId, collectionsApi]
-  );
-
-  /** Revoke is instant; the row drops from the DELETE response grantee_id. */
-  const handleCollectionRevoke = useCallback(
-    async (granteeId) => {
-      if (collectionPropsId == null) return;
-      const payload = await collectionsApi.revokeGrant(collectionPropsId, granteeId);
-      if (!payload) return;
-      setCollectionGrants((prev) =>
-        (prev ?? []).filter((row) => row.grantee_id !== payload.grantee_id)
-      );
-    },
-    [collectionPropsId, collectionsApi]
+    [collectionPropsId, collectionsApi, messageBundle, t]
   );
 
   const handleCardAction = useCallback(
@@ -874,7 +848,12 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
         case 'sharing':
           // T3.2b (FileManager.md §7): open the host-owned CollectionPropertiesDialog
           // on the Sharing tab (owner rows only — the card menu never offers this
-          // entry for received rows).
+          // entry for received rows). Clear the previous open's reads in the SAME
+          // dispatch so the dialog never seeds a stale grant baseline.
+          setCollectionGrants(null);
+          setCollectionPreview(null);
+          setCollectionSeedName(null);
+          setCollectionShareableUsers([]);
           setCollectionPropsTarget(collection);
           break;
         case 'delete-permanent': {
@@ -2660,13 +2639,11 @@ const FileManager = ({ shareToken, linkInfo } = {}) => {
             collection={collectionPropsCollection}
             initialTab="sharing"
             aiFlags={{ embed: llmConfigured, chat: false }}
-            onPatch={handleCollectionPropsPatch}
+            onSave={handleCollectionPropsSave}
             grants={collectionGrants}
             shareableUsers={collectionShareableUsers}
             preview={collectionPreview}
             seedName={collectionSeedName}
-            onGrant={handleCollectionGrant}
-            onRevoke={handleCollectionRevoke}
           />
           <ConfirmDialog
             open={Boolean(cascadeConfirm?.open)}

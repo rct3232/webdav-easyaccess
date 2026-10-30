@@ -74,6 +74,7 @@ describe('useCollections', () => {
     expect(typeof result.current.restoreCollection).toBe('function');
     expect(typeof result.current.deleteCollectionPermanent).toBe('function');
     expect(typeof result.current.revokeOwnGrant).toBe('function');
+    expect(typeof result.current.saveCollectionProperties).toBe('function');
     expect(typeof result.current.mergePair).toBe('function');
     expect(typeof result.current.dismissMergeSuggestion).toBe('function');
     expect(typeof result.current.rejectMergeSuggestion).toBe('function');
@@ -399,6 +400,55 @@ describe('useCollections', () => {
       );
       expect(out).toEqual(payload);
       expect(mockOnUndoable).toHaveBeenCalledWith(payload, 'collections.undoGrantRevoked');
+    });
+
+    it('saveCollectionProperties forwards the changed-key plan, refreshes, and never yields an undo toast', async () => {
+      const payload = {
+        collection: { ...ROW_A, publish_mode: 'auto' },
+        grants: [{ grantee_id: 11, username: 'dave', role: 'editor' }],
+        undo: { action_id: 998 },
+      };
+      const plan = {
+        publishMode: 'auto',
+        grants: { upsert: [{ userId: 11, role: 'editor' }], revoke: [] },
+      };
+      explorerGateway.saveCollectionProperties.mockResolvedValue(payload);
+      const { result } = renderHook(() => useCollections(baseProps()));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      const loadCallsBefore = explorerGateway.loadCollections.mock.calls.length;
+
+      let out;
+      await act(async () => {
+        out = await result.current.saveCollectionProperties(7, plan);
+      });
+
+      expect(explorerGateway.saveCollectionProperties).toHaveBeenCalledWith(
+        7,
+        plan,
+        expect.objectContaining({ onError: expect.any(Function) })
+      );
+      expect(out).toEqual(payload);
+      expect(mockOnUndoable).not.toHaveBeenCalled();
+      expect(mockShowError).not.toHaveBeenCalled();
+      expect(explorerGateway.loadCollections.mock.calls.length).toBeGreaterThan(loadCallsBefore);
+    });
+
+    it('saveCollectionProperties absorbed failure maps to showError with NO undo affordance', async () => {
+      explorerGateway.saveCollectionProperties.mockImplementation((id, plan, options = {}) => {
+        options.onError?.({ errorCode: 'serverErrors.collections.forbidden', params: {} });
+        return Promise.resolve(null);
+      });
+      const { result } = renderHook(() => useCollections(baseProps()));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      let out;
+      await act(async () => {
+        out = await result.current.saveCollectionProperties(7, { name: 'x' });
+      });
+
+      expect(out).toBeNull();
+      expect(mockShowError).toHaveBeenCalledTimes(1);
+      expect(mockOnUndoable).not.toHaveBeenCalled();
     });
 
     it('absorbed grant/revoke failures map to showError with NO undo affordance', async () => {

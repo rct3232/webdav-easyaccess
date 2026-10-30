@@ -213,6 +213,24 @@ export const updateCollection = async (id, payload, options) => {
   return absorbMutation(`/collections/${id}`, { method: 'put', data: payload, options });
 };
 
+/**
+ * Atomic collection-properties save (name/publishMode/pinned + one grant plan).
+ * The dialog sends only changed keys; the response carries the refreshed
+ * `collection`, the full `grants` list and one journal `undo` pointer.
+ *
+ * @param {number} id
+ * @param {{ name?: string, publishMode?: 'ask'|'off'|'auto', pinned?: boolean,
+ *   grants?: { upsert: Array<{ userId: number, role: 'viewer'|'editor' }>, revoke: number[] } }} payload
+ * @returns {Promise<{ collection: Object, grants: Array<Object>, undo: Object }|null>}
+ */
+export const saveCollectionProperties = async (id, payload, options) => {
+  return absorbMutation(`/collections/${id}/properties`, {
+    method: 'put',
+    data: payload,
+    options,
+  });
+};
+
 export const archiveCollection = async (id, options) => {
   return absorbMutation(`/collections/${id}/archive`, { data: {}, options });
 };

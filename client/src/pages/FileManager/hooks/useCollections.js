@@ -26,7 +26,7 @@ const DEFAULT_SORT = 'activity';
  *   include: string, refresh: () => Promise<void>,
  *   renameCollection, setPinned, setPublishMode, archiveCollection,
  *   restoreCollection, deleteCollectionPermanent, revokeOwnGrant,
- *   loadGrants, grantCollection, revokeGrant,
+ *   loadGrants, grantCollection, revokeGrant, saveCollectionProperties,
  *   suggestions: Array<Object>, mergePair, dismissMergeSuggestion, rejectMergeSuggestion,
  * }}
  */
@@ -295,6 +295,20 @@ export const useCollections = ({ showError, gateway, onUndoable, include } = {})
     [io, runMutation]
   );
 
+  /**
+   * Atomic properties save for the CollectionPropertiesDialog host
+   * (useCollections.md §2.3): the dialog stages the whole plan and sends only
+   * changed keys. Success → refresh with NO undo affordance (the host emits
+   * one summary toast); absorbed failure → mapped showError.
+   */
+  const saveCollectionProperties = useCallback(
+    (id, plan) =>
+      runMutation((options) => io.saveCollectionProperties(id, plan, options), {
+        withUndo: false,
+      }),
+    [io, runMutation]
+  );
+
   return {
     collections,
     loading,
@@ -312,6 +326,7 @@ export const useCollections = ({ showError, gateway, onUndoable, include } = {})
     loadGrants,
     grantCollection,
     revokeGrant,
+    saveCollectionProperties,
     suggestions,
     mergePair,
     dismissMergeSuggestion,

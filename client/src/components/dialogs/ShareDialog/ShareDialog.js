@@ -253,6 +253,7 @@ const ShareDialog = ({
         handleAddUser={handleAddUser}
         permissionRequest={permissionRequest}
         handleUserSelect={handleUserSelect}
+        onBack={() => setFolderMenuView('manage')}
       />
     </>
   );

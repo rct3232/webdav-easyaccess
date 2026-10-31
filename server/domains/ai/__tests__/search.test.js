@@ -62,6 +62,7 @@ beforeAll(async () => {
   app = express();
   app.use(express.json());
   app.use('/api/search', setupModeGuard(), require('../routes'));
+  app.use('/api/admin', setupModeGuard(), require('../../admin/routes/config'));
   app.use(require('../../../utils/errorHandler').errorHandler);
 });
 
@@ -69,9 +70,10 @@ afterAll(async () => {
   await dbCleanup?.();
 });
 
-async function createUserWithRoot(tag) {
+async function createUserWithRoot(tag, opts = {}) {
   const { user, token } = await createAuthenticatedTestUser({
     username: `search-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    ...opts,
   });
   const root = await fileNodeService.createDirectory(null, user.username);
   return { user, token, root };
@@ -595,6 +597,82 @@ describe('POST /api/search NL-parse wire states', () => {
       expect(killed.body.name_matches.map((row) => row.node_id).sort((x, y) => x - y)).toEqual(
         [alpha.id, beta.id].sort((x, y) => x - y)
       );
+    } finally {
+      await dbQuery('DELETE FROM settings WHERE key = ?', ['AI_NL_PARSE_ENABLED']);
+      getSharedResolver().invalidateCache('AI_NL_PARSE_ENABLED');
+    }
+  });
+
+  it('E2E-S3-AI-002: a hot PUT /api/admin/config invalidates the resolver cache before the next search', async () => {
+    // Same-prefix nodes so the LLM-free name section is stable across all
+    // three submits while only the kill-switch gate changes.
+    const ctx = await createUserWithRoot('nlhotconfig', { isAdmin: true });
+    const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const alpha = await fileNodeService.createFile(ctx.root.id, `nl-hot-${stamp}-alpha.txt`);
+    const beta = await fileNodeService.createFile(ctx.root.id, `nl-hot-${stamp}-beta.pdf`);
+    const query = `nl-hot-${stamp}`;
+
+    try {
+      // Parser ON baseline (no settings row ⇒ registry default true).
+      const baselineCalls = [];
+      llmRuntime.__setMockAdapter(createRouteNlAdapter({ chatOk: true, chatCalls: baselineCalls }));
+      const baseline = await request(app)
+        .post('/api/search')
+        .set('Authorization', `Bearer ${ctx.token}`)
+        .send({ query });
+
+      expect(baseline.status).toBe(200);
+      expect(baseline.body.predicates).toEqual([{ type: 'size', min: 1048576 }]);
+      expect(baselineCalls).toHaveLength(1);
+      expect(baseline.body.name_matches.map((row) => row.node_id).sort((x, y) => x - y)).toEqual(
+        [alpha.id, beta.id].sort((x, y) => x - y)
+      );
+      const baselineRows = baseline.body.name_matches;
+
+      // Hot write through the REAL admin config route. The route journals the
+      // curated key and invalidates the shared resolver cache on commit.
+      const off = await request(app)
+        .put('/api/admin/config')
+        .set('Authorization', `Bearer ${ctx.token}`)
+        .send({ values: { AI_NL_PARSE_ENABLED: false } });
+
+      expect(off.status).toBe(200);
+      expect(off.body.applied).toContain('AI_NL_PARSE_ENABLED');
+
+      // Immediately (no TTL wait, no manual invalidate): the next search must
+      // observe the new value and stay parser-free.
+      const killedCalls = [];
+      llmRuntime.__setMockAdapter(createRouteNlAdapter({ chatOk: true, chatCalls: killedCalls }));
+      const killed = await request(app)
+        .post('/api/search')
+        .set('Authorization', `Bearer ${ctx.token}`)
+        .send({ query });
+
+      expect(killed.status).toBe(200);
+      expect('predicates' in killed.body).toBe(false);
+      expect(killedCalls).toHaveLength(0);
+      expect(killed.body.name_matches).toEqual(baselineRows);
+
+      // Restore through the same route: the next search parses again with the
+      // same LLM-free rows, proving invalidation in both directions.
+      const on = await request(app)
+        .put('/api/admin/config')
+        .set('Authorization', `Bearer ${ctx.token}`)
+        .send({ values: { AI_NL_PARSE_ENABLED: true } });
+
+      expect(on.status).toBe(200);
+      expect(on.body.applied).toContain('AI_NL_PARSE_ENABLED');
+
+      const restoredCalls = [];
+      llmRuntime.__setMockAdapter(createRouteNlAdapter({ chatOk: true, chatCalls: restoredCalls }));
+      const restored = await request(app)
+        .post('/api/search')
+        .set('Authorization', `Bearer ${ctx.token}`)
+        .send({ query });
+
+      expect(restored.status).toBe(200);
+      expect(restored.body.predicates).toEqual([{ type: 'size', min: 1048576 }]);
+      expect(restored.body.name_matches).toEqual(baselineRows);
     } finally {
       await dbQuery('DELETE FROM settings WHERE key = ?', ['AI_NL_PARSE_ENABLED']);
       getSharedResolver().invalidateCache('AI_NL_PARSE_ENABLED');

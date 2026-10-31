@@ -6,8 +6,8 @@ Summary of the test implementation for the Express.js server application. All te
 
 ## Test Statistics
 
-- **Total Test Suites**: 206 (205 passed, 1 skipped; sqlite `test:ci`, 2026-10-30 post-P4 hardening)
-- **Total Tests**: 3524 (3496 passed, 28 skipped)
+- **Total Test Suites**: 207 (206 passed, 1 skipped; sqlite `test:ci`, 2026-10-31 AI-matrix demotion)
+- **Total Tests**: 3527 (3499 passed, 28 skipped)
 - **Pass Rate**: 100% of executed tests (0 failed) ✅
 - **Real-PostgreSQL adapter leg** (`test:ci:pg:adapters`): 32 suites / 492 passed, 1 skipped (493 total; recorded 2026-10-30 on a freshly recreated `webdav_test` DB)
 - **Execution Time**: Reported per run by `npm run test`
@@ -158,13 +158,13 @@ tiers only.
   `s3-ai-desktop` 1 / 0 / 0 (pre-seeded `WEA_MODEL_DIR` weights resolved from the
   default `/tmp/opencode/delta-base/models`).
 - The jest tiers above are the orchestrator's exit-gate ownership: server sqlite
-  206 suites / 3524 tests (3496 passed + 28 skipped); client 197 suites / 2390
+  207 suites / 3527 tests (3499 passed + 28 skipped); client 198 suites / 2401
   tests (see `client/TEST_SUMMARY.md`); real-PostgreSQL adapter leg 32 suites /
   492 passed + 1 skipped (`test:ci:pg:adapters`, fresh DB).
 
 ## Conclusion
 
-- Server `test:ci` passed with 206 suites (205 passed + 1 skipped) and 3496 passed + 28 skipped tests as of the 2026-10-30 post-P4 hardening run. The real-PostgreSQL adapter leg `test:ci:pg:adapters` passed 32 suites / 492 passed + 1 skipped on a fresh DB.
+- Server `test:ci` passed with 207 suites (206 passed + 1 skipped) and 3499 passed + 28 skipped tests as of the 2026-10-31 AI-matrix demotion. The real-PostgreSQL adapter leg `test:ci:pg:adapters` passed 32 suites / 492 passed + 1 skipped on a fresh DB.
 - Tests are colocated with source: domain routes/services/stores/policy under `domains/<x>/`, shared layer under `service/` and `store/`, plus `infrastructure/`, `middleware/`, `models/`, `utils/`
 - Route integration tests cover main API endpoints via Supertest
 - L2 repository conformance suites (store + permission repositories, executor) run against real sqlite and, on the adapter leg, real PostgreSQL

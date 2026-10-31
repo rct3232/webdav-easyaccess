@@ -103,9 +103,11 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   `embed+media` (fake media-capable embed), `embed+chat+vision` (fake embed+chat+vision) —
   and the **None and embed columns must pass green with no real adapter present** (the
   "never-a-render-dependency" invariant, verified by construction). The wire contract lives
-  in the API-only project (`E2E-S3-AI-002..007`); the browser consequences (FAB glyph, Zone
-  C/save chip, media findability, parser kill-switch shape, admin health card) live in the
-  UI project (`E2E-S3-AI-008..012`).
+  in the API-only project (`E2E-S3-AI-002..007`). The browser project (`E2E-S3-AI-008..009`)
+  keeps only the real-client↔real-server smoke (FAB glyph, Zone C/save-chip presence).
+  Media findability is pinned by `server/domains/ai/__tests__/mediaSearchJoin.test.js`, the
+  parser/name-section independence and kill switch by the search route/service suites, and
+  the admin health-card copy by `SystemSettingsContent.test.js`.
 - **Fake-LLM E2E harness contract (T4.3 Wave 1):** `e2e/helpers/fakeLlm.ts` starts a
   `node:http` listener inside the Playwright process on an ephemeral `127.0.0.1` port
   (`listen(0)`) and serves root + `/v1` aliases for `POST /embeddings`,
@@ -131,7 +133,7 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   (`e2e/helpers/aiMatrixColumn.ts`): `s3-ai-matrix-desktop` (`:5021`, API-only —
   `RequestContext` + direct sqlite reads, never a `page`, so a pinned band mapping the slot
   to the browser-restricted `5061` cannot break it) and `s3-ai-matrix-ui-desktop`
-  (`:5009`, browser-safe — the page-driving cases `E2E-S3-AI-008..012`; this slot must never
+  (`:5009`, browser-safe — the page-driving cases `E2E-S3-AI-008..009`; this slot must never
   be moved onto `5021`/`5061`). Each column gets its own scratch directory, S3 bucket, and
   server lifecycle.
 - **Parser legs (`parse.nl`):** verified hermetically by unit/integration suites with an

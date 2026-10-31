@@ -3077,8 +3077,8 @@ refined by U4 below.
 - **E2E:** browser AI matrix (`AI-008..012`, AI-015), admin-AI cases, and a dedicated
   storage suite (`STORAGE-001..002` in `e2e/storage.spec.ts`; the former COLLECTION-023
   moved there) under the independent `s3-storage-desktop`/`s3-storage-mobile` projects
-  (dedicated `:5022`/`:5023` scratch slots). Default inventory 283 (277 passed / 6 skipped
-  model-on; 276/7 model-free), WebDAV 41/0.
+  (dedicated `:5022`/`:5023` scratch slots). Default inventory 278 (272 passed / 6 skipped
+  model-on; 271/7 model-free), WebDAV 41/0.
 
 **Verification (2026-10-30)**
 
@@ -3108,3 +3108,33 @@ refined by U4 below.
 - P4 exit gate stays `[wip]`; no `ai-feature`→`dev` merge has been performed.
 - Predicate/delta chips remain deferred to the future conversational-search phase.
 - P3 was not rolled back as a whole; only the files-surface membership badges were removed.
+
+### 34.1 AI matrix UI demotion (2026-10-31)
+
+The Wave 3 browser matrix mixed three layers: wire assertions already owned by the API matrix,
+coarse DOM presence, and two genuinely browser-only links. The browser suite is now a two-case
+smoke (`E2E-S3-AI-008..009`, `e2e/ai.matrix.ui.spec.ts`) that keeps the real-client↔real-server
+consequences of the None and embed columns: FAB glyph, Zone C header/rows, save chip and the
+honest empty state. The API-only matrix (`E2E-S3-AI-002..007`) continues to own the wire contract.
+
+- **E2E-S3-AI-010 (media findability)** → `server/domains/ai/__tests__/mediaSearchJoin.test.js`:
+  the real embed pipeline and embeddings store join the production scorer, covering
+  `media_direct` → semantic hit and `metadata_only` → honest miss.
+- **E2E-S3-AI-011 (parser atoms do not alter the name section)** →
+  `server/domains/ai/__tests__/search.test.js`; the parser-free kill-switch shape stays in
+  `e2e/ai.matrix.spec.ts` (E2E-S3-AI-002). The former predicate/delta-chip absence assertion
+  selected test IDs that no client component renders (vacuous) and was removed.
+- **E2E-S3-AI-012 (admin health-card copy)** →
+  `client/src/components/mypage/content/__tests__/SystemSettingsContent.test.js`.
+- **Client page wiring** (settings/public → glyph; semantic-only/empty → Zone C/no-results) →
+  `client/src/pages/__tests__/FileManager.test.js`.
+
+**Verification (2026-10-31)**
+
+- `s3-ai-matrix-ui-desktop`: **2/2 passed** (39.4 s, port band 80; E2E-S3-AI-008 5.0 s,
+  E2E-S3-AI-009 3.7 s).
+- Server `test:ci`: **206 passed + 1 skipped suites; 3499 passed + 28 skipped tests**
+  (207 suites / 3527 total).
+- Client `test:ci`: **198 suites / 2401 tests passed** (89.0 s).
+- `docsStatePurity` 3/3; Prettier/ESLint clean on changed files.
+- Inventory pinned at default **278** (model-on 272/6, model-free 271/7), WebDAV 41/0.

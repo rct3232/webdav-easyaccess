@@ -484,6 +484,8 @@ describe('SystemSettingsContent', () => {
 
     const card = await screen.findByTestId('backend-health-card');
     expect(within(card).getByText(/partial/i)).toBeInTheDocument();
+    expect(within(card).getByText(/Embed/)).toBeInTheDocument();
+    expect(within(card).getByText(/AI provider probe failed/i)).toBeInTheDocument();
   });
 
   it('renders only the failing backends on the backend-health card', async () => {

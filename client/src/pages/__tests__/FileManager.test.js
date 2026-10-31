@@ -2774,6 +2774,37 @@ describe('FileManager', () => {
       expect(await screen.findByTestId('undo-toast-action')).toBeInTheDocument();
     }, 15000);
 
+    it('a semantic-only payload renders Zone C with the save chip, and an empty semantic section shows the no-results state', async () => {
+      let searchCalls = 0;
+      server.use(
+        http.post('/api/search', () => {
+          searchCalls += 1;
+          return HttpResponse.json(
+            searchCalls === 1
+              ? semanticResultsPayload([], [{ node_id: 90, name: 'semantic-only.pdf' }])
+              : semanticResultsPayload([], [])
+          );
+        }),
+        metadataHandler({ 90: { name: 'semantic-only.pdf' } })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+
+      await submitSearchText('semantic-only');
+      const zoneCRow = await screen.findByTestId('server-search-row-90');
+      await waitFor(() => expect(zoneCRow.textContent).toMatch(/semantic-only\.pdf/));
+      expect(screen.getByTestId('search-zone-header-c')).toBeInTheDocument();
+      expect(screen.getByTestId('search-chip-save')).toBeInTheDocument();
+      expect(screen.queryByTestId('search-zone-header-a')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('search-zone-header-b')).not.toBeInTheDocument();
+
+      await submitSearchText('no-semantic-hit');
+      expect(await screen.findByTestId('search-no-results')).toBeInTheDocument();
+      expect(screen.queryByTestId('search-zone-header-c')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('server-search-row-90')).not.toBeInTheDocument();
+    }, 15000);
+
     it('the save affordance stays absent on the degraded stack (semantic unavailable)', async () => {
       server.use(
         http.post('/api/search', () =>
@@ -2861,6 +2892,47 @@ describe('FileManager', () => {
         global.IntersectionObserver = RealIO;
       }
     }, 20000);
+  });
+
+  describe('search surface LLM glyph wiring (settings/public)', () => {
+    it('keeps the magnifier glyph when settings/public reports ai.embed false', async () => {
+      let settingsCalls = 0;
+      server.use(
+        http.get('/api/settings/public', () => {
+          settingsCalls += 1;
+          return HttpResponse.json({ ai: { embed: false, chat: false } });
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+      fireEvent.focus(screen.getByRole('searchbox'));
+
+      await waitFor(() => expect(settingsCalls).toBe(1));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(screen.getByTestId('search-action-glyph-search')).toBeInTheDocument();
+      expect(screen.queryByTestId('search-action-glyph-wand')).not.toBeInTheDocument();
+    });
+
+    it('swaps the magnifier for the wand glyph when settings/public reports ai.embed true', async () => {
+      let settingsCalls = 0;
+      server.use(
+        http.get('/api/settings/public', () => {
+          settingsCalls += 1;
+          return HttpResponse.json({ ai: { embed: true, chat: false } });
+        })
+      );
+
+      await renderWithProvidersAct(<FileManagerWithRoutes />, { initialEntries: ['/files'] });
+      await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+      fireEvent.focus(screen.getByRole('searchbox'));
+
+      expect(await screen.findByTestId('search-action-glyph-wand')).toBeInTheDocument();
+      expect(screen.queryByTestId('search-action-glyph-search')).not.toBeInTheDocument();
+      expect(settingsCalls).toBe(1);
+    });
   });
 
   describe('like state shell (T0.5 wiring)', () => {

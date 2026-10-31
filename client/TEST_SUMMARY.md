@@ -7,8 +7,8 @@ Summary of the test implementation for the React client application. All tests f
 ## Test Statistics
 
 - **Total Test Suites**: 198 (as of the 2026-10-31 client test-hardening run)
-- **Total Tests**: 2398
-- **Pass Rate**: 100% (2398 passed, 0 failed) ✅
+- **Total Tests**: 2401
+- **Pass Rate**: 100% (2401 passed, 0 failed) ✅
 - **Execution Time**: Reported per run by `npm run test`
 
 ## Test Breakdown by Category
@@ -189,13 +189,13 @@ tiers only.
   `s3-ai-desktop` 1 / 0 / 0 (pre-seeded `WEA_MODEL_DIR` weights resolved from the
   default `/tmp/opencode/delta-base/models`).
 - The jest tiers above are the orchestrator's exit-gate ownership: this client
-  leg is pinned at 198 suites / 2398 tests; the server sqlite total is 206
-  suites / 3524 tests (3496 passed + 28 skipped) in `server/TEST_SUMMARY.md`,
+  leg is pinned at 198 suites / 2401 tests; the server sqlite total is 207
+  suites / 3527 tests (3499 passed + 28 skipped) in `server/TEST_SUMMARY.md`,
   while the real-PostgreSQL adapter snapshot is 32 suites / 492 passed + 1 skipped.
 
 ## Conclusion
 
-- 2398 tests across 198 suites, 100% pass rate (as of the 2026-10-31 client test-hardening run)
+- 2401 tests across 198 suites, 100% pass rate (as of the 2026-10-31 AI-matrix demotion)
 - Tests are colocated with source under `components/`, `hooks/`, `pages/`, `services/`, `utils/`, `contexts/`
 - Coverage and integration goals documented
 - Test infrastructure and MSW setup in place (server created in `src/setupTests.js`)

@@ -18,6 +18,8 @@ const {
 } = require('../../../test-utils');
 const { createFileNodeService } = require('../../../service/fileNodeService');
 const { createFileNodesStore } = require('../../../store/fileNodesStore');
+const Settings = require('../../../models/Settings');
+const { getSharedResolver } = require('../../../infrastructure/configResolver');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 
 // The route's searchService resolves the llmAdapter through the runtime
@@ -543,6 +545,60 @@ describe('POST /api/search NL-parse wire states', () => {
     expect(res.body.predicates).toEqual([{ type: 'size', min: 1048576 }]);
     expect(res.body.counts.name_truncated).toBe(false);
     expect(res.body.result_ref).toMatch(/^sr1\.[0-9a-f]{16}$/);
+  });
+
+  it('E2E-S3-AI-011: parsed atoms leave name_matches identical; AI_NL_PARSE_ENABLED=false drops predicates with the same rows', async () => {
+    const ctx = await createUserWithRoot('nlparity');
+    const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const alpha = await fileNodeService.createFile(ctx.root.id, `nl-parity-${stamp}-alpha.txt`);
+    const beta = await fileNodeService.createFile(ctx.root.id, `nl-parity-${stamp}-beta.pdf`);
+    const query = `nl-parity-${stamp}`;
+
+    try {
+      // Parser-free baseline: the chat role is unconfigured.
+      llmRuntime.__setMockAdapter(createRouteNlAdapter({ chatOk: false }));
+      const parserFree = await request(app)
+        .post('/api/search')
+        .set('Authorization', `Bearer ${ctx.token}`)
+        .send({ query });
+      expect(parserFree.status).toBe(200);
+      expect('predicates' in parserFree.body).toBe(false);
+
+      // Parser ON: canonical atoms arrive; the LLM-free name section is unchanged.
+      llmRuntime.__setMockAdapter(createRouteNlAdapter({ chatOk: true }));
+      const parsed = await request(app)
+        .post('/api/search')
+        .set('Authorization', `Bearer ${ctx.token}`)
+        .send({ query });
+      expect(parsed.status).toBe(200);
+      expect(parsed.body.predicates).toEqual([{ type: 'size', min: 1048576 }]);
+      expect(parsed.body.name_matches).toEqual(parserFree.body.name_matches);
+      expect(parsed.body.name_matches.map((row) => row.node_id).sort((x, y) => x - y)).toEqual(
+        [alpha.id, beta.id].sort((x, y) => x - y)
+      );
+
+      // Kill switch off: no parse call, no predicates key, identical name rows.
+      await Settings.set('AI_NL_PARSE_ENABLED', 'false');
+      getSharedResolver().invalidateCache('AI_NL_PARSE_ENABLED');
+      const chatCalls = [];
+      llmRuntime.__setMockAdapter(createRouteNlAdapter({ chatOk: true, chatCalls }));
+
+      const killed = await request(app)
+        .post('/api/search')
+        .set('Authorization', `Bearer ${ctx.token}`)
+        .send({ query });
+
+      expect(killed.status).toBe(200);
+      expect('predicates' in killed.body).toBe(false);
+      expect(chatCalls).toHaveLength(0);
+      expect(killed.body.name_matches).toEqual(parserFree.body.name_matches);
+      expect(killed.body.name_matches.map((row) => row.node_id).sort((x, y) => x - y)).toEqual(
+        [alpha.id, beta.id].sort((x, y) => x - y)
+      );
+    } finally {
+      await dbQuery('DELETE FROM settings WHERE key = ?', ['AI_NL_PARSE_ENABLED']);
+      getSharedResolver().invalidateCache('AI_NL_PARSE_ENABLED');
+    }
   });
 
   it('chat-absent vs broken-chat: the 200 BODY IS BYTE-IDENTICAL to the parser-free wire shape', async () => {

@@ -97,17 +97,19 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   minimum lifecycle chain create→digest→archive→undo→restore→purge (CODING_STYLE.md Express
   Patterns gate). Concrete IDs, case ownership, and project/slot mapping are canonical in
   [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
-- **Degradation-matrix suite:** one suite per §4.12 capability column — `None` (no adapter
-  configured at all; the built-in embed engine suppressed by `WEA_SKIP_EMBED_MODEL=1` or by an
-  absent lock/weights fixture ⇒ `roleConfigured('embed')` false), `embed` (fake embed only),
-  `embed+media` (fake media-capable embed), `embed+chat+vision` (fake embed+chat+vision) —
-  and the **None and embed columns must pass green with no real adapter present** (the
-  "never-a-render-dependency" invariant, verified by construction). The wire contract lives
-  in the API-only project (`E2E-S3-AI-002..007`). The browser project (`E2E-S3-AI-008..009`)
-  keeps only the real-client↔real-server smoke (FAB glyph, Zone C/save-chip presence).
-  Media findability is pinned by `server/domains/ai/__tests__/mediaSearchJoin.test.js`, the
-  parser/name-section independence and kill switch by the search route/service suites, and
-  the admin health-card copy by `SystemSettingsContent.test.js`.
+- **Degradation-matrix suite:** the matrix is defined by the §4.12 capability columns — `None`
+  (no adapter configured at all; the built-in embed engine suppressed by
+  `WEA_SKIP_EMBED_MODEL=1` or by an absent lock/weights fixture ⇒ `roleConfigured('embed')`
+  false), `embed` (fake embed only), `embed+media` (fake media-capable embed),
+  `embed+chat+vision` (fake embed+chat+vision). The **None and media columns must pass green
+  with no real adapter present** (the "never-a-render-dependency" invariant, verified by
+  construction). The API system matrix (`E2E-S3-AI-003/006`) keeps exactly those two
+  composition cases: None (public flags false, job parks at attempt 0, no embeddings row) and
+  media (probe → upload → worker → `media_direct` + chunks → caption search hit). The parser,
+  text-embed, V0 and V2 legs are `non-e2e`: search route/service suites, the media join suite
+  (`mediaSearchJoin.test.js`), and the pipeline/drain suites. The browser project
+  (`E2E-S3-AI-008..009`) keeps only the real-client↔real-server smoke (FAB glyph, Zone
+  C/save-chip presence); the admin health-card copy is pinned by `SystemSettingsContent.test.js`.
 - **Fake-LLM E2E harness contract (T4.3 Wave 1):** `e2e/helpers/fakeLlm.ts` starts a
   `node:http` listener inside the Playwright process on an ephemeral `127.0.0.1` port
   (`listen(0)`) and serves root + `/v1` aliases for `POST /embeddings`,
@@ -139,8 +141,9 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
 - **Parser legs (`parse.nl`):** verified hermetically by unit/integration suites with an
   adapter-injected fake chat (the same seam the fake-embed adapter uses) — RED targets: parse
   cache hit ⇒ zero chat calls, schema-checked grammar-constrained output, chat-off ⇒
-  byte-identical parser-free response. The parser E2E case (`E2E-S3-AI-002`, including the
-  `$ref` delta replay) rides the fake-LLM harness (T4.3), not a dedicated scratch project.
+  byte-identical parser-free response. The `$ref` delta replay and the hot admin-config
+  invalidation leg live in `domains/ai/__tests__/search.test.js` (+ `searchService.test.js`);
+  there is no dedicated parser scratch project.
 - **Model-free test mode:** `WEA_SKIP_EMBED_MODEL` truthy (`1/true/yes/on`) suppresses
   the built-in embed weights check, provisioning, ONNX import, and boot probe; the embed
   role resolves `not_configured` with no `ai.embed` failure row. Non-AI E2E suites set it

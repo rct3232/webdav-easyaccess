@@ -3077,8 +3077,8 @@ refined by U4 below.
 - **E2E:** browser AI matrix (`AI-008..012`, AI-015), admin-AI cases, and a dedicated
   storage suite (`STORAGE-001..002` in `e2e/storage.spec.ts`; the former COLLECTION-023
   moved there) under the independent `s3-storage-desktop`/`s3-storage-mobile` projects
-  (dedicated `:5022`/`:5023` scratch slots). Default inventory 278 (272 passed / 6 skipped
-  model-on; 271/7 model-free), WebDAV 41/0.
+  (dedicated `:5022`/`:5023` scratch slots). Default inventory 274 (268 passed / 6 skipped
+  model-on; 267/7 model-free), WebDAV 41/0.
 
 **Verification (2026-10-30)**
 
@@ -3138,3 +3138,31 @@ honest empty state. The API-only matrix (`E2E-S3-AI-002..007`) continues to own 
 - Client `test:ci`: **198 suites / 2401 tests passed** (89.0 s).
 - `docsStatePurity` 3/3; Prettier/ESLint clean on changed files.
 - Inventory pinned at default **278** (model-on 272/6, model-free 271/7), WebDAV 41/0.
+
+**Superseded:** §34.2 below moves the API matrix to two cases; the current pins are 3500/3528 server and 274 default E2E.
+
+### 34.2 AI matrix API demotion (2026-10-31)
+
+The API-only Playwright matrix is a process-level composition harness, not a browser suite. It is
+now two cases (`E2E-S3-AI-003/006`) that keep the composition root: boot-time dbOnly config →
+adapter install → one-shot probe → worker → upload → embeddings. The media case also asserts the
+caption search hit, absorbing the former text-embed search leg.
+
+- **AI-002 (parser/cache/delta)** → `server/domains/ai/__tests__/search.test.js` (+
+  `searchService.test.js`). The new hot-write test covers `PUT /api/admin/config` → the next
+  search is parser-free with identical name rows, then restores the key and proves the parser
+  returns without a TTL wait.
+- **AI-004 (text embed/replay)** → `searchService.test.js` plus the AI-006 search leg.
+- **AI-005 (V0)** → `mediaSearchJoin.test.js` (`metadata_only` honest miss + metadata-token
+  hit) + `embedMediaPipeline.test.js` / `mediaProbe.test.js`.
+- **AI-007 (V2)** → `captionPipeline.test.js` + `mediaDrainIntegration.test.js`. The
+  boot-probe → first-caption composition slice is a documented residual risk.
+
+**Verification (2026-10-31)**
+
+- `s3-ai-matrix-desktop`: **2/2 passed** (32.0 s; AI-003 1.6 s, AI-006 0.7 s).
+- Server `test:ci`: **206 passed + 1 skipped suites; 3500 passed + 28 skipped tests**
+  (207 suites / 3528 total).
+- Client `test:ci`: **198 suites / 2401 tests passed** (89.3 s).
+- `docsStatePurity` 3/3; Prettier/ESLint clean on changed files.
+- Inventory pinned at default **274** (model-on 268/6, model-free 267/7), WebDAV 41/0.

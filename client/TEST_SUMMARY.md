@@ -190,7 +190,7 @@ tiers only.
   default `/tmp/opencode/delta-base/models`).
 - The jest tiers above are the orchestrator's exit-gate ownership: this client
   leg is pinned at 198 suites / 2401 tests; the server sqlite total is 207
-  suites / 3527 tests (3499 passed + 28 skipped) in `server/TEST_SUMMARY.md`,
+  suites / 3528 tests (3500 passed + 28 skipped) in `server/TEST_SUMMARY.md`,
   while the real-PostgreSQL adapter snapshot is 32 suites / 492 passed + 1 skipped.
 
 ## Conclusion

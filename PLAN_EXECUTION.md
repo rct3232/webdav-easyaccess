@@ -3160,9 +3160,39 @@ caption search hit, absorbing the former text-embed search leg.
 
 **Verification (2026-10-31)**
 
-- `s3-ai-matrix-desktop`: **2/2 passed** (32.0 s; AI-003 1.6 s, AI-006 0.7 s).
+- `s3-ai-matrix-api`: **2/2 passed** (32.0 s; AI-003 1.6 s, AI-006 0.7 s).
 - Server `test:ci`: **206 passed + 1 skipped suites; 3500 passed + 28 skipped tests**
   (207 suites / 3528 total).
 - Client `test:ci`: **198 suites / 2401 tests passed** (89.3 s).
 - `docsStatePurity` 3/3; Prettier/ESLint clean on changed files.
 - Inventory pinned at default **274** (model-on 268/6, model-free 267/7), WebDAV 41/0.
+
+### 34.3 E2E flat tree + sequential IDs (2026-11-01)
+
+The E2E suite is flat: no spec wraps tests in `test.describe(...)`; grouping comes from
+the file name and the case ID, and only `test.describe.configure(...)` remains for
+serial/timeout scope. Twelve specs lost 15 describe nodes (64 cases). Hooks that lived
+inside a describe moved to file scope (`core-flow.desktop/mobile`, `share-internal`,
+`share-public`); the two AI-matrix files now boot and tear down their scratch column
+inside each test with `try/finally` because both columns share one port.
+
+Case IDs are contiguous per family (`001..N`) and ascending in each file. The renumbering
+closed the undefined gaps in AUTH, NEG, S3-AI, S3-COLLECTION, and TRASH; OVERLAY was
+remapped in execution order to preserve the load-bearing `request -> approve -> enter`
+chain. The old->new mapping and the pre-2026-11-01 log caveat live in
+`docs/E2E_COVERAGE_PLAN.md` § "Case-ID renumbering (2026-11-01)".
+
+Also in this unit: `s3-ai-matrix-desktop` -> `s3-ai-matrix-api`; `webdav-reconcile`
+labelled browser-backed; `queryScratchSqlite` opens read-only; suite-level timeouts for
+admin-config/registration/trash-admin; standard headers on the previously headerless
+specs; `scripts/e2e-lint.cjs` + `npm run lint:e2e` wired into `scripts/test-gate.sh`.
+
+**Verification (2026-11-01, port band 120)**
+
+- `npm run lint:e2e`: **26 files / 163 tests / 25 families, 0 violations**.
+- `--list`: default **274** (22 files), core **147** (10), WebDAV **41** (8); the JSON
+  tree reports **0 describe nodes** in both groups.
+- Default full run: **268 passed / 6 skipped / 274**.
+- WebDAV full run: **41 passed / 0 skipped**.
+- `docsStatePurity` **3/3**; Prettier clean; `git diff --check` clean.
+- Counts are unchanged from the 2026-10-31 pin; only the tree shape and ID labels moved.

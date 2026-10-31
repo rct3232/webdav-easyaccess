@@ -132,7 +132,7 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   worker is enabled by absence, never set to `'0'` — the seam is a truthy check) and sets
   `WEA_SKIP_EMBED_MODEL=1` so the built-in engine never provisions, while a remote role
   override still takes precedence. The matrix has two projects that share the column boot
-  (`e2e/helpers/aiMatrixColumn.ts`): `s3-ai-matrix-desktop` (`:5021`, API-only —
+  (`e2e/helpers/aiMatrixColumn.ts`): `s3-ai-matrix-api` (`:5021`, API-only —
   `RequestContext` + direct sqlite reads, never a `page`, so a pinned band mapping the slot
   to the browser-restricted `5061` cannot break it) and `s3-ai-matrix-ui-desktop`
   (`:5009`, browser-safe — the page-driving cases `E2E-S3-AI-008..009`; this slot must never
@@ -496,16 +496,28 @@ serial. Assertion-context containment is the default; serial is the exception.
 
 Apply uniformly to every E2E spec:
 
-- Every `test()` carries a stable case ID and a third-person present declarative
-  title. Platform cases use the platform ID family; backend-specific hermetic
-  cases carry a backend qualifier. Retired IDs are never reused and are mapped
-  in the coverage plan.
+- Every `test()` carries exactly one case ID and a third-person present
+  declarative title. Platform cases use the platform ID family; backend-specific
+  hermetic cases carry a backend qualifier. A title never references another
+  test's ID; `--grep` matches substrings, so a cross-reference would select the
+  wrong case.
+- IDs are contiguous per family (`001..N` with no undefined gaps). Every number
+  belongs to exactly one coverage-plan row — `covered`, `planned`, `deferred`,
+  `non-e2e`, or `retired`. Retired IDs are never reused. A one-time renumbering
+  records the old→new mapping in the coverage plan.
 - Sentence case; no imperative commands, priority prefixes, literal backticks,
   emojis, or `snake_case` identifiers in titles.
 - Hermetic scenario labels stay as a parenthetical between ID and colon and are
   normalized per suite.
-- IDs are declared in numeric order within a file. A serial suite whose
-  execution order is load-bearing keeps execution order.
+- Spec files are **flat**: do not wrap tests in `test.describe(...)`. Grouping
+  comes from the file name and the case ID. `test.describe.configure(...)` is
+  the only allowed `test.describe` call (serial/timeout scope); it creates no
+  tree node.
+- IDs are declared in numeric order within a file. When a serial suite's
+  execution order is load-bearing, assign IDs in execution order instead of
+  moving the tests.
+- `npm run lint:e2e` enforces the flat tree, one title ID per test, ascending
+  family order within each file, and the contiguous coverage-plan registry.
 - Suite titles are lowercase sentence case. Platform-owned suites append a
   platform suffix; hermetic families append their ID range.
 - Use platform/backend dot suffixes in spec file names and keep shared helpers

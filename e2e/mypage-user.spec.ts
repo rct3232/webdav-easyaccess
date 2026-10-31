@@ -6,6 +6,15 @@ import { createShareLink } from './helpers/shareLinks';
 import { resolveNodeId } from './helpers/resolvePath';
 import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
 
+/**
+ * Scope: authenticated regular-user MyPage — page open/close, logout, profile
+ * updates, sharing inbox/outbox flows, share-link management, and the mobile
+ * category drawer.
+ *
+ * Owning projects: `s3-desktop` / `s3-mobile` (shared stack: API `:5002`,
+ * client `:3000`).
+ */
+
 async function uploadFileToUserHome(
   request: any,
   bearerToken: string,

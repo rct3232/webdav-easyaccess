@@ -340,8 +340,10 @@ npm run test:gate:client   # client only
 
 `scripts/test-gate.sh` holds a cross-checkout lock
 (`$TMPDIR/webdav-easyaccess-full-tests.lock`) and runs the suites one after the
-other. Client `test:ci` uses `--maxWorkers=2`; do not run the full gate from
-another worktree at the same time. This is the local shared-host discipline —
+other. It first runs `npm run lint:e2e` (flat tree, one title ID per test,
+ascending family order, contiguous coverage registry) so structural drift fails
+before the Jest suites. Client `test:ci` uses `--maxWorkers=2`; do not run the
+full gate from another worktree at the same time. This is the local shared-host discipline —
 CI runners with dedicated capacity may still invoke `test:ci` directly.
 
 ## Real-PostgreSQL Legs

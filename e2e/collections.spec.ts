@@ -40,7 +40,7 @@ import { setCollectionSort } from './helpers/explorer-controls';
 import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
 
 /**
- * E2E-S3-COLLECTION-001..014 + 018..022 + 024..025 — the P0 collections
+ * E2E-S3-COLLECTION-001..024 — the P0 collections
  * binding lifecycle plus the P3 proposal/sharing/suggestions/membership
  * surfaces (docs/E2E_COVERAGE_PLAN.md § "Collections platform lifecycle
  * (hermetic)"). The storage-management cases moved to `e2e/storage.spec.ts`
@@ -1075,6 +1075,136 @@ test('E2E-S3-COLLECTION-014: Likes-first/Archive-last tiles navigate, archive vi
   await expect(page.getByTestId('collection-tile-liked')).toHaveCount(0);
 });
 
+// -- Collections MOBILE-ONLY interplay (the former standalone twin
+// collections.mobile.spec.ts, absorbed into this dual-platform file at the
+// format convergence): these cases exercise surfaces that exist ONLY on the
+// mobile form factor (single-tap card open, the mobile detail-view
+// restriction, the FileActionSheet like surface), so they skip on the desktop
+// project with the reason-carrying skip idiom of E2E-BULK-006.
+
+async function setupCollectionWithMember(
+  page: Page,
+  request: APIRequestContext,
+  testInfo: TestInfo,
+  tag: string
+) {
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
+  const file = await seedFile(request, token, base, testInfo, tag);
+  const name = buildName(testInfo, tag);
+  const collectionId = await createCollectionApi(request, token, name);
+  await addItemsApi(request, token, collectionId, [file.nodeId]);
+  return { base, token, file, name, collectionId };
+}
+
+test('E2E-S3-COLLECTION-015: mobile TAP opens a collection card directly into the members view (no double-tap) and the Collections crumb chip returns to the list', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(!isMobileProject(testInfo), 'E2E-S3-COLLECTION-015 is mobile-only');
+  const { file, collectionId, name } = await setupCollectionWithMember(
+    page,
+    request,
+    testInfo,
+    'col015'
+  );
+
+  await page.goto('/files/__collections__');
+  const card = page.locator('[data-testid^="collection-card-"]').filter({ hasText: name });
+  await expect(card).toBeVisible({ timeout: 15_000 });
+
+  // Mobile click resolution (CollectionsListView §2.4 + spec "Mobile: tap
+  // opens directly"): ONE tap navigates — a second click would land INSIDE
+  // the members surface, so any dblclick-era behavior would break this.
+  await card.click();
+  await expect(page.getByTestId('members-list')).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/files/__collections__/collection/${collectionId}$`));
+  await expect(page.getByTestId(`member-row-${file.nodeId}`)).toBeVisible();
+
+  // Back to the collections list via the breadcrumb parent chip (M-9 trail:
+  // Collections › <name> — the chip is the mobile-side "back to sidebar").
+  const crumb = page.getByTestId('breadcrumb');
+  await expect(crumb.getByText('Collections', { exact: true })).toBeVisible();
+  await crumb.getByText('Collections', { exact: true }).click();
+  await expect(page.getByTestId('collections-list-view')).toBeVisible();
+  await expect(card).toBeVisible();
+});
+
+test('E2E-S3-COLLECTION-016: members surface on mobile keeps the GRID default, hides the detail toggle and forces LIST when the persisted member key is detail (mobile restriction, unchanged per useExplorerSession.md)', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(!isMobileProject(testInfo), 'E2E-S3-COLLECTION-016 is mobile-only');
+  const { file, name } = await setupCollectionWithMember(page, request, testInfo, 'col016');
+
+  await page.goto('/files/__collections__');
+  const card = page.locator('[data-testid^="collection-card-"]').filter({ hasText: name });
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  await card.click();
+  await expect(page.getByTestId('members-list')).toBeVisible();
+
+  // The spec does NOT force grid→list on mobile: the P-4 default (grid)
+  // renders through FileGrid on mobile exactly as on desktop — a card shell
+  // exists inside the member row.
+  const row = page.getByTestId(`member-row-${file.nodeId}`);
+  await expect(row).toBeVisible();
+  await expect(row.locator('.MuiCard-root')).toBeVisible();
+
+  // Toolbar (FileManagerControls §2 "isMobile: no detail view"): list + grid
+  // toggles stay, the detail toggle is NOT rendered on mobile.
+  await expect(page.getByTestId('view-mode-list')).toBeVisible();
+  await expect(page.getByTestId('view-mode-grid')).toBeVisible();
+  await expect(page.getByTestId('view-mode-detail')).toHaveCount(0);
+
+  // The mobile detail→list restriction applies to the member key too
+  // (useExplorerSession.md): seed the persisted key as `detail`, reload the
+  // member route — the session hook falls back to LIST and persists the
+  // correction (FileList rows, no card shell).
+  await page.evaluate(() => window.localStorage.setItem('collectionMemberViewMode', 'detail'));
+  await page.reload();
+  await expect(page.getByTestId('members-list')).toBeVisible();
+  await expect(page.getByTestId(`member-row-${file.nodeId}`)).toBeVisible();
+  await expect(page.locator(`[data-testid="member-row-${file.nodeId}"] .MuiCard-root`)).toHaveCount(
+    0
+  );
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem('collectionMemberViewMode')))
+    .toBe('list');
+});
+
+test('E2E-S3-COLLECTION-017: file-side like via the mobile FileActionSheet flips optimistically and persists viewer-scoped (desktop bottom-sheet parity)', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(!isMobileProject(testInfo), 'E2E-S3-COLLECTION-017 is mobile-only');
+  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
+  const file = await seedFile(request, token, base, testInfo, 'col017');
+  await gotoFilesPath(page, request, `/${base}`);
+  await expect(page.locator(`[data-file-path="${file.path}"]`)).toBeVisible({ timeout: 15_000 });
+
+  // The mobile file action surface IS the bottom sheet (helpers seam parity
+  // with core-flow.mobile): ⋮ on the row opens FileActionSheet.
+  await openActionSheet(page, file.path);
+  await expect(page.getByTestId('like-toggle')).toHaveText(/^like$/i);
+  await page.getByTestId('like-toggle').click();
+
+  // Sheet closes on the action; a REOPEN shows the flipped label straight
+  // away — the optimistic client state (fileLikesRepository explicit set,
+  // fileLikes.md §2.4), before any list refresh.
+  await expect(page.getByTestId('file-action-rename')).toBeHidden();
+  await openActionSheet(page, file.path);
+  await expect(page.getByTestId('like-toggle')).toHaveText(/^unlike$/i);
+  await closeActionSheet(page);
+
+  // Server truth converges: the viewer-scoped like lists the node.
+  await expect
+    .poll(async () => {
+      const res = await request.get('/api/file-likes', { headers: auth(token) });
+      const body = await res.json();
+      return (body.liked as number[]).includes(file.nodeId);
+    })
+    .toBe(true);
+});
+
 test('E2E-S3-COLLECTION-018: Card menu rename updates the card and the sidebar row, locks the name and is undoable', async ({
   page,
   request,
@@ -1530,7 +1660,7 @@ test('E2E-S3-COLLECTION-022: Later defers the pair into a DB-dormant card remova
   await expect(collectionCard(page, nameA)).toBeVisible();
 });
 
-test('E2E-S3-COLLECTION-024: the sharing lifecycle grants a second user, the recipient views the received card and its members, exits via Revoke permission, and the owner re-grant re-dots the collection', async ({
+test('E2E-S3-COLLECTION-023: the sharing lifecycle grants a second user, the recipient views the received card and its members, exits via Revoke permission, and the owner re-grant re-dots the collection', async ({
   page,
   request,
 }, testInfo) => {
@@ -1709,7 +1839,7 @@ async function selectTwoForBulk(page: Page, isMobile: boolean, p1: string, p2: s
   }
 }
 
-test('E2E-S3-COLLECTION-025: the context menu pre-checks containing collections, the bulk toolbar add lands checkmarked on read-only granted rows and re-opens with the new membership checked, while an admin session stays collections-IO-silent without the bulk entry', async ({
+test('E2E-S3-COLLECTION-024: the context menu pre-checks containing collections, the bulk toolbar add lands checkmarked on read-only granted rows and re-opens with the new membership checked, while an admin session stays collections-IO-silent without the bulk entry', async ({
   page,
   request,
 }, testInfo) => {
@@ -1867,134 +1997,4 @@ test('E2E-S3-COLLECTION-025: the context menu pre-checks containing collections,
   // CRUD on its own identity (admin sessions are 403-gated there, §14 pivot).
   await gotoAsAnonymous(page, '/login');
   await loginWithCredentials(page, USER_CREDS.username, USER_CREDS.password);
-});
-
-// -- Collections MOBILE-ONLY interplay (the former standalone twin
-// collections.mobile.spec.ts, absorbed into this dual-platform file at the
-// format convergence): these cases exercise surfaces that exist ONLY on the
-// mobile form factor (single-tap card open, the mobile detail-view
-// restriction, the FileActionSheet like surface), so they skip on the desktop
-// project with the reason-carrying skip idiom of E2E-BULK-006.
-
-async function setupCollectionWithMember(
-  page: Page,
-  request: APIRequestContext,
-  testInfo: TestInfo,
-  tag: string
-) {
-  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
-  const file = await seedFile(request, token, base, testInfo, tag);
-  const name = buildName(testInfo, tag);
-  const collectionId = await createCollectionApi(request, token, name);
-  await addItemsApi(request, token, collectionId, [file.nodeId]);
-  return { base, token, file, name, collectionId };
-}
-
-test('E2E-S3-COLLECTION-015: mobile TAP opens a collection card directly into the members view (no double-tap) and the Collections crumb chip returns to the list', async ({
-  page,
-  request,
-}, testInfo) => {
-  test.skip(!isMobileProject(testInfo), 'E2E-S3-COLLECTION-015 is mobile-only');
-  const { file, collectionId, name } = await setupCollectionWithMember(
-    page,
-    request,
-    testInfo,
-    'col015'
-  );
-
-  await page.goto('/files/__collections__');
-  const card = page.locator('[data-testid^="collection-card-"]').filter({ hasText: name });
-  await expect(card).toBeVisible({ timeout: 15_000 });
-
-  // Mobile click resolution (CollectionsListView §2.4 + spec "Mobile: tap
-  // opens directly"): ONE tap navigates — a second click would land INSIDE
-  // the members surface, so any dblclick-era behavior would break this.
-  await card.click();
-  await expect(page.getByTestId('members-list')).toBeVisible();
-  await expect(page).toHaveURL(new RegExp(`/files/__collections__/collection/${collectionId}$`));
-  await expect(page.getByTestId(`member-row-${file.nodeId}`)).toBeVisible();
-
-  // Back to the collections list via the breadcrumb parent chip (M-9 trail:
-  // Collections › <name> — the chip is the mobile-side "back to sidebar").
-  const crumb = page.getByTestId('breadcrumb');
-  await expect(crumb.getByText('Collections', { exact: true })).toBeVisible();
-  await crumb.getByText('Collections', { exact: true }).click();
-  await expect(page.getByTestId('collections-list-view')).toBeVisible();
-  await expect(card).toBeVisible();
-});
-
-test('E2E-S3-COLLECTION-016: members surface on mobile keeps the GRID default, hides the detail toggle and forces LIST when the persisted member key is detail (mobile restriction, unchanged per useExplorerSession.md)', async ({
-  page,
-  request,
-}, testInfo) => {
-  test.skip(!isMobileProject(testInfo), 'E2E-S3-COLLECTION-016 is mobile-only');
-  const { file, name } = await setupCollectionWithMember(page, request, testInfo, 'col016');
-
-  await page.goto('/files/__collections__');
-  const card = page.locator('[data-testid^="collection-card-"]').filter({ hasText: name });
-  await expect(card).toBeVisible({ timeout: 15_000 });
-  await card.click();
-  await expect(page.getByTestId('members-list')).toBeVisible();
-
-  // The spec does NOT force grid→list on mobile: the P-4 default (grid)
-  // renders through FileGrid on mobile exactly as on desktop — a card shell
-  // exists inside the member row.
-  const row = page.getByTestId(`member-row-${file.nodeId}`);
-  await expect(row).toBeVisible();
-  await expect(row.locator('.MuiCard-root')).toBeVisible();
-
-  // Toolbar (FileManagerControls §2 "isMobile: no detail view"): list + grid
-  // toggles stay, the detail toggle is NOT rendered on mobile.
-  await expect(page.getByTestId('view-mode-list')).toBeVisible();
-  await expect(page.getByTestId('view-mode-grid')).toBeVisible();
-  await expect(page.getByTestId('view-mode-detail')).toHaveCount(0);
-
-  // The mobile detail→list restriction applies to the member key too
-  // (useExplorerSession.md): seed the persisted key as `detail`, reload the
-  // member route — the session hook falls back to LIST and persists the
-  // correction (FileList rows, no card shell).
-  await page.evaluate(() => window.localStorage.setItem('collectionMemberViewMode', 'detail'));
-  await page.reload();
-  await expect(page.getByTestId('members-list')).toBeVisible();
-  await expect(page.getByTestId(`member-row-${file.nodeId}`)).toBeVisible();
-  await expect(page.locator(`[data-testid="member-row-${file.nodeId}"] .MuiCard-root`)).toHaveCount(
-    0
-  );
-  await expect
-    .poll(() => page.evaluate(() => window.localStorage.getItem('collectionMemberViewMode')))
-    .toBe('list');
-});
-
-test('E2E-S3-COLLECTION-017: file-side like via the mobile FileActionSheet flips optimistically and persists viewer-scoped (desktop E2E-S3-COLLECTION-007 bottom-sheet parity)', async ({
-  page,
-  request,
-}, testInfo) => {
-  test.skip(!isMobileProject(testInfo), 'E2E-S3-COLLECTION-017 is mobile-only');
-  const { base, token } = await loginAndOpenUserWorkspace(page, request, testInfo, USER_CREDS);
-  const file = await seedFile(request, token, base, testInfo, 'col017');
-  await gotoFilesPath(page, request, `/${base}`);
-  await expect(page.locator(`[data-file-path="${file.path}"]`)).toBeVisible({ timeout: 15_000 });
-
-  // The mobile file action surface IS the bottom sheet (helpers seam parity
-  // with core-flow.mobile): ⋮ on the row opens FileActionSheet.
-  await openActionSheet(page, file.path);
-  await expect(page.getByTestId('like-toggle')).toHaveText(/^like$/i);
-  await page.getByTestId('like-toggle').click();
-
-  // Sheet closes on the action; a REOPEN shows the flipped label straight
-  // away — the optimistic client state (fileLikesRepository explicit set,
-  // fileLikes.md §2.4), before any list refresh.
-  await expect(page.getByTestId('file-action-rename')).toBeHidden();
-  await openActionSheet(page, file.path);
-  await expect(page.getByTestId('like-toggle')).toHaveText(/^unlike$/i);
-  await closeActionSheet(page);
-
-  // Server truth converges: the viewer-scoped like lists the node.
-  await expect
-    .poll(async () => {
-      const res = await request.get('/api/file-likes', { headers: auth(token) });
-      const body = await res.json();
-      return (body.liked as number[]).includes(file.nodeId);
-    })
-    .toBe(true);
 });

@@ -33,7 +33,7 @@ import {
  * subset. Each project flips only its own scratch server; shared platform
  * settings are never touched.
  */
-test.describe.configure({ mode: 'serial' });
+test.describe.configure({ mode: 'serial', timeout: 180_000 });
 
 function isMobileProject(testInfo: TestInfo): boolean {
   return testInfo.project.name.endsWith('-mobile');
@@ -92,7 +92,7 @@ async function openMyPageCategory(page: Page, isMobile: boolean, category: 'Syst
   await expect(page.getByRole('heading', { level: 6, name: new RegExp(category) })).toBeVisible();
 }
 
-test('E2E-AUTH-009: Register page availability follows public settings', async ({
+test('E2E-AUTH-008: Register page availability follows public settings', async ({
   page,
   request,
 }) => {
@@ -118,14 +118,13 @@ test('E2E-AUTH-009: Register page availability follows public settings', async (
   }
 });
 
-test('E2E-AUTH-010: Registration success with pending approval shows success state instead of explorer navigation', async ({
+test('E2E-AUTH-009: Registration success with pending approval shows success state instead of explorer navigation', async ({
   page,
   request,
 }) => {
   // Registration success waits on the server (bcrypt hash + pending-approval
-  // write); keep the explicit 90s success budget below inside a larger case
-  // budget.
-  test.setTimeout(180_000);
+  // write); keep the explicit 90s success budget below inside the suite
+  // timeout.
   await setRegistrationEnabled(request, true);
   await page.goto('/register');
 
@@ -140,32 +139,29 @@ test('E2E-AUTH-010: Registration success with pending approval shows success sta
   await expect(page).not.toHaveURL(/\/files/);
 });
 
-test.describe('registration setting admin UI (E2E-ADMIN-007)', () => {
-  test('E2E-ADMIN-007: Toggles registration-related settings', async ({
-    page,
-    request,
-  }, testInfo) => {
-    test.setTimeout(180_000);
-    const suffix = getTestSuffix(testInfo);
-    await ensureApprovedUser(request, 'user1', suffix);
+test('E2E-ADMIN-007: Toggles registration-related settings', async ({
+  page,
+  request,
+}, testInfo) => {
+  const suffix = getTestSuffix(testInfo);
+  await ensureApprovedUser(request, 'user1', suffix);
 
-    await loginWithCredentials(page, 'admin', 'admin');
-    await page.goto('/mypage');
-    await openMyPageCategory(page, isMobileProject(testInfo), 'System settings');
+  await loginWithCredentials(page, 'admin', 'admin');
+  await page.goto('/mypage');
+  await openMyPageCategory(page, isMobileProject(testInfo), 'System settings');
 
-    const registrationSwitch = page.getByRole('switch').first();
-    await expect(registrationSwitch).toBeVisible();
+  const registrationSwitch = page.getByRole('switch').first();
+  await expect(registrationSwitch).toBeVisible();
 
-    const currentChecked = await registrationSwitch.isChecked();
+  const currentChecked = await registrationSwitch.isChecked();
 
-    await registrationSwitch.click();
-    await expect(page.getByText(/Registration setting saved/i)).toBeVisible({ timeout: 60_000 });
+  await registrationSwitch.click();
+  await expect(page.getByText(/Registration setting saved/i)).toBeVisible({ timeout: 60_000 });
 
-    await expect(registrationSwitch).toBeChecked({ checked: !currentChecked, timeout: 60_000 });
+  await expect(registrationSwitch).toBeChecked({ checked: !currentChecked, timeout: 60_000 });
 
-    // The scratch server is thrown away after this case; a connection reset
-    // during the restoration cleanup must not turn a completed UI assertion
-    // into a false failure.
-    await setRegistrationEnabled(request, currentChecked).catch(() => {});
-  });
+  // The scratch server is thrown away after this case; a connection reset
+  // during the restoration cleanup must not turn a completed UI assertion
+  // into a false failure.
+  await setRegistrationEnabled(request, currentChecked).catch(() => {});
 });

@@ -40,6 +40,9 @@ fi
 cd "$ROOT_DIR"
 
 if [[ "$TARGET" == "all" || "$TARGET" == "server" ]]; then
+  echo "[test-gate] e2e lint"
+  npm run lint:e2e
+
   echo "[test-gate] server test:ci"
   npm run test:ci --workspace server
 fi

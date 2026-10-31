@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 import { APIRequestContext, expect, test, type Page } from '@playwright/test';
 
-import { createFakeLlmServer, type FakeLlmServer } from './helpers/fakeLlm';
+import { createFakeLlmServer } from './helpers/fakeLlm';
 import {
   bootColumn,
   EMBED_SETTINGS,
@@ -34,6 +34,8 @@ import { ensureClientBuild } from './helpers/setupScratch';
  * (`s3-ai-matrix-ui-desktop`). The slot is NOT the API-only `:5021` matrix slot:
  * band 40 maps 5021 to the browser-restricted 5061, so a page-driving project
  * there would silently fail.
+ *
+ * Both cases share the slot, so each test owns its column boot and teardown.
  *
  * Every column boots with fake-LLM settings injected through pre-boot scratch
  * sqlite rows (dbOnly keys), so no real provider is ever configured. Columns:
@@ -67,7 +69,7 @@ let stampSeq = 0;
 const stamp = () => `${Date.now()}-${(stampSeq += 1)}`;
 
 // One shared CRA build for every column (idempotent; a filtered run that
-// starts at the embed describe still builds before booting its scratch server).
+// selects only the embed case still builds before booting its scratch server).
 let uiBuildReady = false;
 function ensureUiBuild(): void {
   if (uiBuildReady) return;
@@ -146,38 +148,29 @@ async function submitSearch(page: Page, query: string): Promise<Record<string, a
   return (await reply.json()) as Record<string, any>;
 }
 
-test.describe('AI matrix UI — None column', () => {
-  let column: ColumnScratch | undefined;
-
-  test.beforeAll(async ({ request }, testInfo) => {
-    ensureUiBuild();
-    column = await bootColumn(
-      request,
-      testInfo.project.name,
-      'ui-none',
-      {},
-      {
-        port: SCRATCH_PORT,
-        adminPassword: ADMIN_PASSWORD,
-        userCreds: NONE_USER,
-        jwtSecret: 'ai-matrix-ui-none-jwt-secret',
-      }
-    );
-  });
-
-  test.afterAll(async () => {
-    await shutdownColumn(column);
-  });
-
-  test('E2E-S3-AI-008: with no LLM configured the search FAB keeps the magnifier glyph, name results work, no Zone C or save chip renders, and a zero-match query shows the honest empty state', async ({
-    page,
+test('E2E-S3-AI-008: with no LLM configured the search FAB keeps the magnifier glyph, name results work, no Zone C or save chip renders, and a zero-match query shows the honest empty state', async ({
+  page,
+  request,
+}, testInfo) => {
+  ensureUiBuild();
+  const column = await bootColumn(
     request,
-  }) => {
+    testInfo.project.name,
+    'ui-none',
+    {},
+    {
+      port: SCRATCH_PORT,
+      adminPassword: ADMIN_PASSWORD,
+      userCreds: NONE_USER,
+      jwtSecret: 'ai-matrix-ui-none-jwt-secret',
+    }
+  );
+  try {
     expect(await publicAi(request)).toEqual({ embed: false, chat: false });
 
     const name = `harvest-notes-${stamp()}.txt`;
-    const nodeId = await uploadText(request, column!.userToken, column!.homeNodeId, name, DOC_BODY);
-    await openUserFiles(page, request, column!.userCreds);
+    const nodeId = await uploadText(request, column.userToken, column.homeNodeId, name, DOC_BODY);
+    await openUserFiles(page, request, column.userCreds);
 
     // Magnifier glyph = the embed role is NOT configured (public ai.embed false).
     const box = page.getByRole('searchbox');
@@ -205,16 +198,19 @@ test.describe('AI matrix UI — None column', () => {
     await expect(page.getByTestId('search-zone-header-a')).toHaveCount(0);
     await expect(page.getByTestId('search-zone-header-b')).toHaveCount(0);
     await expect(page.getByTestId('search-zone-header-c')).toHaveCount(0);
-  });
+  } finally {
+    await shutdownColumn(column);
+  }
 });
 
-test.describe('AI matrix UI — embed column', () => {
+test('E2E-S3-AI-009: the embed column renders the wand glyph, Zone C header/rows and the save chip, while a non-matching query has no name section', async ({
+  page,
+  request,
+}, testInfo) => {
+  ensureUiBuild();
+  const fake = await createFakeLlmServer({ mode: 'text-only' });
   let column: ColumnScratch | undefined;
-  let fake: FakeLlmServer | undefined;
-
-  test.beforeAll(async ({ request }, testInfo) => {
-    ensureUiBuild();
-    fake = await createFakeLlmServer({ mode: 'text-only' });
+  try {
     column = await bootColumn(
       request,
       testInfo.project.name,
@@ -229,21 +225,11 @@ test.describe('AI matrix UI — embed column', () => {
     );
     await waitForEmbedProbeSettled(fake, 'text-only');
     await waitForAiFlags(request, { embed: true, chat: false });
-  });
 
-  test.afterAll(async () => {
-    await fake?.close();
-    await shutdownColumn(column);
-  });
-
-  test('E2E-S3-AI-009: the embed column renders the wand glyph, Zone C header/rows and the save chip, while a non-matching query has no name section', async ({
-    page,
-    request,
-  }) => {
     const name = `semantic-note-${stamp()}.txt`;
-    const nodeId = await uploadText(request, column!.userToken, column!.homeNodeId, name, DOC_BODY);
-    await waitForJob(column!.scratch, nodeId, 'embed', 'done');
-    await openUserFiles(page, request, column!.userCreds);
+    const nodeId = await uploadText(request, column.userToken, column.homeNodeId, name, DOC_BODY);
+    await waitForJob(column.scratch, nodeId, 'embed', 'done');
+    await openUserFiles(page, request, column.userCreds);
 
     const box = page.getByRole('searchbox');
     await box.click();
@@ -263,5 +249,8 @@ test.describe('AI matrix UI — embed column', () => {
     // The body phrase is not in the file name: the name section stays absent.
     await expect(page.getByTestId('search-zone-header-a')).toHaveCount(0);
     await expect(page.getByTestId('search-zone-header-b')).toHaveCount(0);
-  });
+  } finally {
+    await fake.close();
+    await shutdownColumn(column);
+  }
 });

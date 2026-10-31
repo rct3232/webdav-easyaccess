@@ -58,7 +58,7 @@ const textFixtureBuffer = readTestFileFixture(TEST_FILES.smallText);
 
 // The scratch harness owns one port per project, so the whole file must run in
 // one worker per project. Same convention as the split admin-config specs.
-test.describe.configure({ mode: 'serial' });
+test.describe.configure({ mode: 'serial', timeout: 180_000 });
 
 let scratch: string;
 let spawned: ReturnType<typeof spawnScratchServer> | null = null;
@@ -109,7 +109,6 @@ test('E2E-S3-TRASHADMIN-001: Empty trash purges all visible trashed items', asyn
   page,
   request,
 }, testInfo) => {
-  test.setTimeout(180_000);
   await loginWithCredentials(page, 'admin', ADMIN_PASSWORD);
 
   const base = await openPrivateWorkspace(page, request, testInfo);

@@ -372,7 +372,7 @@ test('E2E-S3-AI-001: a semantic search returns an uploaded document no name matc
   await expect(page.getByTestId('members-list')).toBeVisible();
   await expect(page.getByTestId(`member-row-${nodeId}`)).toBeVisible();
 
-  // E2E-S3-AI-015 (P2): the search-origin collection exposes its AI
+  // E2E-S3-AI-013 (P2): the search-origin collection exposes its AI
   // provenance through the properties dialog AI Info tab (the embed role is
   // configured in this suite, so the tab is available to the owner).
   await page.goto('/files/__collections__');

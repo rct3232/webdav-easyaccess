@@ -9,6 +9,18 @@ import {
   getTestSuffix,
 } from './helpers/auth';
 
+/**
+ * E2E-AUTH-001..007 — login entry and protected-route gating: anonymous
+ * redirects from `/files` and `/mypage`, the login form itself, the successful
+ * standard-user landing and the invalid-credential / pending / rejected error
+ * surfaces.
+ *
+ * Owning projects: `s3-desktop` and `s3-mobile` (every case runs on both
+ * platforms) against the SHARED stack — API `:5002` + client `:3000` with the
+ * shared database; the users each case needs are seeded through the API by the
+ * fixtures, so no scratch server is booted here.
+ */
+
 test.describe.configure({ mode: 'serial' });
 
 // The shared client dev server compiles the login bundle on the first browser
@@ -57,7 +69,7 @@ test('E2E-AUTH-003: Login page loads and renders form', async ({ page }) => {
   await expectLoginFormVisible(page);
 });
 
-test('E2E-AUTH-005: Successful standard-user login lands in user-owned explorer path', async ({
+test('E2E-AUTH-004: Successful standard-user login lands in user-owned explorer path', async ({
   page,
   request,
 }, testInfo) => {
@@ -69,7 +81,7 @@ test('E2E-AUTH-005: Successful standard-user login lands in user-owned explorer 
   await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 });
 
-test('E2E-AUTH-006: Invalid credentials show login failure', async ({ page }) => {
+test('E2E-AUTH-005: Invalid credentials show login failure', async ({ page }) => {
   await page.goto('/login');
   await submitLogin(page, 'admin', 'wrong-password');
 
@@ -78,7 +90,7 @@ test('E2E-AUTH-006: Invalid credentials show login failure', async ({ page }) =>
   await expect(alert).toBeVisible();
 });
 
-test('E2E-AUTH-007: Pending account login shows warning', async ({ page, request }, testInfo) => {
+test('E2E-AUTH-006: Pending account login shows warning', async ({ page, request }, testInfo) => {
   const suffix = getTestSuffix(testInfo);
   await ensurePendingUser(request, 'user2', suffix);
   await page.goto('/login');
@@ -89,7 +101,7 @@ test('E2E-AUTH-007: Pending account login shows warning', async ({ page, request
   await expect(warning).toBeVisible();
 });
 
-test('E2E-AUTH-008: Rejected account login shows rejection error', async ({
+test('E2E-AUTH-007: Rejected account login shows rejection error', async ({
   page,
   request,
 }, testInfo) => {

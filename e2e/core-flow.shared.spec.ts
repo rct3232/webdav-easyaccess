@@ -36,6 +36,16 @@ import {
   resolvePathOrNull,
 } from './helpers/resolvePath';
 
+/**
+ * Shared explorer flows — core CRUD/navigation, bulk interactions, and the
+ * virtual-collection surfaces (`E2E-EXP-*`, `E2E-BULK-*`, `E2E-OVERLAY-*`).
+ *
+ * Owning projects: `s3-desktop` / `s3-mobile` on the shared API/client stack
+ * (API `:5002`, client `:3000`), plus the `webdav-smoke-desktop` subset selected
+ * by `playwright.config.ts`. Authenticated with the seeded admin `storageState`;
+ * cleanup runs per test through the API request context.
+ */
+
 test.use({ storageState: ADMIN_STATE });
 
 test.afterEach(async ({ request }) => {
@@ -860,7 +870,7 @@ test('E2E-BULK-010: Completed bulk move offers an undo toast that restores the s
   await expect(fileItem(page, destFile2Path)).toHaveCount(0);
 });
 
-test('E2E-OVERLAY-008: Approved user enters __recent__ and sees recent entries', async ({
+test('E2E-OVERLAY-009: Approved user enters __recent__ and sees recent entries', async ({
   page,
   request,
 }, testInfo) => {

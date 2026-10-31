@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 import { APIRequestContext, expect, test } from '@playwright/test';
 
-import { createFakeLlmServer, IMAGE_CAPTION, type FakeLlmServer } from './helpers/fakeLlm';
+import { createFakeLlmServer, IMAGE_CAPTION } from './helpers/fakeLlm';
 import {
   bootColumn,
   EMBED_SETTINGS,
@@ -22,8 +22,11 @@ import { TEST_FILES } from './fixtures/test-data';
  * E2E-S3-AI-003/006 — the process-level composition cases for the §4.12
  * capability matrix.
  *
- * API-ONLY by design: the project (`s3-ai-matrix-desktop`, scratch slot 5021)
+ * API-ONLY by design: the project (`s3-ai-matrix-api`, scratch slot 5021)
  * uses `APIRequestContext` + direct sqlite reads and never touches `page`.
+ *
+ * Each case boots and tears down its own column: both columns share slot 5021,
+ * so a single file-level `beforeAll` cannot own the boot.
  *
  * Why these two: they are the cases that exercise the production composition
  * root (boot-time dbOnly config → adapter install → one-shot probe → worker
@@ -167,27 +170,18 @@ async function uploadImage(
 
 test.describe.configure({ mode: 'serial', timeout: 300_000 });
 
-test.describe('degradation matrix — None column', () => {
-  let column: ColumnScratch | undefined;
-
-  test.beforeAll(async ({ request }, testInfo) => {
-    column = await boot(request, testInfo.project.name, 'none', {});
-  });
-
-  test.afterAll(async () => {
-    await shutdownColumn(column);
-  });
-
-  test("E2E-S3-AI-003: with no LLM configured public AI flags stay false, and an uploaded document's embed job parks at attempt 0 with no embeddings row", async ({
-    request,
-  }) => {
+test("E2E-S3-AI-003: with no LLM configured public AI flags stay false, and an uploaded document's embed job parks at attempt 0 with no embeddings row", async ({
+  request,
+}, testInfo) => {
+  const column = await boot(request, testInfo.project.name, 'none', {});
+  try {
     expect(await publicAi(request)).toEqual({ embed: false, chat: false });
-    expect(scratchScalar(column!.scratch, 'SELECT COUNT(*) AS v FROM llm_models')).toBe(0);
+    expect(scratchScalar(column.scratch, 'SELECT COUNT(*) AS v FROM llm_models')).toBe(0);
 
     const nodeId = await uploadText(
       request,
-      column!.userToken,
-      column!.homeNodeId,
+      column.userToken,
+      column.homeNodeId,
       `no-llm-${Date.now()}.txt`,
       DOC_BODY
     );
@@ -196,7 +190,7 @@ test.describe('degradation matrix — None column', () => {
       .poll(
         () =>
           scratchScalar(
-            column!.scratch,
+            column.scratch,
             "SELECT COUNT(*) AS v FROM ai_jobs WHERE node_id = ? AND kind = 'embed'",
             nodeId
           ),
@@ -209,7 +203,7 @@ test.describe('degradation matrix — None column', () => {
     // claim happened, and attempt stays 0 (no inflation).
     await new Promise((resolve) => setTimeout(resolve, 1_500));
     const jobs = scratchRows<{ status: string; attempt: number }>(
-      column!.scratch,
+      column.scratch,
       "SELECT status, attempt FROM ai_jobs WHERE node_id = ? AND kind = 'embed'",
       nodeId
     );
@@ -218,56 +212,49 @@ test.describe('degradation matrix — None column', () => {
     expect(Number(jobs[0].attempt)).toBe(0);
     expect(
       scratchScalar(
-        column!.scratch,
+        column.scratch,
         'SELECT COUNT(*) AS v FROM embeddings WHERE node_id = ?',
         nodeId
       )
     ).toBe(0);
-  });
+  } finally {
+    await shutdownColumn(column);
+  }
 });
 
-test.describe('degradation matrix — embed+media column', () => {
+test('E2E-S3-AI-006: a media-capable fake embed drives an image through media_direct and finds it by its caption in semantic search', async ({
+  request,
+}, testInfo) => {
+  const fake = await createFakeLlmServer({ mode: 'media-capable' });
   let column: ColumnScratch | undefined;
-  let fake: FakeLlmServer | undefined;
-
-  test.beforeAll(async ({ request }, testInfo) => {
-    fake = await createFakeLlmServer({ mode: 'media-capable' });
+  try {
     column = await boot(request, testInfo.project.name, 'media', {
       ...EMBED_SETTINGS(fake.baseUrl),
     });
     await waitForEmbedProbeSettled(fake, 'media-capable');
     expect(fake.counters.kitCalls).toBeGreaterThan(0);
     await waitForAiFlags(request, { embed: true, chat: false });
-  });
 
-  test.afterAll(async () => {
-    await fake?.close();
-    await shutdownColumn(column);
-  });
-
-  test('E2E-S3-AI-006: a media-capable fake embed drives an image through media_direct and finds it by its caption in semantic search', async ({
-    request,
-  }) => {
-    fake!.resetCounters();
+    fake.resetCounters();
     const nodeId = await uploadImage(
       request,
-      column!.userToken,
-      column!.homeNodeId,
+      column.userToken,
+      column.homeNodeId,
       `direct-image-${Date.now()}.jpg`
     );
-    await waitForJob(column!.scratch, nodeId, 'embed', 'done');
+    await waitForJob(column.scratch, nodeId, 'embed', 'done');
 
     const pooled = scratchRows<{ source: string; dim: number }>(
-      column!.scratch,
+      column.scratch,
       'SELECT source, dim FROM embeddings WHERE node_id = ?',
       nodeId
     );
     expect(pooled).toHaveLength(1);
     expect(pooled[0]).toMatchObject({ source: 'media_direct', dim: 768 });
-    expect(fake!.counters.mediaCalls).toBeGreaterThan(0);
+    expect(fake.counters.mediaCalls).toBeGreaterThan(0);
     expect(
       scratchScalar(
-        column!.scratch,
+        column.scratch,
         'SELECT COUNT(*) AS v FROM embeddings_chunk WHERE node_id = ?',
         nodeId
       )
@@ -284,5 +271,8 @@ test.describe('degradation matrix — embed+media column', () => {
         { timeout: 30_000, intervals: [500, 1000] }
       )
       .toBe(true);
-  });
+  } finally {
+    await fake.close();
+    await shutdownColumn(column);
+  }
 });

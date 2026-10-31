@@ -15,7 +15,10 @@ import { getSessionToken, resolveNodeId } from './helpers/resolvePath';
 import { composeProject, e2ePorts } from './helpers/ports';
 
 /**
- * E2E-WEBDAV-RECON-001 — DEF-18 WebDAV Tier 2 reconciliation, API level.
+ * E2E-WEBDAV-RECON-001 — DEF-18 WebDAV Tier 2 reconciliation, browser-backed.
+ *
+ * The browser is used only for session/workspace setup; the reconciliation
+ * assertions are API/DB-level.
  *
  * Rationale (non-destructiveness, not deletion): GC Tier 2 only ages entries
  * into candidacy after GC_ORPHAN_TTL_DAYS (floor 1 day, S2), and every

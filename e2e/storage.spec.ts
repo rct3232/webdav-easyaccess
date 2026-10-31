@@ -33,7 +33,7 @@ import { getSessionToken } from './helpers/resolvePath';
  * checklist lifecycle (docs/E2E_COVERAGE_PLAN.md § "Storage management
  * (hermetic)").
  *
- * Split out of `collections.spec.ts` (which keeps E2E-S3-COLLECTION-001..025):
+ * Split out of `collections.spec.ts` (which keeps E2E-S3-COLLECTION-001..024):
  * both cases exercise storage routes/dashboards, not collection lifecycle, so
  * they own a dedicated spec. The storage projects own dedicated scratch slots
  * (`:5022` desktop / `:5023` mobile): no other project shares them, so the

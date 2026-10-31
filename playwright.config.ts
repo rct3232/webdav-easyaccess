@@ -213,9 +213,10 @@ const s3Hermetic: E2EProject[] = [
     baseURL: scratchBase(e2ePorts.scratchAi),
   },
   {
-    // API-only: RequestContext + direct sqlite reads, never `page` (band 40
-    // maps this slot to the browser-restricted 5061).
-    name: 's3-ai-matrix-desktop',
+    // API-only: RequestContext + direct sqlite reads, never requests `page`
+    // (no desktop/mobile suffix; band 40 maps this slot to the browser-restricted
+    // 5061).
+    name: 's3-ai-matrix-api',
     testMatch: /ai\.matrix\.spec\.ts$/,
     use: desktopUse,
     baseURL: scratchBase(e2ePorts.scratchAiMatrix),
@@ -316,7 +317,7 @@ if (webdavGroup) {
     '(core-flow\\.shared|share-public|share-internal|trash|webdav-reconcile)\\.spec\\.ts$'
   );
   const smokeTitleMatch = new RegExp(
-    'E2E-(EXP-00[12458]|EXP-01[23]|SHARE-011|OVERLAY-011|TRASH-00[136]|WEBDAV-RECON-001)[:\\s]'
+    'E2E-(EXP-00[12458]|EXP-01[23]|SHARE-011|OVERLAY-008|TRASH-00[136]|WEBDAV-RECON-001)[:\\s]'
   );
   pushProjects([
     {

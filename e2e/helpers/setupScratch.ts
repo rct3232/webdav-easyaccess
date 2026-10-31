@@ -10,12 +10,12 @@ import { composeProject, e2ePorts, s3Endpoint, webdavBase } from './ports';
 import { emptyS3Bucket, ensureS3BucketExists } from './minio';
 
 /**
- * Hermetic scratch-instance helpers for the backend-split E2E suites
- * (`*.s3.spec.ts` / `*.webdav.spec.ts`). These suites cannot use the shared E2E
- * infrastructure (the band's API/client servers and the shared `webdav_e2e` PG
- * database) because each one spawns and supervises its own scratch instance
- * with its own metadata store and file backend; in the wizard case restart is
- * the behavior under test.
+ * Hermetic scratch-instance helpers shared by every scratch-backed E2E suite
+ * (S3, WebDAV, and the browser-backed reconciliation specs). These suites
+ * cannot use the shared E2E infrastructure (the band's API/client servers and
+ * the shared `webdav_e2e` PG database) because each one spawns and supervises
+ * its own scratch instance with its own metadata store and file backend; in
+ * the wizard case restart is the behavior under test.
  *
  * Every helper here is scratch-owned: own `.env` via `DOTENV_CONFIG_PATH`, own
  * sqlite path, own scratch PG database (`webdav_e2e_setup`, separate from the
@@ -363,13 +363,17 @@ export function queryScratchSqlite<T = Record<string, unknown>>(
   sql: string
 ): Promise<T[]> {
   return new Promise((resolve, reject) => {
-    const { Database } = require('sqlite3') as {
-      Database: new (path: string) => {
+    const { Database, OPEN_READONLY } = require('sqlite3') as {
+      Database: new (
+        path: string,
+        mode?: number
+      ) => {
         all: (sql: string, cb: (err: Error | null, rows: T[]) => void) => void;
         close: (cb?: (err: Error | null) => void) => void;
       };
+      OPEN_READONLY: number;
     };
-    const db = new Database(dbPath);
+    const db = new Database(dbPath, OPEN_READONLY);
     db.all(sql, (err, rows) => {
       db.close(() => {});
       if (err) reject(err);

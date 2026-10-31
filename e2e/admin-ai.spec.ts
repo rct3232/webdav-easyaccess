@@ -29,7 +29,12 @@ import { TEST_FILES, TEST_USERS } from './fixtures/test-data';
  * suite (docs/spec/client/components/mypage/content/AiAdminContent.md,
  * docs/spec/server/routes/admin.md §2.2.7).
  *
- * Two hermetic scratch servers:
+ * Two Playwright projects own this file and split it with a per-project
+ * `--grep` (`s3-admin-ai-model-desktop` / `E2E-ADMINAI-00[2-6]:`,
+ * `s3-admin-ai-states-desktop` / `E2E-ADMINAI-00[178]:`). The split is safe
+ * because `beforeEach` resets the scratch state, so declaration order is not
+ * execution order for either project. Each project boots its own hermetic
+ * scratch server:
  *   - model (`:5007`): fake media-capable embed injected through pre-boot
  *     settings, worker and scheduler disabled, so coverage/models/capabilities
  *     are real but the launcher leaves queued jobs for the queue/cancel legs;

@@ -1743,3 +1743,27 @@ test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
 - **Action**: the three recipient/re-grant legs now use the `page.goto` client-route idiom
   (assertions unchanged — the client still performs the visit reads that Ruling B keys on).
 - **Verification**: final `s3-collections-desktop` green run at the exit gate (port band 40).
+
+## 2026-10-31 — Client Setup wizard 5 s timeouts under full-suite load (Case B: test infrastructure/timing)
+
+- **Summary**: repeated full client `test:ci` runs intermittently failed only the Setup wizard suites
+  with `Exceeded timeout of 5000 ms for a test`; the same suites passed in isolation and the same
+  tree passed in a serial rerun. Failure windows showed concurrent full-suite runs and a load
+  average near 11.8 on the shared 6-core host.
+- **Diagnosis**: the trigger was host CPU oversubscription, but the tests were unnecessarily
+  fragile: 25 wizard tests re-drove the full four-step flow, typed roughly 1,700 characters through
+  `userEvent.type` (several act-wrapped events per character plus a full wizard re-render), and
+  every `Setup.test.js` mount retried the unmocked `/api/setup/llm-presets` endpoint four times via
+  the MSW 501 catch-all. Jest's default 5 s budget left only ~2.7x headroom on an idle host.
+  No product-code defect was found.
+- **Classification**: **Case B (test infrastructure/timing)** — the product behavior was correct;
+  the test harness and CI concurrency policy were at fault.
+- **Action**: client `test:ci` now pins `--maxWorkers=2`; `scripts/test-gate.sh` serializes the full
+  client/server gate with a cross-checkout lock; the shared MSW handler now serves
+  `/api/setup/llm-presets`; Setup bulk inputs use `fireEvent.change`; the AI presentation cases moved
+  to a pure `SetupWizardView` test; the wizard suites keep a 10 s per-suite safety budget and a
+  3 s local readiness/result wait budget.
+- **Verification**: full client `test:ci` 198/198 suites and 2398/2398 tests green three consecutive
+  times (90.7 s / 88.4 s / 90.3 s); Setup suites 25/25 green ten consecutive isolated runs (~6 s);
+  under eight CPU busy loops the slowest Setup test was 1.09 s (previously 4.93 s at the same load);
+  full server `test:ci` 205 suites / 3496 tests passed (1 suite skipped, 28 expected skips).

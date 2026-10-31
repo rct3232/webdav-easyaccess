@@ -22,7 +22,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "test:ci": "react-scripts test --watchAll=false --coverage",
+    "test:ci": "react-scripts test --watchAll=false --coverage --maxWorkers=2",
     "lint": "eslint src",
     "test:integration": "react-scripts test --testPathPattern='(pages/__tests__|msw-smoke)' --watchAll=false",
     "test:unit": "react-scripts test --testPathPattern='(hooks|utils|components)/__tests__' --watchAll=false",

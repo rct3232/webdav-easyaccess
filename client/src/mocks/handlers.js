@@ -928,6 +928,10 @@ export const handlers = [
     });
   }),
 
+  http.get(`${API_BASE}/setup/llm-presets`, () => {
+    return HttpResponse.json({ presets: [] });
+  }),
+
   http.post(`${API_BASE}/setup/test`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
     const validTargets = ['postgresql', 's3', 'webdav'];

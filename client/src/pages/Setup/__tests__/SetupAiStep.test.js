@@ -1,116 +1,34 @@
 /**
- * Setup wizard AI step tests (T1.1c).
- * The AI step is optional and skippable: preset picker (manifest served by
- * GET /api/setup/llm-presets — chat/vision/asr rows only; embed is NOT a
- * wizard surface), per-role base-url/key/model inputs with a per-role test
- * button (POST /api/setup/test target 'llm'), and an embedded-engine
- * readiness card shown in its waiting state (preparing never starts while
- * setup mode is up — zero bytes fetched). Skipping sends no `llm` apply block.
+ * Setup wizard AI step integration tests (T1.1c).
+ *
+ * The pure view assertions (readiness card, preset picker, role rows) live in
+ * SetupWizardView.test.js. This file keeps only the behaviors that need the
+ * real hook + MSW round trip: probe results, skipping the AI block, and the
+ * configured-role apply payload.
+ *
  * @see docs/spec/client/pages/Setup.md 2.5 (step 5)
  * @see docs/spec/server/routes/setup.md 2.4a
+ * @see docs/TESTING_STRATEGY.md §Client (bulk input, MSW handler discipline)
  */
-import React from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { Outlet, RouterProvider, createMemoryRouter } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
 import { server } from '../../../setupTests';
-import { AuthProvider } from '../../../contexts/AuthContext';
-import Setup from '../Setup';
-import '../../../i18n';
+import {
+  UI_WAIT_TIMEOUT_MS,
+  clickButton,
+  clickNext,
+  mockLlmProbe,
+  mockPresets,
+  navigateToAiStep,
+  renderSetup,
+  setFieldValue,
+  waitForReady,
+} from '../setupTestUtils';
 
-const theme = createTheme({ palette: { primary: { main: '#4167ba' } } });
-
-function renderSetup(initialEntries = ['/setup']) {
-  const rootEl = (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <AuthProvider>
-        <Outlet />
-      </AuthProvider>
-    </ThemeProvider>
-  );
-
-  const router = createMemoryRouter(
-    [
-      {
-        path: '/',
-        element: rootEl,
-        children: [
-          { path: 'setup', element: <Setup /> },
-          { path: 'login', element: <div data-testid="login-page">Login page</div> },
-        ],
-      },
-    ],
-    {
-      initialEntries,
-      future: { v7_relativeSplatPath: true },
-    }
-  );
-
-  return (
-    <RouterProvider
-      router={router}
-      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-    />
-  );
-}
-
-const waitForReady = async () => {
-  await waitFor(() => {
-    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-  });
-};
-
-const clickNext = async (user) => {
-  await user.click(screen.getByRole('button', { name: /^next$/i }));
-};
-
-// Click "Test connection" and wait for the success feedback; required before
-// Next is enabled on steps that offer a connection test (UI UX change).
-async function passTest(user) {
-  await user.click(screen.getByRole('button', { name: /test connection/i }));
-  await waitFor(() => {
-    expect(screen.getByText('Connection successful.')).toBeInTheDocument();
-  });
-}
-
-async function fillS3Fields(user) {
-  await user.type(screen.getByLabelText(/bucket/i), 'test-bucket');
-  await user.type(screen.getByLabelText(/region/i), 'us-east-1');
-  await user.type(screen.getByLabelText(/access key id/i), 'AKIAIOSFODNN7EXAMPLE');
-  await user.type(
-    screen.getByLabelText(/secret access key/i),
-    'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
-  );
-}
-
-const mockPresets = (presets) => {
-  server.use(http.get('/api/setup/llm-presets', () => HttpResponse.json({ presets })));
-};
-
-// Intercept ONLY the llm probe target; other targets (the step-0 connection
-// test) keep the default handler behavior.
-const mockLlmProbe = (handler) => {
-  server.use(
-    http.post('/api/setup/test', async ({ request }) => {
-      const body = await request.json().catch(() => ({}));
-      if (body.target !== 'llm') return HttpResponse.json({ ok: true });
-      return handler({ request, body });
-    })
-  );
-};
-
-const navigateToAiStep = async (user) => {
-  await fillS3Fields(user);
-  await passTest(user);
-  await clickNext(user);
-  await user.type(screen.getByLabelText(/admin password/i), 'admin123');
-  await clickNext(user);
-  await clickNext(user); // optional → AI step
-};
+// Safety net for the hook + MSW probe/apply integration flow. The root fix is
+// the reduced navigation/event cost; this per-suite budget is not a global
+// timeout change.
+jest.setTimeout(10000);
 
 describe('Setup wizard AI step (T1.1c)', () => {
   beforeEach(() => {
@@ -127,58 +45,24 @@ describe('Setup wizard AI step (T1.1c)', () => {
     ]);
   });
 
-  it('renders the AI step with the embedded-engine readiness card in its waiting state', async () => {
-    const user = userEvent.setup();
-    render(renderSetup());
-    await waitForReady();
-
-    await navigateToAiStep(user);
-    expect(screen.getByText('AI configuration (optional)')).toBeInTheDocument();
-    expect(screen.getByText('Embedded model status')).toBeInTheDocument();
-    expect(screen.getByText('Provisioning is scheduled for the next restart')).toBeInTheDocument();
-  });
-
-  it('lists available presets from the manifest', async () => {
-    const user = userEvent.setup();
-    render(renderSetup());
-    await waitForReady();
-
-    await navigateToAiStep(user);
-    expect(screen.getByText(/gemma-4-12b-it/i)).toBeInTheDocument();
-    expect(screen.getByText(/llama\.cpp/i)).toBeInTheDocument();
-  });
-
-  it('lists role rows and renders an admin test button per role', async () => {
-    const user = userEvent.setup();
-    render(renderSetup());
-    await waitForReady();
-
-    await navigateToAiStep(user);
-    // The readiness card copy contains "provisioning" — assert the role labels
-    // INSIDE their rows, never against the whole step.
-    for (const role of ['chat', 'vision', 'asr']) {
-      const row = screen.getByTestId(`ai-role-row-${role}`);
-      expect(within(row).getByText(new RegExp(role, 'i'))).toBeInTheDocument();
-      expect(within(row).getByRole('button', { name: /test/i })).toBeInTheDocument();
-    }
-  });
-
   it('surfaces a passing probe result inline in the wizard', async () => {
     mockLlmProbe(() => HttpResponse.json({ ok: true, role: 'chat', reason: null }));
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await navigateToAiStep(user);
+    await navigateToAiStep();
     const chatRow = screen.getByTestId('ai-role-row-chat');
-    await user.click(within(chatRow).getByRole('checkbox')); // enable the role
-    await user.type(within(chatRow).getByLabelText(/base url/i), 'http://llm.local/v1');
-    await user.type(within(chatRow).getByLabelText(/model/i), 'gemma-4-12b-it');
-    await user.click(within(chatRow).getByRole('button', { name: /test/i }));
+    fireEvent.click(within(chatRow).getByRole('checkbox')); // enable the role
+    setFieldValue(/base url/i, 'http://llm.local/v1', chatRow);
+    setFieldValue(/model/i, 'gemma-4-12b-it', chatRow);
+    clickButton(/test/i, chatRow);
 
-    await waitFor(() => {
-      expect(within(chatRow).getByText(/probe ok/i)).toBeInTheDocument();
-    });
+    await waitFor(
+      () => {
+        expect(within(chatRow).getByText(/probe ok/i)).toBeInTheDocument();
+      },
+      { timeout: UI_WAIT_TIMEOUT_MS }
+    );
   });
 
   it('surfaces a failing probe result and reason inline in the wizard', async () => {
@@ -193,22 +77,24 @@ describe('Setup wizard AI step (T1.1c)', () => {
         { status: 400 }
       )
     );
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await navigateToAiStep(user);
+    await navigateToAiStep();
     const chatRow = screen.getByTestId('ai-role-row-chat');
-    await user.click(within(chatRow).getByRole('checkbox')); // enable the role
-    await user.type(within(chatRow).getByLabelText(/base url/i), 'http://llm.local/v1');
-    await user.type(within(chatRow).getByLabelText(/model/i), 'gemma-4-12b-it');
-    await user.click(within(chatRow).getByRole('button', { name: /test/i }));
+    fireEvent.click(within(chatRow).getByRole('checkbox')); // enable the role
+    setFieldValue(/base url/i, 'http://llm.local/v1', chatRow);
+    setFieldValue(/model/i, 'gemma-4-12b-it', chatRow);
+    clickButton(/test/i, chatRow);
 
-    await waitFor(() => {
-      // The primary text is the translated errorCode (docs/spec/client/pages/
-      // Setup.md §2.5 error display); the raw reason is the muted detail line.
-      expect(within(chatRow).getByText(/connection test failed/i)).toBeInTheDocument();
-    });
+    await waitFor(
+      () => {
+        // The primary text is the translated errorCode (docs/spec/client/pages/
+        // Setup.md §2.5 error display); the raw reason is the muted detail line.
+        expect(within(chatRow).getByText(/connection test failed/i)).toBeInTheDocument();
+      },
+      { timeout: UI_WAIT_TIMEOUT_MS }
+    );
     expect(within(chatRow).getByText(/model unreachable/i)).toBeInTheDocument();
   });
 
@@ -220,17 +106,19 @@ describe('Setup wizard AI step (T1.1c)', () => {
         return HttpResponse.json({ restart_required: true });
       })
     );
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await navigateToAiStep(user);
-    await clickNext(user); // AI step → apply
-    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
+    await navigateToAiStep();
+    clickNext(); // AI step → apply
+    clickButton(/apply & finish/i);
 
-    await waitFor(() => {
-      expect(applyBody).toBeTruthy();
-    });
+    await waitFor(
+      () => {
+        expect(applyBody).toBeTruthy();
+      },
+      { timeout: UI_WAIT_TIMEOUT_MS }
+    );
     expect(applyBody.llm).toBeUndefined();
   });
 
@@ -243,27 +131,32 @@ describe('Setup wizard AI step (T1.1c)', () => {
         return HttpResponse.json({ restart_required: true });
       })
     );
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await navigateToAiStep(user);
+    await navigateToAiStep();
     const chatRow = screen.getByTestId('ai-role-row-chat');
-    await user.click(within(chatRow).getByRole('checkbox')); // enable the role
-    await user.type(within(chatRow).getByLabelText(/base url/i), 'http://llm.local/v1');
-    await user.type(within(chatRow).getByLabelText(/api key/i), 'sk-test');
-    await user.type(within(chatRow).getByLabelText(/model/i), 'gemma-4-12b-it');
-    await user.click(within(chatRow).getByRole('button', { name: /test/i }));
-    await waitFor(() => {
-      expect(within(chatRow).getByText(/probe ok/i)).toBeInTheDocument();
-    });
+    fireEvent.click(within(chatRow).getByRole('checkbox')); // enable the role
+    setFieldValue(/base url/i, 'http://llm.local/v1', chatRow);
+    setFieldValue(/api key/i, 'sk-test', chatRow);
+    setFieldValue(/model/i, 'gemma-4-12b-it', chatRow);
+    clickButton(/test/i, chatRow);
+    await waitFor(
+      () => {
+        expect(within(chatRow).getByText(/probe ok/i)).toBeInTheDocument();
+      },
+      { timeout: UI_WAIT_TIMEOUT_MS }
+    );
 
-    await clickNext(user); // AI step → apply
-    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
+    clickNext(); // AI step → apply
+    clickButton(/apply & finish/i);
 
-    await waitFor(() => {
-      expect(applyBody).toBeTruthy();
-    });
+    await waitFor(
+      () => {
+        expect(applyBody).toBeTruthy();
+      },
+      { timeout: UI_WAIT_TIMEOUT_MS }
+    );
     expect(applyBody.llm).toEqual({
       chat: { baseUrl: 'http://llm.local/v1', apiKey: 'sk-test', model: 'gemma-4-12b-it' },
     });

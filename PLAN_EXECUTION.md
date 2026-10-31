@@ -3083,7 +3083,8 @@ refined by U4 below.
 **Verification (2026-10-30)**
 
 - Server `test:ci`: 205 passed + 1 skipped suites; 3496 passed + 28 skipped tests.
-- Client `test:ci`: 197 suites / 2390 tests passed.
+- Client `test:ci`: 198 suites / 2398 tests passed (2026-10-31 test hardening; three
+  consecutive green runs at 90.7 s / 88.4 s / 90.3 s with `--maxWorkers=2`).
 - PostgreSQL adapter leg on a freshly recreated `webdav_test`: 32 suites / 492 passed +
   1 skipped.
 - Release E2E: model-on 277/6 rc=0; model-free 276/7 rc=0; WebDAV 41/0 rc=0.

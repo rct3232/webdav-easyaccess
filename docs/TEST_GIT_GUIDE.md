@@ -36,6 +36,7 @@
 ✓ test-setup.js (server)
 ✓ server/test-utils.js
 ✓ setupTests.js (client)
+✓ scripts/test-gate.sh (serialized shared-host full gate)
 ✓ playwright.config.ts
 ✓ e2e/global-setup.ts
 ✓ e2e/global-teardown.ts
@@ -47,6 +48,7 @@
 
 ```
 ✓ client/src/mocks/handlers.js
+✓ client/src/pages/**/*TestUtils.jsx
 ✓ server/test-utils.js
 ✓ e2e/helpers/**/*.ts
 ✓ e2e/fixtures/**/*
@@ -326,6 +328,21 @@ rm data/e2e-runtime.json data/e2e-runtime.env   # lock is reclaimed automaticall
 Intentionally NOT isolated (per-run, not per-machine): Docker image pulls
 (daemon-side dedup is safe), `e2e-data/`/`test-results/`/`client/build` (already
 per-checkout), and Playwright browsers (shared read-only cache under `~/.cache`).
+
+## Full Gate on a Shared Host
+
+Run the full client/server Jest gate through the serialized wrapper:
+
+```bash
+npm run test:gate          # server then client
+npm run test:gate:client   # client only
+```
+
+`scripts/test-gate.sh` holds a cross-checkout lock
+(`$TMPDIR/webdav-easyaccess-full-tests.lock`) and runs the suites one after the
+other. Client `test:ci` uses `--maxWorkers=2`; do not run the full gate from
+another worktree at the same time. This is the local shared-host discipline —
+CI runners with dedicated capacity may still invoke `test:ci` directly.
 
 ## Real-PostgreSQL Legs
 

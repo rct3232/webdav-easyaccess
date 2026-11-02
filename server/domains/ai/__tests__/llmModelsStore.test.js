@@ -86,4 +86,34 @@ describe('llmModelsStore facade', () => {
     });
     expect(Number(next.id)).not.toBe(Number(old.id));
   });
+
+  it('activateModel/disableRole keep exactly one active row and preserve history', async () => {
+    const base = {
+      role: 'chat',
+      provider: 'llamacpp',
+      engine: 'remote',
+      baseUrlKey: 'LLM_CHAT_BASE_URL',
+    };
+    const suffix = Date.now();
+    const a = await llmModelsStore.upsertModel({ ...base, modelName: `chat-a-${suffix}` });
+    const b = await llmModelsStore.upsertModel({ ...base, modelName: `chat-b-${suffix}` });
+
+    await llmModelsStore.activateModel('chat', b.id);
+    expect((await llmModelsStore.getActiveByRole('chat')).id).toBe(Number(b.id));
+    let history = await llmModelsStore.listByRole('chat');
+    expect(history.find((row) => row.id === Number(a.id)).enabled).toBe(false);
+    expect(history.filter((row) => row.enabled)).toHaveLength(1);
+
+    await llmModelsStore.activateModel('chat', a.id);
+    expect((await llmModelsStore.getActiveByRole('chat')).id).toBe(Number(a.id));
+    history = await llmModelsStore.listByRole('chat');
+    expect(history.find((row) => row.id === Number(b.id)).enabled).toBe(false);
+    expect(history.filter((row) => row.enabled)).toHaveLength(1);
+
+    await llmModelsStore.disableRole('chat');
+    await expect(llmModelsStore.getActiveByRole('chat')).resolves.toBeNull();
+    history = await llmModelsStore.listByRole('chat');
+    expect(history).toHaveLength(2);
+    expect(history.every((row) => row.enabled === false)).toBe(true);
+  });
 });

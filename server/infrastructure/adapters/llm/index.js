@@ -763,7 +763,14 @@ function createLlmAdapter(deps = {}) {
     await refreshTunables();
     const signature = signatureOf(resolved);
     const entry = clients.get(role);
-    const changed = lastSignature.has(role) && lastSignature.get(role) !== signature;
+    const previousSignature = lastSignature.get(role);
+    // First configured observation counts as a transition: a role configured
+    // after adapter construction has no previous signature. Without this, the
+    // first post-boot admin/DB write would build a client but never register a
+    // model row or schedule a probe (the P0 role-lifecycle gap).
+    const firstConfigured = previousSignature === undefined && resolved.engine !== null;
+    const changed =
+      firstConfigured || (previousSignature !== undefined && previousSignature !== signature);
 
     if (!changed) {
       if (!entry && resolved.engine) {
@@ -787,7 +794,6 @@ function createLlmAdapter(deps = {}) {
     // signature are dropped: the next activation pass re-probes exactly once.
     breaker.reset(role);
     limiter.reset(role);
-    const previousSignature = lastSignature.get(role);
     if (previousSignature) probeCache.delete(previousSignature);
 
     if (
@@ -807,24 +813,23 @@ function createLlmAdapter(deps = {}) {
         ...(fetchImpl ? { fetchImpl } : {}),
       });
       clients.set(role, { signature, client, spec: resolved });
-      // C6: a rebuild of the embed client is a model-identity event for the
-      // registry too. Sync ONLY the embed row in place (non-recursive, no
-      // provider metadata GET on the hot path); an identity change resets the
-      // boot-frozen vector store. The debounced probe below is the only
-      // provider work this signature change schedules.
-      if (role === 'embed') {
-        try {
-          await syncRoleRegistry('embed', { metadata: false });
-        } catch {
-          /* registry sync must never block config adoption */
-        }
-      }
     } else {
       clients.delete(role);
       // An unconfigured role carries no capability and no probe warning.
       probeState.clearRoleCapability(role);
     }
-    await scheduleReprobe(role);
+
+    // Every role owns a persisted registry row. The sync is non-recursive and
+    // provider-free: it upserts+activates the resolved identity, or disables
+    // the role's active row when the triple was cleared. An embed identity
+    // change additionally resets the boot-frozen vector store inside the sync.
+    try {
+      await syncRoleRegistry(role, { metadata: false, resolved });
+    } catch {
+      /* registry sync must never block config adoption */
+    }
+
+    if (resolved.engine) await scheduleReprobe(role);
     lastSignature.set(role, signature);
     return { resolved, entry: clients.get(role) };
   }
@@ -1090,22 +1095,28 @@ function createLlmAdapter(deps = {}) {
    * `metadata:false` is the HOT path: registry sync must not issue provider
    * metadata GETs beyond the probe already scheduled for the new signature.
    */
-  async function syncRoleRegistry(role, { metadata = true } = {}) {
-    const resolved = await resolveRoleConfig(role);
-    if (!resolved.engine) return { rows: 0 };
-    if (resolved.engine === 'embedded' && !(await embeddedPresent())) return { rows: 0 };
+  async function syncRoleRegistry(role, { metadata = true, resolved = null } = {}) {
+    const roleConfig = resolved || (await resolveRoleConfig(role));
+    if (!roleConfig.engine) {
+      // Configured→unconfigured (or a boot-time absence): keep history, but
+      // make the role have no enabled row so getActiveByRole is null.
+      await modelsStore().disableRole(role);
+      modelIds.delete(role);
+      return { rows: 0, disabled: true };
+    }
+    if (roleConfig.engine === 'embedded' && !(await embeddedPresent())) return { rows: 0 };
 
     const preset = await Promise.resolve(presetFor(role));
-    const lock = resolved.engine === 'embedded' ? provisioner.loadLock() : null;
+    const lock = roleConfig.engine === 'embedded' ? provisioner.loadLock() : null;
     const spec = {
       role,
-      provider: resolved.engine === 'embedded' ? 'embedded' : (preset?.family ?? 'remote'),
-      engine: resolved.engine,
-      baseUrlKey: resolved.engine === 'remote' ? ROLE_KEYS[role][0] : '',
+      provider: roleConfig.engine === 'embedded' ? 'embedded' : (preset?.family ?? 'remote'),
+      engine: roleConfig.engine,
+      baseUrlKey: roleConfig.engine === 'remote' ? ROLE_KEYS[role][0] : '',
       modelName:
-        resolved.engine === 'embedded' ? String(lock.repo).split('/').pop() : resolved.model,
-      modelRevision: resolved.engine === 'embedded' ? (lock.revision ?? null) : null,
-      precision: resolved.engine === 'embedded' ? (lock.dtype ?? null) : null,
+        roleConfig.engine === 'embedded' ? String(lock.repo).split('/').pop() : roleConfig.model,
+      modelRevision: roleConfig.engine === 'embedded' ? (lock.revision ?? null) : null,
+      precision: roleConfig.engine === 'embedded' ? (lock.dtype ?? null) : null,
       maxInputChars: (await getBudget(role, { metadata })).maxInputChars,
       chunkBudget:
         preset?.budgets?.chunkBudget ??
@@ -1122,6 +1133,9 @@ function createLlmAdapter(deps = {}) {
       before.modelName === spec.modelName &&
       (before.modelRevision ?? null) === (spec.modelRevision ?? null);
     const { id } = await modelsStore().upsertModel(spec);
+    // The adapter owns the one-active-row invariant: activation disables the
+    // role's previous rows without deleting their model-version lineage.
+    await modelsStore().activateModel(role, id);
     modelIds.set(role, id);
     if (!sameIdentity) {
       // An embed model identity change invalidates the boot-frozen vector
@@ -1141,8 +1155,10 @@ function createLlmAdapter(deps = {}) {
 
   /**
    * Boot registry sync: upsert every configured role (llmAdapter.md §2.3).
-   * Hot embed config changes call `syncRoleRegistry('embed')` directly from
-   * `observeRole` — never through this whole-role loop (no double boot work).
+   * Every role's signature change calls `syncRoleRegistry` directly from
+   * `observeRole`; this whole-role loop is the boot/backfill path. Unconfigured
+   * roles are disabled (history preserved) so the registry has at most one
+   * enabled row per configured role.
    */
   async function syncModelRegistry({ metadata = true } = {}) {
     let rows = 0;
@@ -1152,12 +1168,36 @@ function createLlmAdapter(deps = {}) {
     return { rows };
   }
 
+  /**
+   * Idempotent all-role reconciliation for management paths (admin config PUT,
+   * AI summary read). It applies the same rules as a normal observation —
+   * first-configured roles are registered, changed roles are re-synced, cleared
+   * roles are disabled — and schedules the debounced probe without awaiting
+   * provider work. Direct-DB edits therefore become visible without a restart.
+   */
+  async function reconcileConfiguredRoles() {
+    const out = {};
+    for (const role of LLM_ROLE.ALL) {
+      try {
+        const observed = await observeRole(role);
+        out[role] = { configured: observed.resolved.engine !== null };
+      } catch (err) {
+        out[role] = {
+          configured: false,
+          reason: err && err.message ? err.message : 'reconcile failed',
+        };
+      }
+    }
+    return out;
+  }
+
   return {
     roleConfigured,
     getRoleReadiness,
     getRoleClient,
     probeRole: probeRoleNow,
     probeConfiguredRoles,
+    reconcileConfiguredRoles,
     getEffectiveCapabilities: () => probeState.getEffectiveCapabilities(),
     embed,
     embedMedia,

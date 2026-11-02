@@ -1767,3 +1767,30 @@ test` green (179 suites / 3,106 tests incl. docsStatePurity).
   times (90.7 s / 88.4 s / 90.3 s); Setup suites 25/25 green ten consecutive isolated runs (~6 s);
   under eight CPU busy loops the slowest Setup test was 1.09 s (previously 4.93 s at the same load);
   full server `test` 205 suites / 3496 tests passed (1 suite skipped, 28 expected skips).
+
+## 2026-11-02 — Post-boot first-time LLM role config never entered the registry (production, k3s)
+
+- **Summary**: after setting `LLM_CHAT_*` / `LLM_VISION_*` / `LLM_ASR_*` through the admin config
+  editor on a running instance, the AI operations tab still showed only the embed model. The
+  roles worked at the endpoint level (chat returned 200) but had no `llm_models` row and no
+  `ai.<role>` probe outcome.
+- **Diagnosis**: `observeRole` only treated a config as changed when a previous signature
+  existed (`lastSignature.has(role)`), and the changed branch synced the registry for `embed`
+  only. The roles were unconfigured at boot, so their first post-boot observation took the
+  "first observation" branch: client built, but no `syncRoleRegistry` and no debounced probe.
+  `syncModelRegistry()` (the only all-role path) runs at boot only; the admin summary reads
+  `llm_models` directly and never observes the adapter. The registry therefore stayed empty
+  until a restart.
+- **Classification**: **Case A (source defect)** — the implementation contradicted the
+  documented "fully hot, no restart" contract (`config-source-resolution.md`, `llmAdapter.md`
+  §2.2). The store also lacked the adapter-owned one-active-row enforcement promised by
+  `llmModelsStore.md` §2.3 (a model swap/revert could leave multiple `enabled=true` rows).
+- **Action**: first configured observation is now a signature change; every role's change
+  syncs its registry row via `upsertModel` + `activateModel` (unconfigured ⇒ `disableRole`);
+  `reconcileConfiguredRoles()` is called best-effort from the admin config PUT and the AI
+  summary read. Docs updated: `llmAdapter.md`, `llmModelsStore.md`, `config.md`, `admin.md`,
+  `config-source-resolution.md`. Tests cover first-configured chat, role clearing, all-role
+  reconcile, one-active activation/revert, and route-trigger wiring.
+- **Verification**: adapter/store/route suites plus the full gate, real-PostgreSQL adapter leg,
+  and the targeted `admin-ai` E2E. Existing deployments normalize on the deploy restart (boot
+  sync); no schema migration.

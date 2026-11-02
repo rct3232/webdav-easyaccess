@@ -76,6 +76,35 @@ module.exports = function createSqliteLlmModelsRepository(executor) {
       }
     },
 
+    async activateModel(role, id) {
+      try {
+        return await executor.transaction(async (tx) => {
+          await tx.run('UPDATE llm_models SET enabled = 0 WHERE role = ? AND id <> ?', [
+            String(role),
+            Number(id),
+          ]);
+          const result = await tx.run(
+            'UPDATE llm_models SET enabled = 1 WHERE role = ? AND id = ?',
+            [String(role), Number(id)]
+          );
+          return { changes: result.changes };
+        });
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async disableRole(role) {
+      try {
+        const result = await executor.run('UPDATE llm_models SET enabled = 0 WHERE role = ?', [
+          String(role),
+        ]);
+        return { changes: result.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async getModel(id) {
       try {
         const { rows } = await executor.query('SELECT * FROM llm_models WHERE id = ? LIMIT 1', [

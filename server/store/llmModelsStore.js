@@ -32,6 +32,14 @@ async function getModel(id) {
   return getRepository().getModel(id);
 }
 
+async function activateModel(role, id) {
+  return getRepository().activateModel(role, id);
+}
+
+async function disableRole(role) {
+  return getRepository().disableRole(role);
+}
+
 async function getActiveByRole(role) {
   return getRepository().getActiveByRole(role);
 }
@@ -46,6 +54,8 @@ async function setReasoning(id, reasoning) {
 
 module.exports = {
   upsertModel,
+  activateModel,
+  disableRole,
   getModel,
   getActiveByRole,
   listByRole,

@@ -204,4 +204,33 @@ describe('LlmModelsRepository conformance', () => {
     const rows = await revivedRepo.listByRole(REMOTE_CHAT_SPEC.role);
     expect(rows.map((row) => row.id)).toContain(Number(before.id));
   });
+
+  it('activateModel/disableRole enforce one active row, support A→B→A, and preserve history', async () => {
+    const spec = {
+      role: 'asr',
+      provider: 'activate-provider',
+      engine: 'remote',
+      baseUrlKey: 'k-asr-activate',
+    };
+    const a = await repo.upsertModel({ ...spec, modelName: 'asr-activate-a' });
+    const b = await repo.upsertModel({ ...spec, modelName: 'asr-activate-b' });
+
+    await repo.activateModel('asr', b.id);
+    expect((await repo.getActiveByRole('asr')).id).toBe(Number(b.id));
+    let rows = await repo.listByRole('asr');
+    expect(rows.filter((row) => row.enabled)).toHaveLength(1);
+    expect(rows.find((row) => row.id === Number(a.id)).enabled).toBe(false);
+
+    await repo.activateModel('asr', a.id);
+    expect((await repo.getActiveByRole('asr')).id).toBe(Number(a.id));
+    rows = await repo.listByRole('asr');
+    expect(rows.find((row) => row.id === Number(b.id)).enabled).toBe(false);
+    expect(rows.filter((row) => row.enabled)).toHaveLength(1);
+
+    await repo.disableRole('asr');
+    await expect(repo.getActiveByRole('asr')).resolves.toBeNull();
+    rows = await repo.listByRole('asr');
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    expect(rows.every((row) => row.enabled === false)).toBe(true);
+  });
 });

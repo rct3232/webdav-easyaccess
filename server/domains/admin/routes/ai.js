@@ -13,6 +13,7 @@ const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageC
 const User = require('../../../models/User');
 const { authenticateToken } = require('../../../utils/auth');
 const { asyncHandler, createError, mapServiceError } = require('../../../utils/errorHandler');
+const { getLlmAdapter } = require('../../../infrastructure/llmAdapterRuntime');
 const { createAiAdminService } = require('../services/aiAdminService');
 
 const ERROR_MAP = {
@@ -55,6 +56,17 @@ router.get(
   authenticateToken,
   isAdmin,
   asyncHandler(async (req, res) => {
+    // Read-through reconciliation keeps the panel correct after out-of-band
+    // DB edits (the documented direct-SQL backstop). Provider-free: probes are
+    // scheduled on the normal debounce, never awaited here.
+    const adapter = getLlmAdapter();
+    if (adapter && typeof adapter.reconcileConfiguredRoles === 'function') {
+      try {
+        await adapter.reconcileConfiguredRoles();
+      } catch {
+        /* read-through reconciliation is best-effort */
+      }
+    }
     res.json(await service().getSummary());
   })
 );

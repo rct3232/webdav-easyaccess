@@ -182,6 +182,25 @@ function makeModelsStore() {
       const enabled = [...rows.values()].filter((r) => r.role === role && r.enabled);
       return enabled.length ? enabled[enabled.length - 1] : null;
     },
+    async activateModel(role, id) {
+      let changes = 0;
+      for (const row of rows.values()) {
+        if (row.role !== role) continue;
+        const next = row.id === Number(id);
+        if (row.enabled !== next) changes += 1;
+        row.enabled = next;
+      }
+      return { changes };
+    },
+    async disableRole(role) {
+      let changes = 0;
+      for (const row of rows.values()) {
+        if (row.role !== role) continue;
+        if (row.enabled) changes += 1;
+        row.enabled = false;
+      }
+      return { changes };
+    },
     async listByRole(role) {
       return [...rows.values()].filter((r) => r.role === role);
     },
@@ -375,6 +394,89 @@ describe('per-call config resolution + signature-keyed client cache', () => {
     timers.fireDue();
     await flushAsync();
     expect(probeCalls).toEqual([{ role: 'chat' }]);
+  });
+
+  it('a role configured for the FIRST time after construction registers its row and schedules a probe', async () => {
+    const r = makeResolver();
+    const { adapter, models, timers, clock, probeCalls } = buildAdapter({ resolver: r });
+
+    // No prior observation of chat: the role was absent at boot.
+    await r.set('LLM_CHAT_BASE_URL', 'http://chat.local:8080');
+    await r.set('LLM_CHAT_MODEL', 'gemma-4-12b-it');
+
+    const client = await adapter.getRoleClient('chat');
+    expect(client).not.toBeNull();
+    expect(await models.getActiveByRole('chat')).toMatchObject({
+      role: 'chat',
+      engine: 'remote',
+      modelName: 'gemma-4-12b-it',
+      enabled: true,
+    });
+
+    clock.advance(60_000);
+    timers.fireDue();
+    await flushAsync();
+    expect(probeCalls).toEqual([{ role: 'chat' }]);
+  });
+
+  it('clearing a configured non-embed role disables its active row without deleting history', async () => {
+    const r = makeResolver({ ...REMOTE_CHAT });
+    const { adapter, models } = buildAdapter({ resolver: r });
+
+    await adapter.getRoleClient('chat');
+    const row = await models.getActiveByRole('chat');
+    expect(row).not.toBeNull();
+
+    await r.set('LLM_CHAT_BASE_URL', undefined);
+    await r.set('LLM_CHAT_MODEL', undefined);
+
+    await expect(adapter.getRoleClient('chat')).resolves.toBeNull();
+    await expect(models.getActiveByRole('chat')).resolves.toBeNull();
+    const history = await models.listByRole('chat');
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({ id: row.id, enabled: false });
+  });
+
+  it('a non-embed model change activates exactly one row (A→B leaves A in history disabled)', async () => {
+    const r = makeResolver({ ...REMOTE_CHAT });
+    const { adapter, models } = buildAdapter({ resolver: r });
+
+    await adapter.getRoleClient('chat');
+    const first = await models.getActiveByRole('chat');
+
+    await r.set('LLM_CHAT_MODEL', 'gemma-4-12b-it-v2');
+    await adapter.getRoleClient('chat');
+
+    const active = await models.getActiveByRole('chat');
+    expect(active.modelName).toBe('gemma-4-12b-it-v2');
+    expect(active.id).not.toBe(first.id);
+    const history = await models.listByRole('chat');
+    expect(history.find((row) => row.id === first.id).enabled).toBe(false);
+    expect(history.filter((row) => row.enabled)).toHaveLength(1);
+  });
+
+  it('reconcileConfiguredRoles registers every configured role without provider calls', async () => {
+    const r = makeResolver({
+      ...REMOTE_EMBED,
+      ...REMOTE_CHAT,
+      LLM_VISION_BASE_URL: 'http://vision.local:8080',
+      LLM_VISION_MODEL: 'Hana',
+      LLM_ASR_BASE_URL: 'http://asr.local:8080',
+      LLM_ASR_MODEL: 'Hana',
+    });
+    const { adapter, models, probeCalls } = buildAdapter({ resolver: r });
+
+    const result = await adapter.reconcileConfiguredRoles();
+    expect(result).toMatchObject({
+      embed: { configured: true },
+      chat: { configured: true },
+      vision: { configured: true },
+      asr: { configured: true },
+    });
+    for (const role of ['embed', 'chat', 'vision', 'asr']) {
+      expect(await models.getActiveByRole(role)).not.toBeNull();
+    }
+    expect(probeCalls).toEqual([]);
   });
 
   it('repeated signature changes within the debounce window collapse to ONE re-probe', async () => {

@@ -97,6 +97,15 @@ Tier classification after a successful write:
 - **T2 key** → applied immediately (lazy runtime read).
 - **T1 key** → stored, **restart required** (boot-frozen snapshot).
 
+**LLM role reconciliation:** when at least one written key starts with `LLM_`, the route
+calls the installed llmAdapter's `reconcileConfiguredRoles()` after `invalidateCache` and
+before responding (best-effort, never fails the write). This registers/activates the changed
+roles in `llm_models` and schedules their debounced probes, including a role that becomes
+configured for the first time after boot. The call is provider-free (no inference/metadata
+fetch); provider probes run later on the normal debounce. Direct SQL edits remain supported:
+the AI summary read performs the same idempotent sweep, so the next admin read reflects them
+without a restart.
+
 **Settings journal (curated AI governance keys):** writes to the curated non-secret AI
 keys (`AI_EVOLUTION_*`, `AI_MERGE_*`, activity/retention keys and the AI kill switches —
 `settingsJournalService.js` owns the list) go through

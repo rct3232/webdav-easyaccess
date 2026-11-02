@@ -21,11 +21,15 @@ jest.mock('../../../../infrastructure/backendProbe', () => ({
 jest.mock('../../../../infrastructure/backendHealth', () => ({
   getBackendHealth: jest.fn(),
 }));
+jest.mock('../../../../infrastructure/llmAdapterRuntime', () => ({
+  getLlmAdapter: jest.fn(),
+}));
 
 const User = require('../../../../models/User');
 const Settings = require('../../../../models/Settings');
 const { runProbe } = require('../../../../infrastructure/backendProbe');
 const { getBackendHealth } = require('../../../../infrastructure/backendHealth');
+const { getLlmAdapter } = require('../../../../infrastructure/llmAdapterRuntime');
 const {
   SERVER_ERROR_CODES,
   SERVER_MESSAGE_CODES,
@@ -70,6 +74,7 @@ beforeEach(() => {
   fakeResolver.getEffectiveConfig.mockResolvedValue({});
   setSharedResolver(fakeResolver);
   getBackendHealth.mockReturnValue(mockHealth);
+  getLlmAdapter.mockReturnValue(null);
   User.findById.mockResolvedValue({ id: 1, is_admin: 1 });
   app = buildApp();
 });
@@ -170,6 +175,33 @@ describe('PUT /api/admin/config', () => {
       restartRequired: [],
       messageCode: SERVER_MESSAGE_CODES.admin.configSaved,
     });
+  });
+
+  it('reconciles configured LLM roles after an LLM key write', async () => {
+    const reconcileConfiguredRoles = jest.fn().mockResolvedValue({});
+    getLlmAdapter.mockReturnValue({ reconcileConfiguredRoles });
+
+    const res = await request(app)
+      .put('/api/admin/config')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({ values: { LLM_CHAT_BASE_URL: 'http://chat.local:8080/v1' } });
+
+    expect(res.status).toBe(200);
+    expect(Settings.set).toHaveBeenCalledWith('LLM_CHAT_BASE_URL', 'http://chat.local:8080/v1');
+    expect(reconcileConfiguredRoles).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reconcile roles for a non-LLM key write', async () => {
+    const reconcileConfiguredRoles = jest.fn().mockResolvedValue({});
+    getLlmAdapter.mockReturnValue({ reconcileConfiguredRoles });
+
+    const res = await request(app)
+      .put('/api/admin/config')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({ values: { CORS_ORIGINS: 'https://app.example.com' } });
+
+    expect(res.status).toBe(200);
+    expect(reconcileConfiguredRoles).not.toHaveBeenCalled();
   });
 
   it('reports restartRequired for a written T1 key', async () => {

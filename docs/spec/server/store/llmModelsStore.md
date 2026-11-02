@@ -37,8 +37,10 @@ nullable; `enabled` boolean; ids/timestamps domain-shaped (numbers, ISO strings)
 | Method            | Signature                                   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ----------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `upsertModel`     | (spec) => Promise\<{ id }\>                 | Resolve the identity tuple in one TX: existing row ⇒ UPDATE the NON-identity fields only (`precision`, `max_input_chars`, `chunk_budget`, `batch_size`, `reasoning`, `enabled`) and return its `id`; otherwise INSERT. `spec`: `{ role, provider, engine?, baseUrlKey, modelName, precision?, modelRevision?, maxInputChars?, chunkBudget?, batchSize?, reasoning?, enabled? }` — `engine` defaults `'remote'`, `reasoning` `'off'`, `enabled` `true`. Same identity ⇒ same `model_id` forever (registry upsert is idempotent — restart-survival guarantee). |
+| `activateModel`   | (role, id) => Promise\<{ changes }\>        | ONE TX: disable every other row of the role (`enabled=false`), then enable `id` (`enabled=true`). The adapter calls this after `upsertModel` so exactly one active row exists per configured role; history rows stay present and disabled. A→B→A re-activates A and disables B. Other roles are untouched.                                                                                                                                                                                                                                                   |
+| `disableRole`     | (role) => Promise\<{ changes }\>            | Disable every row of the role without deleting anything. The adapter calls this when a role becomes unconfigured (cleared triple / `WEA_SKIP_EMBED_MODEL`), so `getActiveByRole` returns `null` while embedding/ enrichment FK lineage survives.                                                                                                                                                                                                                                                                                                             |
 | `getModel`        | (id) => Promise\<row \| null\>              | Single read.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `getActiveByRole` | (role) => Promise\<row \| null\>            | The ENABLED row of the role. If several enabled rows exist (transient registry states), the HIGHEST `id` wins (most recently provisioned) — the read is deterministic without write-ordering assumptions; the adapter owns the "one active model per role" invariant (llmPresets §2.3).                                                                                                                                                                                                                                                                      |
+| `getActiveByRole` | (role) => Promise\<row \| null\>            | The ENABLED row of the role. If several enabled rows exist (transient registry states), the HIGHEST `id` wins (most recently provisioned) — the read is deterministic without write-ordering assumptions; the adapter owns the "one active model per role" invariant via `activateModel`/`disableRole` (llmPresets §2.3).                                                                                                                                                                                                                                    |
 | `listByRole`      | (role) => Promise\<row[]\>                  | Registry history of the role (admin panel display), `id ASC`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `setReasoning`    | (id, 'on'\|'off') => Promise\<{ changes }\> | The single sanctioned hand edit (llmAdapter §2.7). Any other value is a TypeError BEFORE SQL (the DDL CHECK stays the last line of defense).                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
@@ -59,12 +61,14 @@ garbage; a model swap disables, it does not delete), any dim read/write (§1 dim
 
 ### 2.6 Restart Survival
 
-Registry rows are DB truth and survive restarts untouched: no store code path deletes,
-disables, or zeroes them at boot. Re-running `syncModelRegistry` (adapter, later unit) after
-a restart is idempotent per identity — the same model version resolves to the SAME
-`llm_models.id`, which is what keeps `embeddings`/`ai_enrichments` lineage columns stable
-across restarts. Verified by asserting identical ids across a simulated restart (fresh
-repository over the persisted database).
+Registry rows are DB truth and survive restarts untouched: no store code path deletes rows.
+The `enabled` flag is the adapter-owned active marker: boot reconciliation calls
+`activateModel` for configured roles and `disableRole` for unconfigured ones, so an old
+model swap stays in history as `enabled=false`. Re-running `syncModelRegistry` (adapter,
+later unit) after a restart is idempotent per identity — the same model version resolves to
+the SAME `llm_models.id`, which is what keeps `embeddings`/`ai_enrichments` lineage columns
+stable across restarts. Verified by asserting identical ids across a simulated restart
+(fresh repository over the persisted database).
 
 ### 2.7 Dependencies
 
@@ -86,6 +90,11 @@ repository over the persisted database).
       TypeError before SQL
 - [ ] `getActiveByRole`: none → `null`; multiple enabled rows → highest id; disabled rows
       never returned
+- [ ] `activateModel(role, id)` leaves exactly one enabled row for that role (the target),
+      disables the role's other rows, and leaves other roles untouched
+- [ ] A→B→A activation returns A from `getActiveByRole` while B stays in history disabled
+- [ ] `disableRole(role)` makes `getActiveByRole` return `null` and preserves every history
+      row (no delete)
 - [ ] `listByRole` returns the full history `id ASC` with domain-shaped rows (number ids,
       boolean `enabled`, ISO `createdAt`)
 - [ ] `getModel` unknown id → `null`

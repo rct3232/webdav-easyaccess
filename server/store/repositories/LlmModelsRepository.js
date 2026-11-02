@@ -38,11 +38,16 @@
  *   in-transaction pre-check (repository-contract rule 4 — the DDL has no
  *   UNIQUE constraint). Existing row: ONLY the non-identity fields
  *   (precision/budgets/reasoning/enabled) are refreshed.
+ * @property {(role, id) => Promise<{changes: number}>} activateModel
+ *   ONE TX: disable the role's other rows, then enable `id`. The adapter owns
+ *   the "one active model per role" invariant through this method.
+ * @property {(role) => Promise<{changes: number}>} disableRole
+ *   Disable every row of the role without deleting history (unconfigured role).
  * @property {(id) => Promise<LlmModelRow|null>} getModel
  * @property {(role) => Promise<LlmModelRow|null>} getActiveByRole
  *   The ENABLED row of the role; several enabled rows ⇒ highest id wins
  *   (most recently provisioned) — deterministic read; the adapter owns the
- *   "one active model per role" invariant.
+ *   "one active model per role" invariant via activateModel/disableRole.
  * @property {(role) => Promise<LlmModelRow[]>} listByRole
  *   Registry history of the role, id ASC (admin panel display).
  * @property {(id, 'on'|'off') => Promise<{changes: number}>} setReasoning

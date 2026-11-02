@@ -78,6 +78,35 @@ module.exports = function createPostgresLlmModelsRepository(executor) {
       }
     },
 
+    async activateModel(role, id) {
+      try {
+        return await executor.transaction(async (tx) => {
+          await tx.run('UPDATE llm_models SET enabled = FALSE WHERE role = $1 AND id <> $2', [
+            String(role),
+            Number(id),
+          ]);
+          const result = await tx.run(
+            'UPDATE llm_models SET enabled = TRUE WHERE role = $1 AND id = $2',
+            [String(role), Number(id)]
+          );
+          return { changes: result.changes };
+        });
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async disableRole(role) {
+      try {
+        const result = await executor.run('UPDATE llm_models SET enabled = FALSE WHERE role = $1', [
+          String(role),
+        ]);
+        return { changes: result.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async getModel(id) {
       try {
         const { rows } = await executor.query('SELECT * FROM llm_models WHERE id = $1 LIMIT 1', [

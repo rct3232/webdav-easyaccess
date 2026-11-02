@@ -10,6 +10,7 @@ const Settings = require('../../../models/Settings');
 const { authenticateToken } = require('../../../utils/auth');
 const { asyncHandler, createError } = require('../../../utils/errorHandler');
 const { getSharedResolver } = require('../../../infrastructure/configResolver');
+const { getLlmAdapter } = require('../../../infrastructure/llmAdapterRuntime');
 const {
   TIER,
   getEntry,
@@ -225,6 +226,20 @@ router.put(
 
     if (changedKeys.length > 0) {
       getSharedResolver().invalidateCache(changedKeys);
+    }
+
+    // LLM role lifecycle: a role configured for the first time after boot has
+    // no prior adapter signature, so it must be registered/probed explicitly.
+    // Best-effort: registry reconciliation never fails the config write.
+    if (changedKeys.some((key) => key.startsWith('LLM_'))) {
+      const adapter = getLlmAdapter();
+      if (adapter && typeof adapter.reconcileConfiguredRoles === 'function') {
+        try {
+          await adapter.reconcileConfiguredRoles();
+        } catch {
+          /* registry reconciliation must never fail the config write */
+        }
+      }
     }
 
     res.json({

@@ -119,7 +119,10 @@ resolver (5 s TTL + `invalidateCache` on settings PUT), and an internal provider
 cache **keyed by the resolved-config signature** rebuilds clients on change. A signature
 change triggers a debounced re-probe of the affected role, so `backendHealth` and
 `settings/public` `ai` flags update live; workers pick the new config at the next job and
-budget counters reset. **No restart, ever.** Contrast with the other config families: the
+budget counters reset. A role that becomes configured for the FIRST time after boot is also
+a signature change: the admin config PUT (and the AI summary read, as a safety net for direct
+DB edits) runs `reconcileConfiguredRoles()` to upsert/activate the role's `llm_models` row and
+schedule its probe. **No restart, ever.** Contrast with the other config families: the
 metadata DB connection (T0) is boot-frozen by definition and the blob store (T1) needs a
 restart — the LLM is an enrichment dependency, so it is the only subsystem whose entire
 connection layer is hot. `LLM_*` keys are **dbOnly**: `.env`-provided values are never

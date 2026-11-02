@@ -5,6 +5,10 @@
  * real stores; no provider work (coverage is DB-derived).
  */
 
+jest.mock('../../../../infrastructure/llmAdapterRuntime', () => ({
+  getLlmAdapter: jest.fn(),
+}));
+
 const request = require('supertest');
 const express = require('express');
 const {
@@ -15,6 +19,7 @@ const {
 } = require('../../../../test-utils');
 const llmModelsStore = require('../../../../store/llmModelsStore');
 const { setSharedResolver } = require('../../../../infrastructure/configResolver');
+const { getLlmAdapter } = require('../../../../infrastructure/llmAdapterRuntime');
 const { errorHandler } = require('../../../../utils/errorHandler');
 const { SERVER_ERROR_CODES } = require('@webdav-easyaccess/shared/serverMessageCodes');
 const {
@@ -63,6 +68,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  getLlmAdapter.mockReturnValue(null);
   await dbRun('DELETE FROM ai_jobs');
   await dbRun('DELETE FROM action_journal');
   await dbRun('DELETE FROM settings');
@@ -88,6 +94,18 @@ describe('admin AI routes', () => {
       .set('Authorization', `Bearer ${userToken}`);
     expect(res.status).toBe(403);
     expect(res.body.errorCode).toBe(SERVER_ERROR_CODES.admin.adminRequired);
+  });
+
+  it('GET /api/admin/ai/summary reconciles configured roles before reading', async () => {
+    const reconcileConfiguredRoles = jest.fn().mockResolvedValue({});
+    getLlmAdapter.mockReturnValue({ reconcileConfiguredRoles });
+
+    const res = await request(app)
+      .get('/api/admin/ai/summary')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(reconcileConfiguredRoles).toHaveBeenCalledTimes(1);
   });
 
   it('GET /api/admin/ai/summary returns the governance snapshot with unavailable coverage when no model exists', async () => {

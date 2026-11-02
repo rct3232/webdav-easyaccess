@@ -170,7 +170,7 @@ update live, workers adopt at the next job, query-embedding at the next request,
 failures degrade silently (§4.12), never as errors. Input limits come from the §4.3 chain, never
 probing calls; overlength degrades with a flag; daily caps pause a role, visible to admin. A model
 change triggers **no automatic backfill**: stored vectors keep serving, only new enrichment stops;
-re-embedding is an admin-launched, rate-limited job.
+re-embedding is an admin-launched, single-active job.
 
 ### 4.3 Preprocessing and budget
 
@@ -380,7 +380,7 @@ merge-accept rate, config-backed gate parameters with live impact counts and jou
 rollback, tombstone counters; missing series are labelled not instrumented); model registry
 (per-role model/dimension, current-vs-stale distribution, backfill launcher across the
 feature/caption/transcript lineages); per-role degraded counter; kill switches. The launcher
-covers text nodes plus the media coverage plan, is rate-limited, and supports cancelling
+covers text nodes plus the media coverage plan, is single-active, and supports cancelling
 pending jobs. Privacy: aggregates and identifiers only — never users' names, queries, or
 contents. **Constants provenance**: every numeric AI constant is a **release artifact measured
 by the project on its own reference set**, shipped per model profile and displayed with provenance

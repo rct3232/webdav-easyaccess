@@ -61,7 +61,7 @@
   render an error/retry while the summary remains visible. Journal writes (undo/gate
   save) still throw.
 - Launcher/gate/journal-write errors are thrown to the component, which renders the
-  server error code/params (rate-limit retry window included).
+  server error code/params.
 - Probe failures are per-role and do not abort the remaining role probes.
 
 ### 2.6 Verification Scenarios

@@ -17,7 +17,6 @@ const { getLlmAdapter } = require('../../../infrastructure/llmAdapterRuntime');
 const { createAiAdminService } = require('../services/aiAdminService');
 
 const ERROR_MAP = {
-  rateLimited: SERVER_ERROR_CODES.admin.reembedRateLimited,
   alreadyActive: SERVER_ERROR_CODES.admin.reembedAlreadyActive,
   modelUnavailable: SERVER_ERROR_CODES.admin.reembedModelUnavailable,
 };
@@ -32,8 +31,8 @@ const isAdmin = asyncHandler(async (req, res, next) => {
 
 /**
  * Service errors carry bare string codes; mapServiceError drops `params`, so
- * the rate-limit retry window is copied back explicitly. Errors that already
- * carry status+errorCode pass through unchanged.
+ * `active_jobs` (the single-active guard) is copied back explicitly. Errors
+ * that already carry status+errorCode pass through unchanged.
  */
 function handleServiceError(error) {
   if (error && error.errorCode) return error;
@@ -81,7 +80,7 @@ router.get(
   })
 );
 
-// THE launcher: lock + cooldown + single-active + journaled enqueue.
+// THE launcher: lock + model gate + single-active + journaled enqueue.
 router.post(
   '/reembed',
   authenticateToken,

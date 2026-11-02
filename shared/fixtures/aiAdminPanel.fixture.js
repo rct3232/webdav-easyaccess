@@ -302,8 +302,6 @@ function createAiAdminPanelFixture(overrides = {}) {
     launcher: {
       available: true,
       reason: null,
-      retry_after_seconds: 0,
-      cooldown_seconds: 900,
       active_jobs: AI_ADMIN_SENTINELS.activeJobs,
       active_model_id: AI_ADMIN_SENTINELS.modelId,
       generations: {
@@ -327,7 +325,6 @@ function createAiAdminPreviewFixture(overrides = {}) {
     reason: null,
     model_id: AI_ADMIN_SENTINELS.modelId,
     generations: clone(summary.launcher.generations),
-    retry_after_seconds: 0,
     coverage: { text: clone(summary.coverage.text), media: clone(summary.coverage.media) },
     plan: {
       text_count: AI_ADMIN_SENTINELS.previewText,

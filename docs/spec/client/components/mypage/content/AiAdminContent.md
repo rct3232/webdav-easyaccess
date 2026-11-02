@@ -49,20 +49,21 @@ the timer up on unmount. The component renders only snake_case fields from the r
 | Models    | Per-role active row (id/model/engine/provider) + the actual history rows (id/model/engine/provider), and per-active-model profile provenance (`dim`, `calibrated`, `pooling`, `request_shape`, `dtype`, `mrl_dims`, `text_prefixes`). No hardcoded evolution gate is rendered.                                                                                                      |
 | Coverage  | `available`/`reason`; text totals (files/embedded/missing/stale) with `by_source`; media totals (media/embedded/missing/stale) with `by_source`/`by_media_kind`/`by_capability`/`by_corpus`. Missing model ⇒ reason-carrying `not instrumented`, never fabricated zeros.                                                                                                            |
 | Gates     | Kill switches render as sticky switches. Numeric/text gates render one editor row each with value, source, impact metric and the live impact count returned by the server; a null count is labelled `no data`, an uninstrumented metric is labelled `not instrumented`, and a null kill-switch value renders as `unknown` (not `off`). Save writes through `PUT /api/admin/config`. |
-| Launcher  | Text/media/union plan counts, active model id, current per-kind generations (embed/features/caption/asr), availability/reason, `active_jobs` and `retry_after_seconds`. Preview → one `ConfirmDialog` → `POST /api/admin/ai/reembed`. Progress is read from the polled queue block; there is no parallel progress UI.                                                               |
+| Launcher  | Text/media/union plan counts, active model id, current per-kind generations (embed/features/caption/asr), availability/reason and `active_jobs`. Preview → one `ConfirmDialog` → `POST /api/admin/ai/reembed`. Progress is read from the polled queue block; there is no parallel progress UI.                                                                                      |
 | Journal   | `GET /api/actions?domain=settings` feed (newest first); each applied row offers undo (`POST /api/actions/:id/undo`). The re-embed row's undo cancels pending jobs only. A journal read failure renders an error with retry; it is distinct from the empty-feed state.                                                                                                               |
 
 ### 2.5 Launcher flow (U3)
 
 1. `Preview` calls `GET /api/admin/ai/reembed/preview` and renders deterministic text
    and media coverage counts plus the union plan count. When `preview.available` is
-   false, the panel renders `preview.reason` and never the plan counts (no `0/0/0`).
+   false, the panel renders `preview.reason` (`active_run` while the previous launch's
+   ids are still pending/running, `model_unavailable` with no active embed model) and
+   never the plan counts (no `0/0/0`).
 2. `ConfirmDialog` asks once; confirming calls `POST /api/admin/ai/reembed`.
 3. Success reports `enqueued` and `generation` only, then refreshes the summary; the
    pipeline-health queue is the only progress surface. `job_ids` stay API-only because
    the server-side journal inverse owns cancel-by-id.
-4. A 429 (`serverErrors.admin.reembedRateLimited`) renders the retry window from
-   `params.retry_after_seconds`. A 409 active/model error renders its translated message.
+4. A 409 active/model error renders its translated message.
 5. The launcher never enqueues without the server-side journal row; the UI has no
    alternate enqueue path.
 
@@ -105,7 +106,7 @@ cross-links, probe feedback) plus the existing `admin.aiState.*` and
 - [ ] Kill switches and gate editors write only server-provided keys; success refreshes
       the summary and the settings journal block.
 - [ ] Launcher preview renders text+media counts; one confirm dialog gates the POST; a
-      429 shows `retry_after_seconds`; success points progress at the queue block.
+      409 active-run error disables the launcher; success points progress at the queue block.
 - [ ] Missing series render the API-driven `not instrumented` label and never a fabricated
       value; null scalars render `—`, a null gate impact renders `no data`, and a null kill
       switch renders `unknown`.

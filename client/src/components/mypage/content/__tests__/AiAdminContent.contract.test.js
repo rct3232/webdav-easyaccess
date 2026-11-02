@@ -185,7 +185,7 @@ describe('AiAdminContent contract sentinel matrix', () => {
           },
         ],
       },
-      launcher: { active_model_id: null, retry_after_seconds: null },
+      launcher: { active_model_id: null },
     });
     setPanel({ summary, preview: null });
     renderWithProviders(<AiAdminContent />);

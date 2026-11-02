@@ -151,7 +151,7 @@ describe('admin AI routes', () => {
     expect(preview.body.plan).toEqual({ text_count: 0, media_count: 0, union_count: 0 });
   });
 
-  it('preview reports the deterministic plan and launch returns 429 params on the next call', async () => {
+  it('preview reports the deterministic plan and the second launch hits the single-active guard', async () => {
     await seedEmbedModel();
     await createTestFileNode({ name: `ai-route-${Date.now()}.txt` });
 
@@ -161,7 +161,6 @@ describe('admin AI routes', () => {
     expect(preview.status).toBe(200);
     expect(validateAiAdminPreview(preview.body)).toEqual([]);
     expect(preview.body.plan.union_count).toBeGreaterThanOrEqual(1);
-    expect(preview.body.retry_after_seconds).toBe(0);
 
     const launched = await request(app)
       .post('/api/admin/ai/reembed')
@@ -176,9 +175,9 @@ describe('admin AI routes', () => {
       .post('/api/admin/ai/reembed')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({});
-    expect(second.status).toBe(429);
-    expect(second.body.errorCode).toBe(SERVER_ERROR_CODES.admin.reembedRateLimited);
-    expect(second.body.params.retry_after_seconds).toBeGreaterThan(0);
+    expect(second.status).toBe(409);
+    expect(second.body.errorCode).toBe(SERVER_ERROR_CODES.admin.reembedAlreadyActive);
+    expect(second.body.params.active_jobs).toBeGreaterThan(0);
   });
 
   it('launch without an active embed model is a 409 modelUnavailable', async () => {

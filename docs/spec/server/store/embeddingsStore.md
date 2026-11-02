@@ -64,7 +64,7 @@ filecache.content_hash` ⇒ `aiJobsStore.markSkipped(jobId)` — **no provider c
 
 - `node_id` is BOTH PK and FK `→ file_nodes ON DELETE CASCADE`: purging a file removes its
   embedding (trash keeps the row — the node row survives).
-- A model change is a backfill overwrite (admin-triggered, rate-limited): old-space vectors are replaced row-by-row;
+- A model change is a backfill overwrite (admin-triggered, single-active): old-space vectors are replaced row-by-row;
   `listAll` on the new modelId returns only fully-migrated nodes until backfill completes.
 - `dim` is fixed per model. The store trusts its caller (embed worker /
   vectorStore seam resolves the model row's dim upstream) and simply persists the

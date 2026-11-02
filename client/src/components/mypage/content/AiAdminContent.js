@@ -789,10 +789,6 @@ const AiAdminContent = () => {
             label={t('admin.aiPanel.launcher.activeJobs')}
             value={formatNumber(launcher.active_jobs)}
           />
-          <Metric
-            label={t('admin.aiPanel.launcher.cooldown')}
-            value={formatNumber(launcher.retry_after_seconds)}
-          />
         </Box>
         <Box sx={{ display: 'flex', flexWrap: 'wrap' }} data-testid="launcher-generations">
           {GENERATION_KINDS.map((kind) => (
@@ -806,14 +802,6 @@ const AiAdminContent = () => {
         {launcher.available === false && launcherReason ? (
           <Alert severity="warning" sx={{ mb: 1 }} data-testid="launcher-unavailable">
             {launcherReason}
-          </Alert>
-        ) : null}
-        {formatNumber(launcher.retry_after_seconds) !== '—' &&
-        Number(launcher.retry_after_seconds) > 0 ? (
-          <Alert severity="warning" sx={{ mb: 1 }}>
-            {t('admin.aiPanel.launcher.retryAfter', {
-              seconds: formatNumber(launcher.retry_after_seconds),
-            })}
           </Alert>
         ) : null}
         {preview ? (

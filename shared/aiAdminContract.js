@@ -129,8 +129,6 @@ const AI_ADMIN_SUMMARY_MANIFEST = Object.freeze({
   launcher: {
     available: 'boolean',
     reason: 'string|null',
-    retry_after_seconds: 'number',
-    cooldown_seconds: 'number',
     active_jobs: 'number',
     active_model_id: 'number|null',
     generations: {
@@ -154,7 +152,6 @@ const AI_ADMIN_PREVIEW_MANIFEST = Object.freeze({
     caption: 'number',
     asr: 'number',
   },
-  retry_after_seconds: 'number',
   coverage: { text: 'object|null', media: 'object|null' },
   plan: { text_count: 'number', media_count: 'number', union_count: 'number' },
 });
@@ -177,7 +174,6 @@ const AI_ADMIN_FAILED_JOB_LIMIT = 20;
 /** Reasons shared by `/summary.coverage`, `/summary.launcher`, and preview. */
 const AI_ADMIN_REASONS = Object.freeze({
   MODEL_UNAVAILABLE: 'model_unavailable',
-  COOLDOWN: 'cooldown',
   ACTIVE_RUN: 'active_run',
 });
 

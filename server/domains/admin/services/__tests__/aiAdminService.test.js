@@ -192,11 +192,10 @@ describe('aiAdminService', () => {
     const preview = await service.getReembedPreview();
     expect(preview.plan).toEqual({ text_count: 1, media_count: 1, union_count: 2 });
     expect(preview.model_id).toBe(5);
-    expect(preview.retry_after_seconds).toBe(0);
     await expect(aiJobsStore.countByStatus()).resolves.toMatchObject({ pending: 0 });
   });
 
-  it('launch journal + generation bump + enqueue commit together, then the cooldown returns 429 params', async () => {
+  it('launch journal + generation bump + enqueue commit atomically', async () => {
     const launched = await service.launchReembed({ actor: 1 });
     expect(launched.enqueued).toBe(2);
     expect(launched.job_ids).toHaveLength(2);
@@ -219,21 +218,10 @@ describe('aiAdminService', () => {
     const counts = await aiJobsStore.countByStatus();
     expect(counts.pending).toBe(2);
     expect((await service.getSummary()).launcher.generations.embed).toBe(2);
-
-    await expect(service.launchReembed({ actor: 1 })).rejects.toMatchObject({
-      message: 'rateLimited',
-      status: 429,
-      params: { retry_after_seconds: expect.any(Number) },
-    });
   });
 
-  it('the global single-active guard refuses a new launch after the cooldown when ids are still queued', async () => {
-    const launched = await service.launchReembed({ actor: 1 });
-    const old = new Date(Date.now() - 20 * 60 * 1000).toISOString();
-    await dbRun('UPDATE action_journal SET created_at = ? WHERE id = ?', [
-      old,
-      launched.undo.action_id,
-    ]);
+  it('the global single-active guard refuses a new launch while the previous ids are still queued', async () => {
+    await service.launchReembed({ actor: 1 });
 
     await expect(service.launchReembed({ actor: 1 })).rejects.toMatchObject({
       message: 'alreadyActive',

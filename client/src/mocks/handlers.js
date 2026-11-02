@@ -880,7 +880,6 @@ export const handlers = [
       generations: { embed: 2, features: 2, caption: 2, asr: 2 },
       model_id: null,
       undo: { action_id: 0 },
-      retry_after_seconds: 900,
     });
   }),
 

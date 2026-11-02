@@ -503,7 +503,7 @@ test('E2E-ADMINAI-004: preview → one confirmation → launch enqueues work, bu
   await expect(page.getByTestId('ai-section-pipeline')).toContainText(/Pending/);
 });
 
-test('E2E-ADMINAI-005: the 15-minute cooldown returns 429 with the retry window and disables the launcher without preview counts', async ({
+test('E2E-ADMINAI-005: a second launch while the previous jobs are still queued returns 409 active-run and disables the launcher without preview counts', async ({
   page,
   request,
 }) => {
@@ -517,22 +517,22 @@ test('E2E-ADMINAI-005: the 15-minute cooldown returns 429 with the retry window 
     headers: auth(adminToken),
     data: {},
   });
-  expect(second.status()).toBe(429);
-  const limited = (await second.json()) as {
+  expect(second.status()).toBe(409);
+  const guarded = (await second.json()) as {
     errorCode: string;
-    params: { retry_after_seconds: number };
+    params: { active_jobs: number };
   };
-  expect(limited.errorCode).toBe('serverErrors.admin.reembedRateLimited');
-  expect(limited.params.retry_after_seconds).toBeGreaterThan(0);
-  expect(limited.params.retry_after_seconds).toBeLessThanOrEqual(900);
+  expect(guarded.errorCode).toBe('serverErrors.admin.reembedAlreadyActive');
+  expect(typeof guarded.params.active_jobs).toBe('number');
+  expect(guarded.params.active_jobs).toBeGreaterThan(0);
 
   await loginAdmin(page);
   await openAdminAiPanel(page);
-  await expect(page.getByTestId('launcher-unavailable')).toContainText(/cooldown/i);
+  await expect(page.getByTestId('launcher-unavailable')).toContainText(/queued jobs/i);
   await expect(page.getByRole('button', { name: /Launch re-embed/i })).toBeDisabled();
 
   await page.getByRole('button', { name: /^Preview$/i }).click();
-  await expect(page.getByTestId('reembed-preview-unavailable')).toContainText(/cooldown/i);
+  await expect(page.getByTestId('reembed-preview-unavailable')).toContainText(/queued jobs/i);
   await expect(page.getByTestId('reembed-preview')).toHaveCount(0);
 });
 

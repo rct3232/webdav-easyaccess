@@ -909,12 +909,10 @@
         "unavailableReason": "Coverage is not instrumented ({{reason}})."
       },
       "launcher": {
-        "description": "One rate-limited run covers missing/stale text nodes and the media coverage plan. The queue is the progress surface.",
+        "description": "One active run at a time covers missing/stale text nodes and the media coverage plan. The queue is the progress surface.",
         "model": "Model",
         "generation": "Generation",
-        "cooldown": "Retry after (s)",
         "activeRun": "A previous re-embed run still has queued jobs.",
-        "retryAfter": "The launcher is cooling down. Try again in {{seconds}} seconds.",
         "previewCounts": "Text: {{text}} · Media: {{media}} · Union: {{union}}",
         "preview": "Preview",
         "launch": "Launch re-embed",
@@ -966,7 +964,6 @@
       },
       "reasons": {
         "model_unavailable": "No active embedding model is registered.",
-        "cooldown": "The launcher is in its 15-minute cooldown window.",
         "active_run": "A previous re-embed run still has queued jobs."
       }
     }
@@ -1360,7 +1357,6 @@
       "repairUploadBlobMissing": "Pending blob is missing; cannot complete.",
       "reportNotFound": "Admin report not found.",
       "repairNotAvailable": "No repair action is available for this report.",
-      "reembedRateLimited": "A re-embed run was launched recently. Try again in {{retry_after_seconds}} seconds.",
       "reembedAlreadyActive": "A re-embed run is already in progress. Wait for its queued jobs to drain.",
       "reembedModelUnavailable": "No active embedding model is registered."
     },

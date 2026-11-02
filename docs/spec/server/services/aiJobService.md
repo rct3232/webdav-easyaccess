@@ -247,7 +247,7 @@ stride sample ≤ `LLM_CHUNK_BUDGET` (default 4) chunks → embed ALL sampled ch
   `sampleMissing`/`sampleStale` are their bounded prefixes (default 20) so the preview is
   deterministic across calls. `planMediaBackfill` takes `scope` and `limit` and returns the
   node-id list an admin action would re-embed — `missing ∪ stale_space`, id-ascending,
-  capped by `limit` — and enqueues nothing: the admin action and its rate limit own the
+  capped by `limit` — and enqueues nothing: the admin action owns the
   enqueue.
 - **Backfill executor:** `pipelines/backfill.js` executes a claimed `backfill` row by
   calling the active vectorStore `rebuildShadow()` ONCE, then `markDone`. It performs NO
@@ -262,9 +262,9 @@ stride sample ≤ `LLM_CHUNK_BUDGET` (default 4) chunks → embed ALL sampled ch
   `planMediaBackfill` list above (`missing` for the initial coverage pass, `stale_space`
   for the model-change re-projection). No DDL column is added for the driver.
 - **Unified admin launcher:** `POST /api/admin/ai/reembed` (routes/admin.md §2.2.7) is the
-  only bulk enqueue. Under the global `ai-reembed-launcher` lock it derives a 15-minute
-  cooldown from the latest `settings:ai-reembed` journal row, refuses while the previous
-  launch still has pending/running ids (global single active), recomputes text + media
+  only bulk enqueue. Under the global `ai-reembed-launcher` lock it refuses while the
+  previous launch still has pending/running ids (global single active; a relaunch is
+  allowed as soon as those ids are terminal), recomputes text + media
   coverage inside the lock, bumps the four generation counters to one `N`, and seeds the
   union plan as `embed` jobs through `enqueueManyTx` in the SAME TX that writes the
   `settings`-domain `ai-reembed` journal row. The inverse is `cancel-ai-jobs` carrying the
@@ -424,9 +424,9 @@ recoverable). The only user-facing code in this domain is thrown by llmAdapter c
 - [ ] Generation wiring: the commit hook enqueues with the persisted `AI_GEN_<KIND>` value
       (async `generationFor`), the launcher bumps all four to one next `N`, and a
       caption/asr chained embed keeps the job's generation
-- [ ] Launcher: preview is deterministic and read-only; a second POST inside the 15-minute
-      window returns 429 with `retry_after_seconds`; a launch with the previous ids still
-      pending/running returns the active-run refusal; success journals one
+- [ ] Launcher: preview is deterministic and read-only; a second POST while the previous
+      ids are still pending/running returns 409 `reembedAlreadyActive`; after those ids
+      drain a second launch succeeds; success journals one
       `settings:ai-reembed` row and enqueue + generation bump commit atomically; undo
       cancels only pending ids
 - [ ] Text coverage: live non-media file nodes classify embedded/missing/stale_space

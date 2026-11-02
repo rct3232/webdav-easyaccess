@@ -453,7 +453,6 @@ describe('adminService', () => {
         enqueued: 1,
         generation: 2,
         undo: { action_id: 9 },
-        retry_after_seconds: 900,
       };
       post.mockResolvedValueOnce({ data: payload });
 

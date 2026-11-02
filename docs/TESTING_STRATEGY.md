@@ -73,7 +73,7 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   surface — `s3-admin-ai-model-desktop` (`:5007`) boots a fake media-capable embed through
   pre-boot `LLM_EMBED_*` settings with `WEA_SKIP_AI_WORKER=1` and
   `WEA_SKIP_EVOLUTION_SCHEDULER=1`, so capability/model/coverage data is real while the
-  launcher leaves queued jobs for the queue/cooldown/cancel cases; the states project
+  launcher leaves queued jobs for the queue/active-run/cancel cases; the states project
   (`:5008`) boots without an embed model for visibility, cross-link/polling-cleanup, empty
   and error/retry cases. Each case resets `ai_jobs`, `action_journal`, `AI_GEN_*`,
   `ai_usage_daily` and `admin_reports` in the scratch sqlite, and seeds queue/usage/report

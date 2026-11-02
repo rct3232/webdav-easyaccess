@@ -111,8 +111,6 @@ function summaryFixture() {
     launcher: {
       available: true,
       reason: null,
-      retry_after_seconds: 0,
-      cooldown_seconds: 900,
       active_jobs: 0,
       active_model_id: 5,
       generations: { embed: 2, features: 2, caption: 2, asr: 2 },
@@ -196,24 +194,6 @@ describe('AiAdminContent', () => {
     await user.click(screen.getByTestId('confirm-dialog-confirm'));
     await waitFor(() => expect(mockPanel.launch).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/Re-embed launched/i)).toBeInTheDocument();
-  });
-
-  it('renders the rate-limit retry window from the server params', async () => {
-    const user = userEvent.setup();
-    mockPanel.preview = { plan: { text_count: 1, media_count: 0, union_count: 1 } };
-    mockPanel.launch.mockRejectedValue({
-      response: {
-        data: {
-          errorCode: 'serverErrors.admin.reembedRateLimited',
-          params: { retry_after_seconds: 42 },
-        },
-      },
-    });
-    renderWithProviders(<AiAdminContent />);
-
-    await user.click(screen.getByRole('button', { name: /launch re-embed/i }));
-    await user.click(screen.getByTestId('confirm-dialog-confirm'));
-    expect(await screen.findByText(/42 seconds/i)).toBeInTheDocument();
   });
 
   it('undoes a settings journal row', async () => {

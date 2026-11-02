@@ -44,7 +44,6 @@ const {
 } = require('./settingsJournalService');
 
 const REEMBED_LOCK = 'ai-reembed-launcher';
-const REEMBED_COOLDOWN_MS = 15 * 60 * 1000;
 const REEMBED_SAMPLE_SIZE = 20;
 const FAILED_JOB_LIMIT = AI_ADMIN_FAILED_JOB_LIMIT;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -159,14 +158,6 @@ function instantMs(value) {
   const text = String(value);
   if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(text)) return Date.parse(text);
   return Date.parse(`${text.replace(' ', 'T')}Z`);
-}
-
-function cooldownSecondsFrom(row, now = Date.now()) {
-  if (!row) return 0;
-  const created = instantMs(row.createdAt);
-  if (!Number.isFinite(created)) return 0;
-  const remaining = REEMBED_COOLDOWN_MS - (now - created);
-  return remaining > 0 ? Math.ceil(remaining / 1000) : 0;
 }
 
 function launcherJobIds(row) {
@@ -301,9 +292,8 @@ function createAiAdminService(overrides = {}) {
     return rows[0] || null;
   }
 
-  async function launcherStatus({ activeModelId, latestRow, now } = {}) {
+  async function launcherStatus({ activeModelId, latestRow } = {}) {
     const row = latestRow === undefined ? await latestLauncherRow() : latestRow;
-    const cooldown = cooldownSecondsFrom(row, now);
     const ids = launcherJobIds(row);
     const activeJobs = ids.length > 0 ? await deps.aiJobsStore.countActiveByIds(ids) : 0;
     const generations = await deps.generationSettings.getGenerations();
@@ -312,9 +302,6 @@ function createAiAdminService(overrides = {}) {
     if (!activeModelId) {
       available = false;
       reason = AI_ADMIN_REASONS.MODEL_UNAVAILABLE;
-    } else if (cooldown > 0) {
-      available = false;
-      reason = AI_ADMIN_REASONS.COOLDOWN;
     } else if (activeJobs > 0) {
       available = false;
       reason = AI_ADMIN_REASONS.ACTIVE_RUN;
@@ -322,8 +309,6 @@ function createAiAdminService(overrides = {}) {
     return {
       available,
       reason,
-      retry_after_seconds: cooldown,
-      cooldown_seconds: Math.floor(REEMBED_COOLDOWN_MS / 1000),
       active_jobs: activeJobs,
       active_model_id: activeModelId ?? null,
       generations,
@@ -451,7 +436,6 @@ function createAiAdminService(overrides = {}) {
       reason: launcher.reason || coverage.reason,
       model_id: coverage.model_id,
       generations: launcher.generations,
-      retry_after_seconds: launcher.retry_after_seconds,
       coverage: {
         text: coverage.text,
         media: coverage.media,
@@ -472,10 +456,6 @@ function createAiAdminService(overrides = {}) {
         throw serviceError('modelUnavailable', 409);
       }
       const latestRow = await latestLauncherRow();
-      const cooldown = cooldownSecondsFrom(latestRow);
-      if (cooldown > 0) {
-        throw serviceError('rateLimited', 429, { retry_after_seconds: cooldown });
-      }
       const previousJobIds = launcherJobIds(latestRow);
       const activeJobs =
         previousJobIds.length > 0 ? await deps.aiJobsStore.countActiveByIds(previousJobIds) : 0;
@@ -533,7 +513,6 @@ function createAiAdminService(overrides = {}) {
         text_count: result.textCount,
         media_count: result.mediaCount,
         undo: { action_id: id },
-        retry_after_seconds: Math.floor(REEMBED_COOLDOWN_MS / 1000),
       };
     } finally {
       await lock.release();
@@ -550,7 +529,6 @@ function createAiAdminService(overrides = {}) {
 module.exports = {
   createAiAdminService,
   REEMBED_LOCK,
-  REEMBED_COOLDOWN_MS,
   AI_REEMBED_SUBJECT,
   CURATED_AI_KILL_SWITCH_KEYS,
   CURATED_AI_GATE_KEYS,

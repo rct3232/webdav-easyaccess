@@ -184,10 +184,19 @@ capability claims:
   change); (b2) a text-only control through the same wrapper diverges (cos < 0.99 —
   an endpoint that drops the media part returns the text vector); (c) when
   `vision_chat` is also configured, image↔its-caption > image↔unrelated text.
+  **(b) context rule:** when the media response reports `usage.prompt_tokens`, a
+  footprint ≤10% of the base64-text estimate is sufficient evidence that pixels
+  were consumed (the control is skipped); a footprint ≥50% is a text-drop failure.
+  Otherwise the full control is attempted; an endpoint that rejects it for
+  length/context yields `text_control_unavailable` (image_embed OFF, honest
+  reason), never `transport`, and a control rejection must not be mistaken for an
+  image-path failure. This keeps common 4k-context servers that report usage
+  usable without an oversized ubatch.
   Audio: a real-speech clip vs a deterministic noise clip must yield DISTINCT
   vectors (cos < 0.85); sine/noise-only probes remain BANNED as pass criteria.
-  Video: a 1 fps frame-sampled video must land in the image space
-  (cos ≥ 0.75) and fails when the image positive controls fail. A failed media probe
+  Video: the checked-in 1 fps frames ride the production image content-wrapper
+  path (the V3 shape — not the server's `video_url` sampler) and must land in the
+  image space (cos ≥ 0.75); it fails when the image positive controls fail. A failed media probe
   switches ONLY that sub-capability OFF (media falls back to the caption→E1 or metadata
   path), it never blocks `text_embed`; each verdict is cached per config signature and
   published through `probeState`/`evaluateCapabilityMatrix`.

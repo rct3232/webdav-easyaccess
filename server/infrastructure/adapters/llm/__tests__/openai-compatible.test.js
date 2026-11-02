@@ -51,7 +51,10 @@ function embeddingResponse(rawInput) {
     if (item && typeof item === 'object') vector[7] = 0.5;
     return { index, embedding: vector };
   });
-  return { data: rows.reverse() };
+  return {
+    data: rows.reverse(),
+    usage: { prompt_tokens: input.length, total_tokens: input.length },
+  };
 }
 
 describe('remote OpenAI-compatible dialect client', () => {
@@ -102,6 +105,7 @@ describe('remote OpenAI-compatible dialect client', () => {
     const out = await remote.embed(['hello', 'world']);
     expect(out.dim).toBe(8);
     expect(out.vectors).toHaveLength(2);
+    expect(out.usage).toEqual({ promptTokens: 2, totalTokens: 2 });
 
     const doc = requests.find((r) => r.url === '/embeddings');
     expect(doc.body.input).toEqual(['title: none | text: hello', 'title: none | text: world']);
@@ -221,6 +225,13 @@ describe('remote dialect error classification (§2.8)', () => {
   it('a length-class 400 body is classified as length', async () => {
     status = 400;
     body = '{"error":"input too long: maximum context"}';
+    await expect(make().embed(['x'])).rejects.toMatchObject({ class: 'length' });
+  });
+
+  it('a 500 physical-batch overflow body is classified as length, not transport', async () => {
+    status = 500;
+    body =
+      '{"error":{"message":"input (16315 tokens) is too large to process. increase the physical batch size (current batch size: 512)"}}';
     await expect(make().embed(['x'])).rejects.toMatchObject({ class: 'length' });
   });
 });

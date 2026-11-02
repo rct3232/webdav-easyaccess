@@ -161,7 +161,16 @@ function createOpenAiCompatibleClient(spec = {}) {
       }
       return Float32Array.from(row.embedding);
     });
-    return { vectors, dim: vectors[0].length };
+    const usage = {};
+    const promptTokens = Number(payload?.usage?.prompt_tokens);
+    const totalTokens = Number(payload?.usage?.total_tokens);
+    if (Number.isFinite(promptTokens)) usage.promptTokens = promptTokens;
+    if (Number.isFinite(totalTokens)) usage.totalTokens = totalTokens;
+    return {
+      vectors,
+      dim: vectors[0].length,
+      ...(Object.keys(usage).length > 0 ? { usage } : {}),
+    };
   }
 
   async function embed(texts, opts = {}) {

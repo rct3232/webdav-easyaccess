@@ -27,7 +27,7 @@ const TRANSPORT_CODES = new Set([
 
 // §2.8 `length`: 400 token/input-too-long and context-overflow messages.
 const LENGTH_MESSAGE =
-  /(context length|input too long|maximum context|too many tokens|token limit|with \d+ tokens|longer than)/i;
+  /(context length|input too long|maximum context|too many tokens|token limit|with \d+ tokens|longer than|input \(\d+ tokens\)|physical batch size)/i;
 
 /**
  * §2.8 error taxonomy — every provider error is classified before surfacing.

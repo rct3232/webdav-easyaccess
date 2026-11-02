@@ -39,6 +39,14 @@ const FIXTURES = Object.freeze({
   photoReencode: path.join(FIXTURE_DIR, 'photo-reencode.jpg'),
   speech: path.join(FIXTURE_DIR, 'speech.wav'),
   video: path.join(FIXTURE_DIR, 'video.mp4'),
+  // The production V3 path samples 1 fps frames and sends them as images;
+  // these checked-in frames keep the probe on that exact shape (no server
+  // video_url sampling, no ffmpeg dependency in the probe).
+  videoFrames: Object.freeze([
+    path.join(FIXTURE_DIR, 'video-frame-001.jpg'),
+    path.join(FIXTURE_DIR, 'video-frame-002.jpg'),
+    path.join(FIXTURE_DIR, 'video-frame-003.jpg'),
+  ]),
 });
 
 function readFixture(key) {
@@ -57,6 +65,18 @@ function cosine(a, b) {
   }
   const denom = Math.sqrt(na) * Math.sqrt(nb);
   return denom ? dot / denom : 0;
+}
+
+/** Mean of the per-frame vectors — the shape the production pool persists. */
+function meanVector(vectors) {
+  if (!Array.isArray(vectors) || vectors.length === 0) return null;
+  const out = new Float32Array(vectors[0].length);
+  for (const vector of vectors) {
+    if (!vector || vector.length !== out.length) return null;
+    for (let i = 0; i < out.length; i++) out[i] += vector[i];
+  }
+  for (let i = 0; i < out.length; i++) out[i] /= vectors.length;
+  return out;
 }
 
 /** Deterministic noise negative control (NEVER a pass criterion, §2.4). */
@@ -147,6 +167,7 @@ async function runEmbedMediaProbes({
   embedMedia,
   embedWrappedText = null,
   captionImage = null,
+  chPerTok = 1.5,
 } = {}) {
   const results = {};
 
@@ -160,19 +181,56 @@ async function runEmbedMediaProbes({
     const reencodeVector = firstVector(reencode);
     const nearDup = cosine(photoVector, reencodeVector);
 
-    const textControl = embedWrappedText
-      ? await embedWrappedText(readFixture('photo').toString('base64'))
-      : await embed([readFixture('photo').toString('base64')]);
-    const textCos = cosine(photoVector, firstVector(textControl));
+    // "Same bytes as TEXT" is the strongest input-shaping control, but a
+    // full-size photo's base64 exceeds a small endpoint context (llama.cpp
+    // rejects it above its physical batch size). When the provider reports
+    // prompt_tokens, the media request's footprint is equivalent evidence:
+    // far below the base64-text estimate ⇒ pixels were consumed; close to it
+    // ⇒ the endpoint silently embedded text. The full control remains the
+    // fallback when usage is absent or ambiguous, and a length/context
+    // rejection is reported as unavailable instead of a false image failure.
+    const controlText = readFixture('photo').toString('base64');
+    const controlTokens = Math.max(1, Math.ceil(controlText.length / chPerTok));
+    const observedTokens = photo?.usage?.promptTokens;
+    let textCos = null;
+    let textControl = 'base64';
+
+    if (Number.isFinite(observedTokens) && observedTokens > 0) {
+      const ratio = observedTokens / controlTokens;
+      if (ratio <= 0.1) {
+        textControl = 'usage';
+        textCos = 0; // media footprint, not the base64 text footprint
+      } else if (ratio >= 0.5) {
+        textControl = 'usage';
+        textCos = 1; // footprint matches the base64 text: silent text-drop
+      }
+    }
+
+    if (textCos === null) {
+      try {
+        const control = embedWrappedText
+          ? await embedWrappedText(controlText)
+          : await embed([controlText]);
+        textCos = cosine(photoVector, firstVector(control));
+      } catch (err) {
+        if (err?.class === 'length' || err?.reason === 'control_too_large') {
+          textControl = 'unavailable';
+        } else {
+          throw err;
+        }
+      }
+    }
 
     const emptyControl = embedWrappedText ? await embedWrappedText('') : await embed(['']);
     const emptyCos = cosine(photoVector, firstVector(emptyControl));
 
-    const measurements = { nearDup, textCos, emptyCos };
+    const measurements = { nearDup, textCos, emptyCos, textControl };
     if (nearDup < IMAGE_NEAR_DUP_FLOOR) {
       results.image_embed = failure('image_embed', 'image_near_dup', measurements);
-    } else if (textCos >= IMAGE_TEXT_DIVERGENCE_MAX) {
+    } else if (textCos !== null && textCos >= IMAGE_TEXT_DIVERGENCE_MAX) {
       results.image_embed = failure('image_embed', 'image_text_not_divergent', measurements);
+    } else if (textControl === 'unavailable') {
+      results.image_embed = failure('image_embed', 'text_control_unavailable', measurements);
     } else if (emptyCos >= IMAGE_CONTROL_DIVERGENCE_MAX) {
       results.image_embed = failure('image_embed', 'image_input_ignored', measurements);
     } else {
@@ -239,9 +297,15 @@ async function runEmbedMediaProbes({
       });
     }
     const photo = await embedMedia([readFixture('photo')], { mediaType: 'image' });
-    const video = await embedMedia([readFixture('video')], { mediaType: 'video' });
-    const sameSpace = cosine(firstVector(photo), firstVector(video));
-    const measurements = { sameSpace };
+    // Production V3 samples 1 fps frames and embeds them through the image
+    // content-wrapper path. Probe that exact shape: the server's video_url
+    // sampler is not on the production path and its multi-frame token budget
+    // can exceed a small ubatch even when the image path is healthy.
+    const frames = FIXTURES.videoFrames.map((file) => fs.readFileSync(file));
+    const video = await embedMedia(frames, { mediaType: 'image' });
+    const videoVector = meanVector(video.vectors) || firstVector(video);
+    const sameSpace = cosine(firstVector(photo), videoVector);
+    const measurements = { sameSpace, frames: frames.length };
     results.video_embed =
       sameSpace >= VIDEO_IMAGE_MIN
         ? success('video_embed', measurements)

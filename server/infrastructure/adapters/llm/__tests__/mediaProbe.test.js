@@ -74,6 +74,26 @@ function embeddingsHandler(mode, req, res, body) {
       })),
     });
   }
+
+  // Context-limited endpoint: the full-size base64 text control is rejected
+  // exactly like llama.cpp rejects it above the physical batch size.
+  const oversizedTextControl = payload.input.some(
+    (item) =>
+      item &&
+      typeof item === 'object' &&
+      (item.content || []).some(
+        (part) => part.type === 'text' && String(part.text ?? '').length > 10000
+      )
+  );
+  if ((mode === 'usage' || mode === 'usage-less') && oversizedTextControl) {
+    return json(res, 500, {
+      error: {
+        message:
+          'input (16315 tokens) is too large to process. increase the physical batch size (current batch size: 512)',
+      },
+    });
+  }
+
   const rows = payload.input.map((item, index) => {
     let vector;
     if (typeof item === 'string') {
@@ -90,7 +110,9 @@ function embeddingsHandler(mode, req, res, body) {
     }
     return { index, embedding: vector };
   });
-  return json(res, 200, { data: rows });
+  const response = { data: rows };
+  if (mode === 'usage') response.usage = { prompt_tokens: 88 };
+  return json(res, 200, response);
 }
 
 function buildAdapter(baseUrl, { vision = false, asr = false } = {}) {
@@ -133,6 +155,12 @@ function buildAdapter(baseUrl, { vision = false, asr = false } = {}) {
       },
     },
     health: { report: () => {} },
+    // Probe tests assert the synchronous verdict; never leave a real
+    // debounced re-probe timer behind after the fake server closes.
+    timers: {
+      setTimeout: () => 0,
+      clearTimeout: () => {},
+    },
   });
 }
 
@@ -190,6 +218,72 @@ describe('media embed probes — positive controls (silent media-drop detection)
         code: 'probe_failed',
         hint: 'serverErrors.ai.providerProbeFailed',
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('usage metadata replaces an oversized base64 control and keeps image/video ON', async () => {
+    const requests = [];
+    const server = await startServer((req, res, body) => {
+      if (req.url === '/embeddings') {
+        requests.push(JSON.parse(body.toString('utf8')));
+        return embeddingsHandler('usage', req, res, body);
+      }
+      return json(res, 404, {});
+    });
+    try {
+      const adapter = buildAdapter(server.baseUrl);
+      const outcome = await adapter.probeRole('embed');
+      expect(outcome.media.image_embed).toMatchObject({
+        pass: true,
+        measurements: { textControl: 'usage' },
+      });
+      expect(outcome.media.video_embed).toMatchObject({
+        pass: true,
+        measurements: { frames: 3 },
+      });
+      expect(capability('image_embed').enabled).toBe(true);
+
+      const sentOversizedControl = requests.some((payload) =>
+        (payload.input || []).some(
+          (item) =>
+            item &&
+            typeof item === 'object' &&
+            (item.content || []).some(
+              (part) => part.type === 'text' && String(part.text ?? '').length > 10000
+            )
+        )
+      );
+      expect(sentOversizedControl).toBe(false);
+      const sentVideoUrl = requests.some((payload) =>
+        (payload.input || []).some(
+          (item) =>
+            item &&
+            typeof item === 'object' &&
+            (item.content || []).some((part) => part.type === 'video_url')
+        )
+      );
+      expect(sentVideoUrl).toBe(false);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('a length-rejected text control is text_control_unavailable, never transport', async () => {
+    const server = await startServer((req, res, body) => {
+      if (req.url === '/embeddings') return embeddingsHandler('usage-less', req, res, body);
+      return json(res, 404, {});
+    });
+    try {
+      const adapter = buildAdapter(server.baseUrl);
+      const outcome = await adapter.probeRole('embed');
+      expect(outcome.media.image_embed).toMatchObject({
+        pass: false,
+        reason: 'text_control_unavailable',
+      });
+      expect(capability('image_embed').enabled).toBe(false);
+      expect(capability('video_embed').enabled).toBe(false);
     } finally {
       await server.close();
     }

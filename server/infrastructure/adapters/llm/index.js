@@ -454,6 +454,7 @@ function createLlmAdapter(deps = {}) {
       // Lazy require: probe fixtures are read only during a probe.
       // eslint-disable-next-line global-require
       const { runEmbedMediaProbes } = require('./mediaProbe');
+      const embedPreset = await Promise.resolve(presetFor('embed'));
       media = await runEmbedMediaProbes({
         embed: (...args) => client.embed(...args),
         embedMedia: (...args) => client.embedMedia(...args),
@@ -461,6 +462,7 @@ function createLlmAdapter(deps = {}) {
           ? { embedWrappedText: (...args) => client.embedWrappedText(...args) }
           : {}),
         ...(captionImage ? { captionImage } : {}),
+        chPerTok: embedPreset?.profile?.chPerTok ?? 1.5,
       });
     }
     probeCache.set(signature, { ...(cached || {}), media });

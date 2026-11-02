@@ -2,8 +2,8 @@
 
 ## 1. Overview
 
-| Item | Description |
-| ---- | ----------- |
+| Item | Description                                                                                                                                                                                                                                                                                                                             |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Role | Pure mapper that turns a backend-health tracker row (`GET /api/admin/health` `backends['ai.<role>']`) into the admin 5-state display value `not_configured \| preparing \| probe_failed \| partial \| ok` (llmAdapter.md §2.4). Consumed by the admin health card (SystemSettingsContent) and reusable by the AI governance panel (P4). |
 
 ---
@@ -17,24 +17,24 @@
 
 ### 2.2 Function Signatures
 
-| Function       | (input) => return                                                |
-| -------------- | ---------------------------------------------------------------- |
-| mapAiRoleState | `(row) => { state, phase?, progress?, reason? }` or `null`       |
+| Function       | (input) => return                                          |
+| -------------- | ---------------------------------------------------------- |
+| mapAiRoleState | `(row) => { state, phase?, progress?, reason? }` or `null` |
 
 **Input parameters**
 
-| Name | Type   | Description                                                                                                                     |
-| ---- | ------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| Name | Type   | Description                                                                                                                                                                              |
+| ---- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | row  | Object | A backend-health tracker row (backendHealth.md §2.2 shape): `{ status, preparing, phase, progress, code, reason, hint, ... }`. `null`/`undefined` maps to `null` (caller skips the row). |
 
 **Return value**
 
-| Key      | Meaning                                                                                      |
-| -------- | -------------------------------------------------------------------------------------------- |
-| state    | One of the five admin states (below)                                                          |
-| phase    | `row.phase` when state is `preparing`                                                          |
-| progress | `row.progress` when state is `preparing`                                                       |
-| reason   | `row.reason` (probe diagnostic) when state is `probe_failed`                                   |
+| Key      | Meaning                                                      |
+| -------- | ------------------------------------------------------------ |
+| state    | One of the five admin states (below)                         |
+| phase    | `row.phase` when state is `preparing`                        |
+| progress | `row.progress` when state is `preparing`                     |
+| reason   | `row.reason` (probe diagnostic) when state is `probe_failed` |
 
 **State mapping (exhaustive, ordered)**
 

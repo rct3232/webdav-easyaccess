@@ -48,8 +48,7 @@ describe('EmbeddingsChunkRepository conformance', () => {
     return Number(res.lastID ?? res.rows?.[0]);
   };
 
-  const node = async (label) =>
-    createTestFileNode({ name: `conf-chunk-${label}-${stamp()}.txt` });
+  const node = async (label) => createTestFileNode({ name: `conf-chunk-${label}-${stamp()}.txt` });
 
   const countRows = async (where = '1=1', params = []) => {
     const { rows } = await dbQuery(
@@ -59,8 +58,7 @@ describe('EmbeddingsChunkRepository conformance', () => {
     return Number(rows[0].cnt);
   };
 
-  const replace = (nodeId, modelId, chunks) =>
-    repo.replaceChunks(nodeId, modelId, chunks);
+  const replace = (nodeId, modelId, chunks) => repo.replaceChunks(nodeId, modelId, chunks);
 
   // ---------------------------------------------------------------------
   // reports
@@ -181,9 +179,10 @@ describe('EmbeddingsChunkRepository conformance', () => {
     });
     expect(page2.map((row) => [row.nodeId, row.chunkIdx])).toEqual([[ids[1], 1]]);
 
-    expect(
-      [...page1.map((r) => `${r.nodeId}:${r.chunkIdx}`), ...page2.map((r) => `${r.nodeId}:${r.chunkIdx}`)]
-    ).toEqual([`${ids[0]}:0`, `${ids[0]}:1`, `${ids[1]}:0`, `${ids[1]}:1`]);
+    expect([
+      ...page1.map((r) => `${r.nodeId}:${r.chunkIdx}`),
+      ...page2.map((r) => `${r.nodeId}:${r.chunkIdx}`),
+    ]).toEqual([`${ids[0]}:0`, `${ids[0]}:1`, `${ids[1]}:0`, `${ids[1]}:1`]);
   });
 
   it('countByNode counts one node (optionally per space)', async () => {
@@ -274,6 +273,8 @@ describe('EmbeddingsChunkRepository conformance', () => {
 
   it('FK violation (unknown node) surfaces as a mapped error', async () => {
     const modelId = await embedModel();
-    await expect(replace(999999999, modelId, [{ chunkIdx: 0, vector: VEC_A }])).rejects.toBeDefined();
+    await expect(
+      replace(999999999, modelId, [{ chunkIdx: 0, vector: VEC_A }])
+    ).rejects.toBeDefined();
   });
 });

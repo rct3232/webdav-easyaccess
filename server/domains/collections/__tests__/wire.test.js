@@ -158,9 +158,7 @@ describe('wire.serializeSuggestion', () => {
       overlapSample: [{ a_node_id: 101, b_node_id: 101 }],
       aUniqueSample: [{ node_id: 110, name: 'beach.jpg' }],
       bUniqueSample: [{ node_id: 220, name: 'seville.jpg' }],
-      aPreviewItems: [
-        { nodeId: 110, name: 'beach.jpg', type: 'file', mimeType: 'image/jpeg' },
-      ],
+      aPreviewItems: [{ nodeId: 110, name: 'beach.jpg', type: 'file', mimeType: 'image/jpeg' }],
       bPreviewItems: [{ nodeId: 220, name: 'seville.jpg', type: 'file', mimeType: null }],
     });
     expect(withSamples.overlap_sample).toEqual([{ a_node_id: 101, b_node_id: 101 }]);

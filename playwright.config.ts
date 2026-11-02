@@ -3,6 +3,7 @@ import path from 'path';
 import { defineConfig } from '@playwright/test';
 
 import { e2ePorts, apiOrigin, appOrigin } from './e2e/helpers/ports';
+import { isCI, isReleaseProfile, isStrictProfile } from './e2e/helpers/profile';
 
 // Ambient shell config is destructive to E2E isolation: the runner provisions
 // its own Docker stack and seeds/empties project-scoped databases and buckets,
@@ -78,8 +79,8 @@ const isQuiet = process.env.E2E_QUIET === '1';
 
 // Reusing a running server is an explicit developer opt-in only. An implicit
 // reuse could silently attach an S3 suite to a stale WebDAV server (or a
-// different checkout's band), so CI and plain local runs always start fresh.
-const reuseExistingServer = !process.env.CI && process.env.E2E_REUSE_SERVER === '1';
+// different checkout's band), so CI and release runs always start fresh.
+const reuseExistingServer = !isStrictProfile && process.env.E2E_REUSE_SERVER === '1';
 
 // Platform-agnostic core suites plus the platform core-flow twins.
 const sharedCoreSpec =
@@ -365,8 +366,11 @@ export default defineConfig({
   testDir: './e2e',
   testMatch: /.*\.spec\.ts$/,
   fullyParallel: true,
-  forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 2 : 0,
+  forbidOnly: isStrictProfile,
+  // Release is deliberately deterministic; ordinary CI runs keep the retry
+  // cushion. `--retries=0` in the release scripts is redundant but kept as an
+  // explicit CLI contract.
+  retries: isCI && !isReleaseProfile ? 2 : 0,
   workers: process.env.E2E_WORKERS ? Number(process.env.E2E_WORKERS) : undefined,
   reporter: [
     ['list'],
@@ -384,7 +388,7 @@ export default defineConfig({
   // smoke tests. Hermetic projects boot their own scratch servers.
   webServer: [
     {
-      command: 'npm run e2e:server',
+      command: 'npm run dev:e2e:server',
       url: `${apiOrigin}/api/health`,
       reuseExistingServer,
       timeout: 60_000,
@@ -392,7 +396,7 @@ export default defineConfig({
       stderr: isQuiet ? 'ignore' : 'pipe',
     },
     {
-      command: 'node scripts/e2e-serve-client.js',
+      command: 'node scripts/e2e/serve-client.js',
       url: `http://localhost:${e2ePorts.client}`,
       reuseExistingServer,
       timeout: 120_000,

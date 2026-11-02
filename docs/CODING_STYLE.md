@@ -160,9 +160,9 @@ Refer to feature and spec documents for module-level contracts before implementa
 - **ESLint**: A single root `eslint.config.js` (flat config, ESLint 8) covers all workspaces
   (`server/`, `shared/`, `client/`). It enforces `eslint:recommended` plus `eqeqeq` (smart),
   `no-unused-vars`, and React rules (`react/prop-types` off, `react-hooks/exhaustive-deps` warn).
-  Run `npm run lint` at the repo root; `npm run lint:ci` enforces zero warnings for CI.
+  Run `npm run lint` at the repo root; `npm run check` enforces zero warnings for CI.
 - **Prettier**: Root `.prettierrc` (semi, singleQuote, printWidth 100, 2-space) formats the
-  whole repo. Run `npm run format:check` / `npm run format` before committing. Lint and
+  whole repo. Run `npm run check:format` / `npm run format` before committing. Lint and
   Prettier are wired via `eslint-config-prettier` so they do not conflict.
 - **Exceptions**: For a lint exception, add a comment explaining why (prefer a rule-specific
   `eslint-disable-next-line <rule>`; use a bare `eslint-disable-next-line` only when the rule

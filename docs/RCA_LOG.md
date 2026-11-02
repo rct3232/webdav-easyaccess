@@ -130,7 +130,7 @@
   propagated").
 - **Action taken**: TX2 test changed to substring-less `rejects.toThrow()` (matches V4 idiom);
   rollback-outcome assertions (node active, previous row active, pending row deleted, blob deleted)
-  unchanged. Targeted suites 3/3, server `test:ci` 98 suites / 1783 pass, PG adapter leg 203 pass.
+  unchanged. Targeted suites 3/3, server `test` 98 suites / 1783 pass, PG adapter leg 203 pass.
 
 ### 2026-09-09 — S3 GC tests: guarded-category fixtures + object_map version_number collisions (Case B)
 
@@ -150,7 +150,7 @@
   `updateSyncStatus` (live-node orphan → `version` category, historical behavior asserted);
   (2) `insertObjectMapRow` gained an optional `versionNumber = 1` param and multi-row fixtures pass
   distinct version numbers (conformance tests insert the second row via raw SQL with
-  `version_number=2`). No assertions weakened. Targeted suites 4/4 (150 pass), server `test:ci`
+  `version_number=2`). No assertions weakened. Targeted suites 4/4 (150 pass), server `test`
   98 suites / 1802 pass / 5 skip.
 
 ### 2026-09-09 — P1 trash-schema tests: placeholder arity + per-connection PRAGMA (Case B ×2)
@@ -169,7 +169,7 @@
   schemaManager.md §2.4).
 - **Action taken**: (1) helper branches the SQL and param list together; (2) the FK assertion now
   queries the same storage-backed connection the migration ran on. No source changes; no assertions
-  weakened. Targeted suites 46/46 + 20/20; server `test:ci` 99 suites / 1821 pass / 5 skip.
+  weakened. Targeted suites 46/46 + 20/20; server `test` 99 suites / 1821 pass / 5 skip.
 
 ### 2026-09-09 — S2 repair tests: ancestry-less child fixture, version-colliding insert, stale webdav mock reference (Case B)
 
@@ -198,7 +198,7 @@
   worktree's symlinked `node_modules` resolves `@webdav-easyaccess/shared` to the main checkout, so
   the new shared error codes were invisible to tests; `server/jest.config.js` now maps
   `^@webdav-easyaccess/shared/(.*)$` to `<rootDir>/../shared/$1` (same repo layout in the canonical
-  checkout — behavior-identical there). Targeted suites green (36 + 31 + 25), server `test:ci`
+  checkout — behavior-identical there). Targeted suites green (36 + 31 + 25), server `test`
   98 suites / 1834 pass / 5 skip.
 
 ### 2026-09-09 — S2 route tests enshrined WebDAV-mode pending_upload repair; one-shot mock bleed (Case B)
@@ -576,7 +576,7 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
 ### 2026-09-22 — Wave-0 merge gate: T0.12 node:sqlite migration broke the `initSqliteSchema({ path })` leg and Date binding (Case A — completed within the approved T0.12 mandate)
 
 - **Summary**: after merging `feature/t02-full-schema-ddl` + `refactor/t012-node-sqlite-driver`
-  into `ai-feature`, the full `npm run test:ci` gate failed with 4 suites / 43 tests:
+  into `ai-feature`, the full `npm run test` run failed with 4 suites / 43 tests:
   lockManager (LOCK_TIMEOUT), migrationService (25 failures), and the T0.2 conformance twins
   for ActionJournal/Collections (5 s timeouts + `no such table: locks`).
 - **Diagnosis**: two independent integration defects in T0.12's driver migration, both invisible
@@ -608,9 +608,9 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   `UNIQUE constraint failed: locks.lock_name_hash`. Moved the test into the shared beforeAll
   describe of `sqliteDriverMigration.test.js`; verified no leftover rows in the dev DB.
 
-### 2026-09-22 — gcService.test.js single non-reproducible failure under full parallel test:ci (unclassified suspected environmental flake)
+### 2026-09-22 — gcService.test.js single non-reproducible failure under the full parallel test run (unclassified suspected environmental flake)
 
-- **Summary**: one full `npm run test:ci` run reported 1 gcService test failure (43→2→1-failure
+- **Summary**: one full `npm run test` run reported 1 gcService test failure (43→2→1-failure
   trajectory across the day's gate runs); the error output was not captured before the log
   buffer scrolled, and two consecutive full re-runs plus solo `--ci` runs are fully green
   (36/36 solo, 2057/2057 server-wide).
@@ -698,12 +698,12 @@ IN (...)`; both sqlite (`sqlite3_changes`) and PG's default row-count mode repor
   (top-level, before mounts).
 - **Verification**: `server/__tests__/bootSequence.test.js` L93 case asserts
   exit code 1 + stderr `Initialization failed:` + the `Partial WEA_DB_*`
-  message listing the missing keys; full server `test:ci` green on branch
+  message listing the missing keys; full server `test` green on branch
   `test/boot-sequence-coverage`.
 
 ### 2026-09-23 — Single non-reproducible full-gate failure on the boot-coverage branch (pending reproduction)
 
-- **Summary**: the first full `npm run test:ci` on branch `test/boot-sequence-coverage`
+- **Summary**: the first full `npm run test` on branch `test/boot-sequence-coverage`
   (new spawn-based `server/__tests__/bootSequence.test.js` + the `[D6]` pre-flight in
   `server/index.js`) reported 1 failing suite (126/127 green); the suite name was not
   captured before the output tail scrolled. Six subsequent full gates (127 suites /
@@ -833,14 +833,14 @@ CollectionsListView|locale` → 24 suites / 328 tests) green; E2E-COLLECTION-002
 
 ### 2026-09-29 — collections E2E failed in UI mode from the first case: stale `client/build` + CRA bundled-eslint breaking production builds (Case B, test-infra)
 
-- **Summary**: `npm run test:e2e:ui` → `e2e/collections.spec.ts` failed immediately on
+- **Summary**: `npm run e2e:ui` → `e2e/collections.spec.ts` failed immediately on
   `collection-section` missing, while the same suite passed 3× green in the authoring worktree.
   Suite independence itself was verified sound: `playwright test collections --list` maps the
   spec exclusively to the hermetic `collections-desktop` project (:5013) — no shared-pool
   double-run.
 - **Diagnosis**: two stacked test-infra defects, both invisible per-worktree:
   1. Both E2E build entry points (`e2e/helpers/setupScratch.ts` `ensureClientBuild` and
-     `scripts/e2e-serve-client.js`) checked only **existence** of `client/build/index.html`.
+     `scripts/e2e/serve-client.js`) checked only **existence** of `client/build/index.html`.
      The main checkout's build dated 2026-09-13 — long before the wave-2/3 collections sources —
      so every served URL (shared :3000 and scratch :5013) ran a pre-feature SPA; the authoring
      worktree had built fresh, masking it.
@@ -961,7 +961,7 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   un-publishable forever; commit 0c87b1d + renderer pins 429f993). R3 — the term is now
   defined in AI_FEATURE_PLAN.md §3.2, collections-platform.md §3.2, features/permissions.md
   (Owner exception) and the permissionPolicy spec (commit d97bf09). E2E-003 asserts
-  excluded-badge count 0 with the pending badge visible. Gates: server `test:ci` 130 suites
+  excluded-badge count 0 with the pending badge visible. Gates: server `test` 130 suites
   / 2412 pass (5 skip), client full 178 / 1895, PG conformance leg 23 / 344 (1 skip),
   `E2E_BACKEND_MODE=s3 collections-desktop` 14/14. This entry APPENDS; the 2026-09-29 entry
   above is kept verbatim as historical record.
@@ -988,7 +988,7 @@ username`), while `openPrivateWorkspace` creates its case folder at the FILESYST
   `grantCollectionAccess`. Usage recording unchanged (admin download/preview/search-hit stay);
   journal unchanged (gates make admin rows unreachable); `like` becomes unreachable for admins.
   §13 residual "admin derived candidates" declared MOOT. The prior entry is kept verbatim as
-  historical record (append-only). Gates: server `test:ci` 130 suites / 2441 pass (5 skip),
+  historical record (append-only). Gates: server `test` 130 suites / 2441 pass (5 skip),
   PG adapters leg 23 / 344 (1 skip), ownerNodeResolver admin tests unmodified-green.
 
 ### 2026-10-02 — undo of a collection revoke crashes (single-inverse loses the journal row) (Case A, source error)
@@ -1268,7 +1268,7 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
 
 ## 2026-10-22 — QueryParsesRepository PG leg defects (Wave C orchestrator merge gate)
 
-- **Symptom**: `test:ci:pg:adapters` failed the QueryParsesRepository conformance suite —
+- **Symptom**: `test:pg:adapters` failed the QueryParsesRepository conformance suite —
   (1) `row.createdAt` was a `Date` object instead of an ISO string, (2) the raw-row
   `created_at` overwrite assertion compared two distinct `Date` objects with `toBe`.
 - **Diagnosis**: (1) the shared mapper passed `created_at` through raw — sqlite returns
@@ -1280,7 +1280,7 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
   `queryParsesShared.js` (Date → ISO string in both twins). (2) **Case B (Test Error)** —
   the clause is instant equality, not object identity; the assertion now compares
   `new Date(...).getTime()` with a comment stating the dialect rule.
-- **Verification**: `test:ci:pg:adapters` 30 suites / 426 pass green; sqlite conformance
+- **Verification**: `test:pg:adapters` 30 suites / 426 pass green; sqlite conformance
   leg green; no API-shape change (ISO string was already the sqlite-observed contract).
 
 ## 2026-10-22 — retrieval E2E unconfigured-stack premise broken by shared embed weights (C3 gate run)
@@ -1312,7 +1312,7 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
 ## 2026-10-22 — gcService tier-3 purge-order flake under second-granularity deleted_at (C5 gate run)
 
 - **Symptom**: `gcService.test.js` "collects per-node purge failures without aborting the
-  cycle" failed on a full `test:ci` run: `purgeNode` was called `[ok-b, fail-a]` instead of
+  cycle" failed on a full `test` run: `purgeNode` was called `[ok-b, fail-a]` instead of
   the asserted `[fail-a, ok-b]`.
 - **Diagnosis**: `FileNodeRepository.getTopmostTrashedNodes` orders
   `deleted_at DESC, fn.name` and `markSubtreeDeleted` stamps `deleted_at` with
@@ -1329,12 +1329,12 @@ Task: `feature/p1-a5-vectormath` (T1.4a vectorMath/extractors/TextVectorJs oracl
   (`UPDATE file_nodes SET deleted_at = datetime('now', '-1 seconds')`), making the asserted
   call order deterministic under the real DESC contract; no production change, no
   assertion weakened.
-- **Verification**: targeted suite green; full `test:ci` re-run green (counts in the C5
+- **Verification**: targeted suite green; full `test` re-run green (counts in the C5
   report).
 
 ## 2026-10-23 — Trash pagination assertion is order-dependent in full server CI run
 
-- **Symptom**: full `server npm run test:ci` had one failure in `trash.test.js` A22:
+- **Symptom**: full `server npm run test` had one failure in `trash.test.js` A22:
   `visibleIds[0]` equaled the first-created `ids[0]`. The same trash route test file passed
   all 15 tests when run alone immediately afterward.
 - **Diagnosis**: `GET /api/files/trash` promises pagination over visible rows, not an order
@@ -1432,7 +1432,7 @@ failed, reason: socket hang up`. The migration's per-node isolation correctly re
   `WEA_DB_CONNECTION_TIMEOUT_MS`, and widened the worker-sensitive test budgets. No worker cap
   or E2E slot pool was added.
 - **Verification**: default S3 `238 passed + 6 skipped` (244 total) at workers=1,
-  workers=2, and the default `npm run test:e2e` worker count (3 on this host); WebDAV
+  workers=2, and the default `npm run e2e` worker count (3 on this host); WebDAV
   `41 passed` at workers=2; core `140 passed + 3 skipped` (143 total) at workers=2; server
   `173 suites / 2,979 tests`, client `183 / 2,103`, PG adapters `30 / 433`, pgvector
   `22 / 22`. A workers=4 stress run on the shared 6-core reference host reached load average
@@ -1463,7 +1463,7 @@ failed, reason: socket hang up`. The migration's per-node isolation correctly re
 
 ## 2026-10-27 — Batch journal T3.5 client gate: Setup wizard suites timeout under full-suite parallel load (environment flake — no code defect)
 
-- **Summary**: two consecutive full client `npm run test:ci` runs (the batch-journal
+- **Summary**: two consecutive full client `npm run test` runs (the batch-journal
   branch) failed only `pages/Setup/__tests__/SetupAiStep.test.js` and
   `pages/Setup/__tests__/Setup.test.js` — 1 test and then 13 tests respectively, every
   failure the literal "Exceeded timeout of 5000 ms for a test" inside heavy `userEvent`
@@ -1479,7 +1479,7 @@ failed, reason: socket hang up`. The migration's per-node isolation correctly re
 - **Classification**: **environment/timing flake** (host contention), not Case A/B/C —
   no source, test-logic, or spec defect found; no production-code change made.
 - **Action**: re-ran the full client gate with the contention-aware worker setting
-  (`--maxWorkers=2`, the same discipline as `server npm run test:ci` on this host).
+  (`--maxWorkers=2`, the same discipline as `server npm run test` on this host).
 - **Verification**: `Test Suites: 183 passed / Tests: 2130 passed` green at maxWorkers=2;
   isolated Setup run green (25/25).
 
@@ -1554,7 +1554,7 @@ loser … moves members back` failed RED: `POST /api/actions/:id/undo` on a merg
   conformance pin). Refusal semantics preserved: a re-taken loser name still
   409s and the row stays `applied` (pinned).
 - **Verification**: targeted merge block 10/10 green; full server `npm run
-test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
+test` green (179 suites / 3,106 tests incl. docsStatePurity).
 
 ## 2026-10-27 — useCollections dismiss/reject seams ignored the spec's success-refresh
 
@@ -1606,7 +1606,7 @@ test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
 
 ## 2026-10-27 — T3.6: full client gate hit the recorded host-contention flake class (first parallel attempt)
 
-- **Summary**: the first full client `npm run test:ci` on the T3.6 branch ran with
+- **Summary**: the first full client `npm run test` on the T3.6 branch ran with
   react-scripts' default CI worker count on the shared 6-core host while two sibling
   task worktrees were also active: `Test Suites: 9 failed / 178 passed / 187 total`,
   `Tests: 45 failed / 2159 passed / 2204 total`. Every failed case failed as
@@ -1635,7 +1635,7 @@ test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
 
 ## 2026-10-27 — T3.4: Setup-suite contention flake class recurred on the client gate
 
-- **Summary**: the first full `client npm run test:ci` on the T3.4 tree reported 6
+- **Summary**: the first full `client npm run test` on the T3.4 tree reported 6
   failed suites (22 tests) — Setup/SetupAiStep/Register/usePreviewLoader/ShareLinkLoader/
   useDropToUpload — all `Exceeded timeout of 5000 ms for a test`, durations 40–97 s under
   parallel load. None of the six imports the changed modules (`useSearchResults` is the
@@ -1650,7 +1650,7 @@ test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
   no source, test-logic, or spec defect; no production-code change.
 - **Action**: none beyond re-running (no timeout increases, no worker-count raises —
   standing host rule).
-- **Verification**: full client `test:ci` green: 185 suites / 2163 tests.
+- **Verification**: full client `test` green: 185 suites / 2163 tests.
 
 ## 2026-10-27 — T3.1c: conformance-suite global-read collision from the new arbiter verdict case
 
@@ -1668,7 +1668,7 @@ test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
 - **Action**: the arbiter verdict case now transitions BOTH of its rows to `merged` at the end
   (terminal cleanup), keeping the file order-independent.
 - **Verification**: conformance suite green 36/36 (sqlite leg); the same file runs under
-  `test:ci:pg:adapters` for the PG twin leg at the T3.1c gate.
+  `test:pg:adapters` for the PG twin leg at the T3.1c gate.
 
 ## 2026-10-27 — P3 exit gate: E2E-S3-COLLECTION-021 pinned a dead loser id after merge undo
 
@@ -1746,7 +1746,7 @@ test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
 
 ## 2026-10-31 — Client Setup wizard 5 s timeouts under full-suite load (Case B: test infrastructure/timing)
 
-- **Summary**: repeated full client `test:ci` runs intermittently failed only the Setup wizard suites
+- **Summary**: repeated full client `test` runs intermittently failed only the Setup wizard suites
   with `Exceeded timeout of 5000 ms for a test`; the same suites passed in isolation and the same
   tree passed in a serial rerun. Failure windows showed concurrent full-suite runs and a load
   average near 11.8 on the shared 6-core host.
@@ -1758,12 +1758,12 @@ test:ci` green (179 suites / 3,106 tests incl. docsStatePurity).
   No product-code defect was found.
 - **Classification**: **Case B (test infrastructure/timing)** — the product behavior was correct;
   the test harness and CI concurrency policy were at fault.
-- **Action**: client `test:ci` now pins `--maxWorkers=2`; `scripts/test-gate.sh` serializes the full
+- **Action**: client `test` now pins `--maxWorkers=2`; `scripts/gate.sh` serializes the full
   client/server gate with a cross-checkout lock; the shared MSW handler now serves
   `/api/setup/llm-presets`; Setup bulk inputs use `fireEvent.change`; the AI presentation cases moved
   to a pure `SetupWizardView` test; the wizard suites keep a 10 s per-suite safety budget and a
   3 s local readiness/result wait budget.
-- **Verification**: full client `test:ci` 198/198 suites and 2398/2398 tests green three consecutive
+- **Verification**: full client `test` 198/198 suites and 2398/2398 tests green three consecutive
   times (90.7 s / 88.4 s / 90.3 s); Setup suites 25/25 green ten consecutive isolated runs (~6 s);
   under eight CPU busy loops the slowest Setup test was 1.09 s (previously 4.93 s at the same load);
-  full server `test:ci` 205 suites / 3496 tests passed (1 suite skipped, 28 expected skips).
+  full server `test` 205 suites / 3496 tests passed (1 suite skipped, 28 expected skips).

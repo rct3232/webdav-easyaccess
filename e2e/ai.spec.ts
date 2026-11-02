@@ -74,7 +74,7 @@ const USER_CREDS: ScratchUserCreds = {
  * without them would attempt a network download, which the hermetic-scratch
  * policy forbids.
  */
-const MODEL_DIR_ROOT = process.env.WEA_E2E_MODEL_DIR || '/tmp/opencode/delta-base/models';
+const MODEL_DIR_ROOT = process.env.WEA_E2E_MODEL_DIR || path.join(process.cwd(), 'data', 'modelos');
 const MODEL_LOCK_PATH = path.join(
   process.cwd(),
   'server',

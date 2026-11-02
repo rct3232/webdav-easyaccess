@@ -48,8 +48,7 @@ describe('EmbeddingsRepository conformance', () => {
     return Number(res.lastID ?? res.rows?.[0]);
   };
 
-  const node = async (label) =>
-    createTestFileNode({ name: `conf-emb-${label}-${stamp()}.txt` });
+  const node = async (label) => createTestFileNode({ name: `conf-emb-${label}-${stamp()}.txt` });
 
   const countRows = async (where = '1=1', params = []) => {
     const { rows } = await dbQuery(`SELECT COUNT(*) AS cnt FROM embeddings WHERE ${where}`, params);

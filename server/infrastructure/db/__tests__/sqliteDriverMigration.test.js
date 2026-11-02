@@ -29,7 +29,10 @@ describe('sqlite driver migration (node:sqlite, T0.12)', () => {
         } else if (entry.name.endsWith('.js')) {
           const file = path.join(dir, entry.name);
           const source = fs.readFileSync(file, 'utf8');
-          if (/require\(\s*['"]sqlite3['"]\s*\)/.test(source) || /from\s+['"]sqlite3['"]/.test(source)) {
+          if (
+            /require\(\s*['"]sqlite3['"]\s*\)/.test(source) ||
+            /from\s+['"]sqlite3['"]/.test(source)
+          ) {
             offenders.push(path.relative(serverRoot, file));
           }
         }
@@ -102,7 +105,13 @@ describe('sqlite driver migration (node:sqlite, T0.12)', () => {
 
       const res = await executor.run(
         'INSERT INTO locks (lock_name_hash, token, owner, created_at, expires_at) VALUES (?, ?, ?, ?, ?)',
-        ['bind-date-hash', 'bind-date-token', 'bind-date-owner', createdAt, new Date(createdAt.getTime() + 1000)]
+        [
+          'bind-date-hash',
+          'bind-date-token',
+          'bind-date-owner',
+          createdAt,
+          new Date(createdAt.getTime() + 1000),
+        ]
       );
       expect(res.changes).toBe(1);
 

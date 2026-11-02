@@ -26,7 +26,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = path.resolve(__dirname, '..', '..');
 const E2E_DIR = path.join(ROOT, 'e2e');
 const PLAN_REL = 'docs/E2E_COVERAGE_PLAN.md';
 const PLAN_PATH = path.join(ROOT, PLAN_REL);

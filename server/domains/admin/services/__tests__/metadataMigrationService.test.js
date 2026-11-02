@@ -11,7 +11,7 @@
  *  - sqliteToPostgresql: the source is a REAL sqlite file; the target is a
  *    fake pg.Client, so PG-specific serialization (JSON-string settings.value,
  *    real booleans, setval) is asserted on the captured call log.
- *  - A real sqlite -> PG roundtrip runs only under test:ci:pg (all four
+ *  - A real sqlite -> PG roundtrip runs only under test:pg (all four
  *    WEA_DB_* identity keys present in the environment), using a dedicated
  *    throwaway database.
  */
@@ -822,7 +822,7 @@ describe('runMigration sqliteToPostgresql (real sqlite source -> fake PG target)
 });
 
 // ---------------------------------------------------------------------------
-// Real sqlite -> PG roundtrip (test:ci:pg only)
+// Real sqlite -> PG roundtrip (test:pg only)
 // ---------------------------------------------------------------------------
 
 const PG_BASE = {
@@ -832,8 +832,8 @@ const PG_BASE = {
   password: process.env.WEA_TEST_PG_PASSWORD || 'e2etest',
 };
 
-// The real PG roundtrip runs only under the WEA_TEST_PG_* jest leg (test:ci:pg);
-// under the default sqlite test:ci run the tests are skipped.
+// The real PG roundtrip runs only under the WEA_TEST_PG_* jest leg (test:pg);
+// under the default sqlite test run the tests are skipped.
 const ROUNDTRIP_PG_KEYS = [
   'WEA_TEST_PG_HOST',
   'WEA_TEST_PG_DATABASE',

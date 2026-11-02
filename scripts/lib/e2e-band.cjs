@@ -28,7 +28,7 @@
  * The module also regenerates `data/e2e-runtime.env` — a copy of the mode's
  * base `.env.e2e[.webdav]` with the band's ports written into PORT,
  * CORS_ORIGINS, WEBDAV_URL, WEBDAV_UPSTREAM_URL, S3_ENDPOINT and WEA_DB_PORT.
- * The `e2e:server*` npm scripts point DOTENV_CONFIG_PATH at it, so the API
+ * The `dev:e2e:server*` npm scripts point DOTENV_CONFIG_PATH at it, so the API
  * server boots on exactly this checkout's band.
  */
 

@@ -140,10 +140,20 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
       const content = Buffer.from('seam1-upload-content');
       const uploadSvc = buildUploadService();
 
-      const result = await uploadSvc.uploadFile(null, uniqueName('seam1.txt'), content, 'text/plain');
+      const result = await uploadSvc.uploadFile(
+        null,
+        uniqueName('seam1.txt'),
+        content,
+        'text/plain'
+      );
 
       expect(aiJobsRepository.enqueue).toHaveBeenCalledTimes(1);
-      expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(result.nodeId, 'embed', 1, sha256(content));
+      expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(
+        result.nodeId,
+        'embed',
+        1,
+        sha256(content)
+      );
       const [, , generation] = aiJobsRepository.enqueue.mock.calls[0];
       expect(typeof generation).toBe('number'); // INTEGER, not 'v1' (regression guard)
       await cleanupNode(result.nodeId);
@@ -154,7 +164,12 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
       probeOn = { chat: true };
       const uploadSvc = buildUploadService();
 
-      const result = await uploadSvc.uploadFile(null, uniqueName('seam1-doc.txt'), content, 'text/plain');
+      const result = await uploadSvc.uploadFile(
+        null,
+        uniqueName('seam1-doc.txt'),
+        content,
+        'text/plain'
+      );
 
       expect(enqueuedKinds()).toEqual(['embed', 'features']);
       const [, , featuresGen, featuresHash] = aiJobsRepository.enqueue.mock.calls[1];
@@ -167,7 +182,12 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
       const content = Buffer.from('seam1-hash-content');
       const uploadSvc = buildUploadService();
 
-      const result = await uploadSvc.uploadFile(null, uniqueName('seam1-hash.txt'), content, 'text/plain');
+      const result = await uploadSvc.uploadFile(
+        null,
+        uniqueName('seam1-hash.txt'),
+        content,
+        'text/plain'
+      );
 
       const cache = await dbQuery(
         'SELECT content_hash, size, mime_type FROM filecache WHERE file_node_id = ?',
@@ -206,7 +226,12 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
       const content = Buffer.from('seam1-isolated-content');
       const uploadSvc = buildUploadService();
 
-      const result = await uploadSvc.uploadFile(null, uniqueName('seam1-iso.txt'), content, 'text/plain');
+      const result = await uploadSvc.uploadFile(
+        null,
+        uniqueName('seam1-iso.txt'),
+        content,
+        'text/plain'
+      );
 
       expect(result.contentHash).toBe(sha256(content));
       const cache = await dbQuery('SELECT content_hash FROM filecache WHERE file_node_id = ?', [
@@ -229,7 +254,12 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
       const content = Buffer.from('seam1-cache-fail-content');
       const uploadSvc = buildUploadService();
 
-      const result = await uploadSvc.uploadFile(null, uniqueName('seam1-cachefail.txt'), content, 'text/plain');
+      const result = await uploadSvc.uploadFile(
+        null,
+        uniqueName('seam1-cachefail.txt'),
+        content,
+        'text/plain'
+      );
 
       expect(result.contentHash).toBe(sha256(content));
       expect(aiJobsRepository.enqueue).toHaveBeenCalledTimes(1);
@@ -240,14 +270,24 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
   describe('Seam 1 — S3 overwrite (overwriteFile)', () => {
     it('enqueues an embed job with the NEW sha256 content hash after the overwrite commits', async () => {
       const uploadSvc = buildUploadService();
-      const seeded = await uploadSvc.uploadFile(null, uniqueName('seam2.txt'), Buffer.from('seam2-v1'), 'text/plain');
+      const seeded = await uploadSvc.uploadFile(
+        null,
+        uniqueName('seam2.txt'),
+        Buffer.from('seam2-v1'),
+        'text/plain'
+      );
       aiJobsRepository.enqueue.mockClear();
 
       const newContent = Buffer.from('seam2-v2-with-different-bytes');
       const result = await uploadSvc.overwriteFile(seeded.nodeId, newContent, 'text/plain');
 
       expect(aiJobsRepository.enqueue).toHaveBeenCalledTimes(1);
-      expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(seeded.nodeId, 'embed', 1, sha256(newContent));
+      expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(
+        seeded.nodeId,
+        'embed',
+        1,
+        sha256(newContent)
+      );
       const [, , generation] = aiJobsRepository.enqueue.mock.calls[0];
       expect(typeof generation).toBe('number');
       expect(result.contentHash).toBe(sha256(newContent));
@@ -256,7 +296,12 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
 
     it('updates filecache.content_hash to the new sha256', async () => {
       const uploadSvc = buildUploadService();
-      const seeded = await uploadSvc.uploadFile(null, uniqueName('seam2-hash.txt'), Buffer.from('seam2-hash-v1'), 'text/plain');
+      const seeded = await uploadSvc.uploadFile(
+        null,
+        uniqueName('seam2-hash.txt'),
+        Buffer.from('seam2-hash-v1'),
+        'text/plain'
+      );
       aiJobsRepository.enqueue.mockClear();
 
       const newContent = Buffer.from('seam2-hash-v2-updated');
@@ -272,7 +317,12 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
 
     it('does not enqueue when the overwrite fails (S3 PUT failure → pre-state rolled back)', async () => {
       const uploadSvc = buildUploadService();
-      const seeded = await uploadSvc.uploadFile(null, uniqueName('seam2-fail.txt'), Buffer.from('seam2-fail-v1'), 'text/plain');
+      const seeded = await uploadSvc.uploadFile(
+        null,
+        uniqueName('seam2-fail.txt'),
+        Buffer.from('seam2-fail-v1'),
+        'text/plain'
+      );
       aiJobsRepository.enqueue.mockClear();
 
       const failingBlobStore = createInMemoryBlobStore({
@@ -299,7 +349,12 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
 
     it('isolates hook failure: enqueue rejection does not fail the overwrite', async () => {
       const uploadSvc = buildUploadService();
-      const seeded = await uploadSvc.uploadFile(null, uniqueName('seam2-iso.txt'), Buffer.from('seam2-iso-v1'), 'text/plain');
+      const seeded = await uploadSvc.uploadFile(
+        null,
+        uniqueName('seam2-iso.txt'),
+        Buffer.from('seam2-iso-v1'),
+        'text/plain'
+      );
       aiJobsRepository.enqueue = jest.fn().mockRejectedValue(new Error('queue down'));
 
       const newContent = Buffer.from('seam2-iso-v2');
@@ -340,10 +395,22 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
       const content = Buffer.from('webdav-seam-content');
       const svc = buildWebdavFileService();
 
-      const result = await svc.uploadFile('user-1', null, uniqueName('webdav-seam.txt'), content, 'text/plain', { is_admin: 1 });
+      const result = await svc.uploadFile(
+        'user-1',
+        null,
+        uniqueName('webdav-seam.txt'),
+        content,
+        'text/plain',
+        { is_admin: 1 }
+      );
 
       expect(aiJobsRepository.enqueue).toHaveBeenCalledTimes(1);
-      expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(result.nodeId, 'embed', 1, sha256(content));
+      expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(
+        result.nodeId,
+        'embed',
+        1,
+        sha256(content)
+      );
       await cleanupNode(result.nodeId);
     });
 
@@ -351,11 +418,19 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
       const content = Buffer.from('webdav-hash-content');
       const svc = buildWebdavFileService();
 
-      const result = await svc.uploadFile('user-1', null, uniqueName('webdav-hash.txt'), content, 'text/plain', { is_admin: 1 });
+      const result = await svc.uploadFile(
+        'user-1',
+        null,
+        uniqueName('webdav-hash.txt'),
+        content,
+        'text/plain',
+        { is_admin: 1 }
+      );
 
-      const cache = await dbQuery('SELECT content_hash, size FROM filecache WHERE file_node_id = ?', [
-        result.nodeId,
-      ]);
+      const cache = await dbQuery(
+        'SELECT content_hash, size FROM filecache WHERE file_node_id = ?',
+        [result.nodeId]
+      );
       expect(cache.rows[0].content_hash).toBe(sha256(content));
       expect(cache.rows[0].size).toBe(content.length);
       await cleanupNode(result.nodeId);
@@ -382,7 +457,14 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
       });
 
       await expect(
-        svc.uploadFile('user-1', null, uniqueName('webdav-fail.txt'), Buffer.from('x'), 'text/plain', { is_admin: 1 })
+        svc.uploadFile(
+          'user-1',
+          null,
+          uniqueName('webdav-fail.txt'),
+          Buffer.from('x'),
+          'text/plain',
+          { is_admin: 1 }
+        )
       ).rejects.toThrow('webdav down');
 
       expect(aiJobsRepository.enqueue).not.toHaveBeenCalled();
@@ -393,7 +475,14 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
       const content = Buffer.from('webdav-iso-content');
       const svc = buildWebdavFileService();
 
-      const result = await svc.uploadFile('user-1', null, uniqueName('webdav-iso.txt'), content, 'text/plain', { is_admin: 1 });
+      const result = await svc.uploadFile(
+        'user-1',
+        null,
+        uniqueName('webdav-iso.txt'),
+        content,
+        'text/plain',
+        { is_admin: 1 }
+      );
 
       expect(result.nodeId).toBeDefined();
       const cache = await dbQuery('SELECT content_hash FROM filecache WHERE file_node_id = ?', [
@@ -427,13 +516,25 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
     it('enqueues with the REUSED source content_hash (the copied blob is byte-identical)', async () => {
       const { svc, uploadSvc } = buildFileService();
       const content = Buffer.from('copy-seam-content');
-      const seeded = await uploadSvc.uploadFile(null, uniqueName('copy-src.txt'), content, 'text/plain');
+      const seeded = await uploadSvc.uploadFile(
+        null,
+        uniqueName('copy-src.txt'),
+        content,
+        'text/plain'
+      );
       aiJobsRepository.enqueue.mockClear();
 
-      const result = await svc.copyFile(seeded.nodeId, null, 'copy-dest.txt', 'user-1', { is_admin: 1 });
+      const result = await svc.copyFile(seeded.nodeId, null, 'copy-dest.txt', 'user-1', {
+        is_admin: 1,
+      });
 
       expect(aiJobsRepository.enqueue).toHaveBeenCalledTimes(1);
-      expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(result.copiedNodeId, 'embed', 1, sha256(content));
+      expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(
+        result.copiedNodeId,
+        'embed',
+        1,
+        sha256(content)
+      );
       await cleanupNode(seeded.nodeId);
       await cleanupNode(result.copiedNodeId);
     });
@@ -441,10 +542,21 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
     it('mirrors the source content_hash onto the copied filecache row', async () => {
       const { svc, uploadSvc } = buildFileService();
       const content = Buffer.from('copy-hash-content');
-      const seeded = await uploadSvc.uploadFile(null, uniqueName('copy-hash.txt'), content, 'text/plain');
+      const seeded = await uploadSvc.uploadFile(
+        null,
+        uniqueName('copy-hash.txt'),
+        content,
+        'text/plain'
+      );
       aiJobsRepository.enqueue.mockClear();
 
-      const result = await svc.copyFile(seeded.nodeId, null, uniqueName('copy-dest2.txt'), 'user-1', { is_admin: 1 });
+      const result = await svc.copyFile(
+        seeded.nodeId,
+        null,
+        uniqueName('copy-dest2.txt'),
+        'user-1',
+        { is_admin: 1 }
+      );
 
       const cache = await dbQuery('SELECT content_hash FROM filecache WHERE file_node_id = ?', [
         result.copiedNodeId,
@@ -458,23 +570,50 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
       probeOn = { vision: true };
       const { svc, uploadSvc } = buildFileService();
       const content = Buffer.from('copy-image-content');
-      const seeded = await uploadSvc.uploadFile(null, uniqueName('copy-pic.jpg'), content, 'image/jpeg');
+      const seeded = await uploadSvc.uploadFile(
+        null,
+        uniqueName('copy-pic.jpg'),
+        content,
+        'image/jpeg'
+      );
       aiJobsRepository.enqueue.mockClear();
 
-      const result = await svc.copyFile(seeded.nodeId, null, uniqueName('copy-pic2.jpg'), 'user-1', { is_admin: 1 });
+      const result = await svc.copyFile(
+        seeded.nodeId,
+        null,
+        uniqueName('copy-pic2.jpg'),
+        'user-1',
+        { is_admin: 1 }
+      );
 
       expect(enqueuedKinds()).toEqual(['caption']);
-      expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(result.copiedNodeId, 'caption', 1, sha256(content));
+      expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(
+        result.copiedNodeId,
+        'caption',
+        1,
+        sha256(content)
+      );
       await cleanupNode(seeded.nodeId);
       await cleanupNode(result.copiedNodeId);
     });
 
     it('isolates hook failure: enqueue rejection does not fail the copy', async () => {
       const { svc, uploadSvc } = buildFileService();
-      const seeded = await uploadSvc.uploadFile(null, uniqueName('copy-iso.txt'), Buffer.from('copy-iso'), 'text/plain');
+      const seeded = await uploadSvc.uploadFile(
+        null,
+        uniqueName('copy-iso.txt'),
+        Buffer.from('copy-iso'),
+        'text/plain'
+      );
       aiJobsRepository.enqueue = jest.fn().mockRejectedValue(new Error('queue down'));
 
-      const result = await svc.copyFile(seeded.nodeId, null, uniqueName('copy-iso2.txt'), 'user-1', { is_admin: 1 });
+      const result = await svc.copyFile(
+        seeded.nodeId,
+        null,
+        uniqueName('copy-iso2.txt'),
+        'user-1',
+        { is_admin: 1 }
+      );
 
       expect(result.copiedNodeId).toBeDefined();
       await cleanupNode(seeded.nodeId);
@@ -489,9 +628,11 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
   describe('fileService.deleteNode — no delete seam', () => {
     const buildService = (nodeValue) => {
       const fileNodeServiceMock = {
-        getNode: jest.fn().mockResolvedValue(
-          nodeValue === undefined ? { id: 77, type: 'file', name: 'doomed.txt' } : nodeValue
-        ),
+        getNode: jest
+          .fn()
+          .mockResolvedValue(
+            nodeValue === undefined ? { id: 77, type: 'file', name: 'doomed.txt' } : nodeValue
+          ),
         getDescendantIds: jest.fn().mockResolvedValue([78, 79]),
         markSubtreeDeleted: jest.fn().mockResolvedValue(undefined),
         updateSyncStatus: jest.fn().mockResolvedValue(true),
@@ -559,7 +700,12 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
 
       expect(result.restoredVersionNumber).toBe(1);
       expect(aiJobsRepository.enqueue).toHaveBeenCalledTimes(1);
-      expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(node.id, 'embed', 1, sha256(Buffer.from('seam4-v1-content')));
+      expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(
+        node.id,
+        'embed',
+        1,
+        sha256(Buffer.from('seam4-v1-content'))
+      );
       const [, kind, generation, contentHash] = aiJobsRepository.enqueue.mock.calls[0];
       expect(kind).toBe('embed');
       expect(typeof generation).toBe('number');
@@ -573,9 +719,10 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
 
       await svc.restoreVersion('user-1', node.id, 1, { is_admin: 0 });
 
-      const cache = await dbQuery('SELECT content_hash, size FROM filecache WHERE file_node_id = ?', [
-        node.id,
-      ]);
+      const cache = await dbQuery(
+        'SELECT content_hash, size FROM filecache WHERE file_node_id = ?',
+        [node.id]
+      );
       expect(cache.rows[0].content_hash).toBe(sha256(Buffer.from('seam4-v1-content')));
       expect(cache.rows[0].content_hash).not.toBe('stale-hash');
       expect(cache.rows[0].size).toBe(Buffer.from('seam4-v1-content').length);
@@ -590,7 +737,12 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
       const _result = await svc.restoreVersion('user-1', node.id, 1, { is_admin: 0 });
 
       expect(enqueuedKinds()).toEqual(['caption']);
-      expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(node.id, 'caption', 1, sha256(Buffer.from('seam4-v1-content')));
+      expect(aiJobsRepository.enqueue).toHaveBeenCalledWith(
+        node.id,
+        'caption',
+        1,
+        sha256(Buffer.from('seam4-v1-content'))
+      );
       await cleanupNode(node.id);
     });
 
@@ -722,7 +874,9 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
     });
 
     it('a missing node resolves without enqueueing (no throw into the committed caller)', async () => {
-      await expect(buildHook().onNodeContentCommitted(999999999, 'hash-value')).resolves.toBeUndefined();
+      await expect(
+        buildHook().onNodeContentCommitted(999999999, 'hash-value')
+      ).resolves.toBeUndefined();
       expect(aiJobsRepository.enqueue).not.toHaveBeenCalled();
     });
 
@@ -741,9 +895,11 @@ describe('enrichment hooks — post-commit seams + enqueue decision table', () =
     it('a per-kind enqueue failure does not prevent the remaining kinds', async () => {
       probeOn = { chat: true };
       const node = await fileNodeService.createFile(null, uniqueName('partial.txt'));
-      aiJobsRepository.enqueue = jest.fn().mockImplementation((nodeId, kind) =>
-        kind === 'embed' ? Promise.reject(new Error('queue down')) : Promise.resolve({ id: 1 })
-      );
+      aiJobsRepository.enqueue = jest
+        .fn()
+        .mockImplementation((nodeId, kind) =>
+          kind === 'embed' ? Promise.reject(new Error('queue down')) : Promise.resolve({ id: 1 })
+        );
 
       await buildHook().onNodeContentCommitted(node.id, 'hash-value');
 

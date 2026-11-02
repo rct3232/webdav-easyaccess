@@ -6,7 +6,7 @@
  * mount it in server/index.js). envFileWriter is mocked so the test can assert
  * exactly which (T0) keys reach .env; the metadata store is a real isolated
  * sqlite DB (createTestDatabase). SQLite-only: the suite self-skips under
- * test:ci:pg (RUN_UNDER_PG), where the storage backend is postgresql.
+ * test:pg (RUN_UNDER_PG), where the storage backend is postgresql.
  * @see docs/spec/server/routes/setup.md
  */
 const mockWriteEnv = jest.fn();

@@ -27,12 +27,12 @@ The server's DB access flows through the executor seam and per-domain
 repositories (`docs/spec/server/store/executor.md`,
 `docs/spec/server/store/repository-contract.md`). Tests are tiered accordingly:
 
-| Tier                       | What                                                                                                                  | Backend                                                     | Where                                                                                                                                                                                                                                                                    |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **L0 unit**                | Pure logic; storage mocked at the executor/store boundary                                                             | none                                                        | `**/__tests__` (no DB)                                                                                                                                                                                                                                                   |
-| **L1 functional**          | Routes/services/models — observable behavior through APIs                                                             | **sqlite only** (per-suite temp DB)                         | `**/__tests__` DB suites; default `test:ci` leg                                                                                                                                                                                                                          |
-| **L2 adapter conformance** | Repository interfaces against real storage: CRUD/upsert/RETURNING/type mapping/transactions/locking/schema/migrations | real sqlite + **real PostgreSQL** (`WEA_TEST_PG_*`, serial) | `server/store/repositories/__tests__/*.conformance.test.js` + `server/domains/permissions/stores/repositories/__tests__/*.conformance.test.js` + executor suite (`server/infrastructure/db/__tests__/executor.test.js`) + schema/migration suites; `test:ci:pg:adapters` |
-| **L3 cross-DB smoke**      | Representative store roundtrip + migration apply-once per supported RDB                                               | each RDB                                                    | subset inside the adapter leg                                                                                                                                                                                                                                            |
+| Tier                       | What                                                                                                                  | Backend                                                     | Where                                                                                                                                                                                                                                                                 |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **L0 unit**                | Pure logic; storage mocked at the executor/store boundary                                                             | none                                                        | `**/__tests__` (no DB)                                                                                                                                                                                                                                                |
+| **L1 functional**          | Routes/services/models — observable behavior through APIs                                                             | **sqlite only** (per-suite temp DB)                         | `**/__tests__` DB suites; default `test` leg                                                                                                                                                                                                                          |
+| **L2 adapter conformance** | Repository interfaces against real storage: CRUD/upsert/RETURNING/type mapping/transactions/locking/schema/migrations | real sqlite + **real PostgreSQL** (`WEA_TEST_PG_*`, serial) | `server/store/repositories/__tests__/*.conformance.test.js` + `server/domains/permissions/stores/repositories/__tests__/*.conformance.test.js` + executor suite (`server/infrastructure/db/__tests__/executor.test.js`) + schema/migration suites; `test:pg:adapters` |
+| **L3 cross-DB smoke**      | Representative store roundtrip + migration apply-once per supported RDB                                               | each RDB                                                    | subset inside the adapter leg                                                                                                                                                                                                                                         |
 
 Rules:
 
@@ -44,7 +44,7 @@ Rules:
   `createTestDatabase()` and assert behavior on whichever backend is active,
   so the same file covers sqlite (default leg) and PostgreSQL (adapter leg).
 - The former full-suite real-PostgreSQL jest leg is retired; the adapter
-  leg (`test:ci:pg:adapters`) is the only real-PG jest entry point.
+  leg (`test:pg:adapters`) is the only real-PG jest entry point.
 
 ---
 
@@ -160,7 +160,7 @@ L0–L3 definitions above are **unchanged**; this section only adds rules and ID
   no caps-off signal; switching to remote never deletes existing weights.
 - **Repository conformance additions:** the new repository twins (collections, fileLikes,
   actionJournal, aiJobs, llmModels, aiUsageDaily, embeddings, embeddingsChunk, aiTag, queryParses) join the existing
-  `*.conformance.test.js` L2 leg (sqlite default + `test:ci:pg:adapters` PG twin). Notable
+  `*.conformance.test.js` L2 leg (sqlite default + `test:pg:adapters` PG twin). Notable
   contract cases: `ai_jobs` **claim race** (one runner wins per `(node_id, kind,
 generation)`, backoff/retry parity), embeddings/chunks upsert + FK-cascade parity,
   actionJournal `chain_seq` monotonicity and `UNIQUE(domain,subject,chain_seq)`.
@@ -398,6 +398,21 @@ This section defines only the invariants every E2E suite must follow.
   release. Concrete cases and backend directions are listed in the coverage
   plan.
 
+### CI and release profile axes
+
+Two independent switches govern E2E strictness:
+
+- `CI` is the environment signal. Any CI run is strict: `forbidOnly` is on,
+  servers are never reused, `skipWhenUnavailable()` throws instead of skipping,
+  and a non-release CI run retries failed tests twice.
+- `E2E_PROFILE=release` is the release policy: zero retries and the strict skip
+  budget.
+- `CI=0` and `CI=false` are not treated as CI; a local run means `CI` is unset.
+  The axes are independent, so a CI run may use the local profile and a local run
+  may use the release profile.
+- `e2e` is the layer (group and backend selection); `e2e:release:*` is the strict
+  profile of the same suite, not a separate suite.
+
 ### Interaction contract
 
 - The first Enter/click on a submit control must produce exactly one request.
@@ -516,7 +531,7 @@ Apply uniformly to every E2E spec:
 - IDs are declared in numeric order within a file. When a serial suite's
   execution order is load-bearing, assign IDs in execution order instead of
   moving the tests.
-- `npm run lint:e2e` enforces the flat tree, one title ID per test, ascending
+- `npm run check:e2e` enforces the flat tree, one title ID per test, ascending
   family order within each file, and the contiguous coverage-plan registry.
 - Suite titles are lowercase sentence case. Platform-owned suites append a
   platform suffix; hermetic families append their ID range.
@@ -645,7 +660,7 @@ Align with [TEST_GIT_GUIDE.md#coverage-goals](TEST_GIT_GUIDE.md#coverage-goals):
 - **Refactored code:** At least 90% coverage.
 - **Core business logic:** 95%+ coverage.
 
-Run from each directory: `cd client && npm run test:coverage` and `cd server && npm run test:coverage`. Don’t commit coverage artifacts; see TEST_GIT_GUIDE for what to commit and ignore.
+Run from each directory: `cd client && npm run test` and `cd server && npm run test`. Don’t commit coverage artifacts; see TEST_GIT_GUIDE for what to commit and ignore.
 
 **Mutation testing (Stryker):** Prefer improving Mutation Score over chasing coverage numbers. Coverage can miss weak tests; mutation testing measures whether tests actually detect code changes. Run `cd client && npm run test:mutation` and `cd server && npm run test:mutation`. Start with small modules (e.g. `server/utils/errorHandler.js`) and expand the mutate scope gradually. See `stryker.config.json` in each package.
 
@@ -655,7 +670,7 @@ Run from each directory: `cd client && npm run test:coverage` and `cd server && 
 
 - **Cold vs warm cache:** The first Jest run after a cache invalidation is substantially slower (a cold full client run can exceed 10 minutes). Base timing comparisons and timeout budgets on warm runs, not the first run.
 - **Avoid concurrent full-suite runs:** Running the full server and client suites simultaneously on a constrained machine causes resource contention — individual fast suites can stall and time out. Run suites sequentially, or tune `--maxWorkers` when parallelizing.
-- **Shared-host worker budget:** The client `test:ci` script pins `--maxWorkers=2` (matching the server gate) so a 6-core host keeps headroom for the OS, editors, and sibling worktrees. Use `npm run test:gate` (or `scripts/test-gate.sh`) for the full client/server gate; it holds a cross-checkout lock and runs the suites sequentially. Do not run the full gate from multiple worktrees at once.
+- **Shared-host worker budget:** The client `test` script pins `--maxWorkers=2` (matching the server gate) so a 6-core host keeps headroom for the OS, editors, and sibling worktrees. Use `npm run gate` (or `scripts/gate.sh`) for the full client/server gate; it holds a cross-checkout lock and runs the suites sequentially. Do not run the full gate from multiple worktrees at once.
 - **Timeout safety net:** After the event/render cost is reduced, a per-suite `jest.setTimeout(10000)` is allowed for the Setup wizard integration suites (they cover boot/apply/restart flows). It is a safety net, not a substitute for fixing the cost; never raise the global timeout or add retries.
 - **Measure consistently:** When judging a performance regression, compare identical environment, worker count, and warm-cache state. Real-time retry backoff (see "Avoid real-time waits in tests") is the most common hidden cost in slow suites.
 - **Know the critical path:** In a parallelized suite, the wall-clock time is bounded by the slowest suite. Profile per-suite timing (Jest `--json` + duration aggregation) before optimizing; the slowest suite is usually a network/retry or heavy-rendering suite, not the largest one.

@@ -259,7 +259,7 @@ export default async function globalSetup() {
   cleanDir('data/e2e-metadata');
   fs.mkdirSync(path.join(rootDir, 'e2e-data'), { recursive: true });
 
-  // The `e2e:server` webServer command provisions the Docker stack before the
+  // The `dev:e2e:server` webServer command provisions the Docker stack before the
   // app server boots. Re-run the same helper idempotently as belt-and-braces:
   // this covers the `reuseExistingServer` developer loop, where Playwright
   // reuses a previously started server and skips the webServer command. It
@@ -318,7 +318,7 @@ export default async function globalSetup() {
   }
 
   console.log(`Ensuring the E2E Docker stack is up (${backendMode} mode)...`);
-  execFileSync(process.execPath, [path.join(rootDir, 'scripts', 'e2e-wait-healthy.mjs')], {
+  execFileSync(process.execPath, [path.join(rootDir, 'scripts', 'e2e', 'wait-healthy.mjs')], {
     cwd: rootDir,
     stdio: 'inherit',
   });

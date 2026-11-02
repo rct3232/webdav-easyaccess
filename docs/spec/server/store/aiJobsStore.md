@@ -133,7 +133,7 @@ throws on "nothing to do".
 - [ ] `markDone`/`markFailed`/`markSkipped` on a non-`running` row → `{ changes: 0 }`
 - [ ] `markSkipped` records the reason in `last_error` and terminates (`finished_at` set, never re-claimable)
 - [ ] Restart survival: claim a job, kill the process (simulate by leaving it `running`), run `recoverStaleRunning(staleMs)` → row re-claimable as `failed`; end-to-end the file still gets embedded exactly once per generation (worker + idempotent upserts downstream)
-- [ ] Two concurrent `claimNext` callers on PG (L2, `test:ci:pg:adapters` via SKIP LOCKED) never receive the same row; on sqlite the serialized queue yields the same guarantee
+- [ ] Two concurrent `claimNext` callers on PG (L2, `test:pg:adapters` via SKIP LOCKED) never receive the same row; on sqlite the serialized queue yields the same guarantee
 - [ ] Node purge cascades its job rows (any status)
 - [ ] `countByStatus` totals match seeded fixtures of every status incl. `skipped` and `cancelled`
 - [ ] A `cancelled` row is terminal: `claimNext` never claims it and `listFailed` excludes it

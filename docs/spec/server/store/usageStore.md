@@ -68,4 +68,4 @@
 - [ ] Idempotent re-run: second rollup immediately after → no group returned, no changes; a NEW event after `updated_at` is consumed on the next run
 - [ ] `deleteUsageEventsOlderThan` removes only rows older than the cutoff (ISO vs `CURRENT_TIMESTAMP` written rows both honored — `julianday` parity)
 - [ ] `listNodeActivity` returns only the requested user's accumulator rows for the requested ids (ascending node id, counts/score/timestamps shaped), omits absent pairs and other users' rows, and returns `[]` for an empty id list
-- [ ] L2 conformance on real sqlite AND real PostgreSQL (`test:ci:pg:adapters`): watermark parity, score decay parity (closeTo), count accumulation, cascade wipe on node purge
+- [ ] L2 conformance on real sqlite AND real PostgreSQL (`test:pg:adapters`): watermark parity, score decay parity (closeTo), count accumulation, cascade wipe on node purge

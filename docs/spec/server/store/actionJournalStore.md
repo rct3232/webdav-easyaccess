@@ -162,5 +162,5 @@ Undo NEVER restores: spent LLM cost, already-received external exposure, file co
 - [ ] `purgeSubject` removes all rows of `(collection, 'collection:<id>')` and nothing else
 - [ ] `expireJournalRows`: applied+past-expiry → `payload NULL, status='expired'`, row count unchanged; undone rows keep payload; `listFeed` still lists the expired row's `action`/`subject_label`
 - [ ] `commitChange` returns `{ id, chainSeq }` matching the stored row (toast `undo.actionId` contract)
-- [ ] L2 conformance (real sqlite + real PostgreSQL, `test:ci:pg:adapters`): `UNIQUE(domain,subject,chain_seq)`, JSONB-vs-TEXT payload round-trip parity, `MAX(chain_seq)` read-your-writes inside the TX, timestamp column parity (`created_at/undone_at/expires_at` ISO strings), `FOR UPDATE` (PG) vs serialized (sqlite) undo-guard behavior
+- [ ] L2 conformance (real sqlite + real PostgreSQL, `test:pg:adapters`): `UNIQUE(domain,subject,chain_seq)`, JSONB-vs-TEXT payload round-trip parity, `MAX(chain_seq)` read-your-writes inside the TX, timestamp column parity (`created_at/undone_at/expires_at` ISO strings), `FOR UPDATE` (PG) vs serialized (sqlite) undo-guard behavior
 - [ ] Grep: no SQL outside the repository twins; facade has no `getBackend()` branch

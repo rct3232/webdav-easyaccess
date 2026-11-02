@@ -115,7 +115,10 @@ module.exports = function createSqliteEmbeddingsChunkRepository(executor) {
         where += ' AND model_id = ?';
         params.push(Number(modelId));
       }
-      const { rows } = await executor.query(`SELECT COUNT(*) AS count FROM embeddings_chunk ${where}`, params);
+      const { rows } = await executor.query(
+        `SELECT COUNT(*) AS count FROM embeddings_chunk ${where}`,
+        params
+      );
       return Number(rows[0].count);
     } catch (error) {
       throw mapDatabaseError(error);

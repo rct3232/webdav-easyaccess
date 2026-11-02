@@ -5,7 +5,7 @@
 # the compose service names (`docker compose -f docker-compose.e2e.yml restart
 # webdav-test`), never through a hard-coded container name.
 # Host ports are parameterized with the historical defaults as fallback:
-# `scripts/e2e-wait-healthy.mjs` allocates a per-checkout port band
+# `scripts/e2e/wait-healthy.mjs` allocates a per-checkout port band
 # (scripts/lib/e2e-band.cjs) and exports E2E_{WEBDAV,PG,S3,S3_CONSOLE}_PORT
 # when spawning compose, so concurrent worktree stacks bind distinct ports.
 # See docs/TEST_GIT_GUIDE.md.
@@ -29,7 +29,7 @@ services:
   postgresql-e2e:
     # pgvector/pgvector:pg16 = postgres:16 + the `vector` extension preloaded
     # (pgvector 0.8.x). Capability-additive swap: plain-PG consumers see the
-    # same server; the vectorStore ANN leg (npm run test:ci:pg:vector) needs
+    # same server; the vectorStore ANN leg (npm run test:pg:vector) needs
     # `CREATE EXTENSION vector`, which plain postgres:16 cannot provide.
     image: pgvector/pgvector:pg16
     environment:

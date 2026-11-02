@@ -73,4 +73,4 @@ persisted row keeps accumulating across a fresh repository over the reopened dat
 - [ ] Negative or non-integer deltas → TypeError before SQL
 - [ ] Restart survival: a persisted `(day, role)` row continues to accumulate after a fresh
       repository over the reopened database (same row, higher counters)
-- [ ] L2 conformance on both backends (sqlite default leg + `test:ci:pg:adapters`)
+- [ ] L2 conformance on both backends (sqlite default leg + `test:pg:adapters`)

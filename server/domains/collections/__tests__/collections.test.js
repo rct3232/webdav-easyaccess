@@ -1617,12 +1617,8 @@ describe('merge suggestions and execution', () => {
     // ≤4 newest-added rows as GET /api/collections/:id (shared-excluded rows
     // follow the card rule; member-state revoked rows are excluded there).
     const [aDetail, bDetail] = await Promise.all([
-      request(app)
-        .get(`/api/collections/${ctx.aId}`)
-        .set('Authorization', `Bearer ${ctx.token}`),
-      request(app)
-        .get(`/api/collections/${ctx.bId}`)
-        .set('Authorization', `Bearer ${ctx.token}`),
+      request(app).get(`/api/collections/${ctx.aId}`).set('Authorization', `Bearer ${ctx.token}`),
+      request(app).get(`/api/collections/${ctx.bId}`).set('Authorization', `Bearer ${ctx.token}`),
     ]);
     expect(row.a_preview_items).toEqual(aDetail.body.preview_items);
     expect(row.b_preview_items).toEqual(bDetail.body.preview_items);

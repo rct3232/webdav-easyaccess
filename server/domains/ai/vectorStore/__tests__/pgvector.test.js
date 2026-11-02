@@ -17,7 +17,7 @@
 // docker-compose.e2e.yml). The suite is SKIPPED unless the WEA_TEST_PG_*
 // namespace points at a server; a server without the `vector` extension FAILS
 // the suite with the operator hint (deliberate: the pg:vector leg is opt-in via
-// `npm run test:ci:pg:vector`). The harness self-provisions its own disposable
+// `npm run test:pg:vector`). The harness self-provisions its own disposable
 // database (`webdav_vector_test`) on the compose server so it never collides
 // with the adapter leg's `webdav_test`.
 
@@ -264,7 +264,7 @@ const UNREACHABLE_HINT =
   `PostgreSQL is unreachable at ${PG_CONFIG.host}:${PG_CONFIG.port}. Start the compose ` +
   'server first: docker compose -f docker-compose.e2e.yml up -d postgresql-e2e ' +
   '(pgvector/pgvector:pg16 on host port 5433), then re-run: ' +
-  'cd server && npm run test:ci:pg:vector';
+  'cd server && npm run test:pg:vector';
 
 // Self-provision the disposable vector database (the compose server only
 // creates `webdav_e2e`; the e2e user has CREATEDB). Keeps the adapter leg's
@@ -352,7 +352,7 @@ suite('PgVector ANN leg (real pgvector)', () => {
       throw new Error(
         'PgVector ANN leg needs pgvector ≥ 0.7: the target PG has no `vector` extension. ' +
           'Run against the compose server (pgvector/pgvector:pg16 on host port 5433) via ' +
-          'npm run test:ci:pg:vector.'
+          'npm run test:pg:vector.'
       );
     }
     await pool.query(`DROP TABLE IF EXISTS ${SHADOW}`);

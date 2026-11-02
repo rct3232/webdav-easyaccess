@@ -36,7 +36,7 @@
 ✓ test-setup.js (server)
 ✓ server/test-utils.js
 ✓ setupTests.js (client)
-✓ scripts/test-gate.sh (serialized shared-host full gate)
+✓ scripts/gate.sh (serialized shared-host full gate)
 ✓ playwright.config.ts
 ✓ e2e/global-setup.ts
 ✓ e2e/global-teardown.ts
@@ -130,7 +130,7 @@ The flag is additive for CommonJS suites and must not be removed from the script
 Before running E2E, install browsers when needed:
 
 ```bash
-npm run test:e2e:install
+npm run e2e:install
 ```
 
 The runner has three execution groups. All use the shared E2E stack (one API
@@ -139,35 +139,35 @@ WebDAV container.
 
 ```bash
 # Default S3 gate: the full generic non-WebDAV matrix (includes core cases).
-npm run test:e2e
+npm run e2e
 
 # Fast core subset pinned to core + S3.
-npm run test:e2e:core
+npm run e2e:core
 
 # WebDAV-only backend job; exactly one shared bytemark.
-npm run test:e2e:webdav
+npm run e2e:webdav
 
 # Default S3 release gate, model-free: zero retries, fail on flaky tests,
 # and WEA_SKIP_EMBED_MODEL=1 skips the AI case intentionally.
-npm run test:e2e:release
+npm run e2e:release:model-off
 
 # Embedded-model default release gate: same policy, but WEA_SKIP_EMBED_MODEL
 # stays unset so the AI case runs against the pre-seeded weights.
-npm run test:e2e:release:embed
+npm run e2e:release:model-on
 
 # WebDAV release gate, model-free: zero retries, fail on flaky tests.
-npm run test:e2e:release:webdav
+npm run e2e:release:webdav
 
-# Combined release gate: embedded default + WebDAV,
+# Combined release gate: model-off, model-on, then WebDAV,
 # run sequentially.
-npm run test:e2e:release:all
+npm run e2e:release
 ```
 
 Runner contract:
 
-- `test:e2e` is pinned to the default group and S3. An ambient
+- `e2e` is pinned to the default group and S3. An ambient
   `E2E_BACKEND_MODE` must not change what this command runs.
-- `test:e2e:core` is pinned to the core group and S3.
+- `e2e:core` is pinned to the core group and S3.
 - A mixed default-group/WebDAV-backend request is rejected, not silently
   reinterpreted.
 - The WebDAV commands (group and release) are the only entry points allowed to
@@ -178,12 +178,16 @@ Runner contract:
 - Running the default and WebDAV groups in parallel from the same checkout is
   unsupported because they share the checkout's stack, database, and port band.
   Use separate worktrees with separate bands.
-- Every release command pins its group and backend and runs with retries
-  disabled and fail-on-flaky enabled. A retried pass is diagnostic, not release
-  evidence. `test:e2e:release` and `test:e2e:release:webdav` set
-  `WEA_SKIP_EMBED_MODEL=1` (model-free); `test:e2e:release:embed` leaves it
-  unset (embedded model, AI case runs). `test:e2e:release:all` runs
-  `release:embed` then `release:webdav`; otherwise run the gates in sequence.
+- Every release command pins its group and backend, sets
+  `E2E_PROFILE=release`, and runs with retries disabled. `--fail-on-flaky-tests`
+  is not used: with zero retries a flaky classification cannot occur, so the
+  flag would be inert. A retried pass is diagnostic, not release evidence.
+  `e2e:release:model-off` and `e2e:release:webdav` set
+  `WEA_SKIP_EMBED_MODEL=1` (model-free); `e2e:release:model-on` leaves it
+  unset (embedded model, AI case runs). The model-on leg resolves pre-seeded
+  weights from the provisioner default `data/modelos`; set
+  `WEA_E2E_MODEL_DIR` to point at another pre-seeded root. `e2e:release` runs `model-off`, then
+  `model-on`, then `webdav`; the individual gates can also be run separately.
 - Expected skip counts are release invariants, not per-case details. The
   canonical expected count per group lives in
   [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md); the skip-count reporter compares
@@ -206,7 +210,7 @@ Required assumptions:
   WebDAV job starts exactly one shared bytemark for the whole job; there is no
   per-project WebDAV container.
 - The E2E Docker stack (`docker-compose.e2e.yml`: PostgreSQL, MinIO, and — WebDAV
-  job only — WebDAV) is provisioned by the `e2e:server` webServer command before
+  job only — WebDAV) is provisioned by the `dev:e2e:server` webServer command before
   the app server boots: the health helper runs an idempotent
   `docker compose up -d` and waits until the group's required compose services
   report healthy (PostgreSQL + MinIO for default/core; WebDAV added for the
@@ -226,7 +230,7 @@ Required assumptions:
   siblings: every scratch suite owns its slot (the storage suite uses
   `:5022`/`:5023`), so no project declares `dependencies` on another. Check the
   active set with `npx playwright test --list`.
-- The `e2e:server` script chains the port-band provisioning + compose up +
+- The `dev:e2e:server` script chains the port-band provisioning + compose up +
   health wait, then boots the server with `DOTENV_CONFIG_PATH` pointing at the
   generated `data/e2e-runtime.env`. That file holds this checkout's band ports
   in `PORT`, `CORS_ORIGINS`, `WEBDAV_URL`, `WEBDAV_UPSTREAM_URL`, `S3_ENDPOINT`,
@@ -264,8 +268,8 @@ Required assumptions:
   `AI_SEMANTIC_SEARCH_ENABLED` is a `dbOnly` setting and is ignored from the
   environment; tests that need the kill switch write it through the
   database/config surface. The model-free release commands
-  (`test:e2e:release`, `test:e2e:release:webdav`) set
-  `WEA_SKIP_EMBED_MODEL=1`; `test:e2e:release:embed` leaves it unset so the AI
+  (`e2e:release:model-off`, `e2e:release:webdav`) set
+  `WEA_SKIP_EMBED_MODEL=1`; `e2e:release:model-on` leaves it unset so the AI
   case runs with the pre-seeded weights. A model-free release skips the AI case
   intentionally; the skip-budget reporter adds that single skip without changing
   the static platform/resource budget.
@@ -308,15 +312,15 @@ same band):
 
 ```bash
 # Checkout A (first / solo): uses offset 0 = today's fixed ports.
-npm run test:e2e
+npm run e2e
 
 # Checkout B (concurrent): base ports are busy → auto-allocates offset 80
 # (offset 40 is skipped because it maps a scratch slot onto the browser-
 # restricted SIP ports 5060/5061).
-npm run test:e2e
+npm run e2e
 
 # Deterministic pinning for orchestrated parallelism (e.g. CI fan-out):
-E2E_PORT_OFFSET=40 npm run test:e2e   # must be a multiple of 40
+E2E_PORT_OFFSET=40 npm run e2e   # must be a multiple of 40
 
 # Inspect the current checkout's band:
 cat data/e2e-runtime.json
@@ -334,17 +338,33 @@ per-checkout), and Playwright browsers (shared read-only cache under `~/.cache`)
 Run the full client/server Jest gate through the serialized wrapper:
 
 ```bash
-npm run test:gate          # server then client
-npm run test:gate:client   # client only
+npm run gate          # check + server then client Jest
+npm run test:client   # client only
 ```
 
-`scripts/test-gate.sh` holds a cross-checkout lock
-(`$TMPDIR/webdav-easyaccess-full-tests.lock`) and runs the suites one after the
-other. It first runs `npm run lint:e2e` (flat tree, one title ID per test,
-ascending family order, contiguous coverage registry) so structural drift fails
-before the Jest suites. Client `test:ci` uses `--maxWorkers=2`; do not run the
-full gate from another worktree at the same time. This is the local shared-host discipline —
-CI runners with dedicated capacity may still invoke `test:ci` directly.
+`scripts/gate.sh` holds a cross-checkout lock
+(`$TMPDIR/webdav-easyaccess-gate.lock`) and runs the stages one after the
+other. It first runs `npm run check` (ESLint, the `check:e2e` structural
+guardrail — flat tree, one title ID per test, ascending family order,
+contiguous coverage registry — and Prettier) so drift fails before the Jest
+suites, then `npm run test` (server, then client). Client `test` uses
+`--maxWorkers=2`; do not run the full gate from another worktree at the same
+time. This is the local shared-host discipline — CI runners with dedicated
+capacity may still invoke `test` directly.
+
+`npm run gate:full` runs `npm run gate` and then adds the real-PostgreSQL legs
+(`npm run test:pg`) plus the full release E2E matrix (`npm run e2e:release`).
+The wrapper removes the `WEA_TEST_PG_*` namespace for the `gate` stage so the
+SQLite Jest suite can never switch to PostgreSQL; the caller's PG environment
+is still available to `test:pg`.
+It therefore requires Docker and the E2E stack: start the compose PostgreSQL
+service before the PG legs when it is not already up, and install Playwright
+browsers once with `npm run e2e:install`.
+
+```bash
+docker compose -f docker-compose.e2e.yml up -d postgresql-e2e
+npm run gate:full
+```
 
 ## Real-PostgreSQL Legs
 
@@ -359,13 +379,13 @@ docker compose -f docker-compose.e2e.yml up -d postgresql-e2e
 Adapter conformance leg (`webdav_test`):
 
 ```bash
-cd server && npm run test:ci:pg:adapters
+cd server && npm run test:pg:adapters
 ```
 
 ANN/vector leg (`webdav_vector_test`, separate database so both legs share one server):
 
 ```bash
-cd server && npm run test:ci:pg:vector
+cd server && npm run test:pg:vector
 ```
 
 Override the host port with `WEA_TEST_PG_PORT`; the default is the stack's
@@ -395,8 +415,8 @@ cd client && npm test
 cd server && npm test
 
 # 6. Check coverage
-cd client && npm run test:coverage
-cd server && npm run test:coverage
+cd client && npm run test
+cd server && npm run test
 
 # 7. Commit (tests and code together)
 git add .
@@ -443,8 +463,8 @@ git commit -m "refactor: refactoring (tests pass)"
 - [ ] Are there tests for new code?
 
   ```bash
-  cd client && npm run test:coverage
-  cd server && npm run test:coverage
+  cd client && npm run test
+  cd server && npm run test
   ```
 
 - [ ] Are test files added to Git?
@@ -494,10 +514,10 @@ jobs:
           cd ../server && npm ci
 
       - name: Run client tests
-        run: cd client && npm run test:ci
+        run: cd client && npm run test
 
       - name: Run server tests (sqlite)
-        run: cd server && npm run test:ci
+        run: cd server && npm run test
 
       # Tiered real-PostgreSQL coverage (TESTING_STRATEGY.md: functional suites run on
       # sqlite once; per-RDB adapter conformance runs against real PG).
@@ -506,7 +526,7 @@ jobs:
       - name: Run server adapter tests (postgresql)
         run: |
           docker compose -f docker-compose.e2e.yml up -d postgresql-e2e
-          cd server && npm run test:ci:pg:adapters
+          cd server && npm run test:pg:adapters
 
       - name: Upload coverage
         uses: codecov/codecov-action@v2
@@ -521,8 +541,8 @@ jobs:
 Raw test counts are intentionally **not duplicated here** (choice recorded 2026-09-09: they drift between runs; the summaries below are the single source of truth).
 
 - **Client**: current suite/test counts, pass rate and snapshot date — see `client/TEST_SUMMARY.md` (Test Statistics).
-- **Server**: current suite/test counts, pass rate and snapshot date, plus the real-PG adapter leg (`test:ci:pg:adapters`) latest recorded run — see `server/TEST_SUMMARY.md` (Test Statistics).
-- Coverage figures are measured per run via `npm run test:coverage` (uploaded to Codecov in CI); the `TEST_SUMMARY.md` files document how to measure rather than freezing figures.
+- **Server**: current suite/test counts, pass rate and snapshot date, plus the real-PG adapter leg (`test:pg:adapters`) latest recorded run — see `server/TEST_SUMMARY.md` (Test Statistics).
+- Coverage figures are measured per run via `npm run test` (uploaded to Codecov in CI); the `TEST_SUMMARY.md` files document how to measure rather than freezing figures.
 
 ### Recommended Targets
 
@@ -534,10 +554,10 @@ Raw test counts are intentionally **not duplicated here** (choice recorded 2026-
 
 ```bash
 # Client
-cd client && npm run test:coverage
+cd client && npm run test
 
 # Server
-cd server && npm run test:coverage
+cd server && npm run test
 ```
 
 ### Mutation Testing (Stryker)

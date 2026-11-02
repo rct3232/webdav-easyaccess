@@ -91,4 +91,4 @@ repository over the persisted database).
 - [ ] `getModel` unknown id → `null`
 - [ ] Restart survival: fresh repository over the same persisted DB returns the same rows
       with the same ids; a repeat `upsertModel` after the restart maps to the SAME id
-- [ ] L2 conformance on both backends (sqlite default leg + `test:ci:pg:adapters`)
+- [ ] L2 conformance on both backends (sqlite default leg + `test:pg:adapters`)

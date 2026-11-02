@@ -18,7 +18,7 @@
   (dialect twins in `server/store/repositories/{sqlite,postgres}/`)
 - **Shared shaping:** `server/store/repositories/storageUsageSnapshotsShared.js`
 - **Test file:** `server/store/repositories/__tests__/StorageUsageSnapshotsRepository.conformance.test.js`
-  (sqlite in `test:ci`; real PostgreSQL under `test:ci:pg:adapters`)
+  (sqlite in `test`; real PostgreSQL under `test:pg:adapters`)
 
 ### 2.2 Table
 

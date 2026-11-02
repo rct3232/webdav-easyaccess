@@ -161,7 +161,11 @@ describe('FileActionSheet AI-platform entries (§3)', () => {
   it('renders the Like toggle from row data with the same testids as desktop', () => {
     const onToggleLike = jest.fn();
     renderWithProviders(
-      <FileActionSheet {...defaultProps} file={{ ...mockFile, liked: true }} onToggleLike={onToggleLike} />
+      <FileActionSheet
+        {...defaultProps}
+        file={{ ...mockFile, liked: true }}
+        onToggleLike={onToggleLike}
+      />
     );
 
     expect(screen.getByTestId('like-toggle')).toHaveTextContent('Unlike');

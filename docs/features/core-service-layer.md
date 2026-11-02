@@ -185,7 +185,7 @@ sequenceDiagram
 ### Unit vs integration split
 
 - **fileNodesStore tests:** In-memory SQLite backend, verify all CRUD + ancestor + object_map operations. No mocks — real database queries.
-- **Repository conformance:** per-dialect SQL behavior is covered by `server/store/repositories/__tests__/FileNodeRepository.conformance.test.js` — runs on real SQLite by default and on real PostgreSQL under the adapter leg (`test:ci:pg:adapters`).
+- **Repository conformance:** per-dialect SQL behavior is covered by `server/store/repositories/__tests__/FileNodeRepository.conformance.test.js` — runs on real SQLite by default and on real PostgreSQL under the adapter leg (`test:pg:adapters`).
 - **\_ancestryHelper tests:** Real `fileNodesStore` against in-memory SQLite. Verify closure table correctness at depth 0/1/N after every mutation.
 - **blobStorageService tests:** `s3Mock` for S3 operations, real SQLite for DB layer. Verify `pending→active→orphaned` transitions.
 - **uploadService tests:** Integration test with real SQLite + `s3Mock`. Simulate failure at each of 3 points (TX1, S3 PUT, TX2), verify recoverable state after each.

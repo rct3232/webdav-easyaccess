@@ -1,13 +1,15 @@
 import React from 'react';
 import { TableRow, TableCell, Box, Typography, Tooltip, CircularProgress } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { MoreVert as MoreVertIcon } from '@mui/icons-material';
+import { MoreVert as MoreVertIcon, EditOff as EditOffIcon } from '@mui/icons-material';
 import { formatFileSize, formatDate } from '../../utils/format';
 import { renderProcessingIcon, getEntryKey } from '../../utils/fileViewUtils';
 import { getFileIcon } from '../../utils/fileIconUtils';
 import { pixelMiddleTruncate } from '../../utils/stringUtils';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useLongPressSelect } from './hooks/useLongPressSelect';
+import HighlightedName from './HighlightedName';
+import MemberStateBadges from './MemberStateBadges';
 
 const FileDetailRow = ({
   file,
@@ -53,10 +55,20 @@ const FileDetailRow = ({
 
   const allowContextMenu = isPermissionDisabled && !isProcessing;
   const canOpenMenu = !isDisabled || allowContextMenu;
+  // P-4 member rows: the wire carries no size — the cell shows '-' (a
+  // formatFileSize(null) output would lie '0 B'); file rows are unaffected.
+  // Search server rows: un-enriched rows carry a null size — same no-lie rule
+  // (FileDetail.md §2.6).
+  const isSizelessRow =
+    (file.isCollectionMember === true || file.isSearchServerRow === true) && file.size == null;
+  const isReadOnlySearchRow = file.isSearchServerRow === true && file.hasWritePermission === false;
+  const hasHighlights = Array.isArray(file.highlights) && file.highlights.length > 0;
+  const sizeDisplay = file.type === 'directory' || isSizelessRow ? '-' : formatFileSize(file.size);
 
   return (
     <TableRow
       key={getEntryKey(file)}
+      data-testid={file.rowTestId}
       data-file-path={file.path}
       data-file-node-id={file.nodeId}
       {...dragHandlers}
@@ -133,7 +145,26 @@ const FileDetailRow = ({
     >
       <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, fontSize: '1.25rem' }}>
-          {getFileIcon(file)}
+          {/* Search server rows (FileDetail.md §2.6): `EditOff` at the leading
+              icon cell corner (icon-cell parity with the list view); regular
+              rows render none. */}
+          {isReadOnlySearchRow ? (
+            <Box
+              sx={{ position: 'relative', display: 'inline-flex' }}
+              data-testid={`search-readonly-badge-${file.nodeId}`}
+            >
+              {getFileIcon(file)}
+              <EditOffIcon
+                sx={{ position: 'absolute', top: -3, left: -2, fontSize: '1rem', zIndex: 1 }}
+              />
+            </Box>
+          ) : (
+            getFileIcon(file)
+          )}
+          {/* P-4 member-state badges (§11 follow-up 3): INLINE 16px icons in
+              the name cell (gap:0.75 spaces them), before the name; plain file
+              rows (flags absent) render nothing here. */}
+          <MemberStateBadges file={file} variant="detail" />
           {(() => {
             const originalName = file.basename;
             const truncatedName = pixelMiddleTruncate(originalName, maxPixelWidth, font);
@@ -144,7 +175,15 @@ const FileDetailRow = ({
                 variant="body2"
                 sx={{ fontSize: '0.875rem', overflow: 'hidden', whiteSpace: 'nowrap' }}
               >
-                {truncatedName}
+                {hasHighlights ? (
+                  <HighlightedName
+                    name={originalName}
+                    display={truncatedName}
+                    highlights={file.highlights}
+                  />
+                ) : (
+                  truncatedName
+                )}
               </Typography>
             );
 
@@ -165,7 +204,7 @@ const FileDetailRow = ({
       </TableCell>
       <TableCell align="right" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
         <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
-          {file.type === 'directory' ? '-' : formatFileSize(file.size)}
+          {sizeDisplay}
         </Typography>
       </TableCell>
       <TableCell sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
@@ -181,6 +220,7 @@ const FileDetailRow = ({
           <Box
             component="button"
             type="button"
+            data-testid={file.moreButtonTestId}
             onClick={(e) => {
               e.stopPropagation();
               onMoreClick(file, e);

@@ -51,6 +51,27 @@ export async function setSortMode(
 }
 
 /**
+ * Select a server sort option on the collections surface (P-2): the same
+ * toolbar `file-manager-sort` button renders the flat five-option menu when
+ * the collections list/archive surface is active. State is ephemeral —
+ * nothing persists between navigations.
+ * @param page Playwright page
+ * @param option Server sort contract: 'activity' | 'name' | 'created' | 'updated' | 'similar'
+ */
+export async function setCollectionSort(
+  page: Page,
+  option: 'activity' | 'name' | 'created' | 'updated' | 'similar'
+): Promise<void> {
+  const sortButton = page.getByTestId('file-manager-sort');
+  await sortButton.click();
+
+  await page.getByTestId(`collections-sort-option-${option}`).click();
+
+  // Menu closes on selection; the list re-fetch is asserted by the caller.
+  await expect(page.getByRole('menu')).toHaveCount(0);
+}
+
+/**
  * Search in FloatingSearchBar
  * @param page Playwright page
  * @param query Search query

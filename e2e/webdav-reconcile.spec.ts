@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import http from 'node:http';
 
@@ -11,9 +12,13 @@ import {
   uploadFileAt,
 } from './helpers/files';
 import { getSessionToken, resolveNodeId } from './helpers/resolvePath';
+import { composeProject, e2ePorts } from './helpers/ports';
 
 /**
- * E2E-RECON-001 — DEF-18 WebDAV Tier 2 reconciliation, API level.
+ * E2E-WEBDAV-RECON-001 — DEF-18 WebDAV Tier 2 reconciliation, browser-backed.
+ *
+ * The browser is used only for session/workspace setup; the reconciliation
+ * assertions are API/DB-level.
  *
  * Rationale (non-destructiveness, not deletion): GC Tier 2 only ages entries
  * into candidacy after GC_ORPHAN_TTL_DAYS (floor 1 day, S2), and every
@@ -24,15 +29,16 @@ import { getSessionToken, resolveNodeId } from './helpers/resolvePath';
  * trees) are unit-tested in server/service/__tests__/gcService.test.js.
  *
  * To prove Tier 2 is genuinely NOT skipped in WebDAV mode, the remote-only
- * orphan dir is backdated (docker exec touch inside the bytemark container)
+ * orphan dir is backdated (compose exec touch inside the bytemark container)
  * so it becomes an aged candidate, untracked and unkept — the cycle reports
  * it (untrackedKeys >= 1) and reclaims it.
  */
 
 // Raw DAV access to the bytemark container backing the main :5002 server in
-// webdav mode (pattern: e2e/trash-admin.spec.ts).
+// webdav mode (pattern: e2e/trash-admin.spec.ts). Reached via the compose
+// service `webdav-test` — containers are project-scoped, not globally named.
 const WEBDAV_HOST = '127.0.0.1';
-const WEBDAV_PORT = 8090;
+const WEBDAV_PORT = e2ePorts.webdav;
 const WEBDAV_AUTH = Buffer.from('e2etest:e2etest123').toString('base64');
 // bytemark/webdav serves the DAV root from /var/lib/dav/data inside the
 // container (verified: PROPFIND / maps to ./data/webdav/data on the host).
@@ -80,7 +86,24 @@ async function pathExists(davPath: string): Promise<boolean> {
 
 /** Backdate a container-side path so it passes the Tier 2 age cutoff (S2). */
 function backdateInContainer(containerPath: string): void {
-  execFileSync('docker', ['exec', 'webdav-e2e-test', 'touch', '-d', '202001010000', containerPath]);
+  execFileSync(
+    'docker',
+    [
+      'compose',
+      '-p',
+      composeProject,
+      '-f',
+      path.join(process.cwd(), 'docker-compose.e2e.yml'),
+      'exec',
+      '-T',
+      'webdav-test',
+      'touch',
+      '-d',
+      '202001010000',
+      containerPath,
+    ],
+    { cwd: process.cwd(), stdio: 'ignore' }
+  );
 }
 
 test.use({ storageState: ADMIN_STATE });
@@ -89,7 +112,7 @@ test.afterEach(async ({ request }) => {
   await flushPrivateWorkspaceCleanups(request);
 });
 
-test('E2E-RECON-001: webdav Tier 2 reconciles without destructive surprises', async ({
+test('E2E-WEBDAV-RECON-001: webdav Tier 2 reconciles without destructive surprises', async ({
   page,
   request,
 }, testInfo) => {

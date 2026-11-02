@@ -43,3 +43,45 @@ describe('GET /api/settings/public', () => {
     expect(typeof res.body.email_enabled).toBe('boolean');
   });
 });
+
+describe('GET /api/settings/public ai flags (§4.12 — live from the ai.<role> tracker rows)', () => {
+  const { getBackendHealth } = require('../../../../infrastructure/backendHealth');
+
+  afterEach(() => {
+    // Clear only the AI role slots my reports touched; reset() also clears
+    // backend rows, which no test in this file asserts on.
+    getBackendHealth().reset();
+  });
+
+  it('exposes ai: { embed, chat } booleans defaulting to false with no probe state', async () => {
+    const res = await request(app).get('/api/settings/public');
+
+    expect(res.status).toBe(200);
+    expect(res.body.ai).toEqual({ embed: false, chat: false });
+  });
+
+  it('flips to true only for roles whose tracker row reports ok', async () => {
+    getBackendHealth().report('ai.embed', { ok: true });
+    getBackendHealth().report('ai.chat', { ok: false, code: 'unknown', reason: 'probe failed' });
+
+    const res = await request(app).get('/api/settings/public');
+
+    expect(res.status).toBe(200);
+    expect(res.body.ai).toEqual({ embed: true, chat: false });
+  });
+
+  it('reflects a failed report and a reset as false (live derivation, no restart)', async () => {
+    getBackendHealth().report('ai.chat', { ok: true });
+    await expect(request(app).get('/api/settings/public')).resolves.toMatchObject({
+      body: { ai: { embed: false, chat: true } },
+    });
+
+    getBackendHealth().report('ai.chat', { ok: false, code: 'unknown' });
+    const failed = await request(app).get('/api/settings/public');
+    expect(failed.body.ai.chat).toBe(false);
+
+    getBackendHealth().reset();
+    const reset = await request(app).get('/api/settings/public');
+    expect(reset.body.ai).toEqual({ embed: false, chat: false });
+  });
+});

@@ -1,9 +1,12 @@
 import {
   Person as PersonIcon,
   Share as ShareIcon,
+  Collections as CollectionsIcon,
+  Storage as StorageIcon,
   People as PeopleIcon,
   Settings as SettingsIcon,
   Palette as PaletteIcon,
+  SmartToy as SmartToyIcon,
 } from '@mui/icons-material';
 
 import AccountContent from '../components/mypage/content/AccountContent';
@@ -11,6 +14,9 @@ import SharingContent from '../components/mypage/content/SharingContent';
 import UserManagementContent from '../components/mypage/content/UserManagementContent';
 import SystemSettingsContent from '../components/mypage/content/SystemSettingsContent';
 import PreferencesContent from '../components/mypage/content/PreferencesContent';
+import CollectionsOverview from '../components/mypage/content/CollectionsOverview';
+import StorageDashboard from '../components/mypage/content/StorageDashboard';
+import AiAdminContent from '../components/mypage/content/AiAdminContent';
 
 export const DEFAULT_MY_PAGE_CATEGORY = 'account';
 
@@ -30,6 +36,20 @@ const MY_PAGE_CATEGORY_META = [
     visibility: 'nonAdminOnly',
   },
   {
+    id: 'collections',
+    icon: CollectionsIcon,
+    labelKey: 'mypage.collectionsOverview',
+    visibility: 'nonAdminOnly',
+  },
+  {
+    id: 'storage',
+    icon: StorageIcon,
+    labelKey: 'mypage.storage',
+    // Operator rule (PLAN §14 client half): personal surfaces are user-facing —
+    // admin is a pure operator, never a participant.
+    visibility: 'nonAdminOnly',
+  },
+  {
     id: 'admin-users',
     icon: PeopleIcon,
     labelKey: 'admin.users',
@@ -39,6 +59,12 @@ const MY_PAGE_CATEGORY_META = [
     id: 'admin-settings',
     icon: SettingsIcon,
     labelKey: 'admin.systemSettings',
+    visibility: 'adminOnly',
+  },
+  {
+    id: 'admin-ai',
+    icon: SmartToyIcon,
+    labelKey: 'mypage.adminAiOps',
     visibility: 'adminOnly',
   },
   {
@@ -71,6 +97,7 @@ export function getMyPageContentDescriptor({
   onSelectContentItem,
   user,
   onMessage,
+  onNavigate,
 }) {
   const inDetailView = isMyPageMultiCategory(selectedCategory) && selectedContentItem != null;
   const onBack = inDetailView ? () => onSelectContentItem(null) : undefined;
@@ -107,6 +134,24 @@ export function getMyPageContentDescriptor({
     };
   }
 
+  if (selectedCategory === 'collections') {
+    return {
+      categoryIcon: getMyPageCategoryIcon(selectedCategory),
+      onBack,
+      ContentComponent: CollectionsOverview,
+      contentProps: { user },
+    };
+  }
+
+  if (selectedCategory === 'storage') {
+    return {
+      categoryIcon: getMyPageCategoryIcon(selectedCategory),
+      onBack,
+      ContentComponent: StorageDashboard,
+      contentProps: { user, onNavigate, onMessage },
+    };
+  }
+
   if (selectedCategory === 'admin-users') {
     return {
       categoryIcon: getMyPageCategoryIcon(selectedCategory),
@@ -122,6 +167,15 @@ export function getMyPageContentDescriptor({
       onBack,
       ContentComponent: SystemSettingsContent,
       contentProps: { onMessage },
+    };
+  }
+
+  if (selectedCategory === 'admin-ai') {
+    return {
+      categoryIcon: getMyPageCategoryIcon(selectedCategory),
+      onBack,
+      ContentComponent: AiAdminContent,
+      contentProps: {},
     };
   }
 
@@ -142,11 +196,22 @@ export function resolveMyPageCategory(categoryId, isAdmin) {
     return isAdmin ? 'admin-users' : DEFAULT_MY_PAGE_CATEGORY;
   }
 
-  if (categoryId === 'admin-users' || categoryId === 'admin-settings') {
+  if (
+    categoryId === 'admin-users' ||
+    categoryId === 'admin-settings' ||
+    categoryId === 'admin-ai'
+  ) {
     return isAdmin ? categoryId : DEFAULT_MY_PAGE_CATEGORY;
   }
 
   if (categoryId === 'sharing' && isAdmin) {
+    return DEFAULT_MY_PAGE_CATEGORY;
+  }
+
+  // Operator rule (PLAN §14 client half): personal surfaces (collections
+  // overview / storage dashboard) deep-links fall back for admins — mirrors
+  // the `sharing` precedent.
+  if ((categoryId === 'collections' || categoryId === 'storage') && isAdmin) {
     return DEFAULT_MY_PAGE_CATEGORY;
   }
 

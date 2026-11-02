@@ -5,11 +5,21 @@ import { useTranslation } from 'react-i18next';
 import { validateRequired, validatePassword } from '@webdav-easyaccess/shared/validation';
 
 import { getValidationMessage } from '../../../utils/validationMessage';
-import { applySetup, getSetupStatus, testSetup } from '../../../services/setupService';
+import {
+  applySetup,
+  getLlmPresets,
+  getSetupStatus,
+  testSetup,
+} from '../../../services/setupService';
 
 const SECRET_MASK = '****';
-const STEP_COUNT = 4;
+const STEP_COUNT = 5;
 const DEFAULT_EXPIRES_IN = '30m';
+
+// Wizard-surface LLM roles (docs/features/collections-platform.md §4.23.5):
+// embed is NOT a wizard surface — the built-in engine ships configured and the
+// step only shows its readiness card in the waiting state.
+const LLM_ROLES = ['chat', 'vision', 'asr'];
 
 const FIELD_LABEL_KEYS = {
   password: 'setup.password',
@@ -62,6 +72,19 @@ function createInitialForm() {
     jwt: { secret: '', expiresIn: DEFAULT_EXPIRES_IN },
     server: { port: '', corsOrigins: '' },
     email: { host: '', port: '587', user: '', password: '', secure: false, fromName: '' },
+    llm: {
+      chat: { enabled: false, baseUrl: '', apiKey: '', model: '' },
+      vision: { enabled: false, baseUrl: '', apiKey: '', model: '' },
+      asr: { enabled: false, baseUrl: '', apiKey: '', model: '' },
+    },
+  };
+}
+
+function createInitialLlmTestStates() {
+  return {
+    chat: { status: 'idle', message: '', reason: '' },
+    vision: { status: 'idle', message: '', reason: '' },
+    asr: { status: 'idle', message: '', reason: '' },
   };
 }
 
@@ -156,6 +179,9 @@ export function useSetupWizard() {
   const [form, setForm] = useState(createInitialForm);
   const [errors, setErrors] = useState({});
   const [testStates, setTestStates] = useState(createInitialTestStates);
+  const [llmPresets, setLlmPresets] = useState([]);
+  const [llmPresetId, setLlmPresetId] = useState('');
+  const [llmTestStates, setLlmTestStates] = useState(createInitialLlmTestStates);
   const [applyState, setApplyState] = useState({ status: 'idle', message: '' });
 
   // Editing a field invalidates the connection-test result for that backend so
@@ -191,6 +217,22 @@ export function useSetupWizard() {
     loadStatus();
   }, [loadStatus]);
 
+  // Static public manifest — fetched once on mount; no model bytes are ever
+  // touched during setup mode (the embedded engine stays in its waiting state).
+  useEffect(() => {
+    let cancelled = false;
+    getLlmPresets()
+      .then((data) => {
+        if (!cancelled) setLlmPresets(data?.presets || []);
+      })
+      .catch(() => {
+        if (!cancelled) setLlmPresets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleFileBackendChange = useCallback(
     (value) => {
       setForm((prev) => ({ ...prev, fileBackend: value }));
@@ -224,6 +266,96 @@ export function useSetupWizard() {
     setForm((prev) => ({ ...prev, jwt: { ...prev.jwt, secret: generateJwtSecret() } }));
     setErrors((prev) => ({ ...prev, 1: null }));
   }, []);
+
+  // ── AI step (T1.1c) ────────────────────────────────────────────────────────
+
+  // Preset selection pre-fills role CANDIDACY only (docs/features/
+  // collections-platform.md §4.23.5) — the probe stays the authority; entered
+  // endpoint values are never overwritten by a preset claim.
+  const handlePresetSelect = useCallback(
+    (presetId) => {
+      const preset = llmPresets.find((row) => row.id === presetId);
+      setLlmPresetId(presetId);
+      setForm((prev) => ({
+        ...prev,
+        llm: Object.fromEntries(
+          LLM_ROLES.map((role) => [
+            role,
+            { ...prev.llm[role], enabled: Boolean(preset && preset.roles.includes(role)) },
+          ])
+        ),
+      }));
+    },
+    [llmPresets]
+  );
+
+  const handleLlmRoleToggle = useCallback(
+    (role) => (event) => {
+      const enabled = event.target.checked;
+      setForm((prev) => ({
+        ...prev,
+        llm: { ...prev.llm, [role]: { ...prev.llm[role], enabled } },
+      }));
+      setErrors((prev) => ({ ...prev, 3: null }));
+    },
+    []
+  );
+
+  const handleLlmFieldChange = useCallback(
+    (role, field) => (event) => {
+      const value = event?.target?.value;
+      setForm((prev) => ({
+        ...prev,
+        llm: { ...prev.llm, [role]: { ...prev.llm[role], [field]: value } },
+      }));
+    },
+    []
+  );
+
+  const handleTestLlm = useCallback(
+    async (role) => {
+      const roleForm = form.llm[role];
+      const baseUrlMissing = validateRequired(roleForm.baseUrl, t('setup.ai.baseUrl'));
+      if (baseUrlMissing) {
+        setLlmTestStates((prev) => ({
+          ...prev,
+          [role]: { status: 'error', message: getValidationMessage(baseUrlMissing, t) },
+        }));
+        return;
+      }
+      const modelMissing = validateRequired(roleForm.model, t('setup.ai.model'));
+      if (modelMissing) {
+        setLlmTestStates((prev) => ({
+          ...prev,
+          [role]: { status: 'error', message: getValidationMessage(modelMissing, t) },
+        }));
+        return;
+      }
+      setLlmTestStates((prev) => ({ ...prev, [role]: { status: 'testing', message: '' } }));
+      try {
+        await testSetup('llm', {
+          role,
+          baseUrl: roleForm.baseUrl,
+          apiKey: roleForm.apiKey,
+          model: roleForm.model,
+        });
+        setLlmTestStates((prev) => ({
+          ...prev,
+          [role]: { status: 'ok', message: t('setup.ai.probeOk') },
+        }));
+      } catch (err) {
+        setLlmTestStates((prev) => ({
+          ...prev,
+          [role]: {
+            status: 'error',
+            message: resolveErrorMessage(err, t, 'setup.ai.probeFail'),
+            reason: err?.reason,
+          },
+        }));
+      }
+    },
+    [form, t]
+  );
 
   const handleBack = useCallback(() => {
     setActiveStep((prev) => Math.max(prev - 1, 0));
@@ -317,6 +449,19 @@ export function useSetupWizard() {
       ...(form.jwt.secret ? { secret: form.jwt.secret } : {}),
       expiresIn: form.jwt.expiresIn || DEFAULT_EXPIRES_IN,
     };
+    // Optional llm block (T1.1c): only enabled roles with a base-url + model
+    // are sent; a fully skipped step sends NO llm block (None-state product).
+    const llm = {};
+    for (const role of LLM_ROLES) {
+      const roleForm = form.llm[role];
+      if (!roleForm.enabled) continue;
+      if (!roleForm.baseUrl.trim() || !roleForm.model.trim()) continue;
+      llm[role] = {
+        baseUrl: roleForm.baseUrl,
+        apiKey: roleForm.apiKey,
+        model: roleForm.model,
+      };
+    }
     return {
       file,
       admin: { password: form.admin.password },
@@ -330,6 +475,7 @@ export function useSetupWizard() {
         secure: form.email.secure,
         fromName: form.email.fromName,
       },
+      ...(Object.keys(llm).length > 0 ? { llm } : {}),
     };
   }, [form]);
 
@@ -353,6 +499,7 @@ export function useSetupWizard() {
         t('setup.steps.fileStorage'),
         t('setup.steps.adminJwt'),
         t('setup.steps.optional'),
+        t('setup.steps.ai'),
         t('setup.steps.apply'),
       ],
       stepCounter: t('setup.stepOf', { current: activeStep + 1, total: STEP_COUNT }),
@@ -394,6 +541,23 @@ export function useSetupWizard() {
       applying: t('setup.applying'),
       restartRequiredTitle: t('setup.restartRequiredTitle'),
       restartRequiredBody: t('setup.restartRequiredBody'),
+      aiTitle: t('setup.ai.title'),
+      aiStatusCardTitle: t('setup.ai.statusCard.title'),
+      aiStatusPreparing: t('setup.ai.statusCard.preparing'),
+      aiPresetTitle: t('setup.ai.presetTitle'),
+      aiNoPresets: t('setup.ai.noPresets'),
+      aiRoleLabels: {
+        chat: t('setup.ai.role.chat'),
+        vision: t('setup.ai.role.vision'),
+        asr: t('setup.ai.role.asr'),
+      },
+      aiBaseUrl: t('setup.ai.baseUrl'),
+      aiApiKey: t('setup.ai.apiKey'),
+      aiModel: t('setup.ai.model'),
+      aiTest: t('setup.ai.test'),
+      aiTesting: t('setup.ai.testing'),
+      aiProbeOk: t('setup.ai.probeOk'),
+      aiProbeFail: t('setup.ai.probeFail'),
     }),
     [t, activeStep]
   );
@@ -407,6 +571,9 @@ export function useSetupWizard() {
     form,
     errors,
     testStates,
+    llmPresets,
+    llmPresetId,
+    llmTestStates,
     applyState,
     viewModel,
     onBack: handleBack,
@@ -416,6 +583,10 @@ export function useSetupWizard() {
     onCheckboxChange: handleCheckboxChange,
     onTestConnection: handleTestConnection,
     onRegenerateSecret: handleRegenerateSecret,
+    onPresetSelect: handlePresetSelect,
+    onLlmRoleToggle: handleLlmRoleToggle,
+    onLlmFieldChange: handleLlmFieldChange,
+    onTestLlm: handleTestLlm,
     onApply: handleApply,
   };
 }
@@ -431,6 +602,19 @@ function validateStep(step, form, t) {
   if (step === 1) {
     const passwordError = validatePassword(form.admin.password, { minLength: 6 });
     if (passwordError) return getValidationMessage(passwordError, t);
+    return null;
+  }
+  if (step === 3) {
+    // The AI step is skippable; an explicitly enabled role must still carry a
+    // base-url + model before it can be applied (apiKey is optional — local
+    // servers run without one).
+    for (const role of LLM_ROLES) {
+      const roleForm = form.llm[role];
+      if (!roleForm.enabled) continue;
+      if (!roleForm.baseUrl.trim() || !roleForm.model.trim()) {
+        return t('setup.ai.roleIncomplete', { role: t(`setup.ai.role.${role}`) });
+      }
+    }
     return null;
   }
   return null;

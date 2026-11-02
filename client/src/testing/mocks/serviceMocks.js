@@ -89,6 +89,26 @@ export function createRecentFilesNotifierMock(overrides = {}) {
   };
 }
 
+export function createFileLikesRepositoryMock(overrides = {}) {
+  return {
+    getLikedNodeIds: jest.fn().mockResolvedValue({ liked: [] }),
+    getLikedItems: jest.fn().mockResolvedValue({ items: [] }),
+    setFileLike: jest.fn().mockResolvedValue(null),
+    subscribeFileLikesChange: jest.fn(() => jest.fn()),
+    notifyFileLikesChange: jest.fn(),
+    ...overrides,
+  };
+}
+
+export function createRecentQueriesStorageMock(overrides = {}) {
+  return {
+    loadRecentQueries: jest.fn(() => []),
+    saveRecentQueries: jest.fn(),
+    clearRecentQueries: jest.fn(),
+    ...overrides,
+  };
+}
+
 export function createExplorerGatewayMock(overrides = {}) {
   return {
     addRecentFile: jest.fn().mockResolvedValue([]),
@@ -103,6 +123,50 @@ export function createExplorerGatewayMock(overrides = {}) {
     removeRecentFile: jest.fn().mockResolvedValue([]),
     subscribeToRecentFiles: jest.fn(() => jest.fn()),
     uploadToPath: jest.fn().mockResolvedValue({ errors: [] }),
+    // Collections platform seams (T0.3 — explorerGateway §2.6 re-export group)
+    loadCollections: jest.fn().mockResolvedValue({ collections: [] }),
+    createCollection: jest.fn().mockResolvedValue(null),
+    updateCollection: jest.fn().mockResolvedValue(null),
+    archiveCollection: jest.fn().mockResolvedValue(null),
+    restoreCollection: jest.fn().mockResolvedValue(null),
+    deleteCollection: jest.fn().mockResolvedValue(false),
+    loadCollectionItems: jest.fn().mockResolvedValue({ items: [] }),
+    addCollectionItems: jest.fn().mockResolvedValue(null),
+    removeCollectionItems: jest.fn().mockResolvedValue(null),
+    publishItems: jest.fn().mockResolvedValue(null),
+    getMemberships: jest.fn().mockResolvedValue({ memberships: [] }),
+    previewCollection: jest.fn().mockResolvedValue(null),
+    previewExistingCollection: jest.fn().mockResolvedValue(null),
+    getMergeSuggestions: jest.fn().mockResolvedValue({ suggestions: [] }),
+    mergeCollections: jest.fn().mockResolvedValue(null),
+    dismissMerge: jest.fn().mockResolvedValue(null),
+    rejectMerge: jest.fn().mockResolvedValue(null),
+    getGrants: jest.fn().mockResolvedValue({ grants: [] }),
+    grantCollection: jest.fn().mockResolvedValue(null),
+    revokeGrant: jest.fn().mockResolvedValue(null),
+    revokeOwnGrant: jest.fn().mockResolvedValue(null),
+    saveCollectionProperties: jest.fn().mockResolvedValue(null),
+    subscribeToCollections: jest.fn(() => jest.fn()),
+    // Search results-mode seams (T0.11 — explorerGateway §2.6 search group)
+    runSearch: jest.fn().mockResolvedValue(null),
+    recordSearchClick: jest.fn().mockResolvedValue(false),
+    undoAction: jest
+      .fn()
+      .mockResolvedValue({ ok: true, status: 'undone', itemsUndone: 1, itemsSkipped: 0 }),
+    // Actions feed seam (T0.10 — explorerGateway §2.6)
+    getActions: jest.fn().mockResolvedValue({ actions: [] }),
+    // Personal storage seams (storage client-domain split — explorerGateway §2.6)
+    getStorageHygiene: jest.fn().mockResolvedValue({ suggestions: [] }),
+    getStorageUsage: jest.fn().mockResolvedValue(null),
+    acceptStorageSuggestions: jest.fn().mockResolvedValue(null),
+    dismissStorageSuggestion: jest.fn().mockResolvedValue(null),
+    // File-likes seams (T0.5 — explorerGateway §2.6 file-likes group)
+    loadFileLikes: jest.fn().mockResolvedValue({ liked: [] }),
+    loadLikedItems: jest.fn().mockResolvedValue({ items: [] }),
+    setFileLike: jest.fn().mockResolvedValue(null),
+    subscribeToFileLikes: jest.fn(() => jest.fn()),
+    loadNodesMetadata: jest.fn().mockResolvedValue([]),
+    loadNodeAncestors: jest.fn().mockResolvedValue({ ancestors: [] }),
     ...overrides,
   };
 }
@@ -126,6 +190,10 @@ export function createLocalStorageUiMock(overrides = {}) {
     setViewMode: () => {},
     getSortMode: () => 'name',
     setSortMode: () => {},
+    getCollectionMemberViewMode: () => 'grid',
+    setCollectionMemberViewMode: () => {},
+    getLikedViewMode: () => 'grid',
+    setLikedViewMode: () => {},
     ...overrides,
   };
 }

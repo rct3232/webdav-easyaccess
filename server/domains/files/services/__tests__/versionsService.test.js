@@ -173,7 +173,7 @@ describe('createVersionsService', () => {
       expect(after.syncStatus).toBe('active');
     });
 
-    it('re-asserts the filecache from the blob HEAD metadata', async () => {
+    it('re-asserts the filecache from the blob HEAD and populates the restored content hash (aiJobService.md §2.2)', async () => {
       const { node, keyV1 } = await seedVersionedNode();
 
       await versionsService.restoreVersion('user-1', node.id, 1, { is_admin: 0 });
@@ -181,7 +181,12 @@ describe('createVersionsService', () => {
       const cache = await fileNodesStore.getCache(node.id);
       expect(Number(cache.size)).toBe(Buffer.from('v1-content').length);
       expect(cache.mime_type).toBe('application/octet-stream');
-      expect(cache.content_hash).toBeNull();
+      // The fresh hash of the RESTORED content — a null hash here would break
+      // the (content_hash, modelId) embed dedupe skip-key.
+      const crypto = require('crypto');
+      expect(cache.content_hash).toBe(
+        crypto.createHash('sha256').update(Buffer.from('v1-content')).digest('hex')
+      );
       expect(keyV1).toBeDefined();
     });
 

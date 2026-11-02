@@ -28,3 +28,65 @@ describe('backendProbe exports', () => {
     expect(typeof backendProbe.deriveReason).toBe('function');
   });
 });
+
+describe('probeLlm slot (T0.7b — registration seam; no real network)', () => {
+  afterEach(() => {
+    // Deregister test handlers so the shared module state never leaks.
+    if (typeof backendProbe.unregisterProbeTarget === 'function') {
+      backendProbe.unregisterProbeTarget(backendProbe.PROBE_TARGET_LLM);
+      backendProbe.unregisterProbeTarget('postgresql');
+    }
+  });
+
+  it('exposes the registration seam and the reserved llm slot', () => {
+    expect(typeof backendProbe.registerProbeTarget).toBe('function');
+    expect(backendProbe.PROBE_TARGET_LLM).toBe('llm');
+  });
+
+  it('dispatches a registered handler for the llm slot (fake/di handler, no network)', async () => {
+    const probeLlm = jest.fn((body) => Promise.resolve({ ok: true, echo: body }));
+    backendProbe.registerProbeTarget(backendProbe.PROBE_TARGET_LLM, probeLlm);
+
+    const body = { LLM_CHAT_BASE_URL: 'http://fake.local', LLM_CHAT_MODEL: 'fake-model' };
+    const result = await backendProbe.runProbe(backendProbe.PROBE_TARGET_LLM, body);
+
+    expect(probeLlm).toHaveBeenCalledTimes(1);
+    expect(probeLlm).toHaveBeenCalledWith(body);
+    expect(result).toEqual({ ok: true, echo: body });
+  });
+
+  it('propagates a registered handler failure as the probe result', async () => {
+    const probeLlm = jest.fn(() => Promise.reject(Object.assign(new Error('probe failed'))));
+    backendProbe.registerProbeTarget(backendProbe.PROBE_TARGET_LLM, probeLlm);
+
+    await expect(backendProbe.runProbe(backendProbe.PROBE_TARGET_LLM, {})).rejects.toThrow(
+      'probe failed'
+    );
+  });
+
+  it('keeps the unsupported-target 400 for the reserved slot before T1.1 registers it', async () => {
+    await expect(backendProbe.runProbe('llm', {})).rejects.toMatchObject({
+      status: 400,
+      errorCode: 'serverErrors.setup.testFailed',
+    });
+  });
+
+  it('keeps unknown targets rejected with the same 400 shape', async () => {
+    await expect(backendProbe.runProbe('smtp', {})).rejects.toMatchObject({
+      status: 400,
+      errorCode: 'serverErrors.setup.testFailed',
+    });
+  });
+
+  it('refuses a non-function handler', () => {
+    expect(() => backendProbe.registerProbeTarget('llm', 'not-a-function')).toThrow(TypeError);
+  });
+
+  it('lets a registered handler win over the built-in target of the same name (di seam)', async () => {
+    const fakePostgresql = jest.fn(() => Promise.resolve({ ok: true, fake: true }));
+    backendProbe.registerProbeTarget('postgresql', fakePostgresql);
+    const result = await backendProbe.runProbe('postgresql', {});
+    expect(fakePostgresql).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ ok: true, fake: true });
+  });
+});

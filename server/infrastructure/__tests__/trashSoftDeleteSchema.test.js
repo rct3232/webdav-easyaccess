@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const sqlite3 = require('sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 
 const { createTestDatabase, dbQuery, dbRun } = require('../../test-utils');
 const { applyPendingMigrations } = require('../schemaManager');
@@ -13,21 +13,20 @@ const { applyPendingMigrations } = require('../schemaManager');
 const describeSqliteOnly = process.env.WEA_TEST_PG_HOST ? describe.skip : describe;
 
 function runOn(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve({ changes: this.changes, lastID: this.lastID });
-    });
-  });
+  try {
+    const info = db.prepare(sql).run(...params);
+    return Promise.resolve({ changes: info.changes, lastID: info.lastInsertRowid });
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 function allOn(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
+  try {
+    return Promise.resolve(db.prepare(sql).all(...params));
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 async function insertNode(parentId, name, type = 'file') {
@@ -107,7 +106,7 @@ describe('trash soft-delete schema (ddl/001)', () => {
   describeSqliteOnly('schema-less sqlite target via explicit connection', () => {
     it('applies the full DDL chain and records the 001 migration', async () => {
       const targetPath = path.join(os.tmpdir(), `wea-target-${crypto.randomUUID()}.db`);
-      const raw = new sqlite3.Database(targetPath);
+      const raw = new DatabaseSync(targetPath);
 
       try {
         await applyPendingMigrations('sqlite', { sqliteConnection: raw });
@@ -142,7 +141,11 @@ describe('trash soft-delete schema (ddl/001)', () => {
           )
         ).rejects.toThrow();
       } finally {
-        await new Promise((resolve) => raw.close(() => resolve()));
+        try {
+          raw.close();
+        } catch {
+          /* ignore close failures */
+        }
         await fs.promises.unlink(targetPath).catch(() => {});
       }
     });

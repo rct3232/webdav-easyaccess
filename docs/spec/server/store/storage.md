@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                                                                                                          |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | Abstraction over metadata backends. Supports `postgresql` and `sqlite` only (FsJSON `fs` and legacy `webdav` metadata backends were removed in Phase 7). Provides PostgreSQL pool/transaction helpers and SQLite connection/transaction helpers for relational mode. |
+| Item | Description                                                                                                                                                                                                                                               |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role | Abstraction over metadata backends. Supports `postgresql` and `sqlite` only (FsJSON `fs` and legacy `webdav` metadata backends were removed). Provides PostgreSQL pool/transaction helpers and SQLite connection/transaction helpers for relational mode. |
 
 ---
 
@@ -19,11 +19,11 @@
 
 #### Backend Selection
 
-| Method          | Signature                      | Description                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| --------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| getBackend      | () => 'postgresql' \| 'sqlite' | Resolved from the generic remote-DB credential block: if at least one of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` is set, the backend is `'postgresql'`; a partial set (some but not all four) is a terminal boot-time configuration error listing the missing keys — the boot path (`runBoot().catch`) exits with `process.exit(1)`. None of the four set → `'sqlite'` (default). No silent fallback for a remote intent (F6). |
-| isSqliteBackend | () => boolean                  | Returns `true` if `getBackend() === 'sqlite'`                                                                                                                                                                                                                                                                                                                                                                                                          |
-| getExecutor     | () => DbExecutor               | Returns the backend executor for the active backend: `sqliteExecutor` or `postgresExecutor` (see `docs/spec/server/store/executor.md` §2.4)                                                                                                                                                                                                                                                                                                            |
+| Method          | Signature                      | Description                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| getBackend      | () => 'postgresql' \| 'sqlite' | Resolved from the generic remote-DB credential block: if at least one of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` is set, the backend is `'postgresql'`; a partial set (some but not all four) is a terminal boot-time configuration error listing the missing keys — the boot path (`runBoot().catch`) exits with `process.exit(1)`. None of the four set → `'sqlite'` (default). No silent fallback for a remote intent. |
+| isSqliteBackend | () => boolean                  | Returns `true` if `getBackend() === 'sqlite'`                                                                                                                                                                                                                                                                                                                                                                                                     |
+| getExecutor     | () => DbExecutor               | Returns the backend executor for the active backend: `sqliteExecutor` or `postgresExecutor` (see `docs/spec/server/store/executor.md` §2.4)                                                                                                                                                                                                                                                                                                       |
 
 #### PostgreSQL Helpers
 
@@ -35,15 +35,57 @@
 
 #### SQLite Helpers
 
-| Method                | Signature                  | Description                             |
-| --------------------- | -------------------------- | --------------------------------------- |
-| getSqliteConnection   | () => Database             | Returns node-sqlite3 Database instance  |
-| withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction |
-| closeSqliteDb         | () => void                 | Close SQLite database                   |
+| Method                | Signature                  | Description                                                                           |
+| --------------------- | -------------------------- | ------------------------------------------------------------------------------------- |
+| getSqliteConnection   | () => DatabaseSync         | Returns the cached `node:sqlite` `DatabaseSync` instance (built-in driver, Node ≥ 24) |
+| withSqliteTransaction | (callback) => Promise\<T\> | Executes callback in SQLite transaction                                               |
+| closeSqliteDb         | () => void                 | Close SQLite database                                                                 |
+
+#### sqlite driver: `node:sqlite`
+
+The sqlite driver is the built-in **`node:sqlite`** module (`DatabaseSync`) — the `sqlite3`
+npm package has been removed from `server/package.json` (`engines.node` is `>=24` because
+`node:sqlite` requires it). **Complete driver-site list (do not add others):**
+
+- `server/store/storage.js` — the seam: `getSqliteConnection()` (opens and aliases the
+  cached `DatabaseSync` handle; `PRAGMA journal_mode = WAL` + `PRAGMA foreign_keys = ON`
+  at open), `closeSqliteDb()`, `sqliteQuery()` (prepare → `all` → `{ rows }`),
+  `sqliteRun()` (prepare → `run` → `{ changes, lastID }` from the driver's
+  `lastInsertRowid`), `withSqliteTransaction()` (unchanged promise-chain serialization).
+- `server/infrastructure/db/sqliteExecutor.js` — the executor over the seam
+  (`docs/spec/server/store/executor.md` §2.6).
+- `server/infrastructure/sqliteSchemaInit.js` — direct connection for the standalone
+  schema-init script (`openDatabaseAt`/`closeDatabase`/`runStatementsOn`).
+- `server/infrastructure/metadataPresence.js` — fresh short-lived probe connection.
+- `server/domains/admin/services/metadataMigrationService.js` — direct source/target
+  migration connections (readonly opens use `DatabaseSync(path, { readOnly: true })`).
+
+The executor plus these three direct-connection sites are the complete driver surface.
+Repositories, store facades and routes never touch the driver — they see
+only the `storage.sqliteQuery`/`sqliteRun`/`withSqliteTransaction` promise shapes and the
+`DbExecutor` contract, both unchanged by the migration.
+
+Binding and behavior contract:
+
+- **Integer PK bindings MUST be passed as `BigInt`** (vec0-relevant — §4.13 of
+  `docs/features/collections-platform.md`): the `sqlite3` npm driver truncated BigInt
+  binds to their low 32 bits, while `node:sqlite` binds `BigInt` as exact 64-bit integers.
+- The helpers normalize bind values so historical sqlite3-npm coercion is preserved:
+  booleans bind as `1`/`0`, `undefined` binds as `NULL`, and `Date` binds as its ISO string
+  (`value.toISOString()`) — `node:sqlite` rejects all three.
+- **Node ≥ 24** is the product floor; `db.enableLoadExtension(true)` /
+  `db.loadExtension(path)` are the prerequisite for the sqlite-vec `vec0` native vector
+  path.
+- **`node:sqlite`'s ExperimentalWarning is tolerated** — it prints once per process when
+  the module first loads and is never a failure signal.
+- `DatabaseSync` is synchronous; the storage helpers keep their promise-returning shapes
+  (driver errors are rejections, never callbacks). Open failures now throw (logged, then
+  rethrown) from `getSqliteConnection()` instead of leaving a broken lazy handle; the
+  executor maps the failure through `mapDatabaseError` as before.
 
 #### Legacy Filesystem Helpers
 
-**Removed in Phase 7:** `getFsBaseDir`, `webdavToFsPath`, `ensureDir`, `ensureDirSafe`, `exists`, `readFile`, `writeFile`, `deletePath`, `listDir` — FsJSON metadata support is removed; `storage.js` no longer exposes filesystem helpers.
+**Removed:** `getFsBaseDir`, `webdavToFsPath`, `ensureDir`, `ensureDirSafe`, `exists`, `readFile`, `writeFile`, `deletePath`, `listDir` — FsJSON metadata support is removed; `storage.js` no longer exposes filesystem helpers.
 
 ### 2.3 Dependencies
 
@@ -58,17 +100,17 @@ The metadata backend and file-content storage are **completely independent**:
 | Concern            | Purpose                   | Selection / values                                                                                                                   | Handled By                |
 | ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
 | Metadata backend   | Metadata persistence      | `postgresql` when any of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` is set; `sqlite` (default) when none is set | `storage.js:getBackend()` |
-| `WEA_FILE_STORAGE` | File content blob storage | `s3` (default), `webdav`                                                                                                             | Phase 1 S3 adapter        |
+| `WEA_FILE_STORAGE` | File content blob storage | `s3` (default), `webdav`                                                                                                             | S3 adapter                |
 
 The metadata backend is chosen by the **presence** of the generic remote-DB credential block,
 not by a free-form storage-backend variable. Setting at least one of `WEA_DB_HOST`,
 `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD` selects the remote database (PostgreSQL is
 the only supported remote engine); setting none selects SQLite (default). A partial credential
 set (some but not all four) is a boot-time configuration error listing the missing keys — there
-is no silent `sqlite` fallback for a remote intent (F6). File content storage via
+is no silent `sqlite` fallback for a remote intent. File content storage via
 `WEA_FILE_STORAGE=webdav` (WebDAV) or `WEA_FILE_STORAGE=s3` (S3) is unaffected.
 
-**D6 boot rule:** the DB connection is `.env`-owned. The boot pre-flight (`runBoot`,
+**Boot rule:** the DB connection is `.env`-owned. The boot pre-flight (`runBoot`,
 `server/index.js`) selects the remote backend when any of the four `WEA_DB_*` credential keys is
 present; a partial set (some but not all) → `storage.getBackend()` throws
 `Partial WEA_DB_* configuration: missing <keys> …`, which the boot catch
@@ -80,23 +122,23 @@ runtime guard.
 
 - Backend selector returns `'postgresql'` when the remote-DB credential block is present.
 - Pool configuration uses environment values:
-  - `WEA_DB_HOST`, `WEA_DB_PORT`, `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`
-  - optional `WEA_DB_SSL` (`true`/`false`)
-  - optional `WEA_DB_MAX`, `WEA_DB_IDLE_TIMEOUT_MS`, `WEA_DB_CONNECTION_TIMEOUT_MS`
-  - optional `WEA_DB_QUERY_TIMEOUT_MS` (client-side pg `query_timeout`, default 60_000; `0` disables). Bounds every statement client-side so a mid-session DB drop (silent network partition) errors out instead of hanging the request indefinitely. Set `0` only for unusually long maintenance queries.
+- `WEA_DB_HOST`, `WEA_DB_PORT`, `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`
+- optional `WEA_DB_SSL` (`true`/`false`)
+- optional `WEA_DB_MAX`, `WEA_DB_IDLE_TIMEOUT_MS`, `WEA_DB_CONNECTION_TIMEOUT_MS`
+- optional `WEA_DB_QUERY_TIMEOUT_MS` (client-side pg `query_timeout`, default 60_000; `0` disables). Bounds every statement client-side so a mid-session DB drop (silent network partition) errors out instead of hanging the request indefinitely. Set `0` only for unusually long maintenance queries.
 - `getPgPool()`:
-  - throws standardized `storage.postgresqlNotConfigured` when required connection env is missing
-  - returns singleton `pg.Pool` instance
+- throws standardized `storage.postgresqlNotConfigured` when required connection env is missing
+- returns singleton `pg.Pool` instance
 - `withTransaction(callback)`:
-  - runs `BEGIN`/`COMMIT`/`ROLLBACK` around callback
-  - callback receives a query-capable client
-  - SQL errors are converted by shared DB error mapping
+- runs `BEGIN`/`COMMIT`/`ROLLBACK` around callback
+- callback receives a query-capable client
+- SQL errors are converted by shared DB error mapping
 - `closePgPool()` is provided for tests and process shutdown hooks.
 
 ### 2.5 PostgreSQL v2 Schema Contract
 
 When backend is `postgresql`, storage connects to the normalized schema used by all store modules:
-`users`, `settings`, `file_nodes`, `object_map`, `filecache`, `node_ancestors`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`.
+`users`, `settings`, `file_nodes`, `object_map`, `filecache`, `node_ancestors`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`, plus the §5 platform tables (collections/usage/journal/suggestions/admin-reports/storage-usage/AI foundation).
 
 Canonical source for table definitions, constraints, and indexes is the ordered DDL chain:
 

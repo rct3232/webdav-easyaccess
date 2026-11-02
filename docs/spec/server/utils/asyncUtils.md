@@ -21,9 +21,8 @@
 | ---------- | -------------------------------------- | ------------------------------------------- |
 | asyncLimit | (limit, items, fn) => Promise\<Array\> | Run fn for each item with concurrency limit |
 
-Note: `asyncLimitSettled` and `asyncLimitSettledWithCancel` were retired (dead-code
-cleanup 2026-09) — no production caller remained; cancellation-aware batching uses
-service-local loops.
+Note: `asyncLimitSettled` and `asyncLimitSettledWithCancel` do not exist — no production caller
+remained; cancellation-aware batching uses service-local loops.
 
 ### 2.3 Input / Output
 

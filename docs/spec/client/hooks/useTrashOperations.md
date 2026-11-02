@@ -2,11 +2,11 @@
 
 ## 1. Overview
 
-| Item                     | Description                                                                                                                                                                                                                                                                 |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role                     | Trash-view operation controller (DEF-16 P9). Owns restore / permanent-delete (purge) / empty-trash flows against the trash REST API, including their confirm-dialog state, `FileOperationProgress` items for multi-item runs, processing marks, and post-operation refresh. |
-| Used by components/pages | FileManager page shell (wired once; consumed by FileManagerControls trash toolbar, FileContextMenu/FileActionSheet trash rows, FilePropertiesDialog trash actions)                                                                                                          |
-| Related specs            | `docs/spec/client/services/fileService.md` (trash endpoints), `docs/spec/client/services/trashNotifier.md`, `docs/spec/client/components/file-manager/FileManagerControls.md`                                                                                               |
+| Item                     | Description                                                                                                                                                                                                                                                     |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role                     | Trash-view operation controller. Owns restore / permanent-delete (purge) / empty-trash flows against the trash REST API, including their confirm-dialog state, `FileOperationProgress` items for multi-item runs, processing marks, and post-operation refresh. |
+| Used by components/pages | FileManager page shell (wired once; consumed by FileManagerControls trash toolbar, FileContextMenu/FileActionSheet trash rows, FilePropertiesDialog trash actions)                                                                                              |
+| Related specs            | `docs/spec/client/services/fileService.md` (trash endpoints), `docs/spec/client/services/trashNotifier.md`, `docs/spec/client/components/file-manager/FileManagerControls.md`                                                                                   |
 
 ---
 

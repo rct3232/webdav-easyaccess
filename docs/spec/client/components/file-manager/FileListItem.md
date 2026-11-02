@@ -41,7 +41,7 @@
 
 ### 2.4 Dependencies
 
-- **imports:** React, useTranslation, MUI Typography/Box/Avatar/CircularProgress, formatFileSize, formatDate, renderProcessingIcon, getDropTargetStyles, getFileIcon, getThumbnail
+- **imports:** React, useTranslation, MUI Typography/Box/Avatar/CircularProgress/Tooltip, formatFileSize, formatDate, renderProcessingIcon, getDropTargetStyles, getFileIcon, getThumbnail, MemberStateBadges
 - **Reference implementation:** `client/src/components/file-manager/FileListItem.js`
 
 ### 2.5 i18n Keys
@@ -56,6 +56,15 @@
 - Processing overlay (CircularProgress + icon) when isProcessing
 - **Filename:** Use `pixelMiddleTruncate` for middle ellipsis (...) with `Tooltip` showing the full name when truncated. Uses `ResizeObserver` to track container width.
 - Metadata: folder label or formatFileSize, formatDate(lastmod)
+- **Member-row slots (`CollectionsListView.md` §2.5) — all keyed off OPTIONAL row fields, file rows (fields absent) render byte-identical:**
+  - the size caption renders ONLY when the row is NOT a size-less member row (`file.isCollectionMember === true && file.size == null` ⇒ caption omitted — the member wire carries no size; the slot stays a plain `formatFileSize(file.size)` for every other row);
+  - **member-state badges (shared `MemberStateBadges` component, rendered in ALL three member views):** `<MemberStateBadges file={file} variant="list" />` overlays a badge row on the LEADING icon/avatar column — the thumbnail container gains `position: relative`, the badge row is `position: absolute; top: 2; left: 2; z-index: 1` (flex, gap 8px, plain 16px icon badges, no plate); excluded badge (`VpnLock`, `data-testid="member-excluded-badge-<nodeId>"`, tooltip/aria `fileManager.memberNotShared`) when `file.shared_excluded === true`; publish-pending badge (`Public`+`Pending` composite, `data-testid="member-publish-pending-badge-<nodeId>"`, tooltip/aria `fileManager.memberUnpublishedBadge`) when `file.published === false`; `state:'revoked'` rows render NEITHER; file rows (fields `undefined`) render zero DOM. Gating matrix: `MemberStateBadges.md` §2.3.
+  - `file.moreButtonTestId` ⇒ the More button `data-testid` (members: `member-menu-button` — the dispatch target of `onMemberAction('menu', row, anchorEl)`).
+- **Search-server-row slots (`useSearchResults.md` §2.3) — all OPTIONAL, regular file rows render byte-identical (zero DOM delta):**
+  - **`file.highlights`:** range list `[{ start, end, kind }]` rendered inside the existing truncated-name `Typography` (segments keep the middle-ellipsis + full-name `Tooltip` behavior — ranges are computed against the RENDERED truncated string, `searchHighlight.md`); `kind: 'committed'` ranges take the secondary.light color + `data-testid="search-highlight-range"`, `kind: 'live'` ranges the theme `highlight` yellow token + `data-testid="filter-highlight-range"`; absent ⇒ plain name render.
+  - **Read-only badge:** `file.isSearchServerRow === true && file.hasWritePermission === false` ⇒ a plain 16px `EditOff` icon overlaid on the leading icon/avatar column corner (same overlay geometry family as `MemberStateBadges` list variant; icon-only, no plate, no dedicated copy key), `data-testid="search-readonly-badge-<nodeId>"`; regular rows render none.
+  - **Size suppression:** `file.isSearchServerRow === true && file.size == null` ⇒ size caption omitted until metadata enrichment lands (same rule shape as the member-size-null slot; directories keep the folder label).
+- **Memo comparator:** additionally compares `file.published`, `file.shared_excluded`, `file.highlights`, `file.hasWritePermission` and `file.hasReadPermission` (absent ⇒ `undefined === undefined` — no file-side behavior change) so member state flips and search highlight/permission changes re-render rows whose name/path never change.
 
 ### 2.7 Verification Scenarios
 
@@ -66,6 +75,8 @@ Checklist for unit test writing:
 - [x] More button shown when showMoreButton; hidden when !showMoreButton; onMoreClick called with file and stopPropagation
 - [x] Thumbnail or icon displayed
 - [x] Processing overlay when isProcessing
+- [ ] Member row (isCollectionMember, size absent): no size caption; `shared_excluded`/`published:false` badges render with the member testids (`member-excluded-badge-*` / `member-publish-pending-badge-*`) as an overlay on the leading icon/avatar column; revoked rows render NEITHER badge; More button carries `file.moreButtonTestId`; state flips (published) re-render the row through the memo comparator. A plain file row renders unchanged.
+- [ ] Search server row: `highlights` render the two-colored ranges (`search-highlight-range` / `filter-highlight-range`) inside the truncated name with the Tooltip intact; `hasWritePermission:false` renders the `search-readonly-badge-<nodeId>` EditOff at the icon corner; null size suppresses the caption; `highlights`/permission field flips re-render the row through the memo comparator. A plain file row renders byte-identical.
 
 ### 2.8 Edge Cases
 

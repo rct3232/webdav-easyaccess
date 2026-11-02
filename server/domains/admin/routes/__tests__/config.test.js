@@ -322,6 +322,35 @@ describe('POST /api/admin/config/test', () => {
     expect(mockHealth.report).toHaveBeenCalledWith('s3', { ok: true });
   });
 
+  it('accepts target llm and resolves missing role credentials server-side', async () => {
+    fakeResolver.getEffectiveConfig.mockResolvedValue({});
+    fakeResolver.getConfigSync.mockImplementation((key) => {
+      if (key === 'JWT_EXPIRES_IN') return '30m';
+      if (key === 'LLM_CHAT_BASE_URL') return 'http://llm.local/v1';
+      if (key === 'LLM_CHAT_API_KEY') return 'stored-secret';
+      if (key === 'LLM_CHAT_MODEL') return 'gemma-4-12b-it';
+      return undefined;
+    });
+    runProbe.mockResolvedValue({ ok: true, role: 'chat' });
+
+    const res = await request(app)
+      .post('/api/admin/config/test')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({ target: 'llm', role: 'chat' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, role: 'chat' });
+    expect(runProbe).toHaveBeenCalledWith('llm', {
+      role: 'chat',
+      baseUrl: 'http://llm.local/v1',
+      apiKey: 'stored-secret',
+      model: 'gemma-4-12b-it',
+    });
+    fakeResolver.getConfigSync.mockImplementation((key) =>
+      key === 'JWT_EXPIRES_IN' ? '30m' : undefined
+    );
+  });
+
   it('returns 400 ok:false with classified errorCode and reason when the probe throws', async () => {
     fakeResolver.getEffectiveConfig.mockResolvedValue({});
     const err = new Error('Connection test failed');
@@ -576,5 +605,49 @@ describe('GET /api/admin/health', () => {
     expect(res.body.backends.webdav.status).toBe('fail');
     expect(res.body.backends.webdav.code).toBe('unreachable');
     expect(res.body.backends.webdav.consecutiveFailures).toBe(3);
+    // No vector row in the mocked snapshot ⇒ the wire value is the fallback.
+    expect(res.body.vectorOps).toBe('fallback_js');
+  });
+
+  it('exposes vectorOps=native when the vector row reports a native selection', async () => {
+    mockHealth.getHealth.mockReturnValue({
+      postgresql: { status: 'ok' },
+      s3: { status: 'unknown' },
+      webdav: { status: 'unknown' },
+      vector: { status: 'ok', code: undefined, reason: undefined, hint: undefined },
+    });
+
+    const res = await request(app)
+      .get('/api/admin/health')
+      .set('Authorization', `Bearer ${buildToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.vectorOps).toBe('native');
+    // Other rows are unchanged by the vector addition.
+    expect(res.body.backends.postgresql.status).toBe('ok');
+  });
+
+  it('exposes vectorOps=fallback_js with the degraded hint on a vector failure row', async () => {
+    mockHealth.getHealth.mockReturnValue({
+      postgresql: { status: 'ok' },
+      s3: { status: 'unknown' },
+      webdav: { status: 'unknown' },
+      vector: {
+        status: 'fail',
+        reason: 'pgvectorUnavailable',
+        hint: 'CREATE EXTENSION vector (pgvector ≥ 0.7 required)',
+      },
+    });
+
+    const res = await request(app)
+      .get('/api/admin/health')
+      .set('Authorization', `Bearer ${buildToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.vectorOps).toBe('fallback_js');
+    expect(res.body.backends.vector).toMatchObject({
+      status: 'fail',
+      hint: 'CREATE EXTENSION vector (pgvector ≥ 0.7 required)',
+    });
   });
 });

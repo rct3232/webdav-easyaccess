@@ -17,6 +17,11 @@ jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
+jest.mock('react-i18next', () => {
+  const { createI18nModuleMock } = require('../../../../testing/mocks/i18nMock');
+  return createI18nModuleMock();
+});
+
 jest.mock('../../../../services/explorerGateway', () => {
   const { createExplorerGatewayMock } = require('../../../../testing/mocks/serviceMocks');
   return {
@@ -75,6 +80,15 @@ function createDeferred() {
     reject = rej;
   });
   return { promise, resolve, reject };
+}
+
+// Captures the REAL react-router navigate inside a mounted tree so a test can
+// change the URL (and thus locationKey) while the hook stays mounted.
+const { useNavigate: realUseNavigate } = jest.requireActual('react-router-dom');
+function LocationDriver({ driverRef }) {
+  const navigate = realUseNavigate();
+  driverRef.current = navigate;
+  return null;
 }
 
 async function renderAndResolveNormalLoad(urlPath = '', options = {}, overrides = {}) {
@@ -443,6 +457,52 @@ describe('useFileManager', () => {
     expect(explorerGateway.getPathAccess).toHaveBeenCalled();
     expect(result.current.hasWritePermission).toBe(true);
   });
+
+  // Navigating away from a writable location must drop the permission-gated FAB
+  // in the SAME commit as the location change: without the synchronous reset the
+  // previous location's FAB keeps painting until the async getPathAccess lands.
+  // The URL is driven through the REAL router (the hook's useNavigate is mocked
+  // to a no-op, so setCurrentNodeId alone never changes locationKey here).
+  it('drops write permission synchronously on a location change and restores it once access resolves', async () => {
+    const driverRef = { current: null };
+    const wrapper = ({ children }) => (
+      <MemoryRouter initialEntries={['/files']}>
+        <Routes>
+          <Route
+            path="/files/*"
+            element={
+              <>
+                {children}
+                <LocationDriver driverRef={driverRef} />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+    const { result } = renderHook(() => useFileManager(mockUser), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.hasWritePermission).toBe(true);
+
+    const accessDeferred = createDeferred();
+    explorerGateway.getPathAccess.mockReturnValueOnce(accessDeferred.promise);
+
+    act(() => {
+      driverRef.current('/files/node/5');
+    });
+
+    expect(result.current.hasWritePermission).toBe(false);
+
+    await act(async () => {
+      accessDeferred.resolve(defaultPathAccess);
+      await accessDeferred.promise;
+    });
+
+    expect(result.current.hasWritePermission).toBe(true);
+  });
   describe('trash hierarchical navigation (DEF-16 P9)', () => {
     const topmostTrash = [
       {
@@ -536,5 +596,308 @@ describe('useFileManager', () => {
 
       expect(mockNavigate).toHaveBeenCalledWith('/files/__trash__');
     });
+  });
+});
+
+describe('P-4 member-row adapter (useFileManager §2.3.2)', () => {
+  const wireNormal = {
+    node_id: 7,
+    name: 'beach.jpg',
+    type: 'file',
+    mime: 'image/jpeg',
+    size: 1234,
+    lastmod: '2026-09-01T00:00:00Z',
+    created_at: '2026-08-01T00:00:00Z',
+    membership: 'stored',
+    published: false,
+    added_by: 3,
+    state: 'normal',
+    liked: true,
+    reason: 'tag:beach',
+    shared_excluded: false,
+  };
+  const wireRevoked = {
+    node_id: 8,
+    name: null,
+    type: null,
+    mime: null,
+    created_at: '2026-07-01T00:00:00Z',
+    membership: 'derived',
+    published: false,
+    state: 'revoked',
+    liked: false,
+    reason: null,
+    shared_excluded: true,
+  };
+
+  async function renderMembers(items, extra = {}) {
+    explorerGateway.loadCollectionItems.mockResolvedValueOnce({
+      items,
+      ...extra,
+    });
+    const renderResult = renderWithPath('__collections__/collection/5');
+    await waitFor(() => {
+      expect(renderResult.result.current.loading).toBe(false);
+    });
+    return renderResult;
+  }
+
+  it('Decision B: ONE full fetch fills collectionMembers — no cursor state, no loadMore seam', async () => {
+    const { result } = await renderMembers([wireNormal, wireRevoked]);
+
+    expect(explorerGateway.loadCollectionItems).toHaveBeenCalledTimes(1);
+    const opts = explorerGateway.loadCollectionItems.mock.calls[0][1];
+    expect(opts).not.toHaveProperty('cursor');
+    expect(opts).not.toHaveProperty('limit');
+    expect(result.current.collectionMembers.items).toHaveLength(2);
+    expect(result.current.collectionMembers.collectionId).toBe(5);
+    expect(result.current.collectionMembers).not.toHaveProperty('nextCursor');
+    expect(result.current.collectionMembers).not.toHaveProperty('loadingMore');
+    expect(result.current.loadMoreCollectionMembers).toBeUndefined();
+  });
+
+  it('maps the wire row to file shape with the member slots and drops the size', async () => {
+    const { result } = await renderMembers([wireNormal]);
+    const row = result.current.collectionMembers.items[0];
+
+    expect(row).toMatchObject({
+      nodeId: 7,
+      path: '',
+      name: 'beach.jpg',
+      basename: 'beach.jpg',
+      type: 'file',
+      mime: 'image/jpeg',
+      lastmod: '2026-09-01T00:00:00Z',
+      membership: 'stored',
+      published: false,
+      added_by: 3,
+      state: 'normal',
+      liked: true,
+      reason: 'tag:beach',
+      shared_excluded: false,
+      isCollectionMember: true,
+      hasWritePermission: false,
+      rowTestId: 'member-row-7',
+      moreButtonTestId: 'member-menu-button',
+    });
+    // the wire DOES carry size on this legacy fixture — the adapter still
+    // omits it (the member surface must never render a size).
+    expect(row).not.toHaveProperty('size');
+  });
+
+  it('lastmod falls back to created_at', async () => {
+    const { result } = await renderMembers([{ ...wireNormal, lastmod: null }]);
+    expect(result.current.collectionMembers.items[0].lastmod).toBe('2026-08-01T00:00:00Z');
+  });
+
+  it('M-8: the row carries created_at explicitly (membership-added date — the client date-sort key)', async () => {
+    const { result } = await renderMembers([wireNormal, { ...wireRevoked, created_at: null }]);
+    const [normal, revoked] = result.current.collectionMembers.items;
+
+    expect(normal.created_at).toBe('2026-08-01T00:00:00Z');
+    // revoked masquerade: null created_at (pins to the date-sort END — CollectionsListView §2.5)
+    expect(revoked.created_at).toBeNull();
+  });
+
+  it('revoked rows carry the placeholder NAME, null mime and stay non-eligible for thumbnails', async () => {
+    const { result } = await renderMembers([wireRevoked]);
+    const row = result.current.collectionMembers.items[0];
+
+    expect(row.nodeId).toBe(8);
+    expect(row.name).toBeNull();
+    expect(row.basename).toBe('fileManager.collectionsUnavailable');
+    expect(row.mime).toBeNull();
+    expect(row.state).toBe('revoked');
+    expect(row.shared_excluded).toBe(true);
+    expect(row.isCollectionMember).toBe(true);
+    expect(row.rowTestId).toBe('member-row-8');
+    expect(row).not.toHaveProperty('size');
+  });
+
+  it('handleMemberThumbnailsLoaded merges into collectionMembers rows only (never the session files)', async () => {
+    const { result } = await renderMembers([wireNormal]);
+
+    act(() => {
+      result.current.handleMemberThumbnailsLoaded(new Map([[7, 'https://thumb/7']]));
+    });
+
+    expect(result.current.collectionMembers.items[0].thumbnailUrl).toBe('https://thumb/7');
+    // member ids never leak into the session file list
+    expect(result.current.files).toEqual([]);
+
+    act(() => {
+      result.current.handleMemberThumbnailsLoaded(new Map([[999, 'https://thumb/999']]));
+    });
+    expect(result.current.collectionMembers.items[0].thumbnailUrl).toBe('https://thumb/7');
+  });
+});
+
+describe('P-5 collections-liked surface (useFileManager §2.3.3)', () => {
+  const wireLiked = (nodeId, overrides = {}) => ({
+    node_id: nodeId,
+    name: `liked-${nodeId}.txt`,
+    type: 'file',
+    mime: 'text/plain',
+    state: 'normal',
+    liked: true,
+    created_at: '2026-08-01T00:00:00Z',
+    ...overrides,
+  });
+
+  async function renderLiked(page) {
+    explorerGateway.loadLikedItems.mockResolvedValueOnce(page);
+    const renderResult = renderWithPath('__collections__/liked');
+    await waitFor(() => {
+      expect(renderResult.result.current.loading).toBe(false);
+    });
+    return renderResult;
+  }
+
+  it('parses the route, lists via loadLikedItems and feeds member-parity adapter rows', async () => {
+    const { result } = await renderLiked({ items: [wireLiked(41)] });
+
+    expect(result.current.currentPath).toBe('/__collections__/liked');
+    expect(explorerGateway.loadLikedItems).toHaveBeenCalled();
+    expect(result.current.likedItems).not.toHaveProperty('nextCursor'); // Decision B
+    expect(result.current.likedItems.items[0]).toMatchObject({
+      nodeId: 41,
+      name: 'liked-41.txt',
+      basename: 'liked-41.txt',
+      type: 'file',
+      lastmod: '2026-08-01T00:00:00Z',
+      state: 'normal',
+      liked: true,
+      isCollectionMember: true,
+      hasWritePermission: false,
+      rowTestId: 'member-row-41',
+      moreButtonTestId: 'member-menu-button',
+    });
+    expect(result.current.likedItems.items[0]).not.toHaveProperty('size');
+    // the file explorer region stays empty on the overlay surface
+    expect(result.current.files).toEqual([]);
+  });
+
+  it('revoked likes land as disabled placeholder rows (adapter parity)', async () => {
+    const { result } = await renderLiked({
+      items: [wireLiked(42, { name: null, type: null, mime: null, state: 'revoked' })],
+    });
+
+    const row = result.current.likedItems.items[0];
+    expect(row.state).toBe('revoked');
+    expect(row.name).toBeNull();
+    expect(row.basename).toBe('fileManager.collectionsUnavailable');
+    expect(row.mime).toBeNull();
+  });
+
+  it('Decision B: liked listing is ONE full fetch — no nextCursor, no loadMoreLikedItems seam', async () => {
+    const { result } = await renderLiked({ items: [wireLiked(41), wireLiked(42)] });
+
+    expect(explorerGateway.loadLikedItems).toHaveBeenCalledTimes(1);
+    expect(result.current.likedItems.items.map((row) => row.nodeId)).toEqual([41, 42]);
+    expect(result.current.likedItems).not.toHaveProperty('nextCursor');
+    expect(result.current.likedItems).not.toHaveProperty('loadingMore');
+    expect(result.current.loadMoreLikedItems).toBeUndefined();
+  });
+
+  it('applyLikedRemoval drops the row optimistically (unknown ids are a no-op)', async () => {
+    const { result } = await renderLiked({
+      items: [wireLiked(41), wireLiked(42)],
+    });
+
+    act(() => result.current.applyLikedRemoval(999));
+    expect(result.current.likedItems.items).toHaveLength(2);
+
+    act(() => result.current.applyLikedRemoval(41));
+    expect(result.current.likedItems.items.map((row) => row.nodeId)).toEqual([42]);
+  });
+
+  it('handleMemberThumbnailsLoaded merges into likedItems rows too (member-local, never the session files)', async () => {
+    const { result } = await renderLiked({ items: [wireLiked(41)] });
+
+    act(() => {
+      result.current.handleMemberThumbnailsLoaded(new Map([[41, 'https://thumb/41']]));
+    });
+
+    expect(result.current.likedItems.items[0].thumbnailUrl).toBe('https://thumb/41');
+    expect(result.current.files).toEqual([]);
+  });
+});
+
+describe('admin urlView guard (PLAN §14 client half)', () => {
+  const adminUser = { id: '1', username: 'admin', is_admin: true, rootNodeId: null };
+
+  beforeEach(() => {
+    explorerGateway.listDirectory.mockResolvedValue(defaultListedFiles);
+    explorerGateway.getPathAccess.mockResolvedValue(defaultPathAccess);
+    explorerGateway.loadCollectionItems.mockResolvedValue({ items: [] });
+    explorerGateway.loadLikedItems.mockResolvedValue({ items: [] });
+    explorerGateway.subscribeToRecentFiles.mockReturnValue(jest.fn());
+    resolvePath.mockResolvedValue({ nodeId: 3 });
+    getAncestors.mockResolvedValue({ ancestors: [] });
+  });
+
+  async function renderAdmin(urlPath, options = {}) {
+    const wrapper = ({ children }) => <TestWrapper initialPath={urlPath}>{children}</TestWrapper>;
+    const renderResult = renderHook(() => useFileManager(adminUser, options), { wrapper });
+    await waitFor(() => {
+      expect(renderResult.result.current.loading).toBe(false);
+    });
+    return renderResult;
+  }
+
+  it('resolves /files/__collections__ for admin to the home view (root listing, no error toast)', async () => {
+    const onLoadError = jest.fn();
+    const { result } = await renderAdmin('__collections__', { onLoadError });
+
+    expect(result.current.currentPath).toBe('/');
+    expect(explorerGateway.listDirectory).toHaveBeenCalledWith({
+      nodeId: null,
+      options: expect.objectContaining({ user: adminUser }),
+    });
+    expect(onLoadError).not.toHaveBeenCalled();
+    expect(result.current.files).toEqual(defaultListedFiles);
+  });
+
+  it('resolves /files/__collections__/__archive__ for admin to the home view', async () => {
+    const { result } = await renderAdmin('__collections__/__archive__');
+
+    expect(result.current.currentPath).toBe('/');
+    expect(explorerGateway.listDirectory).toHaveBeenCalledWith({
+      nodeId: null,
+      options: expect.objectContaining({ user: adminUser }),
+    });
+  });
+
+  it('resolves /files/__collections__/collection/<id> for admin to the home view (no member fetch)', async () => {
+    const { result } = await renderAdmin('__collections__/collection/5');
+
+    expect(result.current.currentPath).toBe('/');
+    expect(explorerGateway.loadCollectionItems).not.toHaveBeenCalled();
+    expect(result.current.collectionMembers.collectionId).toBeNull();
+    expect(explorerGateway.listDirectory).toHaveBeenCalled();
+  });
+
+  it('resolves /files/__collections__/liked for admin to the home view (no liked fetch)', async () => {
+    const { result } = await renderAdmin('__collections__/liked');
+
+    expect(result.current.currentPath).toBe('/');
+    expect(explorerGateway.loadLikedItems).not.toHaveBeenCalled();
+    expect(result.current.likedItems.items).toEqual([]);
+    expect(explorerGateway.listDirectory).toHaveBeenCalled();
+  });
+
+  it('non-admin control: the collections overlay kinds still parse', async () => {
+    const wrapper = ({ children }) => (
+      <TestWrapper initialPath="__collections__/liked">{children}</TestWrapper>
+    );
+    explorerGateway.loadLikedItems.mockResolvedValue({ items: [] });
+    const { result } = renderHook(() => useFileManager(mockUser), { wrapper });
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.currentPath).toBe('/__collections__/liked');
+    expect(explorerGateway.loadLikedItems).toHaveBeenCalled();
+    expect(explorerGateway.listDirectory).not.toHaveBeenCalled();
   });
 });

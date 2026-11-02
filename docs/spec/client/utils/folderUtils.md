@@ -1,8 +1,8 @@
-# folderUtils Spec — REMOVED (Wave 4)
+# folderUtils Spec — REMOVED
 
 ## Status: DELETED
 
-The `client/src/utils/folderUtils.js` file was deleted during Wave 4 as part of the path-to-nodeId migration. Its sole export, `collectSubfolderPaths`, is no longer available.
+The `client/src/utils/folderUtils.js` file does not exist. Its sole export, `collectSubfolderPaths`, is not available.
 
 ### What Was Here
 
@@ -20,4 +20,4 @@ No direct replacement — callers that previously used this function now operate
 
 ### Affected Code
 
-- `shareTargetPermissionSaveUseCase.js` — migrated to `targetNodeId`; no longer collects subfolder paths (Wave 4 Task W4.8)
+- `shareTargetPermissionSaveUseCase.js` — uses `targetNodeId`; does not collect subfolder paths

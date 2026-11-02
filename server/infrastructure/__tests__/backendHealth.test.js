@@ -152,12 +152,19 @@ describe('createBackendHealth', () => {
     }
   });
 
-  it('getHealth() returns copies of all three backends without cross-contamination', () => {
+  it('getHealth() returns copies of all tracked keys without cross-contamination', () => {
     const tracker = createBackendHealth();
     tracker.report('postgresql', { ok: false, code: 'unreachable' });
 
     const health = tracker.getHealth();
-    expect(Object.keys(health).sort()).toEqual(['postgresql', 's3', 'webdav']);
+    expect(Object.keys(health).sort()).toEqual([
+      'ai.chat',
+      'ai.embed',
+      'postgresql',
+      's3',
+      'vector',
+      'webdav',
+    ]);
 
     health.postgresql.status = 'ok';
     health.postgresql.code = 'cleared';
@@ -177,8 +184,110 @@ describe('createBackendHealth', () => {
 
     expect(() => tracker.report('mysql', { ok: false })).not.toThrow();
     expect(() => tracker.report('mongodb', { ok: true })).not.toThrow();
-    expect(Object.keys(tracker.getHealth()).sort()).toEqual(['postgresql', 's3', 'webdav']);
+    expect(Object.keys(tracker.getHealth()).sort()).toEqual([
+      'ai.chat',
+      'ai.embed',
+      'postgresql',
+      's3',
+      'vector',
+      'webdav',
+    ]);
     expect(transitions).toHaveLength(0);
+  });
+});
+
+describe('AI role slots (T0.7b — ai.embed / ai.chat, §4.12)', () => {
+  it('starts the AI role slots as unknown', () => {
+    const tracker = createBackendHealth();
+    for (const slot of ['ai.embed', 'ai.chat']) {
+      expect(tracker.getHealth()[slot]).toEqual({
+        status: 'unknown',
+        code: undefined,
+        reason: undefined,
+        hint: undefined,
+        lastCheckedAt: undefined,
+        firstFailedAt: undefined,
+        consecutiveFailures: 0,
+      });
+    }
+  });
+
+  it('reports ok/fail per role slot independently', () => {
+    const tracker = createBackendHealth();
+    tracker.report('ai.embed', { ok: true });
+    tracker.report('ai.chat', { ok: false, code: 'unknown', reason: 'probe failed' });
+
+    expect(tracker.getHealth()['ai.embed'].status).toBe('ok');
+    expect(tracker.getHealth()['ai.chat'].status).toBe('fail');
+    expect(tracker.getHealth()['ai.chat'].reason).toBe('probe failed');
+    expect(tracker.getHealth()['ai.chat'].consecutiveFailures).toBe(1);
+  });
+
+  it('ok:true keeps a partial hint; the next hint-free ok clears it', () => {
+    const tracker = createBackendHealth();
+    tracker.report('ai.embed', { ok: true, hint: 'serverErrors.ai.providerProbeFailed' });
+
+    expect(tracker.getHealth()['ai.embed']).toMatchObject({
+      status: 'ok',
+      hint: 'serverErrors.ai.providerProbeFailed',
+      consecutiveFailures: 0,
+    });
+    // code/reason stay cleared on the ok report.
+    expect(tracker.getHealth()['ai.embed'].code).toBeUndefined();
+    expect(tracker.getHealth()['ai.embed'].reason).toBeUndefined();
+
+    tracker.report('ai.embed', { ok: true });
+    expect(tracker.getHealth()['ai.embed'].hint).toBeUndefined();
+    expect(tracker.getHealth()['ai.embed'].status).toBe('ok');
+  });
+
+  it('an ai.<role> report never flips a backend row and vice versa', () => {
+    const tracker = createBackendHealth();
+    const transitions = collectTransitions(tracker);
+
+    tracker.report('ai.embed', { ok: true });
+    tracker.report('postgresql', { ok: true });
+    expect(tracker.getHealth().postgresql.status).toBe('ok');
+    expect(tracker.getHealth()['ai.embed'].status).toBe('ok');
+
+    // Only the reported slot flips; transitions fire per key, never cross-key.
+    tracker.report('ai.embed', { ok: false, code: 'unknown' });
+    expect(tracker.getHealth().postgresql.status).toBe('ok');
+    expect(tracker.getHealth()['ai.embed'].status).toBe('fail');
+    expect(transitions.map((t) => t.backend)).toEqual(['ai.embed']);
+  });
+
+  it('reset() clears the AI role slots too', () => {
+    const tracker = createBackendHealth();
+    tracker.report('ai.embed', { ok: true });
+    tracker.report('ai.chat', { ok: false, code: 'unknown' });
+
+    tracker.reset();
+
+    expect(tracker.getHealth()['ai.embed'].status).toBe('unknown');
+    expect(tracker.getHealth()['ai.chat'].status).toBe('unknown');
+    expect(tracker.getHealth()['ai.chat'].consecutiveFailures).toBe(0);
+  });
+
+  it('ignores unknown ai.<role> names silently', () => {
+    const tracker = createBackendHealth();
+    expect(() => tracker.report('ai.vision', { ok: true })).not.toThrow();
+    expect(tracker.getHealth()['ai.vision']).toBeUndefined();
+  });
+
+  it('derives the settings/public ai flags from the slot state (ok ⇒ true)', () => {
+    const tracker = createBackendHealth();
+    const toFlags = (health) => ({
+      embed: health['ai.embed']?.status === 'ok',
+      chat: health['ai.chat']?.status === 'ok',
+    });
+
+    expect(toFlags(tracker.getHealth())).toEqual({ embed: false, chat: false });
+    tracker.report('ai.embed', { ok: true });
+    tracker.report('ai.chat', { ok: false, code: 'unknown' });
+    expect(toFlags(tracker.getHealth())).toEqual({ embed: true, chat: false });
+    tracker.reset();
+    expect(toFlags(tracker.getHealth())).toEqual({ embed: false, chat: false });
   });
 });
 

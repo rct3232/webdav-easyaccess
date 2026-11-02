@@ -56,6 +56,9 @@ const SetupWizardView = ({
   form,
   errors,
   testStates,
+  llmPresets,
+  llmPresetId,
+  llmTestStates,
   applyState,
   viewModel,
   onBack,
@@ -65,6 +68,10 @@ const SetupWizardView = ({
   onCheckboxChange,
   onTestConnection,
   onRegenerateSecret,
+  onPresetSelect,
+  onLlmRoleToggle,
+  onLlmFieldChange,
+  onTestLlm,
   onApply,
 }) => {
   const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'));
@@ -313,10 +320,123 @@ const SetupWizardView = ({
     </Box>
   );
 
+  const renderAiStep = () => (
+    <Box>
+      <Typography variant="h6" gutterBottom>
+        {viewModel.aiTitle}
+      </Typography>
+      {/* Embedded-engine readiness card in its WAITING state: provisioning
+          never starts while setup mode is up (zero bytes fetched) — it runs on
+          the first configured boot after the required restart. */}
+      <Paper variant="outlined" sx={{ p: 2, mb: 3 }} data-testid="ai-readiness-card">
+        <Typography variant="subtitle2">{viewModel.aiStatusCardTitle}</Typography>
+        <Typography variant="body2" color="text.secondary">
+          {viewModel.aiStatusPreparing}
+        </Typography>
+      </Paper>
+      <Typography variant="subtitle1" gutterBottom>
+        {viewModel.aiPresetTitle}
+      </Typography>
+      {llmPresets.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          {viewModel.aiNoPresets}
+        </Typography>
+      ) : (
+        <RadioGroup
+          value={llmPresetId}
+          onChange={(event) => onPresetSelect(event.target.value)}
+          data-testid="ai-preset-picker"
+        >
+          {llmPresets.map((preset) => (
+            <FormControlLabel
+              key={preset.id}
+              value={preset.id}
+              control={<Radio />}
+              label={`${preset.id} (${preset.family})`}
+            />
+          ))}
+        </RadioGroup>
+      )}
+      {Object.entries(viewModel.aiRoleLabels).map(([role, label]) => {
+        const roleForm = form.llm[role];
+        const testState = llmTestStates[role];
+        const isTesting = testState?.status === 'testing';
+        return (
+          <Box
+            key={role}
+            sx={{ mt: 2, p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}
+            data-testid={`ai-role-row-${role}`}
+          >
+            <FormControlLabel
+              control={<Checkbox checked={roleForm.enabled} onChange={onLlmRoleToggle(role)} />}
+              label={label}
+            />
+            <TextField
+              fullWidth
+              margin="normal"
+              label={viewModel.aiBaseUrl}
+              value={roleForm.baseUrl}
+              onChange={onLlmFieldChange(role, 'baseUrl')}
+              disabled={!roleForm.enabled}
+              inputProps={{ 'data-testid': `ai-${role}-baseUrl` }}
+            />
+            <TextField
+              fullWidth
+              margin="normal"
+              type="password"
+              label={viewModel.aiApiKey}
+              value={roleForm.apiKey}
+              onChange={onLlmFieldChange(role, 'apiKey')}
+              disabled={!roleForm.enabled}
+              inputProps={{ 'data-testid': `ai-${role}-apiKey` }}
+            />
+            <TextField
+              fullWidth
+              margin="normal"
+              label={viewModel.aiModel}
+              value={roleForm.model}
+              onChange={onLlmFieldChange(role, 'model')}
+              disabled={!roleForm.enabled}
+              inputProps={{ 'data-testid': `ai-${role}-model` }}
+            />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1 }}>
+              <Button variant="outlined" onClick={() => onTestLlm(role)} disabled={isTesting}>
+                {isTesting ? viewModel.aiTesting : viewModel.aiTest}
+              </Button>
+              {isTesting && <CircularProgress size={20} />}
+              {testState?.status === 'ok' && (
+                <Typography variant="body2" color="success.main">
+                  {testState.message}
+                </Typography>
+              )}
+              {testState?.status === 'error' && (
+                <Box>
+                  <Typography variant="body2" color="error.main">
+                    {testState.message}
+                  </Typography>
+                  {testState.reason && (
+                    <Typography variant="caption" color="text.secondary">
+                      {testState.reason}
+                    </Typography>
+                  )}
+                </Box>
+              )}
+            </Box>
+          </Box>
+        );
+      })}
+      {errors[3] && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {errors[3]}
+        </Alert>
+      )}
+    </Box>
+  );
+
   const renderApplyStep = () => (
     <Box>
       <Typography variant="h6" gutterBottom>
-        {viewModel.stepLabels[3]}
+        {viewModel.stepLabels[4]}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         {viewModel.applyIntro}
@@ -386,7 +506,8 @@ const SetupWizardView = ({
           {activeStep === 0 && renderFileStorageStep()}
           {activeStep === 1 && renderAdminJwtStep()}
           {activeStep === 2 && renderOptionalStep()}
-          {activeStep === 3 && renderApplyStep()}
+          {activeStep === 3 && renderAiStep()}
+          {activeStep === 4 && renderApplyStep()}
         </Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
           <Button onClick={onBack} disabled={activeStep === 0}>

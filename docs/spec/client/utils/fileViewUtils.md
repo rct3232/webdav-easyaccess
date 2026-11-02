@@ -36,13 +36,16 @@
 - isSelected = selectionMode && selectedFiles.has(getEntryKey(file))
 - isPermissionDisabled = type===directory && hasReadPermission===false
 - isProcessing = Boolean(processingMap.get(file.nodeId)) — processingMap is nodeId-keyed by `useFileOperations`/`useBulkOperations`
-- isDisabled = isPermissionDisabled || isProcessing
+- isMemberRevoked = `file.isCollectionMember === true && file.state === 'revoked'` — an EXPLICIT member-flag + state rule (never a bare `state` sniff: file rows carry no `state`, so file-side output is unchanged)
+- isDisabled = isPermissionDisabled || isProcessing || isMemberRevoked
+
+> **Member rows via shared renderers (`CollectionsListView.md` §2.5):** collection member rows carry `isCollectionMember:true`; a `state:'revoked'` row is disabled by the rule above (grayed, no click/menu action — the placeholder name is substituted by the member adapter, the thumbnail never requested because the row's `mime`/`type`/name are non-eligible). Regular file rows are unaffected.
 
 ### 2.5 Verification Scenarios
 
 - [ ] getEntryKey: returns nodeId when present, path otherwise
 - [ ] renderProcessingIcon: 'move'/'copy'/'delete' → correct icon; other → null
-- [ ] getFileItemState: selected when in selectedFiles; disabled when no read permission (dir) or processing
+- [ ] getFileItemState: selected when in selectedFiles; disabled when no read permission (dir) or processing; disabled when a MEMBER row (`isCollectionMember`) is `state:'revoked'`; a plain file row with a stray `state` key is NOT disabled
 - [ ] getDropTargetStyles: true → primary.main bg, white text/icons; false → {}
 
 ### 2.6 Edge Cases

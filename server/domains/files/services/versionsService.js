@@ -8,6 +8,10 @@ const {
 const { createError, notFoundError, forbiddenError } = require('../../../utils/errorHandler');
 const storage = require('../../../store/storage');
 const thumbnailService = require('../../thumbnails/services/thumbnailService');
+const { sha256Buffer } = require('../../../utils/contentHash');
+
+/** Post-commit no-op when no hook is injected (legacy test constructions). */
+const NOOP_HOOK = { onNodeContentCommitted: async () => {} };
 
 function isNotFoundError(error) {
   if (!error) return false;
@@ -25,9 +29,10 @@ function isNotFoundError(error) {
  * Restore reactivates a history row in place (zero I/O, no new version row):
  * one TX swaps history→active and demotes the current active row to history
  * (dedicated `demoteActiveToHistory` primitive — the demoted current version
- * becomes `history`, never `orphaned`), then the filecache is re-asserted from
- * the blob HEAD (repair-complete precedent, content_hash null) and the
- * thumbnail cache entry is evicted.
+ * becomes `history`, never `orphaned`), then the restored content is re-read
+ * and hashed (filecache.content_hash write-side, aiJobService.md §2.2), the
+ * filecache is re-asserted from the blob HEAD, the thumbnail cache entry is
+ * evicted, and the enrichment hook fires with the fresh hash.
  *
  * @param {Object} opts
  * @param {Object} opts.fileNodesStore - object_map read/write access
@@ -44,8 +49,10 @@ function createVersionsService({
   blobStore,
   fileStorageMode = 's3',
   aclService: injectedAclService,
+  nodeContentHook,
 }) {
   const aclService = injectedAclService || require('../../permissions/services/aclService');
+  const enrichmentHook = nodeContentHook || NOOP_HOOK;
 
   function withTx(callback) {
     const backend = storage.getBackend();
@@ -175,10 +182,31 @@ function createVersionsService({
       await fileNodeService.updateSyncStatus(nodeId, 'active');
     });
 
-    // Post-TX consistency (best-effort, repair-complete precedent): re-assert
-    // the filecache from the blob HEAD and evict the stale thumbnail.
+    // Post-commit consistency + content_hash write-side (aiJobService.md
+    // §2.2): re-read the restored content and hash it with the same
+    // write-side convention as the upload path — the hook receives the FRESH
+    // hash (a null hash here would break the (content_hash, modelId) dedupe
+    // skip-key). Content re-read failure degrades to a null hash; the swap
+    // has already committed either way. Then evict the stale thumbnail.
+    let restoredContentHash = null;
     try {
-      await fileNodesStore.upsertCache(nodeId, head.contentLength, head.contentType || null, null);
+      const buffer = await blobStore.downloadBlob(target.s3_key);
+      if (buffer) {
+        restoredContentHash = sha256Buffer(buffer);
+      }
+    } catch (error) {
+      console.error(
+        `[versionsService] failed to re-read restored content for node ${nodeId}:`,
+        error && error.message
+      );
+    }
+    try {
+      await fileNodesStore.upsertCache(
+        nodeId,
+        head.contentLength,
+        head.contentType || null,
+        restoredContentHash
+      );
     } catch {
       /* best-effort — the version swap already committed */
     }
@@ -187,6 +215,11 @@ function createVersionsService({
     } catch {
       /* best-effort */
     }
+
+    // Post-commit enrichment hook (Seam 4: Restore) — the hook applies the
+    // §2.2 decision table and never throws; a hook failure must never fail
+    // the user-facing restore.
+    await enrichmentHook.onNodeContentCommitted(nodeId, restoredContentHash);
 
     return {
       messageCode: SERVER_MESSAGE_CODES.files.versionRestored,

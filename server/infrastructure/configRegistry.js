@@ -131,6 +131,189 @@ const CONFIG_ENTRIES = Object.freeze([
   { key: 'WEA_SKIP_MIGRATION_WORKER', tier: TIER.T2, secret: false },
   { key: 'WEA_SKIP_BULK_WORKER', tier: TIER.T2, secret: false },
   { key: 'WEA_SKIP_GC_SCHEDULER', tier: TIER.T1, secret: false },
+  // T1.3 AI jobs worker test seam (aiJobService spec §2) — same idiom as
+  // WEA_SKIP_BULK_WORKER: T2, env-allowed so test setup can set it directly.
+  { key: 'WEA_SKIP_AI_WORKER', tier: TIER.T2, secret: false },
+  // AI jobs worker knobs (aiJobService.md §3 — T2 dbOnly, hot; the worker
+  // reads them per iteration). AI_WORKER_CONCURRENCY's shipped default is 1
+  // and the worker loop implements single-concurrency only.
+  { key: 'AI_WORKER_POLL_MS', tier: TIER.T2, secret: false, default: 5000, dbOnly: true },
+  { key: 'AI_WORKER_CONCURRENCY', tier: TIER.T2, secret: false, default: 1, dbOnly: true },
+  { key: 'AI_JOB_STALE_MS', tier: TIER.T2, secret: false, default: 900000, dbOnly: true },
+  { key: 'AI_JOB_TIMEOUT_MS', tier: TIER.T2, secret: false, default: 120000, dbOnly: true },
+
+  // ── AI / LLM (T2 dbOnly — fully hot; PLAN §6) ──────────────────────────
+  // Per-call resolver, re-probe on change, no restart (llmAdapter §1/§2).
+  // Presence decides candidacy, probes decide truth (§4.23); there is no
+  // LLM_ENABLED flag. Keys are registered before any read site exists (T1.1)
+  // so the admin config surface can manage them from day one. API keys are
+  // secret (presentation masking only; plaintext at rest).
+  { key: 'LLM_EMBED_BASE_URL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_EMBED_API_KEY', tier: TIER.T2, secret: true, dbOnly: true },
+  { key: 'LLM_EMBED_MODEL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_CHAT_BASE_URL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_CHAT_API_KEY', tier: TIER.T2, secret: true, dbOnly: true },
+  { key: 'LLM_CHAT_MODEL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_VISION_BASE_URL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_VISION_API_KEY', tier: TIER.T2, secret: true, dbOnly: true },
+  { key: 'LLM_VISION_MODEL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_ASR_BASE_URL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_ASR_API_KEY', tier: TIER.T2, secret: true, dbOnly: true },
+  { key: 'LLM_ASR_MODEL', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_MAX_INPUT_CHARS', tier: TIER.T2, secret: false, dbOnly: true },
+  { key: 'LLM_CHUNK_BUDGET', tier: TIER.T2, secret: false, default: 4, dbOnly: true },
+  {
+    key: 'LLM_OVERLENGTH_POLICY',
+    tier: TIER.T2,
+    secret: false,
+    default: 'chunk-pool',
+    dbOnly: true,
+  },
+  { key: 'LLM_DAILY_CALL_CAP', tier: TIER.T2, secret: false, default: 0, dbOnly: true },
+  { key: 'LLM_DAILY_TOKEN_CAP', tier: TIER.T2, secret: false, default: 0, dbOnly: true },
+  { key: 'LLM_REPROBE_DEBOUNCE_S', tier: TIER.T2, secret: false, default: 60, dbOnly: true },
+  { key: 'LLM_BREAKER_THRESHOLD', tier: TIER.T2, secret: false, default: 5, dbOnly: true },
+  { key: 'LLM_BREAKER_COOLDOWN_S', tier: TIER.T2, secret: false, default: 300, dbOnly: true },
+  { key: 'AI_SEMANTIC_SEARCH_ENABLED', tier: TIER.T2, secret: false, default: true, dbOnly: true },
+  { key: 'AI_NL_PARSE_ENABLED', tier: TIER.T2, secret: false, default: true, dbOnly: true },
+
+  // ── Search knobs (searchService.md §3; T2 hot/dbOnly) ───────────────────
+  // Name-section hard cap (the §2.4 `counts.name_truncated` flag flips when
+  // the cap cuts the set). The semantic-leg caps ride the T1.5 semantic
+  // branch: SEARCH_SEMANTIC_LIMIT caps the deduped semantic display and
+  // BASELINE_SAMPLE_DOCS sizes the per-query dynamic-baseline sample.
+  { key: 'SEARCH_NAME_LIMIT', tier: TIER.T2, secret: false, default: 200, dbOnly: true },
+  { key: 'SEARCH_SEMANTIC_LIMIT', tier: TIER.T2, secret: false, default: 50, dbOnly: true },
+  { key: 'BASELINE_SAMPLE_DOCS', tier: TIER.T2, secret: false, default: 500, dbOnly: true },
+
+  // ── Activity constants (§3.4 — T2 dbOnly product constants; PLAN §6) ────
+  // T0.6 usage/activity rollup: weights + half-life feed the nightly item
+  // accumulator (S_k, H=30d); retention governs the raw-event roll-off; the
+  // anchor hour arms the nightly schedulers; ARCHIVE_RETENTION_DAYS is the
+  // purge horizon shared with evolution pass 4 (collectionsService.md §3).
+  // Shipped defaults are the single semantic source's registry mirror
+  // (infrastructure/usage/activityScore.js — parity kept by test). The
+  // rollup scheduler test seam follows the WEA_SKIP_AI_WORKER idiom
+  // (env-allowed, NOT dbOnly).
+  { key: 'AI_USAGE_W_OPEN', tier: TIER.T2, secret: false, default: 1, dbOnly: true },
+  { key: 'AI_USAGE_W_PREVIEW', tier: TIER.T2, secret: false, default: 2, dbOnly: true },
+  { key: 'AI_USAGE_W_DOWNLOAD', tier: TIER.T2, secret: false, default: 3, dbOnly: true },
+  { key: 'AI_USAGE_W_SEARCH_HIT', tier: TIER.T2, secret: false, default: 1, dbOnly: true },
+  { key: 'AI_USAGE_W_LIKE', tier: TIER.T2, secret: false, default: 5, dbOnly: true },
+  { key: 'AI_ACTIVITY_HALF_LIFE_DAYS', tier: TIER.T2, secret: false, default: 30, dbOnly: true },
+  // §2.3 similarity-ordering boost (collectionsService §3; ordering only).
+  { key: 'AI_VIEW_WEIGHT_ALPHA', tier: TIER.T2, secret: false, default: 0.1, dbOnly: true },
+  {
+    key: 'AI_USAGE_EVENT_RETENTION_DAYS',
+    tier: TIER.T2,
+    secret: false,
+    default: 90,
+    dbOnly: true,
+  },
+  { key: 'AI_NIGHTLY_ANCHOR_HOUR_UTC', tier: TIER.T2, secret: false, default: 3, dbOnly: true },
+  { key: 'ARCHIVE_RETENTION_DAYS', tier: TIER.T2, secret: false, default: 30, dbOnly: true },
+
+  // ── Evolution triggers (evolutionService.md §2.2/§3 — T2 dbOnly, hot) ───
+  // Read per arm/pass; the scheduler + route honor the kill switches. The
+  // create/purge knobs are registered here for the later pass waves; the
+  // WEA_SKIP_EVOLUTION_SCHEDULER seam is env-allowed (test convention).
+  { key: 'AI_EVOLUTION_ENABLED', tier: TIER.T2, secret: false, default: true, dbOnly: true },
+  { key: 'AI_EVOLUTION_TRIGGER', tier: TIER.T2, secret: false, default: 'both', dbOnly: true },
+  { key: 'AI_EVOLUTION_DEBOUNCE_S', tier: TIER.T2, secret: false, default: 90, dbOnly: true },
+  {
+    key: 'AI_EVOLUTION_NIGHTLY_ENABLED',
+    tier: TIER.T2,
+    secret: false,
+    default: true,
+    dbOnly: true,
+  },
+  {
+    key: 'AI_EVOLUTION_CREATE_ENABLED',
+    tier: TIER.T2,
+    secret: false,
+    default: true,
+    dbOnly: true,
+  },
+  {
+    key: 'AI_MERGE_SUGGESTIONS_ENABLED',
+    tier: TIER.T2,
+    secret: false,
+    default: true,
+    dbOnly: true,
+  },
+  {
+    key: 'AI_MERGE_ARBITER_ENABLED',
+    tier: TIER.T2,
+    secret: false,
+    default: true,
+    dbOnly: true,
+  },
+  { key: 'AI_EVOLUTION_INACTIVE_DAYS', tier: TIER.T2, secret: false, default: 30, dbOnly: true },
+  { key: 'AI_EVOLUTION_MIN_AGE_DAYS', tier: TIER.T2, secret: false, default: 14, dbOnly: true },
+  { key: 'AI_EVOLUTION_CREATE_RATE_DAYS', tier: TIER.T2, secret: false, default: 7, dbOnly: true },
+  { key: 'WEA_SKIP_EVOLUTION_SCHEDULER', tier: TIER.T2, secret: false },
+  {
+    key: 'ADMIN_REPORTS_RETENTION_DAYS',
+    tier: TIER.T2,
+    secret: false,
+    default: 30,
+    dbOnly: true,
+  },
+  {
+    key: 'ADMIN_REPORTS_RETENTION_INTERVAL_MS',
+    tier: TIER.T2,
+    secret: false,
+    default: 86400000,
+    dbOnly: true,
+  },
+  {
+    key: 'ADMIN_REPORTS_RETENTION_BATCH',
+    tier: TIER.T2,
+    secret: false,
+    default: 1000,
+    dbOnly: true,
+  },
+  { key: 'WEA_SKIP_ADMIN_REPORTS_RETENTION', tier: TIER.T2, secret: false },
+  // ── Storage-suggestions expiry (storageService §2.2, maintenanceScheduler §3.6) ──
+  {
+    key: 'STORAGE_SUGGESTION_RETENTION_DAYS',
+    tier: TIER.T2,
+    secret: false,
+    default: 30,
+    dbOnly: true,
+  },
+  {
+    key: 'STORAGE_SUGGESTION_EXPIRY_INTERVAL_MS',
+    tier: TIER.T2,
+    secret: false,
+    default: 86400000,
+    dbOnly: true,
+  },
+  {
+    key: 'STORAGE_SUGGESTION_EXPIRY_BATCH',
+    tier: TIER.T2,
+    secret: false,
+    default: 1000,
+    dbOnly: true,
+  },
+  { key: 'WEA_SKIP_STORAGE_SUGGESTION_EXPIRY', tier: TIER.T2, secret: false },
+  // ── Storage-usage snapshots (storageService §2.2, maintenanceScheduler §3.7) ──
+  {
+    key: 'STORAGE_USAGE_SNAPSHOT_INTERVAL_MS',
+    tier: TIER.T2,
+    secret: false,
+    default: 86400000,
+    dbOnly: true,
+  },
+  {
+    key: 'STORAGE_USAGE_RETENTION_DAYS',
+    tier: TIER.T2,
+    secret: false,
+    default: 30,
+    dbOnly: true,
+  },
+  { key: 'WEA_SKIP_STORAGE_USAGE_SNAPSHOT', tier: TIER.T2, secret: false },
+  { key: 'WEA_SKIP_ROLLUP_SCHEDULER', tier: TIER.T2, secret: false },
 ]);
 
 const FROZEN_ENTRIES = Object.freeze(CONFIG_ENTRIES.map((entry) => Object.freeze(entry)));

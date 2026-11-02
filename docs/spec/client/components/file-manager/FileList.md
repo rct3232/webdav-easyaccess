@@ -10,7 +10,7 @@
 
 ---
 
-### 2.0 Trash-view empty state (DEF-16 P9)
+### 2.0 Trash-view empty state
 
 - `emptyText` (string, optional): overrides the default `fileManager.noFiles` empty message. The trash view passes `fileManager.trashEmpty` (rows render name + size/type metadata only; entries without `lastmod` suppress the date caption).
 
@@ -70,6 +70,18 @@
 - E2E selector contract:
   - each rendered item container keeps the stable `data-file-path` attribute so end-to-end tests can target a specific file/folder without depending on localized visible text
   - no per-row `data-testid` is required when `data-file-path` is present
+- **Member-row reuse (`CollectionsListView.md` §2.5):** the collection MEMBERS surface feeds file-shape rows through this component (hosted by `CollectionsListView`, not `FileManagerView`). Optional row-object slots, absent on every file row (zero DOM delta):
+  - `file.rowTestId` → container `data-testid` (member rows: `member-row-<nodeId>`);
+  - `file.moreButtonTestId` → More-button `data-testid` (member rows: `member-menu-button`);
+  - `file.isCollectionMember === true` → size caption suppressed when `file.size` is null/undefined (the member wire carries no size — `FileListItem.md`); the optional `file.shared_excluded` / `file.published` member-state badges render through `FileListItem.md` (`MemberStateBadges.md`);
+  - `file.state === 'revoked'` (member rows) → `getFileItemState` disables the row (no click/menu, grayed — `fileViewUtils.md`);
+  - drag/drop is inert by data: member rows carry `hasWritePermission: false` (`useFileViewCommon` empty-drag rule) and the members host passes NO drop handlers.
+- **Search-server-row reuse (`useSearchResults.md` §2.3):** Zone B rows render through this component (hosted by `FileManagerView` results mode). Row objects are explorer entries with additional OPTIONAL slots — absent on regular file rows (zero DOM delta):
+  - `file.isSearchServerRow === true` → the item container exposes `data-file-node-id` (dedup anchor: the same node never appears in both result zones) and the optional `file.rowTestId` (`server-search-row-<id>`) becomes the container `data-testid` — regular rows keep the `data-file-path`-only contract;
+  - `file.highlights` → name-slot highlight ranges (rendering + testids in `FileListItem.md`);
+  - `file.isSearchServerRow === true && file.size == null` → size caption suppressed until metadata enrichment lands the row (same rule shape as the member-size-null slot);
+  - `file.hasWritePermission === false` on a search server row → drag disabled (empty-drag rule) + the `EditOff` corner badge renders (`FileListItem.md`);
+  - click/context/menu interactions ride the same callbacks as regular rows (the host wires row-open with result-click recording).
 
 ### 2.7 Verification Scenarios
 
@@ -85,6 +97,7 @@ Checklist for unit test writing:
 - [ ] Empty files shows noFiles message
 - [ ] Drag-and-drop via useFileViewCommon
 - [ ] loadMoreRef present when hasMore
+- [ ] Search server row (`isSearchServerRow`): container carries `rowTestId` + `data-file-node-id`; size caption suppressed while `size == null`; a regular file row renders byte-identical (optional slots absent).
 
 ### 2.8 Edge Cases
 

@@ -1,5 +1,6 @@
 import {
   checkConflicts,
+  getAncestors,
   getFilesMetadata,
   getTrashFiles,
   listFiles,
@@ -8,6 +9,48 @@ import {
 import { checkPermission, getSharedPermissions } from './permissionService';
 import { addRecentFile, getRecentFiles, removeRecentFile } from './recentFilesRepository';
 import { onRecentFilesChange } from './recentFilesNotifier';
+import {
+  getLikedItems,
+  getLikedNodeIds,
+  setFileLike as repositorySetFileLike,
+  subscribeFileLikesChange,
+} from './fileLikesRepository';
+import {
+  addCollectionItems,
+  archiveCollection,
+  createCollection,
+  deleteCollection,
+  dismissMerge,
+  getCollectionItems,
+  getCollections,
+  getGrants,
+  getMemberships,
+  getMergeSuggestions,
+  grantCollection,
+  mergeCollections,
+  notifyEvolutionHint,
+  previewCollection,
+  previewExistingCollection,
+  publishItems,
+  recordSearchClick,
+  rejectMerge,
+  removeCollectionItems,
+  restoreCollection,
+  getActions,
+  revokeGrant,
+  revokeOwnGrant,
+  runSearch,
+  saveCollectionProperties,
+  undoAction,
+  updateCollection,
+} from './collectionsRepository';
+import {
+  acceptStorageSuggestions,
+  dismissStorageSuggestion,
+  getStorageHygiene,
+  getStorageUsage,
+} from './storageRepository';
+import { onCollectionsChange } from './collectionsNotifier';
 import { getShowHiddenFiles } from '../utils/localStorage';
 import { filterOutUserOwnFolders } from '../utils/userUtils';
 
@@ -40,6 +83,19 @@ export const listDirectory = async ({ nodeId, options = {} } = {}) => {
 
   if (!shouldShowHiddenFiles) {
     files = files.filter((item) => item?.isHidden !== true);
+  }
+
+  // T0.5 §3.3: the whole-viewer like read feeds `file.liked` on listing rows.
+  // The repository read absorbs failures into `{ liked: [] }`, so the listing
+  // never rejects on the like fetch.
+  // Operator rule (PLAN §14 client half): admin listings skip the merge —
+  // no GET /file-likes call, and the rows keep the bare listing shape (no
+  // `liked` key) so like affordances have nothing to latch onto.
+  if (files.length > 0 && !user?.is_admin) {
+    const likedIds = new Set(((await getLikedNodeIds()) || {}).liked ?? []);
+    files = files.map((item) =>
+      item?.nodeId != null ? { ...item, liked: likedIds.has(item.nodeId) } : item
+    );
   }
 
   if (!user || user.is_admin || files.length === 0) {
@@ -204,6 +260,100 @@ export const subscribeToRecentFiles = (callback) => {
   return onRecentFilesChange(callback);
 };
 
+// -- Collections platform (T0.3; explorerGateway §2.6) — pass-through re-exports: //
+// the repository's failure-absorption and notify-after-real-success semantics    //
+// are preserved verbatim; payloads stay snake_case.                              //
+
+export const loadCollections = (params) => getCollections(params);
+
+export const loadCollectionItems = (id, params) => getCollectionItems(id, params);
+
+export const subscribeToCollections = (callback) => {
+  return onCollectionsChange(callback);
+};
+
+// -- Search results mode (T0.11; §2.6 search group) — names pass through      //
+// unchanged: the collectionsRepository search seams (runSearch failure-       //
+// absorption + recordSearchClick absorbed boolean; payloads stay snake_case). //
+
+export { runSearch, recordSearchClick };
+// Undo execution seam (actions.md; collectionsRepository.md §2.5 structured result).
+export { undoAction };
+
+// Actions feed seam (T0.10; routes/actions.md) — repository absorbed-read
+// shape passes through verbatim.
+export { getActions };
+
+// Personal storage domain seams (`GET /api/storage`, `GET /api/storage/usage`,
+// POST /api/storage/suggestions/{accept,dismiss}) — storageRepository absorbed
+// fallbacks (`{ suggestions: [] }` / `null` / `null`) pass through unchanged.
+export { getStorageHygiene, getStorageUsage, acceptStorageSuggestions, dismissStorageSuggestion };
+
+// -- File likes (T0.5; §2.6 file-likes group) — the fileLikesRepository       //
+// absorbed-read fallback ({ liked: [] }), payload ∥ null mutation and         //
+// notify-after-real-success fan-out pass through unchanged.                   //
+
+export const loadFileLikes = () => getLikedNodeIds();
+
+// P-5 Likes-surface full-fetch read (`fileLikesRepository.getLikedItems`).
+// Decision B (2026-09-29): no cursor/limit — the endpoint ships the whole set.
+export const loadLikedItems = () => getLikedItems();
+
+export const setFileLike = (nodeId, liked, options) =>
+  repositorySetFileLike(nodeId, liked, options);
+
+export const subscribeToFileLikes = (callback) => subscribeFileLikesChange(callback);
+
+/**
+ * Narrow metadata helper: `POST /api/files/metadata` for raw nodeIds (no
+ * listing entries — search result rows carry no `type` until enrichment;
+ * routes/search.md §2.4.2). Chunks the ids at the endpoint's 100-row cap,
+ * fires each chunk, merges by nodeId and tolerates missing/failed chunks
+ * (rows the response omits simply stay unenriched). Absorbed to `[]` when
+ * every chunk fails.
+ */
+const METADATA_CHUNK_LIMIT = 100;
+
+export const loadNodesMetadata = async (nodeIds = []) => {
+  const ids = Array.isArray(nodeIds) ? nodeIds.filter((nodeId) => nodeId != null) : [];
+  if (ids.length === 0) {
+    return [];
+  }
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += METADATA_CHUNK_LIMIT) {
+    chunks.push(ids.slice(i, i + METADATA_CHUNK_LIMIT));
+  }
+  const settled = await Promise.all(
+    chunks.map(async (chunk) => {
+      try {
+        return await getFilesMetadata(chunk);
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[explorerGateway] Failed to load node metadata chunk:', error);
+        return [];
+      }
+    })
+  );
+  const merged = [];
+  const seen = new Set();
+  for (const rows of settled) {
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (row?.nodeId != null && !seen.has(row.nodeId)) {
+        seen.add(row.nodeId);
+        merged.push(row);
+      }
+    }
+  }
+  return merged;
+};
+
+/**
+ * Ancestor chain (root → node, self last) for "Reveal original location".
+ * Pass-through of `fileService.getAncestors` — rejects map to caller-visible
+ * errors (gateway §2.3: structured, no UI here).
+ */
+export const loadNodeAncestors = (nodeId) => getAncestors(nodeId);
+
 const explorerGateway = {
   addRecentFile: addExplorerRecentFile,
   getEntriesMetadata,
@@ -217,6 +367,50 @@ const explorerGateway = {
   checkConflicts: checkConflictsForExplorer,
   subscribeToRecentFiles,
   uploadToPath,
+  // Listing/render helpers (§2.6 narrow helpers)
+  loadNodesMetadata,
+  loadNodeAncestors,
+  // Collections platform (§2.6 re-export group)
+  loadCollections,
+  createCollection,
+  updateCollection,
+  archiveCollection,
+  restoreCollection,
+  deleteCollection,
+  loadCollectionItems,
+  addCollectionItems,
+  removeCollectionItems,
+  publishItems,
+  getMemberships,
+  previewCollection,
+  previewExistingCollection,
+  getMergeSuggestions,
+  mergeCollections,
+  notifyEvolutionHint,
+  dismissMerge,
+  rejectMerge,
+  getGrants,
+  grantCollection,
+  revokeGrant,
+  revokeOwnGrant,
+  saveCollectionProperties,
+  subscribeToCollections,
+  // Search results mode (§2.6 search group)
+  runSearch,
+  recordSearchClick,
+  undoAction,
+  // Actions feed (T0.10 — §2.6 journal group)
+  getActions,
+  // Personal storage (storage client-domain split — §2.6 storage group)
+  getStorageHygiene,
+  getStorageUsage,
+  acceptStorageSuggestions,
+  dismissStorageSuggestion,
+  // File likes (§2.6 file-likes group)
+  loadFileLikes,
+  loadLikedItems,
+  setFileLike,
+  subscribeToFileLikes,
 };
 
 export default explorerGateway;

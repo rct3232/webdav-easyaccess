@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                      |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | nodeId-only permission policy helpers. All exports operate on `nodeId` (BIGINT) — no path-based functions remain after Wave 4 removal of Tier 2/3 compat layers. |
+| Item | Description                                                                                                      |
+| ---- | ---------------------------------------------------------------------------------------------------------------- |
+| Role | nodeId-only permission policy helpers. All exports operate on `nodeId` (BIGINT); no path-based functions remain. |
 
 ---
 
@@ -12,22 +12,22 @@
 
 ### 2.1 File Paths
 
-| Module            | Source                                                   | Purpose                                                                                 |
-| ----------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| permissionPolicy  | `server/domains/permissions/policy/permissionPolicy.js`  | Main policy: nodeId-based read/write/grant/revoke/view checks with admin + owner bypass |
-| ownerNodeResolver | `server/domains/permissions/policy/ownerNodeResolver.js` | Owner node detection: isOwnerNode(userId, nodeId) via closure table                     |
-| permissionRank    | `server/domains/permissions/policy/permissionRank.js`    | Permission level comparison: getPermissionRank, meetsRank                               |
+| Module            | Source                                                   | Purpose                                                                                                                                |
+| ----------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| permissionPolicy  | `server/domains/permissions/policy/permissionPolicy.js`  | Main policy: nodeId-based read/write/grant/revoke/view checks with admin + owner bypass                                                |
+| ownerNodeResolver | `server/domains/permissions/policy/ownerNodeResolver.js` | Owner node detection: isOwnerNode(userId, nodeId) via closure table; admin ⇒ owner of every node (the `isAdminUser` policy convention) |
+| permissionRank    | `server/domains/permissions/policy/permissionRank.js`    | Permission level comparison: getPermissionRank, meetsRank                                                                              |
 
 - **Test file:** `server/utils/__tests__/permissionPolicy.test.js` (test has not been relocated yet)
 
-> **Removed modules** — the following sub-modules were deleted during Wave 4 as their Tier 2/Tier 3 functions had no remaining callers:
+> **Removed modules** — the following sub-modules do not exist:
 >
-> - `ownerPathResolver.js` — path-based owner resolution; replaced by `ownerNodeResolver.js` (nodeId-based)
+> - `ownerPathResolver.js` — path-based owner resolution; owner resolution lives in `ownerNodeResolver.js` (nodeId-based)
 > - `inheritancePolicy.js` — path normalization for permission lookup; inheritance is now handled via closure table queries in the store
 >
-> **Removed functions (2026-09 dead-code cleanup)** — `canReadFolderNode`, `canWriteFolderNode`, `canReadFileNode`, `canWriteFileNode` had no production callers; use `aclService.checkFolderPermission` / `aclService.checkFilePermission` or `permissionStore.checkPermission` directly.
+> **Removed functions** — `canReadFolderNode`, `canWriteFolderNode`, `canReadFileNode`, `canWriteFileNode` had no production callers; use `aclService.checkFolderPermission` / `aclService.checkFilePermission` or `permissionStore.checkPermission` directly.
 
-### 2.2 Post-Wave 4 State
+### 2.2 Current State
 
 All Tier 2 (path-based compat layer) and Tier 3 (sync checker builder) functions have been removed. The module exports only nodeId-based helpers:
 
@@ -56,7 +56,7 @@ All Tier 2 (path-based compat layer) and Tier 3 (sync checker builder) functions
 - `@webdav-easyaccess/shared/constants` (PERMISSIONS)
 - User model
 - permissionStore — direct store import for checkPermission calls
-- ownerNodeResolver.isOwnerNode — nodeId-based ownership check
+- ownerNodeResolver.isOwnerNode — nodeId-based ownership check (admin ⇒ owner of every node)
 
 ### 2.6 Mock Targets
 
@@ -70,9 +70,9 @@ All Tier 2 (path-based compat layer) and Tier 3 (sync checker builder) functions
 - [ ] canRevokePermissionNode allows self-revoke (userId === targetUserId) without admin check
 - [ ] getUserOrNull returns null for non-existent userId instead of throwing
 
-### 2.8 Removed Functions (Wave 4)
+### 2.8 Removed Functions
 
-The following functions were removed during Wave 4 and are **not available**:
+The following functions are **not available**:
 
 **Tier 2 — path-based compat layer:**
 | Function | Replacement |

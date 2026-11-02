@@ -37,8 +37,8 @@
 ### 2.4 Request/Response Spec
 
 - **POST /create:** Body: `{ parentNodeId, name }`. 200 or 201. Errors: 400, 404.
-- 동일 경로에 폴더 이미 존재: 409 (duplicate)
-- 부모 경로 없음: 404
+- folder already exists at the same path: 409 (duplicate)
+- parent path missing: 404
 - **GET /stats:** Query `nodeId` required. 200: `{ nodeId, name, totalFiles, totalFolders, totalSize }`. `totalSize` sums the filecache-backed `size` exposed by `fileNodeService.getNode` (live descendants only — trashed rows read as null). 403 when non-admin and canReadFolder fails. Uses requireUser.
 
 ### 2.4.1 POST /create — WebDAV Mode (MKCOL-on-create)
@@ -57,7 +57,7 @@ After the DB node is committed the route calls
 3. On MKCOL failure marks the node `sync_status='orphaned_node'` (fail-safe, same pattern as
    `uploadToWebdav` in `fileService`) and **re-throws** the error. The route does not catch it,
    so the Express error handler maps it to the appropriate HTTP error response — the folder is
-   reported as failed even though its DB row exists (recoverable via Phase 6 GC / repair-sync).
+   reported as failed even though its DB row exists (recoverable via GC / repair-sync).
 
 S3 mode is a strict no-op: `createDirectoryWebdav` returns `null` without any storage call,
 so S3 folder creation remains DB-only and unchanged.
@@ -69,8 +69,8 @@ so S3 folder creation remains DB-only and unchanged.
 ### 2.6 Integration Test Scenarios
 
 - [ ] Create folder requires auth and write permission
-- [ ] 동일 폴더명 create → 409
-- [ ] 부모 경로 없음 → 404
+- [ ] create with the same folder name → 409
+- [ ] parent path missing → 404
 - [ ] GET /stats: requires auth; nodeId required; returns `{ nodeId, name, totalFiles, totalFolders, totalSize }` with totalSize summing real filecache sizes (not 0); 403 for non-admin when no read permission
 - [ ] WebDAV mode: successful create triggers `webdavMock.createDirectory` at the resolved node path (`/username/folder`)
 - [ ] WebDAV mode: MKCOL failure → node marked `orphaned_node`, non-2xx error returned to caller

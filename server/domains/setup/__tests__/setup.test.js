@@ -6,7 +6,7 @@
  * mount it in server/index.js). envFileWriter is mocked so the test can assert
  * exactly which (T0) keys reach .env; the metadata store is a real isolated
  * sqlite DB (createTestDatabase). SQLite-only: the suite self-skips under
- * test:ci:pg (RUN_UNDER_PG), where the storage backend is postgresql.
+ * test:pg (RUN_UNDER_PG), where the storage backend is postgresql.
  * @see docs/spec/server/routes/setup.md
  */
 const mockWriteEnv = jest.fn();
@@ -1320,5 +1320,204 @@ describeIfSqlite('setupCore (shared apply core)', () => {
 
     const written = Object.fromEntries(settingsSetSpy.mock.calls);
     expect(written.WEBDAV_PASSWORD).toBe('dav-pass');
+  });
+});
+
+describeIfSqlite('AI step contracts (T1.1c — docs/spec/server/routes/setup.md §2.4a)', () => {
+  const { unregisterProbeTarget } = require('../../../infrastructure/backendProbe');
+  const { getBackendHealth } = require('../../../infrastructure/backendHealth');
+
+  // Minimal in-domain fake of an OpenAI-compatible chat endpoint: the probe
+  // POSTs /chat/completions and must receive a JSON-echo answer.
+  let fakeLlmServer;
+  let fakeLlmBase;
+
+  beforeAll((done) => {
+    const http = require('http');
+    fakeLlmServer = http.createServer((req, res) => {
+      let raw = '';
+      req.on('data', (chunk) => {
+        raw += chunk;
+      });
+      req.on('end', () => {
+        const body = JSON.parse(raw || '{}');
+        const sentence = body.messages?.find((m) => m.role === 'user')?.content || '';
+        const answer = { tags: ['dog', 'rain', 'window'] };
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            choices: [{ message: { role: 'assistant', content: JSON.stringify(answer) } }],
+          })
+        );
+        void sentence;
+      });
+    });
+    fakeLlmServer.listen(0, '127.0.0.1', () => {
+      fakeLlmBase = `http://127.0.0.1:${fakeLlmServer.address().port}/v1`;
+      done();
+    });
+  });
+
+  afterAll((done) => {
+    fakeLlmServer?.close(() => done());
+  });
+
+  afterEach(() => {
+    unregisterProbeTarget('llm');
+    getBackendHealth().reset();
+  });
+
+  describe('GET /api/setup/llm-presets', () => {
+    it('serves the wizard-surface manifest rows (chat/vision/asr only, no embed rows)', async () => {
+      const res = await request(app).get('/api/setup/llm-presets');
+
+      expect(res.status).toBe(200);
+      const presets = res.body.presets;
+      expect(Array.isArray(presets)).toBe(true);
+      expect(presets.length).toBeGreaterThan(0);
+      for (const row of presets) {
+        expect(Object.keys(row).sort()).toEqual(['expected', 'family', 'id', 'roles'].sort());
+        expect(row.roles.length).toBeGreaterThan(0);
+        expect(row.roles.every((r) => ['chat', 'vision', 'asr'].includes(r))).toBe(true);
+        // embed is NOT a wizard surface: no embed-only row may appear
+        expect(row.roles).not.toContain('embed');
+      }
+      // the shipped chat row is present with its declared expectations
+      const gemma = presets.find((row) => row.id === 'gemma-4-12b-it');
+      expect(gemma).toMatchObject({
+        family: 'llama.cpp',
+        expected: { chat: true, vision_chat: true, asr: true },
+      });
+    });
+  });
+
+  describe('POST /api/setup/test target llm', () => {
+    it('probes the submitted chat values in-domain and returns 200 ok:true', async () => {
+      const res = await request(app).post('/api/setup/test').send({
+        target: 'llm',
+        role: 'chat',
+        baseUrl: fakeLlmBase,
+        apiKey: 'sk-test',
+        model: 'gemma-4-12b-it',
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ ok: true, role: 'chat', reason: null });
+      // the probe outcome lands in the ai.<role> tracker row (per-role isolation)
+      expect(getBackendHealth().getHealth()['ai.chat'].status).toBe('ok');
+    });
+
+    it('returns the ok:false envelope with reason on a probe failure', async () => {
+      const res = await request(app).post('/api/setup/test').send({
+        target: 'llm',
+        role: 'chat',
+        baseUrl: 'http://127.0.0.1:1/v1', // nothing listens — transport failure
+        apiKey: 'sk-test',
+        model: 'gemma-4-12b-it',
+      });
+
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(res.body).toMatchObject({ ok: false });
+      expect(typeof res.body.reason).toBe('string');
+      expect(res.body.reason.length).toBeGreaterThan(0);
+      expect(getBackendHealth().getHealth()['ai.chat'].status).toBe('fail');
+    });
+
+    it('unknown role → 400 (embed is not a wizard/test surface)', async () => {
+      for (const role of ['embed', 'nope']) {
+        const res = await request(app)
+          .post('/api/setup/test')
+          .send({ target: 'llm', role, baseUrl: fakeLlmBase, apiKey: 'k', model: 'm' });
+        expect(res.status).toBe(400);
+        expect(res.body.ok).toBe(false);
+      }
+      expect(getBackendHealth().getHealth()['ai.chat'].status).toBe('unknown');
+    });
+  });
+
+  describe('POST /api/setup/apply llm block', () => {
+    let settingsSetSpy;
+    beforeEach(() => {
+      settingsSetSpy = jest
+        .spyOn(Settings, 'set')
+        .mockImplementation(async () => ({ success: true }));
+    });
+    afterEach(() => {
+      settingsSetSpy.mockRestore();
+    });
+
+    it('writes only LLM_* DB settings rows (never .env), masked apiKey keeps the stored value', async () => {
+      const res = await request(app)
+        .post('/api/setup/apply')
+        .send({
+          file: {
+            backend: 's3',
+            bucket: 'b',
+            region: 'us-east-1',
+            accessKeyId: 'ak',
+            secretAccessKey: 'sk',
+          },
+          admin: { password: 'admin123' },
+          llm: {
+            chat: { baseUrl: fakeLlmBase, apiKey: '****', model: 'gemma-4-12b-it' },
+            vision: { baseUrl: 'http://v.local', apiKey: 'v-key', model: 'v-model' },
+          },
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ restart_required: true });
+
+      const written = Object.fromEntries(settingsSetSpy.mock.calls.map(([k, v]) => [k, v]));
+      expect(written.LLM_CHAT_BASE_URL).toBe(fakeLlmBase);
+      expect(written).not.toHaveProperty('LLM_CHAT_API_KEY'); // masked → keep-existing
+      expect(written.LLM_CHAT_MODEL).toBe('gemma-4-12b-it');
+      expect(written.LLM_VISION_BASE_URL).toBe('http://v.local');
+      expect(written.LLM_VISION_API_KEY).toBe('v-key');
+      expect(written.LLM_VISION_MODEL).toBe('v-model');
+      // never in .env
+      const envCalls = mockWriteEnv.mock.calls;
+      const envKeys = envCalls.flatMap(([, entries]) => Object.keys(entries));
+      expect(envKeys.filter((k) => k.startsWith('LLM_'))).toEqual([]);
+      // no embed rows from the wizard surface
+      expect(Object.keys(written).filter((k) => k.startsWith('LLM_EMBED'))).toEqual([]);
+    });
+
+    it('an omitted llm block is a no-op (skip = None-state product)', async () => {
+      const res = await request(app)
+        .post('/api/setup/apply')
+        .send({
+          file: {
+            backend: 's3',
+            bucket: 'b',
+            region: 'us-east-1',
+            accessKeyId: 'ak',
+            secretAccessKey: 'sk',
+          },
+          admin: { password: 'admin123' },
+        });
+
+      expect(res.status).toBe(200);
+      const written = Object.fromEntries(settingsSetSpy.mock.calls.map(([k]) => [k, '']));
+      expect(Object.keys(written).filter((k) => k.startsWith('LLM_'))).toEqual([]);
+    });
+
+    it('unknown role or unknown key in the llm block → 400 invalid payload', async () => {
+      const res = await request(app)
+        .post('/api/setup/apply')
+        .send({
+          file: {
+            backend: 's3',
+            bucket: 'b',
+            region: 'us-east-1',
+            accessKeyId: 'ak',
+            secretAccessKey: 'sk',
+          },
+          admin: { password: 'admin123' },
+          llm: { embed: { baseUrl: 'x', apiKey: 'y', model: 'z' } },
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.fields).toMatchObject({ 'llm.embed': 'unknown' });
+    });
   });
 });

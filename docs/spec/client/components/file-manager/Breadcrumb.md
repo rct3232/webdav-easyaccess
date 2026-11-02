@@ -19,9 +19,9 @@
   user inside their own home. The breadcrumb MUST render that location only once:
   - **Non-admin inside own home tree**: the ancestor entry whose `nodeId === user.rootNodeId` is
     **not rendered as a chip** (home chip replaces it). Example: inside `docs` of home →
-    `홈 > docs` (never `홈 > {username} > docs`).
+    `Home > docs` (never `Home > {username} > docs`).
   - **Admin** (`rootNodeId` is `null` / no home node): no trimming applies; ancestor chips show
-    the real hierarchy under `/` (e.g. `홈 > alice > docs` when browsing another account's tree).
+    the real hierarchy under `/` (e.g. `Home > alice > docs` when browsing another account's tree).
   - A non-admin browsing **another account's** folder (shared scope) keeps that account's node
     name in the chain (only the acting user's own `rootNodeId` is ever trimmed).
 - Trimming is keyed on **nodeId equality with the acting user's `rootNodeId` and `!is_admin`** —
@@ -38,16 +38,17 @@
 
 ### 2.2 Props
 
-| Name                 | Type     | Required | Default | Description                                                                                                                               |
-| -------------------- | -------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| ancestors            | array    | Y        | -       | Current folder's ancestor chain `[{ nodeId, name }]`, fetched via `fileService.getAncestors` (`GET /files/ancestors`) in `useFileManager` |
-| onNodeClick          | function | Y        | -       | Ancestor chip click (by nodeId)                                                                                                           |
-| user                 | object   | N        | -       | User                                                                                                                                      |
-| onToggleFolderTree   | function | N        | -       | Toggle folder tree                                                                                                                        |
-| isFolderTreeOpen     | boolean  | N        | -       | Tree open                                                                                                                                 |
-| shareRootPath        | string   | N        | -       | Share root (share mode)                                                                                                                   |
-| shareRootName        | string   | N        | -       | Share root name                                                                                                                           |
-| showFolderTreeToggle | boolean  | N        | -       | Show toggle                                                                                                                               |
+| Name                 | Type     | Required | Default | Description                                                                                                                                                                                                                                                                       |
+| -------------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ancestors            | array    | Y        | -       | Current folder's ancestor chain `[{ nodeId, name }]`, fetched via `fileService.getAncestors` (`GET /files/ancestors`) in `useFileManager`                                                                                                                                         |
+| onNodeClick          | function | Y        | -       | Ancestor chip click (by nodeId)                                                                                                                                                                                                                                                   |
+| user                 | object   | N        | -       | User                                                                                                                                                                                                                                                                              |
+| onToggleFolderTree   | function | N        | -       | Toggle folder tree                                                                                                                                                                                                                                                                |
+| isFolderTreeOpen     | boolean  | N        | -       | Tree open                                                                                                                                                                                                                                                                         |
+| shareRootPath        | string   | N        | -       | Share root (share mode)                                                                                                                                                                                                                                                           |
+| shareRootName        | string   | N        | -       | Share root name                                                                                                                                                                                                                                                                   |
+| showFolderTreeToggle | boolean  | N        | -       | Show toggle                                                                                                                                                                                                                                                                       |
+| collectionName       | string?  | N        | null    | The collection NAME for the member-route trail — resolved SHELL-side from the existing `useCollections` fetched list matched by `collectionId` (`FileManagerView.md` §3). `null` while the list is still loading ⇒ the transient `…` segment renders (the trail is NEVER hidden). |
 
 ### 2.3 Callback Signatures
 
@@ -65,11 +66,16 @@
 ### 2.5 i18n Keys
 
 - nav.home, nav.recentShort, nav.shared, nav.sharedFolder, nav.folderTreeOpen, nav.folderTreeClose
+- nav.collections (Collections chip — SAME key the tree header uses: label parity),
+  nav.collectionsLiked (Likes segment — SAME key as the tree LikesNode; EN "Liked" / KO "좋아요")
+- nav.collectionsArchive (Archive segment — SAME key as the
+  tree ArchiveNode; EN "Archive" / KO "보관함"; STATIC label — the archive surface resolves no
+  name from data)
 
 ### 2.6 Home chip (leading chip)
 
-- Label: `nav.home` (홈 / Home) for **all roles**. The admin chip is no longer a distinct
-  "All/전체" label — the admin home scope (filesystem root `/`) is still represented by the home
+- Label: `nav.home` (Home / Home) for **all roles**. The admin chip is no longer a distinct
+  "All" label — the admin home scope (filesystem root `/`) is still represented by the home
   chip and must navigate to `/` (`homeClickTarget` = `null` for admins, `user.rootNodeId` for
   non-admins).
 - Icon: home icon.
@@ -82,6 +88,21 @@
 - **shared**/**recent**: no segments
 - Home/shared/recent: special icons
 - showFolderTreeToggle: up/down icon
+- **Collections surfaces** — home-chip replacement precedent of trash/recent:
+  - member route (`currentPath` starts with `/__collections__/collection/`): the home chip becomes
+    `Collections` (`nav.collections`, Collections icon, click → `/__collections__`) and ONE
+    segment chip renders: the collection NAME (`collectionName`), or the transient `…` while the
+    list has not resolved it (never hide the segment). The name chip is the
+    current location (click → the member route itself).
+  - liked route (`currentPath === '/__collections__/liked'`): home chip `Collections` + segment
+    `Liked` (`nav.collectionsLiked` — the SAME key as the tree's LikesNode: label parity, never a
+    third wording).
+  - archive route (`currentPath === '/__collections__/__archive__'`):
+    home chip `Collections` (click → `/__collections__`, the member/liked chain precedent) +
+    segment `Archive` (`nav.collectionsArchive` — the SAME key as the tree's ArchiveNode: label
+    parity). STATIC label: the archive surface has no per-row name to resolve from data. The
+    segment chip points at the current archive route (mirrors the liked chain).
+  - The ancestor chain never renders on these virtual routes (overlay fetches no ancestors).
 
 ### 2.8 Verification Scenarios
 
@@ -92,8 +113,12 @@
       as chips; nothing is trimmed
 - [ ] Share mode path parsing
 - [ ] Toggle folder tree
+- [ ] Member route (`/__collections__/collection/:id`): chips are `Collections › <name>` — the leading chip navigates to `/__collections__`, the name chip to the current route; `collectionName=null` renders the transient `…` segment (never hides the trail).
+- [ ] Liked route (`/__collections__/liked`): chips are `Collections › Liked`; both labels come from the SAME i18n keys as the tree rows (tree parity).
+- [ ] Archive route (`/__collections__/__archive__`): chips are `Collections › Archive` — the leading chip navigates to `/__collections__`, the Archive chip to the archive route itself; label = `nav.collectionsArchive` (tree parity, static — no name resolution); the generic Home chip NEVER renders on this route.
 
 ### 2.9 Edge Cases
 
 - User own folder – no shared segments
 - Horizontal scroll for long chains
+- Operator rule (admin is a pure operator): the collections/liked/archive crumb variants are unreachable for admin (the `useFileManager` urlView guard resolves admin deep links to home) — hidden by guard; NO redundant admin checks inside the component (avoid-scatter rule).

@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                             |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Route path | `/mypage`                                                                                                                                                                                                                                                               |
-| Role       | User profile and settings: Chrome-style layout with category sidebar (Account, Sharing, User Management, System Settings, Preferences). Account info, edit email/password, share links, permission requests (inbox/outbox), user management, system settings, language. |
+| Item       | Description                                                                                                                                                                                                                                                                            |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Route path | `/mypage`                                                                                                                                                                                                                                                                              |
+| Role       | User profile and settings: Chrome-style layout with category sidebar (Account, Sharing, User Management, System Settings, AI operations, Preferences). Account info, edit email/password, share links, permission requests (inbox/outbox), user management, system settings, language. |
 
 ---
 
@@ -13,7 +13,7 @@
 
 ### 2.1 PC (Desktop) Layout
 
-- **Left:** Category sidebar (always visible; no divider between sidebar and content). Categories: Account, Sharing, Preferences; User Management, System Settings (admin only).
+- **Left:** Category sidebar (always visible; no divider between sidebar and content). Categories: Account, Sharing, Preferences; User Management, System Settings, AI operations (admin only).
 - **Right:** Content area (flex: 1, scrollable) for selected category.
 - **AppBar:** Logo (left, same as FileManager `/logo_white.png`), Close (X, right) → navigates to `/`. No menu button.
 
@@ -52,7 +52,7 @@
 
 - **Inline in MyPage:** AppBar (do not extract)
 - **Layout:** MyPageSidebar, MyPageContentArea, MyPageContentPanel
-- **Content:** AccountContent, SharingContent, UserManagementContent, SystemSettingsContent, PreferencesContent
+- **Content:** AccountContent, SharingContent, CollectionsOverview, StorageDashboard, UserManagementContent, SystemSettingsContent, AiAdminContent, PreferencesContent
 - **Dialogs:** ShareDialog (mode share, mode review), AccountEditDialog
 
 ### 3.4 Controller-provided State
@@ -94,11 +94,11 @@ Boundary notes:
 ### 3.6 Mobile drawer contract
 
 - Mobile-only:
-  - The Menu button opens the category drawer.
-  - Closing the drawer without choosing a category leaves the current category/content unchanged.
-  - Selecting a category closes the drawer and switches the visible content to that category.
+- The Menu button opens the category drawer.
+- Closing the drawer without choosing a category leaves the current category/content unchanged.
+- Selecting a category closes the drawer and switches the visible content to that category.
 - Desktop:
-  - The category list stays persistently visible and does not use drawer state.
+- The category list stays persistently visible and does not use drawer state.
 
 ### 3.7 Route Protection
 
@@ -139,3 +139,24 @@ Boundary notes:
 - Share links tab (inside Sharing) visible only for non-admin
 - Mobile: Menu button; categories inside SwipeableDrawer
 - Desktop: No drawer; fixed left sidebar
+
+---
+
+## 4. AI-platform registry additions (AI platform)
+
+Addendum to the §3.5 category table (same format; registry contract in `useMyPageController.md` §3 / `StorageDashboard.md` §2.5; content resolved through the registry/helper layer per the §3.5 boundary note — no new inline dispatch in this page):
+
+| Category          | Type   | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Collections       | Direct | `CollectionsOverview` — my-collections status (active/archived counts, grants received/granted with revoke) and the collection system-changes journal feed. Non-admins only (visibility `nonAdminOnly` — operator rule).                                                                                                                                                                                                                                        |
+| Storage (Storage) | Direct | `StorageDashboard` — storage-usage summary/sparkline, hygiene cards, cleanup suggestions checklist. Non-admins only (visibility `nonAdminOnly` — operator rule).                                                                                                                                                                                                                                                                                                |
+| Admin AI Ops      | Direct | Admin AI governance panel (`docs/spec/client/components/mypage/content/AiAdminContent.md`). Admin only (visibility `adminOnly`); the sidebar row is icon+label only — the sidebar has no chip renderer and `useMyPageController` performs no network reads. The five-state `ai.<role>` rows remain in SystemSettingsContent; the AI panel shows the fuller operations readiness inside its own content. Regular users never see the row (absent, not disabled). |
+
+- All three are single-panel categories (no list→detail pattern); `selectedContentItem` stays `null` for them (§3.4 semantics unchanged).
+- Deep links: FileManager/dashboard cross-links enter via `location.state.category` (`collections` / `storage` / `admin-ai` ids), same normalization as today (§3.4).
+
+Verification (appends §3.9):
+
+- [ ] (target) `collections` category renders `CollectionsOverview` for non-admin users only — hidden for admins (sidebar `nonAdminOnly`) and admin deep-links fall back to the default section (operator rule).
+- [ ] (target) `storage` category renders `StorageDashboard` for non-admin users only — hidden for admins (sidebar `nonAdminOnly`) and admin deep-links fall back to the default section (operator rule).
+- [ ] (target) AI-ops row renders only for admins as an icon+label sidebar row; absent-not-disabled for non-admins. Live AI status is rendered inside the content panel, never by the sidebar/controller.

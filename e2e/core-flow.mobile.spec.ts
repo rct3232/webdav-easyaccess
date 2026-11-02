@@ -15,6 +15,13 @@ import {
 } from './helpers/mobile-interactions';
 import { gotoFilesPath } from './helpers/resolvePath';
 
+/**
+ * Scope: mobile explorer interaction flow — long-press selection, action sheet,
+ * and folder-tree toggling.
+ *
+ * Owning project: `s3-mobile` (shared stack: API `:5002`, client `:3000`).
+ */
+
 async function createTestFolder(page: any, folderName: string) {
   await createFolderViaUi(page, folderName);
 }
@@ -29,121 +36,116 @@ async function createTestFile(page: any, fileName: string) {
 
 test.use({ storageState: ADMIN_STATE });
 
-test.describe('core flow (mobile)', () => {
-  test.afterEach(async ({ request }) => {
-    await flushPrivateWorkspaceCleanups(request);
-  });
+test.afterEach(async ({ request }) => {
+  await flushPrivateWorkspaceCleanups(request);
+});
 
-  test('E2E-MOBILE-001: Long-press enters selection mode', async ({ page, request }, testInfo) => {
-    // Log browser console messages to the terminal
-    page.on('console', (msg) => console.log(`[BROWSER] ${msg.text()}`));
+test('E2E-MOBILE-001: Long-press enters selection mode', async ({ page, request }, testInfo) => {
+  // Log browser console messages to the terminal
+  page.on('console', (msg) => console.log(`[BROWSER] ${msg.text()}`));
 
-    // 1. Open the per-test workspace (logs in as admin and enters its base folder)
-    const base = await openPrivateWorkspace(page, request, testInfo);
+  // 1. Open the per-test workspace (logs in as admin and enters its base folder)
+  const base = await openPrivateWorkspace(page, request, testInfo);
 
-    // 2. Setup: Create a test file inside the base folder
-    const fileName = buildName(testInfo, 'mobile-long-press') + '.txt';
-    await createTestFile(page, fileName);
+  // 2. Setup: Create a test file inside the base folder
+  const fileName = buildName(testInfo, 'mobile-long-press') + '.txt';
+  await createTestFile(page, fileName);
 
-    // 3. Reload the base folder listing
-    await gotoFilesPath(page, request, `/${base}`);
-    await page.waitForLoadState('networkidle');
+  // 3. Reload the base folder listing
+  await gotoFilesPath(page, request, `/${base}`);
+  await page.waitForLoadState('networkidle');
 
-    // Wait for refresh indicator to be fully invisible (opacity 0) to ensure layout is stable
-    const refreshIndicator = page.getByTestId('refresh-indicator');
-    try {
-      await expect(refreshIndicator).toHaveCSS('opacity', '0', { timeout: 5000 });
-    } catch (e) {
-      // Indicator might have already been invisible
-    }
+  // Wait for refresh indicator to be fully invisible (opacity 0) to ensure layout is stable
+  const refreshIndicator = page.getByTestId('refresh-indicator');
+  try {
+    await expect(refreshIndicator).toHaveCSS('opacity', '0', { timeout: 5000 });
+  } catch (e) {
+    // Indicator might have already been invisible
+  }
 
-    // Give a larger buffer for layout stabilization (CSS transitions take up to 0.3s)
-    await page.waitForTimeout(1000);
+  // Give a larger buffer for layout stabilization (CSS transitions take up to 0.3s)
+  await page.waitForTimeout(1000);
 
-    await expect(page.getByTestId('file-actions-fab')).toBeVisible();
+  await expect(page.getByTestId('file-actions-fab')).toBeVisible();
 
-    // 4. Trigger Long-Press on the file
-    await longPressItem(page, `/${base}/${fileName}`);
+  // 4. Trigger Long-Press on the file
+  await longPressItem(page, `/${base}/${fileName}`);
 
-    // 5. Verify Selection Mode UI (Active): Bulk action buttons should be visible
-    await expect(page.getByTestId('bulk-action-move')).toBeVisible();
-    await expect(page.getByTestId('bulk-action-copy')).toBeVisible();
-    await expect(page.getByTestId('bulk-action-download')).toBeVisible();
-    await expect(page.getByTestId('bulk-action-delete')).toBeVisible();
-    await expect(page.getByTestId('bulk-action-select-all')).toBeVisible();
-    await expect(page.getByTestId('bulk-action-deselect-all')).toBeVisible();
+  // 5. Verify Selection Mode UI (Active): Bulk action buttons should be visible
+  await expect(page.getByTestId('bulk-action-move')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-copy')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-download')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-delete')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-select-all')).toBeVisible();
+  await expect(page.getByTestId('bulk-action-deselect-all')).toBeVisible();
 
-    // 6. Verify Selection Mode UI (Inactive): Normal control buttons should be hidden
-    await expect(page.getByTestId('file-manager-sort')).not.toBeVisible();
-    // View mode toggle buttons are usually identified by their role and name,
-    // and we can check if they are not visible.
-    await expect(page.getByTestId('view-mode-list')).not.toBeVisible();
-    await expect(page.getByTestId('view-mode-grid')).not.toBeVisible();
-    await expect(page.getByTestId('view-mode-detail')).not.toBeVisible();
+  // 6. Verify Selection Mode UI (Inactive): Normal control buttons should be hidden
+  await expect(page.getByTestId('file-manager-sort')).not.toBeVisible();
+  // View mode toggle buttons are usually identified by their role and name,
+  // and we can check if they are not visible.
+  await expect(page.getByTestId('view-mode-list')).not.toBeVisible();
+  await expect(page.getByTestId('view-mode-grid')).not.toBeVisible();
+  await expect(page.getByTestId('view-mode-detail')).not.toBeVisible();
 
-    // 7. Verify Item Selection: The long-pressed item should have the visual selection indicator
-    await expect(page.locator(`[data-file-path="/${base}/${fileName}"]`)).toHaveAttribute(
-      'aria-selected',
-      'true'
-    );
-  });
+  // 7. Verify Item Selection: The long-pressed item should have the visual selection indicator
+  await expect(page.locator(`[data-file-path="/${base}/${fileName}"]`)).toHaveAttribute(
+    'aria-selected',
+    'true'
+  );
+});
 
-  test('E2E-MOBILE-002: Action sheet opens from more button', async ({
-    page,
-    request,
-  }, testInfo) => {
-    // 1. Open the per-test workspace (logs in as admin and enters its base folder)
-    const base = await openPrivateWorkspace(page, request, testInfo);
+test('E2E-MOBILE-002: Action sheet opens from more button', async ({ page, request }, testInfo) => {
+  // 1. Open the per-test workspace (logs in as admin and enters its base folder)
+  const base = await openPrivateWorkspace(page, request, testInfo);
 
-    // 2. Setup: Create a test file inside the base folder
-    const fileName = buildName(testInfo, 'mobile-action-sheet') + '.txt';
-    await createTestFile(page, fileName);
-    const filePath = `/${base}/${fileName}`;
+  // 2. Setup: Create a test file inside the base folder
+  const fileName = buildName(testInfo, 'mobile-action-sheet') + '.txt';
+  await createTestFile(page, fileName);
+  const filePath = `/${base}/${fileName}`;
 
-    // 3. Reload the base folder listing
-    await gotoFilesPath(page, request, `/${base}`);
+  // 3. Reload the base folder listing
+  await gotoFilesPath(page, request, `/${base}`);
 
-    // 4. Trigger Action Sheet (openActionSheet already guarantees it's open)
-    await openActionSheet(page, filePath);
+  // 4. Trigger Action Sheet (openActionSheet already guarantees it's open)
+  await openActionSheet(page, filePath);
 
-    // 5. Verify key actions are present — use direct selectors instead of [role="dialog"]
-    // to avoid race conditions with SwipeableDrawer's CSS transition
-    await expect(page.locator('[data-testid="file-action-rename"]')).toBeVisible();
-    await expect(page.locator('[data-testid="file-action-delete"]')).toBeVisible();
-    await expect(page.locator('[data-testid="file-action-share"]')).toBeVisible();
+  // 5. Verify key actions are present — use direct selectors instead of [role="dialog"]
+  // to avoid race conditions with SwipeableDrawer's CSS transition
+  await expect(page.locator('[data-testid="file-action-rename"]')).toBeVisible();
+  await expect(page.locator('[data-testid="file-action-delete"]')).toBeVisible();
+  await expect(page.locator('[data-testid="file-action-share"]')).toBeVisible();
 
-    // 6. Cleanup
-    await closeActionSheet(page);
-  });
+  // 6. Cleanup
+  await closeActionSheet(page);
+});
 
-  test('E2E-MOBILE-003: Breadcrumb toggle opens and closes folder tree section', async ({
-    page,
-    request,
-  }, testInfo) => {
-    // 1. Open the per-test workspace (logs in as admin and enters its base folder)
-    const base = await openPrivateWorkspace(page, request, testInfo);
+test('E2E-MOBILE-003: Breadcrumb toggle opens and closes folder tree section', async ({
+  page,
+  request,
+}, testInfo) => {
+  // 1. Open the per-test workspace (logs in as admin and enters its base folder)
+  const base = await openPrivateWorkspace(page, request, testInfo);
 
-    // 2. Setup: Create a test folder to ensure the tree has content
-    const folderName = buildName(testInfo, 'mobile-tree-toggle');
-    await createTestFolder(page, folderName);
+  // 2. Setup: Create a test folder to ensure the tree has content
+  const folderName = buildName(testInfo, 'mobile-tree-toggle');
+  await createTestFolder(page, folderName);
 
-    // 3. Reload the base folder listing
-    await gotoFilesPath(page, request, `/${base}`);
+  // 3. Reload the base folder listing
+  await gotoFilesPath(page, request, `/${base}`);
 
-    // 4. Open Folder Tree
-    await toggleFolderTree(page);
+  // 4. Open Folder Tree
+  await toggleFolderTree(page);
 
-    // 5. Verify Expansion
-    // Check if the folder tree container is visible
-    await expect(page.getByTestId('folder-tree')).toBeVisible();
-    // Check if folder tree items are rendered (now that we created a folder)
-    await expect(page.getByTestId('folder-tree-item').first()).toBeVisible();
+  // 5. Verify Expansion
+  // Check if the folder tree container is visible
+  await expect(page.getByTestId('folder-tree')).toBeVisible();
+  // Check if folder tree items are rendered (now that we created a folder)
+  await expect(page.getByTestId('folder-tree-item').first()).toBeVisible();
 
-    // 6. Close Folder Tree
-    await toggleFolderTree(page);
+  // 6. Close Folder Tree
+  await toggleFolderTree(page);
 
-    // 7. Verify Collapse
-    // Check if the folder tree container is no longer visible
-    await expect(page.getByTestId('folder-tree')).not.toBeVisible();
-  });
+  // 7. Verify Collapse
+  // Check if the folder tree container is no longer visible
+  await expect(page.getByTestId('folder-tree')).not.toBeVisible();
 });

@@ -24,7 +24,7 @@
 ✓ server/service/__tests__/**/*.test.js
 ✓ server/store/__tests__/**/*.test.js
 ✓ server/utils/__tests__/**/*.test.js
-✓ e2e/**/*.spec.ts
+✓ Playwright E2E specs under e2e/
 ```
 
 **Reason**: Tests are part of the codebase; other developers need to run and modify them.
@@ -36,6 +36,7 @@
 ✓ test-setup.js (server)
 ✓ server/test-utils.js
 ✓ setupTests.js (client)
+✓ scripts/gate.sh (serialized shared-host full gate)
 ✓ playwright.config.ts
 ✓ e2e/global-setup.ts
 ✓ e2e/global-teardown.ts
@@ -47,6 +48,7 @@
 
 ```
 ✓ client/src/mocks/handlers.js
+✓ client/src/pages/**/*TestUtils.jsx
 ✓ server/test-utils.js
 ✓ e2e/helpers/**/*.ts
 ✓ e2e/fixtures/**/*
@@ -55,6 +57,19 @@
 **Reason**: Common utilities needed for writing tests.
 
 > Note: The MSW server (`setupServer`) is created in `client/src/setupTests.js` (see Test Configuration above); there is no separate `client/src/mocks/server.js`.
+
+### 4. Jest Node Runtime Flag
+
+```
+✓ server/package.json test scripts carry
+  NODE_OPTIONS='--max-old-space-size=8192 --experimental-vm-modules'
+```
+
+**Reason**: The jest process must allow dynamic `import()` of ESM-only packages —
+`pdfjs-dist` (legacy build, ESM-only) is loaded lazily by the server text extractor
+(`server/domains/ai/extractors/documentText.js`) and its tests. Without the flag jest
+fails with "A dynamic import callback was invoked without --experimental-vm-modules".
+The flag is additive for CommonJS suites and must not be removed from the scripts.
 
 ### 4. Test Documentation
 
@@ -112,65 +127,271 @@
 
 ## Playwright E2E Prerequisites
 
-Before running `npm run test:e2e`, make sure the browser-level environment is ready:
+Before running E2E, install browsers when needed:
 
 ```bash
-# 1. Install Playwright browsers when needed
-npm run test:e2e:install
-
-# 2. Run the full E2E suite
-# This command automatically handles:
-# - Bringing the Docker-backed WebDAV/PostgreSQL/MinIO services up and waiting
-#   until they are healthy (provisioned by the `e2e:server` webServer command
-#   via `scripts/e2e-wait-healthy.mjs` before the app server boots — no manual
-#   `dev:webdav:start` prerequisite)
-# - Resetting the data state without restarting services: TRUNCATE all app
-#   tables (preserving `_schema_migrations`) and re-seed admin + base users
-#   with home `file_nodes` roots; empty the MinIO bucket (s3 mode)
-# - Starting the E2E API/server (port 5002)
-# - Starting the E2E client (port 3000)
-# - Executing the Playwright tests
-npm run test:e2e
-
-# Run a specific backend mode (default is s3)
-#   s3     → FULL UI matrix: essentials + mypage-admin + hermetic suites
-#            (.env.e2e). The single canonical UI run (Option A 2026-09-07).
-#   webdav → thin backend-wiring smoke (chromium desktop; .env.e2e.webdav).
-#            The full webdav UI duplicate is retired — the webdav server mode
-#            is covered by the hermetic suites in the s3 run plus this smoke.
-npm run test:e2e:s3
-npm run test:e2e:webdav
-
-# Run the standalone E2E server in a given mode (picks the matching env file;
-# also brings the Docker stack up and waits for healthy containers first)
-E2E_BACKEND_MODE=webdav npm run e2e:server
-
-# Essential-only run (core file-exploration flows; skips mypage-admin and the
-# hermetic setup-wizard/admin-config/migration suites). s3 only.
-npm run test:e2e:core:s3
-
-# Webdav-mode smoke also via the core alias (identical project set).
-npm run test:e2e:core:webdav
-
-# Run only the setup-wizard project (hermetic scratch instance on :5003). The
-# setup-wizard-desktop/-mobile projects are defined ONLY when E2E_BACKEND_MODE=s3
-# (full-mode matrix): playwright.config.ts builds the hermetic projects in its
-# non-webdav branch. Under E2E_BACKEND_MODE=webdav the only projects are
-# webdav-smoke-setup + webdav-smoke-desktop, which grep the EXP/SHARE/OVERLAY
-# nets and never include the wizard suite.
-E2E_BACKEND_MODE=s3 npx playwright test --project=setup-wizard-desktop
-E2E_BACKEND_MODE=s3 npx playwright test --project=setup-wizard-mobile
+npm run e2e:install
 ```
+
+The runner has three execution groups. All use the shared E2E stack (one API
+server, one client, PostgreSQL, MinIO); only the WebDAV group adds one shared
+WebDAV container.
+
+```bash
+# Default S3 gate: the full generic non-WebDAV matrix (includes core cases).
+npm run e2e
+
+# Fast core subset pinned to core + S3.
+npm run e2e:core
+
+# WebDAV-only backend job; exactly one shared bytemark.
+npm run e2e:webdav
+
+# Default S3 release gate, model-free: zero retries, fail on flaky tests,
+# and WEA_SKIP_EMBED_MODEL=1 skips the AI case intentionally.
+npm run e2e:release:model-off
+
+# Embedded-model default release gate: same policy, but WEA_SKIP_EMBED_MODEL
+# stays unset so the AI case runs against the pre-seeded weights.
+npm run e2e:release:model-on
+
+# WebDAV release gate, model-free: zero retries, fail on flaky tests.
+npm run e2e:release:webdav
+
+# Combined release gate: model-off, model-on, then WebDAV,
+# run sequentially.
+npm run e2e:release
+```
+
+Runner contract:
+
+- `e2e` is pinned to the default group and S3. An ambient
+  `E2E_BACKEND_MODE` must not change what this command runs.
+- `e2e:core` is pinned to the core group and S3.
+- A mixed default-group/WebDAV-backend request is rejected, not silently
+  reinterpreted.
+- The WebDAV commands (group and release) are the only entry points allowed to
+  request the WebDAV backend.
+- Destructive seeding and bucket operations use only the dedicated E2E
+  namespace. They must never fall back to ambient `WEA_DB_*` or `S3_*`
+  credentials.
+- Running the default and WebDAV groups in parallel from the same checkout is
+  unsupported because they share the checkout's stack, database, and port band.
+  Use separate worktrees with separate bands.
+- Every release command pins its group and backend, sets
+  `E2E_PROFILE=release`, and runs with retries disabled. `--fail-on-flaky-tests`
+  is not used: with zero retries a flaky classification cannot occur, so the
+  flag would be inert. A retried pass is diagnostic, not release evidence.
+  `e2e:release:model-off` and `e2e:release:webdav` set
+  `WEA_SKIP_EMBED_MODEL=1` (model-free); `e2e:release:model-on` leaves it
+  unset (embedded model, AI case runs). The model-on leg resolves pre-seeded
+  weights from the provisioner default `data/modelos`; set
+  `WEA_E2E_MODEL_DIR` to point at another pre-seeded root. `e2e:release` runs `model-off`, then
+  `model-on`, then `webdav`; the individual gates can also be run separately.
+- Expected skip counts are release invariants, not per-case details. The
+  canonical expected count per group lives in
+  [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md); the skip-count reporter compares
+  actual against expected and any unexpected skip fails the release gate.
+- Missing CI-required WebDAV/PostgreSQL/AI resources fail rather than skip.
+- Ambient backend overrides are destructive and rejected: a release or stack
+  start must not take `WEA_FILE_STORAGE` or WebDAV environment variables
+  (`WEBDAV_*`) from the caller's shell. Only the generated per-run runtime env
+  or the scratch harness may select the file backend; an ambient override must
+  fail the command instead of silently switching it.
+- Concrete project, spec, slot, case-ID, and port-band mapping is canonical in
+  [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
 
 Required assumptions:
 
 - Docker must be installed and running on the host machine.
-- `playwright.config.ts` is configured with `webServer` to manage the client and server lifecycle automatically.
-- The E2E Docker stack (`docker-compose.e2e.yml`: WebDAV, PostgreSQL, MinIO) is provisioned by the `e2e:server` webServer command before the app server boots: `scripts/e2e-wait-healthy.mjs` runs an idempotent `docker compose up -d` and polls `docker compose ps` until the mode's required containers report `healthy` (webdav-test + postgresql-e2e always; minio-e2e in s3 mode only). `e2e/global-setup.ts` re-runs the same helper idempotently as belt-and-braces (it never tears the stack down), restarts the WebDAV container once in BOTH modes (after wiping its `data/webdav` bind-mount, so no mid-run lazy restart is needed by the hermetic suites), then resets the data state: it TRUNCATEs all app tables (preserving `_schema_migrations`) and re-seeds the default admin and base users with home `file_nodes` roots via `e2e/global-setup.seed-db.cjs`, ensures the MinIO platform and migration buckets in both modes, and empties the platform bucket in s3 mode. `e2e/global-teardown.ts` empties the S3 bucket (s3 mode) and stops the services (`down -v`).
-- The root Playwright config builds the projects from the active backend mode (Option A): `E2E_BACKEND_MODE=s3` defines the desktop/mobile UI matrix (`s3-desktop-setup`/`s3-desktop`, `s3-mobile-setup`/`s3-mobile`) plus the hermetic additive projects (setup-wizard/admin-config/migration, which boot their own webdav-mode scratch servers); `E2E_BACKEND_MODE=webdav` defines a thin smoke pair (`webdav-smoke-setup`/`webdav-smoke-desktop`) that greps the backend-wiring nets out of `core-flow.shared`/`share-public`/`share-internal`. Only the projects for the active mode are defined, so `npm run test:e2e:s3` runs the full s3 matrix and `npm run test:e2e:webdav` runs only the smoke (check with `E2E_BACKEND_MODE=s3 npx playwright test --list`).
-- The backend mode is selected via `E2E_BACKEND_MODE` (`s3` default, `webdav` legacy). The `e2e:server` script maps it to the matching env file (`../.env.e2e` for s3, `../.env.e2e.webdav` for webdav) and chains `scripts/e2e-wait-healthy.mjs` (compose provisioning + health wait) before starting the server; host-exposed ports are MinIO 9010, PostgreSQL 5433, and WebDAV 8090.
-- Specs branch on the project name platform suffix (`testInfo.project.name.endsWith('-desktop')` / `endsWith('-mobile')`), so the platform checks keep working under the mode-prefixed project names.
-- The hermetic additive suites (setup-wizard / admin-config / migration) are isolated per suite and run as independent siblings (Option A): setup-wizard boots its scratch server on `:5003`, admin-config on `:5010`, migration on `:5011` (their playwright.config baseURLs mirror this); each has its own env file/sqlite/PG namespace and migration uses a dedicated MinIO bucket. Each spawns its own scratch server and supervises its own process lifecycle because restart is the behavior under test. They do not use the shared `:5002` server or `:3000` client. A suite's mobile variant depends on its desktop variant so one suite never overlaps itself on the same port.
+- `playwright.config.ts` is configured with `webServer` to manage the client and
+  server lifecycle automatically.
+- **Backend ownership:** the default/core gate starts no WebDAV container. The
+  WebDAV job starts exactly one shared bytemark for the whole job; there is no
+  per-project WebDAV container.
+- The E2E Docker stack (`docker-compose.e2e.yml`: PostgreSQL, MinIO, and — WebDAV
+  job only — WebDAV) is provisioned by the `dev:e2e:server` webServer command before
+  the app server boots: the health helper runs an idempotent
+  `docker compose up -d` and waits until the group's required compose services
+  report healthy (PostgreSQL + MinIO for default/core; WebDAV added for the
+  WebDAV job). The stack defines no `container_name:` entries and every compose
+  invocation pins an explicit per-band project; the WebDAV DAV root is a per-band named volume,
+  never a host bind mount, so `down -v` fully resets it. All helpers address
+  containers through `docker compose … <service>` instead of a global container
+  name, so parallel runs from multiple worktrees never collide. If two
+  checkouts share a directory basename, set `COMPOSE_PROJECT_NAME` to
+  disambiguate them. Global setup re-runs the health helper idempotently, never
+  tears the stack down, resets the WebDAV volume and restarts the one bytemark
+  for the WebDAV job, truncates app tables while preserving schema migrations,
+  re-seeds the base users and home roots, ensures the MinIO buckets, and empties
+  the platform bucket once. Global teardown empties the bucket and stops the
+  services with a project-scoped `down -v`.
+- The active group selects the Playwright projects. Projects are independent
+  siblings: every scratch suite owns its slot (the storage suite uses
+  `:5022`/`:5023`), so no project declares `dependencies` on another. Check the
+  active set with `npx playwright test --list`.
+- The `dev:e2e:server` script chains the port-band provisioning + compose up +
+  health wait, then boots the server with `DOTENV_CONFIG_PATH` pointing at the
+  generated `data/e2e-runtime.env`. That file holds this checkout's band ports
+  in `PORT`, `CORS_ORIGINS`, `WEBDAV_URL`, `WEBDAV_UPSTREAM_URL`, `S3_ENDPOINT`,
+  and `WEA_DB_PORT` (git-ignored; never edit it by hand). The band applies one
+  offset to the fixed base port set for client, API, MinIO, PostgreSQL, and
+  WebDAV; concrete values live in
+  [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
+- Specs branch on the project-name platform suffix (`-desktop`/`-mobile`),
+  which stays intact under the group-scoped project names.
+- **Workers:** CI supplies the worker count and it is the only concurrency
+  throttle. There is no E2E slot/resource-lock pool, no fixed worker assumption,
+  and no per-project WebDAV container. At most `workers` scratch servers exist
+  at any moment.
+- **Scratch isolation model:** scratch servers are process isolation for boot
+  config, global settings, the metadata DB, and restart. The project-scoped
+  cwd, S3 bucket, PG database, and WebDAV subtree isolate blobs only. No suite
+  may reuse another project's bucket, database, scratch directory, or WebDAV
+  root.
+- Desktop and mobile use separate scratch slots where a suite needs independent
+  process state; no suite shares a port or declares a project dependency. All
+  slots shift with the checkout's port band. Concrete slot assignments live in
+  [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
+- **Storage per backend:** S3 scratch servers set `WEA_FILE_STORAGE=s3`,
+  `S3_BUCKET`, `S3_ENDPOINT`, and MinIO credentials; they seed no WebDAV
+  settings. WebDAV scratch servers use the one shared bytemark with a
+  project/case-scoped root. Migration uses a project-scoped destination bucket.
+  `WEA_SKIP_AI_WORKER=1` skips the worker loop only; boot provisioning still
+  runs. `WEA_SKIP_EMBED_MODEL=1` (truthy `1/true/yes/on`) additionally makes a
+  configured boot skip the built-in model entirely: no weights hash, no
+  provisioning/download, no ONNX import, no boot probe, and the embed role
+  resolves `not_configured` without an `ai.embed` failure row. Non-AI scratch
+  suites set it through `scratchRuntimeEnv()`; the shared E2E stack sets it in
+  `.env.e2e` / `.env.e2e.webdav`. AI-dependent tests opt out with
+  `WEA_SKIP_EMBED_MODEL=0`, pre-seed `WEA_MODEL_DIR`, and enable the worker.
+  `AI_SEMANTIC_SEARCH_ENABLED` is a `dbOnly` setting and is ignored from the
+  environment; tests that need the kill switch write it through the
+  database/config surface. The model-free release commands
+  (`e2e:release:model-off`, `e2e:release:webdav`) set
+  `WEA_SKIP_EMBED_MODEL=1`; `e2e:release:model-on` leaves it unset so the AI
+  case runs with the pre-seeded weights. A model-free release skips the AI case
+  intentionally; the skip-budget reporter adds that single skip without changing
+  the static platform/resource budget.
+
+### Parallel E2E runs (multiple git worktrees / checkouts)
+
+The E2E environment avoids all globally shared resources so two checkouts can
+run their suites concurrently:
+
+- **Container names** — `docker-compose.e2e.yml` pins no `container_name:`;
+  names are project-scoped. All helpers address containers through
+  `docker compose -f docker-compose.e2e.yml <cmd> <service>`. If two checkouts
+  share a directory basename, export a distinct `COMPOSE_PROJECT_NAME` per
+  checkout.
+- **Host ports** — `scripts/lib/e2e-band.cjs` allocates one PORT BAND per
+  checkout: a single offset (steps of 40) applied to the whole base port set
+  (client, API, WebDAV, PG, S3, plus the scratch-slot range). Offset 0 is tried
+  first and reproduces the fixed contract exactly, so a solo checkout sees no
+  change. Allocation happens once per checkout and is persisted in
+  `data/e2e-runtime.json` (git-ignored); reusing the same band keeps
+  `reuseExistingServer` dev loops stable. A band is taken only when every port
+  passes a real listener probe AND a global claim lock in the checkout's band
+  directory (stale dead owners are reclaimed) — this closes the race between
+  concurrent cold starts of different checkouts. If another live checkout later
+  claims our persisted band (e.g. after a `/tmp` sweep), the next run
+  reallocates transparently.
+- **Consumers** — compose interpolates the exported WebDAV port; the API server
+  boots on `data/e2e-runtime.env`; the Playwright config, scratch suites, and
+  setup/teardown helpers all resolve ports through the shared port helper
+  (per-port `E2E_*_PORT` env overrides win over the persisted band). Loading the
+  Playwright config triggers band allocation, so even a bare `playwright test`
+  from a second checkout moves off a busy default band automatically.
+- **Same-checkout concurrency** — the default and WebDAV groups share one
+  checkout's stack, database, and port band, so running them in parallel from
+  the same checkout is unsupported. Use separate worktrees and let each claim
+  its own band.
+
+Run commands (the default S3 gate in these examples; core and WebDAV use the
+same band):
+
+```bash
+# Checkout A (first / solo): uses offset 0 = today's fixed ports.
+npm run e2e
+
+# Checkout B (concurrent): base ports are busy → auto-allocates offset 80
+# (offset 40 is skipped because it maps a scratch slot onto the browser-
+# restricted SIP ports 5060/5061).
+npm run e2e
+
+# Deterministic pinning for orchestrated parallelism (e.g. CI fan-out):
+E2E_PORT_OFFSET=40 npm run e2e   # must be a multiple of 40
+
+# Inspect the current checkout's band:
+cat data/e2e-runtime.json
+
+# Force re-allocation (band conflict after /tmp cleanup, stale pins):
+rm data/e2e-runtime.json data/e2e-runtime.env   # lock is reclaimed automatically
+```
+
+Intentionally NOT isolated (per-run, not per-machine): Docker image pulls
+(daemon-side dedup is safe), `e2e-data/`/`test-results/`/`client/build` (already
+per-checkout), and Playwright browsers (shared read-only cache under `~/.cache`).
+
+## Full Gate on a Shared Host
+
+Run the full client/server Jest gate through the serialized wrapper:
+
+```bash
+npm run gate          # check + server then client Jest
+npm run test:client   # client only
+```
+
+`scripts/gate.sh` holds a cross-checkout lock
+(`$TMPDIR/webdav-easyaccess-gate.lock`) and runs the stages one after the
+other. It first runs `npm run check` (ESLint, the `check:e2e` structural
+guardrail — flat tree, one title ID per test, ascending family order,
+contiguous coverage registry — and Prettier) so drift fails before the Jest
+suites, then `npm run test` (server, then client). Client `test` uses
+`--maxWorkers=2`; do not run the full gate from another worktree at the same
+time. This is the local shared-host discipline — CI runners with dedicated
+capacity may still invoke `test` directly.
+
+`npm run gate:full` runs `npm run gate` and then adds the real-PostgreSQL legs
+(`npm run test:pg`) plus the full release E2E matrix (`npm run e2e:release`).
+The wrapper removes the `WEA_TEST_PG_*` namespace for the `gate` stage so the
+SQLite Jest suite can never switch to PostgreSQL; the caller's PG environment
+is still available to `test:pg`.
+It therefore requires Docker and the E2E stack: start the compose PostgreSQL
+service before the PG legs when it is not already up, and install Playwright
+browsers once with `npm run e2e:install`.
+
+```bash
+docker compose -f docker-compose.e2e.yml up -d postgresql-e2e
+npm run gate:full
+```
+
+## Real-PostgreSQL Legs
+
+Both real-PG legs reuse the compose `postgresql-e2e` service (pgvector/pgvector:pg16,
+published on the stack's PostgreSQL host port; see
+[E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md)). Start it once:
+
+```bash
+docker compose -f docker-compose.e2e.yml up -d postgresql-e2e
+```
+
+Adapter conformance leg (`webdav_test`):
+
+```bash
+cd server && npm run test:pg:adapters
+```
+
+ANN/vector leg (`webdav_vector_test`, separate database so both legs share one server):
+
+```bash
+cd server && npm run test:pg:vector
+```
+
+Override the host port with `WEA_TEST_PG_PORT`; the default is the stack's
+PostgreSQL host port. Both legs self-provision their disposable database when it
+is missing (the compose user has `CREATEDB`). If the server is unreachable the
+vector suite fails with the compose start command in the error message.
 
 ## Recommended Git Workflow
 
@@ -194,8 +415,8 @@ cd client && npm test
 cd server && npm test
 
 # 6. Check coverage
-cd client && npm run test:coverage
-cd server && npm run test:coverage
+cd client && npm run test
+cd server && npm run test
 
 # 7. Commit (tests and code together)
 git add .
@@ -242,8 +463,8 @@ git commit -m "refactor: refactoring (tests pass)"
 - [ ] Are there tests for new code?
 
   ```bash
-  cd client && npm run test:coverage
-  cd server && npm run test:coverage
+  cd client && npm run test
+  cd server && npm run test
   ```
 
 - [ ] Are test files added to Git?
@@ -293,10 +514,10 @@ jobs:
           cd ../server && npm ci
 
       - name: Run client tests
-        run: cd client && npm run test:ci
+        run: cd client && npm run test
 
       - name: Run server tests (sqlite)
-        run: cd server && npm run test:ci
+        run: cd server && npm run test
 
       # Tiered real-PostgreSQL coverage (TESTING_STRATEGY.md: functional suites run on
       # sqlite once; per-RDB adapter conformance runs against real PG).
@@ -305,7 +526,7 @@ jobs:
       - name: Run server adapter tests (postgresql)
         run: |
           docker compose -f docker-compose.e2e.yml up -d postgresql-e2e
-          cd server && npm run test:ci:pg:adapters
+          cd server && npm run test:pg:adapters
 
       - name: Upload coverage
         uses: codecov/codecov-action@v2
@@ -320,8 +541,8 @@ jobs:
 Raw test counts are intentionally **not duplicated here** (choice recorded 2026-09-09: they drift between runs; the summaries below are the single source of truth).
 
 - **Client**: current suite/test counts, pass rate and snapshot date — see `client/TEST_SUMMARY.md` (Test Statistics).
-- **Server**: current suite/test counts, pass rate and snapshot date, plus the real-PG adapter leg (`test:ci:pg:adapters`) latest recorded run — see `server/TEST_SUMMARY.md` (Test Statistics).
-- Coverage figures are measured per run via `npm run test:coverage` (uploaded to Codecov in CI); the `TEST_SUMMARY.md` files document how to measure rather than freezing figures.
+- **Server**: current suite/test counts, pass rate and snapshot date, plus the real-PG adapter leg (`test:pg:adapters`) latest recorded run — see `server/TEST_SUMMARY.md` (Test Statistics).
+- Coverage figures are measured per run via `npm run test` (uploaded to Codecov in CI); the `TEST_SUMMARY.md` files document how to measure rather than freezing figures.
 
 ### Recommended Targets
 
@@ -333,10 +554,10 @@ Raw test counts are intentionally **not duplicated here** (choice recorded 2026-
 
 ```bash
 # Client
-cd client && npm run test:coverage
+cd client && npm run test
 
 # Server
-cd server && npm run test:coverage
+cd server && npm run test
 ```
 
 ### Mutation Testing (Stryker)
@@ -415,15 +636,20 @@ cat .gitignore | grep coverage
 
 ### Q: E2E tests pass on first run but fail on second run
 
-**Root cause**: The `data/webdav/` directory is a Docker bind mount (`./data/webdav:/var/lib/dav`). While `docker compose down -v` removes named Docker volumes, it does NOT clean host-path bind mounts. Stale WebDAV data from the previous run persists, causing conflicts.
+**Root cause**: stale WebDAV state (locks/partial trees) or a compose container reused with the wrong host-port mapping. Earlier versions used a host bind mount (`./data/webdav:/var/lib/dav`) that `docker compose down -v` could not reset.
 
-**Fix**: Ensure `e2e/global-setup.ts` includes `cleanDir('data/webdav')` before the E2E services start. This is already handled in the default global-setup — if this issue occurs, verify the cleanup step is present.
+**Fix**: The stack now uses a per-band named volume under an explicit per-band compose project. The WebDAV job starts one bytemark and resets its volume/root in `global-setup`; default/core never start a WebDAV container. If this issue recurs, run `docker compose -p <per-band-compose-project> -f docker-compose.e2e.yml down -v --remove-orphans` (use the project name printed by the band helper) and re-run the WebDAV job.
 
-### Q: Mobile Action Sheet tests are flaky (E2E-EXP-006, E2E-MOBILE-002)
+### Q: Mobile Action Sheet tests are flaky
 
-**Root cause**: `openActionSheet` helper waits for `[role="dialog"]` to be visible. MUI's `SwipeableDrawer` has a CSS transition (~200ms) during which the element is in DOM but not fully visible, causing Playwright's `toBeVisible()` to fail with a race condition.
+**Root cause**: the `openActionSheet` helper waits for `[role="dialog"]` to be
+visible. MUI's `SwipeableDrawer` has a CSS transition (~200ms) during which the
+element is in the DOM but not fully visible, causing Playwright's
+`toBeVisible()` to fail with a race condition.
 
-**Fix**: The `openActionSheet` helper now uses `Promise.all` to click and wait simultaneously, and targets specific action items (`[data-testid="file-action-rename"]`) instead of the generic `[role="dialog"]` locator. E2E-MOBILE-002 no longer redundantly checks `[role="dialog"]` after `openActionSheet`.
+**Fix**: the helper now uses `Promise.all` to click and wait simultaneously and
+targets specific action items instead of the generic `[role="dialog"]` locator.
+Cases must not redundantly check `[role="dialog"]` after the helper returns.
 
 ### Q: Tests are too slow
 
@@ -438,6 +664,20 @@ npm test -- --onlyChanged
 npm test
 ```
 
+### Q: WebKit mobile specs never load — the page stays `about:blank` on one scratch slot
+
+**Root cause**: some band offsets map a scratch slot onto a browser-restricted port
+(5060/5061 = SIP). WebKit refuses the navigation with
+`Not allowed to use restricted network port 5060` — the server is healthy (curl and the
+APIRequestContext reach it), only the browser silently blocks it. At offset 40 this hits
+exactly the retrieval-mobile slot (`5020+40 = 5060`).
+
+**Fix**: drive the documented per-port escape hatch for that run, e.g.
+`E2E_PORT_OFFSET=40 E2E_SCRATCH_RETRIEVAL_MOBILE_PORT=5062 …` (per-port overrides win over
+the persisted band; the compose project and every other port stay in-band). The durable fix
+is to keep the band allocator off browser-restricted ports — tracked in `docs/RCA_LOG.md`
+(2026-10-27, P3 exit gate).
+
 ## References
 
 - [Jest Best Practices](https://jestjs.io/docs/best-practices)
@@ -446,6 +686,6 @@ npm test
 
 ---
 
-**Last updated**: 2026-03-20  
+**Last updated**: 2026-10-27
 **Project**: WebDAV EasyAccess  
 **Test frameworks**: Jest, React Testing Library, Playwright

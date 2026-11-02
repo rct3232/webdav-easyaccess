@@ -1,0 +1,1244 @@
+/**
+ * useSearchResults tests.
+ * @see docs/spec/client/hooks/useSearchResults.md
+ */
+import { renderHook, act } from '@testing-library/react';
+
+import { useSearchResults } from '../useSearchResults';
+import * as recentQueriesStorage from '../../../../services/recentQueriesStorage';
+
+jest.mock('../../../../services/recentQueriesStorage', () => ({
+  loadRecentQueries: jest.fn(() => []),
+  saveRecentQueries: jest.fn(),
+  clearRecentQueries: jest.fn(),
+}));
+
+const SEARCH_RESPONSE = {
+  name_matches: [
+    { node_id: 11, name: 'Fun-MOVIE-notes.pdf' },
+    { node_id: 12, name: 'movie-night.jpg' },
+  ],
+  result_ref: 'sr1.9f3c2a7e41b0d8c5',
+  counts: { name: 2, semantic: 0, total: 2, name_truncated: false },
+  semantic_unavailable_reason: 'not_configured',
+};
+
+const SESSION_FILES = [
+  {
+    nodeId: 1,
+    name: 'movie-poster.png',
+    basename: 'movie-poster.png',
+    type: 'directory',
+    path: '/docs/movie-poster.png',
+  },
+  {
+    nodeId: 2,
+    name: 'notes-movie.txt',
+    basename: 'notes-movie.txt',
+    type: 'file',
+    path: '/docs/notes-movie.txt',
+  },
+  { nodeId: 3, name: 'other.txt', basename: 'other.txt', type: 'file', path: '/docs/other.txt' },
+];
+
+function createGateway(overrides = {}) {
+  return {
+    runSearch: jest.fn().mockResolvedValue(SEARCH_RESPONSE),
+    loadNodesMetadata: jest.fn().mockResolvedValue([]),
+    recordSearchClick: jest.fn().mockResolvedValue(true),
+    ...overrides,
+  };
+}
+
+function renderSearchHook({
+  showError = jest.fn(),
+  gateway = createGateway(),
+  files = SESSION_FILES,
+  sortMode = 'name_asc',
+  liveText = '',
+  minPendingMs = 0,
+  cancelGuardMs = 0,
+} = {}) {
+  const utils = renderHook((props) => useSearchResults(props), {
+    initialProps: { showError, gateway, files, sortMode, liveText, minPendingMs, cancelGuardMs },
+  });
+  return { ...utils, gateway, showError };
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  recentQueriesStorage.loadRecentQueries.mockReturnValue([]);
+});
+
+describe('useSearchResults mode machine', () => {
+  it('starts in browse mode with empty zones and no chain', () => {
+    const { result } = renderSearchHook();
+
+    expect(result.current.mode).toBe('browse');
+    expect(result.current.chain).toEqual([]);
+    expect(result.current.zoneARows).toEqual([]);
+    expect(result.current.zoneBRows).toEqual([]);
+    expect(result.current.zoneCounts).toEqual({ zoneA: 0, zoneB: 0, zoneC: 0 });
+  });
+
+  it('enters pending while the submit is in flight, then results', async () => {
+    let resolveSearch;
+    const gateway = createGateway({
+      runSearch: jest.fn(
+        () =>
+          new Promise((resolve) => {
+            resolveSearch = resolve;
+          })
+      ),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    let submitted;
+    act(() => {
+      submitted = result.current.submitSearch('movie');
+    });
+    expect(result.current.mode).toBe('pending');
+
+    await act(async () => {
+      resolveSearch(SEARCH_RESPONSE);
+      await submitted;
+    });
+    expect(result.current.mode).toBe('results');
+  });
+
+  it('ignores resubmits while a submit is in flight (single-flight)', async () => {
+    const gateway = createGateway({
+      runSearch: jest.fn(() => new Promise(() => {})),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    act(() => {
+      result.current.submitSearch('movie');
+    });
+    act(() => {
+      result.current.submitSearch('movie again');
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(gateway.runSearch).toHaveBeenCalledTimes(1);
+    expect(result.current.mode).toBe('pending');
+  });
+
+  it('holds pending for at least one orbit cycle after a fast response', async () => {
+    const { result } = renderSearchHook({ minPendingMs: 180 });
+
+    act(() => {
+      result.current.submitSearch('movie');
+    });
+    expect(result.current.mode).toBe('pending');
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(result.current.mode).toBe('pending');
+    expect(result.current.chain).toHaveLength(0);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 220));
+    });
+    expect(result.current.mode).toBe('results');
+    expect(result.current.chain).toHaveLength(1);
+  });
+
+  it('exitResults during the minimum window discards the late commit', async () => {
+    const { result } = renderSearchHook({ minPendingMs: 200 });
+
+    act(() => {
+      result.current.submitSearch('movie');
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    act(() => {
+      result.current.exitResults();
+    });
+    expect(result.current.mode).toBe('browse');
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 260));
+    });
+    expect(result.current.mode).toBe('browse');
+    expect(result.current.chain).toHaveLength(0);
+  });
+
+  it('submit from browse starts a new chain [term] with an intersect-name snapshot', async () => {
+    const { result, gateway } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(gateway.runSearch).toHaveBeenCalledTimes(1);
+    expect(gateway.runSearch).toHaveBeenCalledWith({ query: 'movie' }, expect.anything());
+    expect(result.current.chain).toHaveLength(1);
+    expect(result.current.chain[0].term).toBe('movie');
+    expect(result.current.chain[0].op).toBe('intersect-name');
+    expect(result.current.chain[0].inputTextAtCommit).toBe('movie');
+    expect(result.current.zoneBRows.map((row) => row.nodeId)).toEqual([11, 12]);
+  });
+
+  it('guards the submit client-side: empty never calls the server, >200 maps queryTooLong', async () => {
+    const { result, gateway, showError } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('   ');
+    });
+    expect(gateway.runSearch).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.submitSearch('a'.repeat(201));
+    });
+    expect(gateway.runSearch).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith('serverErrors.search.queryTooLong');
+  });
+
+  it('an absorbed failure toasts search.fail and keeps the prior mode/chain intact', async () => {
+    const gateway = createGateway();
+    const { result, showError } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    gateway.runSearch.mockResolvedValueOnce(null);
+
+    await act(async () => {
+      await result.current.submitSearch('other');
+    });
+
+    expect(showError).toHaveBeenCalledWith('serverErrors.search.fail');
+    expect(result.current.mode).toBe('results');
+    expect(result.current.chain).toHaveLength(1);
+    expect(result.current.chain[0].term).toBe('movie');
+    expect(result.current.zoneBRows.map((row) => row.nodeId)).toEqual([11, 12]);
+  });
+});
+
+describe('useSearchResults user cancel (§2.3/§2.6)', () => {
+  it('passes an AbortSignal and the explicit 60s search timeout through the gateway seam', async () => {
+    const { result, gateway } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    const [, options] = gateway.runSearch.mock.calls[0];
+    expect(options.signal).toBeInstanceOf(AbortSignal);
+    expect(options.timeout).toBe(60_000);
+  });
+
+  it('cancelSearch aborts the request, restores browse, drops the late payload and never toasts', async () => {
+    let signal = null;
+    let resolveSearch;
+    const gateway = createGateway({
+      runSearch: jest.fn((args, options) => {
+        signal = options?.signal;
+        return new Promise((resolve) => {
+          resolveSearch = resolve;
+        });
+      }),
+    });
+    const { result, showError } = renderSearchHook({ gateway });
+
+    act(() => {
+      result.current.submitSearch('movie');
+    });
+    expect(result.current.mode).toBe('pending');
+
+    let cancelled = false;
+    act(() => {
+      cancelled = result.current.cancelSearch();
+    });
+
+    expect(cancelled).toBe(true);
+    expect(signal.aborted).toBe(true);
+    expect(result.current.mode).toBe('browse');
+
+    // A late payload (server finished before the abort landed) is discarded.
+    await act(async () => {
+      resolveSearch(SEARCH_RESPONSE);
+      await Promise.resolve();
+    });
+    expect(result.current.mode).toBe('browse');
+    expect(result.current.chain).toHaveLength(0);
+    expect(showError).not.toHaveBeenCalled();
+  });
+
+  it('cancelSearch from a refinement restores the previous results chain untouched', async () => {
+    const gateway = createGateway();
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    expect(result.current.mode).toBe('results');
+
+    gateway.runSearch.mockImplementationOnce(() => new Promise(() => {}));
+    act(() => {
+      result.current.submitSearch('other');
+    });
+    expect(result.current.mode).toBe('pending');
+
+    act(() => {
+      expect(result.current.cancelSearch()).toBe(true);
+    });
+
+    expect(result.current.mode).toBe('results');
+    expect(result.current.chain).toHaveLength(1);
+    expect(result.current.chain[0].term).toBe('movie');
+    expect(result.current.zoneBRows.map((row) => row.nodeId)).toEqual([11, 12]);
+  });
+
+  it('ignores a cancel inside the post-submit guard window', async () => {
+    const gateway = createGateway({
+      runSearch: jest.fn(() => new Promise(() => {})),
+    });
+    const { result } = renderSearchHook({ gateway, cancelGuardMs: 60 });
+
+    act(() => {
+      result.current.submitSearch('movie');
+    });
+    act(() => {
+      expect(result.current.cancelSearch()).toBe(false);
+    });
+    expect(result.current.mode).toBe('pending');
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+    act(() => {
+      expect(result.current.cancelSearch()).toBe(true);
+    });
+    expect(result.current.mode).toBe('browse');
+  });
+
+  it('cancelSearch with nothing in flight is a no-op', () => {
+    const { result } = renderSearchHook();
+    expect(result.current.cancelSearch()).toBe(false);
+    expect(result.current.mode).toBe('browse');
+  });
+
+  it('cancelSearch during the minimum pending hold prevents the commit', async () => {
+    const { result } = renderSearchHook({ minPendingMs: 200 });
+
+    act(() => {
+      result.current.submitSearch('movie');
+    });
+    // The response has landed; the §2.3 hold keeps `pending` up.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(result.current.mode).toBe('pending');
+
+    act(() => {
+      expect(result.current.cancelSearch()).toBe(true);
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 260));
+    });
+    expect(result.current.mode).toBe('browse');
+    expect(result.current.chain).toHaveLength(0);
+  });
+
+  it('exitResults aborts an in-flight submit so no orphan request survives', () => {
+    let signal = null;
+    const gateway = createGateway({
+      runSearch: jest.fn((args, options) => {
+        signal = options?.signal;
+        return new Promise(() => {});
+      }),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    act(() => {
+      result.current.submitSearch('movie');
+    });
+    act(() => {
+      result.current.exitResults();
+    });
+
+    expect(signal.aborted).toBe(true);
+    expect(result.current.mode).toBe('browse');
+  });
+});
+
+describe('useSearchResults chain refinement + undo snapshots', () => {
+  const refineGateway = () =>
+    createGateway({
+      runSearch: jest
+        .fn()
+        .mockResolvedValueOnce(SEARCH_RESPONSE)
+        .mockResolvedValueOnce({
+          name_matches: [{ node_id: 11, name: 'Fun-MOVIE-notes.pdf' }],
+          result_ref: 'sr1.step2',
+          counts: { name: 1, semantic: 0, total: 1, name_truncated: false },
+        }),
+    });
+
+  it('step 2 intersects zoneB by id and recomputes zoneA over ALL committed terms', async () => {
+    const gateway = refineGateway();
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    await act(async () => {
+      await result.current.submitSearch('txt');
+    });
+
+    expect(result.current.chain.map((step) => step.term)).toEqual(['movie', 'txt']);
+    expect(result.current.zoneBRows.map((row) => row.nodeId)).toEqual([11]);
+    // zone A recomputed client-side: current-folder rows containing BOTH terms
+    expect(Array.from(result.current.zoneAIds)).toEqual([2]);
+    expect(gateway.runSearch).toHaveBeenCalledTimes(2); // zero re-fetch of earlier terms
+    expect(gateway.runSearch).toHaveBeenLastCalledWith({ query: 'txt' }, expect.anything());
+  });
+
+  it('undoToStep restores the step snapshot with ZERO server calls', async () => {
+    const gateway = refineGateway();
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    await act(async () => {
+      await result.current.submitSearch('pdf');
+    });
+    const searchCalls = gateway.runSearch.mock.calls.length;
+    const metadataCalls = gateway.loadNodesMetadata.mock.calls.length;
+
+    act(() => {
+      result.current.undoToStep(0);
+    });
+
+    expect(gateway.runSearch.mock.calls.length).toBe(searchCalls);
+    expect(gateway.loadNodesMetadata.mock.calls.length).toBe(metadataCalls);
+    expect(result.current.chain).toHaveLength(1);
+    expect(result.current.zoneBRows.map((row) => row.nodeId)).toEqual([11, 12]);
+    expect(result.current.zoneCounts.zoneB).toBe(2);
+  });
+
+  it('emptying zoneB through a refinement still commits the step (honest empty zone)', async () => {
+    const gateway = createGateway({
+      runSearch: jest
+        .fn()
+        .mockResolvedValueOnce(SEARCH_RESPONSE)
+        .mockResolvedValueOnce({
+          name_matches: [{ node_id: 99, name: 'unrelated.x' }],
+          result_ref: 'sr1.step2',
+          counts: { name: 1, semantic: 0, total: 1, name_truncated: false },
+        }),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    await act(async () => {
+      await result.current.submitSearch('zzz');
+    });
+
+    expect(result.current.chain).toHaveLength(2);
+    expect(result.current.zoneBRows).toEqual([]);
+    expect(result.current.zoneCounts.zoneB).toBe(0);
+  });
+
+  it('stores each response result_ref opaquely on the step snapshot', async () => {
+    const { result, gateway } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.chain[0].snapshot.resultRef).toBe(SEARCH_RESPONSE.result_ref);
+    expect(gateway.runSearch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useSearchResults zone A + live promotion', () => {
+  it('zone A selects the snapshot rows and promotes live matches first without hiding', async () => {
+    const { result, rerender } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    expect(result.current.zoneARows.map((row) => row.nodeId)).toEqual([1, 2]);
+
+    rerender({
+      showError: jest.fn(),
+      gateway: undefined,
+      files: SESSION_FILES,
+      sortMode: 'name_asc',
+      liveText: 'notes',
+    });
+
+    // no hiding: still two rows, live match promoted to the top
+    expect(result.current.zoneARows.map((row) => row.nodeId)).toEqual([2, 1]);
+    const promoted = result.current.zoneARows[0];
+    expect(promoted.highlights.some((range) => range.kind === 'live')).toBe(true);
+    expect(promoted.highlights.some((range) => range.kind === 'committed')).toBe(true);
+  });
+
+  it('live typing never changes zone counts (snapshot honesty)', async () => {
+    const { result, rerender } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    const countsBefore = result.current.zoneCounts;
+
+    rerender({
+      showError: jest.fn(),
+      gateway: undefined,
+      files: SESSION_FILES,
+      sortMode: 'name_asc',
+      liveText: 'poster',
+    });
+
+    expect(result.current.zoneCounts).toEqual(countsBefore);
+  });
+
+  it('committed-term rows carry committed highlight ranges on both zones', async () => {
+    const { result } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    const zoneBRow = result.current.zoneBRows.find((row) => row.nodeId === 11);
+    // 'Fun-MOVIE-notes.pdf' → 'MOVIE' at 4..9 case-insensitive
+    expect(zoneBRow.highlights).toEqual(
+      expect.arrayContaining([{ start: 4, end: 9, kind: 'committed' }])
+    );
+    const zoneARow = result.current.zoneARows.find((row) => row.nodeId === 1);
+    expect(zoneARow.highlights).toEqual(
+      expect.arrayContaining([{ start: 0, end: 5, kind: 'committed' }])
+    );
+  });
+
+  it('a node visible in zone A is removed from zone B display but keeps the snapshot count', async () => {
+    const gateway = createGateway({
+      runSearch: jest.fn().mockResolvedValue({
+        name_matches: [
+          { node_id: 2, name: 'notes-movie.txt' },
+          { node_id: 11, name: 'Fun-MOVIE-notes.pdf' },
+        ],
+        result_ref: 'sr1.x',
+        counts: { name: 2, semantic: 0, total: 2, name_truncated: false },
+      }),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.zoneARows.map((row) => row.nodeId)).toContain(2);
+    expect(result.current.zoneBRows.map((row) => row.nodeId)).toEqual([11]);
+    expect(result.current.zoneCounts.zoneB).toBe(2);
+    // library target = zoneAIds ∪ FULL zone B snapshot ids (deduped union)
+    expect(Array.from(result.current.libraryAddTarget).sort((a, b) => a - b)).toEqual([1, 2, 11]);
+  });
+
+  it('semantic rows land in the zone C snapshot and count; absent section renders nothing without error', async () => {
+    const gateway = createGateway({
+      runSearch: jest.fn().mockResolvedValue({
+        name_matches: [{ node_id: 11, name: 'movie.pdf' }],
+        semantic: [{ node_id: 90, name: 'fantasy.jpg', score: 0.71 }],
+        result_ref: 'sr1.y',
+        counts: { name: 1, semantic: 1, total: 2, name_truncated: false },
+      }),
+    });
+    const showError = jest.fn();
+    const { result } = renderSearchHook({ gateway, showError });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.zoneCRows.map((row) => row.nodeId)).toEqual([90]);
+    expect(result.current.zoneCounts.zoneC).toBe(1);
+    expect(showError).not.toHaveBeenCalled();
+
+    const degraded = renderSearchHook();
+    await act(async () => {
+      await degraded.result.current.submitSearch('movie');
+    });
+    expect(degraded.result.current.zoneCRows).toEqual([]);
+    expect(degraded.result.current.zoneCounts.zoneC).toBe(0);
+    expect(degraded.showError).not.toHaveBeenCalled();
+  });
+});
+
+describe('useSearchResults enrichment', () => {
+  it('routes snapshot row ids through the gateway metadata seam and merges by nodeId', async () => {
+    const gateway = createGateway({
+      loadNodesMetadata: jest.fn().mockResolvedValue([
+        {
+          nodeId: 11,
+          type: 'file',
+          size: 4096,
+          lastmod: '2026-01-01T00:00:00Z',
+          mime: 'application/pdf',
+          hasReadPermission: true,
+          hasWritePermission: false,
+        },
+      ]),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(gateway.loadNodesMetadata).toHaveBeenCalledWith([11, 12]);
+    const row11 = result.current.zoneBRows.find((row) => row.nodeId === 11);
+    expect(row11.type).toBe('file');
+    expect(row11.size).toBe(4096);
+    expect(row11.hasWritePermission).toBe(false);
+    // tolerated missing row: 12 never arrives → stays unenriched
+    const row12 = result.current.zoneBRows.find((row) => row.nodeId === 12);
+    expect(row12.type).toBeUndefined();
+    expect(row12.size).toBeUndefined();
+  });
+
+  it('an enrichment failure leaves rows unenriched without a toast', async () => {
+    const gateway = createGateway({
+      loadNodesMetadata: jest.fn().mockRejectedValue(new Error('boom')),
+    });
+    const showError = jest.fn();
+    const { result } = renderSearchHook({ gateway, showError });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.zoneBRows.every((row) => row.type === undefined)).toBe(true);
+    expect(showError).not.toHaveBeenCalled();
+  });
+
+  it('zone B rows are explorer-shaped adapter rows with the server-search testid', async () => {
+    const { result } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    const row = result.current.zoneBRows[0];
+    expect(row).toEqual(
+      expect.objectContaining({
+        nodeId: 11,
+        path: '',
+        name: 'Fun-MOVIE-notes.pdf',
+        basename: 'Fun-MOVIE-notes.pdf',
+        isSearchServerRow: true,
+        rowTestId: 'server-search-row-11',
+      })
+    );
+  });
+});
+
+describe('useSearchResults zone thumbnail merge', () => {
+  it('zone B rows receive thumbnailUrl when the zone-local callback fires', async () => {
+    const { result } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    expect(result.current.zoneBRows.every((row) => row.thumbnailUrl === undefined)).toBe(true);
+
+    act(() => {
+      result.current.handleZoneThumbnailsLoaded(new Map([[11, '/api/thumbnails/11.webp']]));
+    });
+
+    expect(result.current.zoneBRows.find((row) => row.nodeId === 11).thumbnailUrl).toBe(
+      '/api/thumbnails/11.webp'
+    );
+    // rows outside the payload keep the icon placeholder state
+    expect(result.current.zoneBRows.find((row) => row.nodeId === 12).thumbnailUrl).toBeUndefined();
+  });
+
+  it('zone C rows receive thumbnailUrl through the same seam', async () => {
+    const gateway = createGateway({
+      runSearch: jest.fn().mockResolvedValue({
+        name_matches: [{ node_id: 11, name: 'movie.pdf' }],
+        semantic: [{ node_id: 90, name: 'fantasy.jpg', score: 0.71 }],
+        result_ref: 'sr1.y',
+        counts: { name: 1, semantic: 1, total: 2, name_truncated: false },
+      }),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    act(() => {
+      result.current.handleZoneThumbnailsLoaded(new Map([[90, '/api/thumbnails/90.webp']]));
+    });
+
+    expect(result.current.zoneCRows.map((row) => row.nodeId)).toEqual([90]);
+    expect(result.current.zoneCRows[0].thumbnailUrl).toBe('/api/thumbnails/90.webp');
+  });
+
+  it('merged thumbnails survive row re-derivation (live promotion and late enrichment)', async () => {
+    let resolveMeta;
+    const gateway = createGateway({
+      loadNodesMetadata: jest.fn(
+        () =>
+          new Promise((resolve) => {
+            resolveMeta = resolve;
+          })
+      ),
+    });
+    const { result, rerender } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    act(() => {
+      result.current.handleZoneThumbnailsLoaded(new Map([[12, '/api/thumbnails/12.webp']]));
+    });
+
+    rerender({
+      showError: jest.fn(),
+      gateway,
+      files: SESSION_FILES,
+      sortMode: 'name_asc',
+      liveText: 'night',
+    });
+    expect(result.current.zoneBRows[0].nodeId).toBe(12);
+    expect(result.current.zoneBRows[0].thumbnailUrl).toBe('/api/thumbnails/12.webp');
+
+    await act(async () => {
+      resolveMeta([
+        {
+          nodeId: 11,
+          type: 'file',
+          size: 1,
+          lastmod: null,
+          mime: 'application/pdf',
+          hasReadPermission: true,
+          hasWritePermission: true,
+        },
+      ]);
+    });
+    // enrichment re-derivation: 12 keeps its merged URL (and stays unenriched — missing row),
+    // 11 enriches without inventing a thumbnail
+    const row12 = result.current.zoneBRows.find((row) => row.nodeId === 12);
+    expect(row12.thumbnailUrl).toBe('/api/thumbnails/12.webp');
+    expect(row12.type).toBeUndefined();
+    const row11 = result.current.zoneBRows.find((row) => row.nodeId === 11);
+    expect(row11.thumbnailUrl).toBeUndefined();
+    expect(row11.size).toBe(1);
+  });
+
+  it('an enrichment-supplied thumbnailUrl takes precedence over a zone merge', async () => {
+    const gateway = createGateway({
+      loadNodesMetadata: jest.fn().mockResolvedValue([
+        {
+          nodeId: 11,
+          type: 'file',
+          size: 2,
+          lastmod: null,
+          mime: 'image/jpeg',
+          hasReadPermission: true,
+          hasWritePermission: true,
+          thumbnailUrl: '/api/thumbnails/from-meta.webp',
+        },
+      ]),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    expect(result.current.zoneBRows.find((row) => row.nodeId === 11).thumbnailUrl).toBe(
+      '/api/thumbnails/from-meta.webp'
+    );
+
+    act(() => {
+      result.current.handleZoneThumbnailsLoaded(new Map([[11, '/api/thumbnails/late.webp']]));
+    });
+
+    expect(result.current.zoneBRows.find((row) => row.nodeId === 11).thumbnailUrl).toBe(
+      '/api/thumbnails/from-meta.webp'
+    );
+  });
+
+  it('non-Map and empty payloads are ignored without touching rows', async () => {
+    const { result } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    act(() => {
+      result.current.handleZoneThumbnailsLoaded([{ nodeId: 11, thumbnailUrl: '/x.webp' }]);
+      result.current.handleZoneThumbnailsLoaded(new Map());
+    });
+
+    expect(result.current.zoneBRows.every((row) => row.thumbnailUrl === undefined)).toBe(true);
+  });
+
+  it('the zone-local merge never touches zone A (session) rows', async () => {
+    const { result } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    // node 1 is a SESSION_FILES row (zone A) — zone merge must not leak into it
+    act(() => {
+      result.current.handleZoneThumbnailsLoaded(new Map([[1, '/api/thumbnails/1.webp']]));
+    });
+
+    expect(result.current.zoneARows.map((row) => row.nodeId)).toContain(1);
+    expect(result.current.zoneARows.every((row) => row.thumbnailUrl === undefined)).toBe(true);
+  });
+
+  it('exitResults clears merged zone thumbnails', async () => {
+    const { result } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    act(() => {
+      result.current.handleZoneThumbnailsLoaded(new Map([[11, '/api/thumbnails/11.webp']]));
+    });
+    act(() => {
+      result.current.exitResults();
+    });
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.zoneBRows.find((row) => row.nodeId === 11).thumbnailUrl).toBeUndefined();
+  });
+});
+
+describe('useSearchResults exit + recents', () => {
+  it('exitResults resets mode/chain/zones while the recents list survives', async () => {
+    const { result } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    act(() => {
+      result.current.exitResults();
+    });
+
+    expect(result.current.mode).toBe('browse');
+    expect(result.current.chain).toEqual([]);
+    expect(result.current.zoneARows).toEqual([]);
+    expect(result.current.zoneBRows).toEqual([]);
+    expect(result.current.recentQueries.map((chip) => chip.query)).toEqual(['movie']);
+  });
+
+  it('upserts recents (normalized dedup, newest first, cap 8) through the storage seam', async () => {
+    const gateway = createGateway();
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    await act(async () => {
+      await result.current.submitSearch('  movie  ');
+    });
+    expect(result.current.recentQueries).toHaveLength(1);
+    expect(result.current.recentQueries[0].query).toBe('movie');
+    expect(recentQueriesStorage.saveRecentQueries).toHaveBeenCalled();
+
+    for (const query of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']) {
+      await act(async () => {
+        await result.current.submitSearch(query);
+      });
+    }
+    expect(result.current.recentQueries).toHaveLength(8);
+    expect(result.current.recentQueries[0].query).toBe('h');
+  });
+
+  it('a fresh submit after a previous chain resets the chain (new snapshot)', async () => {
+    const { result } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    act(() => {
+      result.current.exitResults();
+    });
+    await act(async () => {
+      await result.current.submitSearch('sig');
+    });
+
+    expect(result.current.chain).toHaveLength(1);
+    expect(result.current.chain[0].term).toBe('sig');
+  });
+});
+
+describe('useSearchResults zone C activation (T1.5c)', () => {
+  // Server score order (score desc, node_id asc) deliberately reversed
+  // against every sortMode ordering: names sort alpha-desc while scores
+  // descend — a client re-sort would scramble the delivered order.
+  const SEMANTIC_RESPONSE = {
+    name_matches: [{ node_id: 11, name: 'movie.pdf' }],
+    semantic: [
+      { node_id: 91, name: 'zeta.jpg', score: 0.9 },
+      { node_id: 90, name: 'alpha.jpg', score: 0.8 },
+      { node_id: 92, name: 'mid.jpg', score: 0.7 },
+    ],
+    result_ref: 'sr1.z',
+    counts: {
+      name: 1,
+      semantic: 3,
+      total: 4,
+      name_truncated: false,
+      semantic_capped_segments: false,
+    },
+  };
+
+  const createGateway = (overrides = {}) => ({
+    runSearch: jest.fn().mockResolvedValue(SEMANTIC_RESPONSE),
+    loadNodesMetadata: jest.fn().mockResolvedValue([]),
+    recordSearchClick: jest.fn().mockResolvedValue(true),
+    ...overrides,
+  });
+
+  it('zone C rows keep the delivered score order under any sortMode (no client re-sort)', async () => {
+    const { result } = renderSearchHook({ gateway: createGateway(), sortMode: 'name_asc' });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.zoneCRows.map((row) => row.nodeId)).toEqual([91, 90, 92]);
+    expect(result.current.zoneCounts.zoneC).toBe(3);
+  });
+
+  it('a node displayed in zone A is deduped out of zone C display but keeps the snapshot count', async () => {
+    const gateway = createGateway({
+      runSearch: jest.fn().mockResolvedValue({
+        ...SEMANTIC_RESPONSE,
+        semantic: [
+          { node_id: 2, name: 'notes-movie.txt', score: 0.95 },
+          { node_id: 91, name: 'zeta.jpg', score: 0.9 },
+        ],
+        counts: {
+          name: 1,
+          semantic: 2,
+          total: 3,
+          name_truncated: false,
+          semantic_capped_segments: false,
+        },
+      }),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.zoneARows.map((row) => row.nodeId)).toContain(2);
+    expect(result.current.zoneCRows.map((row) => row.nodeId)).toEqual([91]);
+    expect(result.current.zoneCounts.zoneC).toBe(2);
+  });
+
+  it('libraryAddTarget spans zones: the union includes the zone C snapshot ids', async () => {
+    const { result } = renderSearchHook({ gateway: createGateway() });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(Array.from(result.current.libraryAddTarget).sort((a, b) => a - b)).toEqual([
+      1, 2, 11, 90, 91, 92,
+    ]);
+  });
+
+  it('the current snapshot reports semanticAvailable from the semantic key presence', async () => {
+    const { result } = renderSearchHook({ gateway: createGateway() });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    expect(result.current.semanticAvailable).toBe(true);
+  });
+
+  it('a refinement step replaces the semantic snapshot with the fresh section (omitted ⇒ empty + unavailable)', async () => {
+    const gateway = createGateway({
+      runSearch: jest
+        .fn()
+        .mockResolvedValueOnce(SEMANTIC_RESPONSE)
+        .mockResolvedValueOnce({
+          name_matches: [{ node_id: 11, name: 'movie.pdf' }],
+          result_ref: 'sr1.step2',
+          counts: { name: 1, semantic: 0, total: 1, name_truncated: false },
+        }),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    await act(async () => {
+      await result.current.submitSearch('pdf');
+    });
+
+    expect(result.current.zoneCRows).toEqual([]);
+    expect(result.current.zoneCounts.zoneC).toBe(0);
+    expect(result.current.semanticAvailable).toBe(false);
+  });
+
+  it('an honestly empty semantic leg keeps semanticAvailable true with zero rows', async () => {
+    const gateway = createGateway({
+      runSearch: jest.fn().mockResolvedValue({
+        ...SEMANTIC_RESPONSE,
+        semantic: [],
+        counts: {
+          name: 1,
+          semantic: 0,
+          total: 1,
+          name_truncated: false,
+          semantic_capped_segments: false,
+        },
+      }),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.zoneCRows).toEqual([]);
+    expect(result.current.zoneCounts.zoneC).toBe(0);
+    expect(result.current.semanticAvailable).toBe(true);
+  });
+
+  it('saveFromResults creates the search-origin collection through the create seam', async () => {
+    const created = { collection: { collection_id: 5 }, undo: { action_id: 77 } };
+    const gateway = createGateway({ createCollection: jest.fn().mockResolvedValue(created) });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    let saved;
+    await act(async () => {
+      saved = await result.current.saveFromResults();
+    });
+
+    // The reconciled `{ name, semantic }` dispatch arm (routes/collections.md
+    // §2.4): the wire name `semantic` carries the flattened snapshot — the
+    // result reference, the reserved predicate set, and the semantic-section
+    // member ids.
+    expect(gateway.createCollection).toHaveBeenCalledWith(
+      {
+        name: 'movie',
+        semantic: { resultRef: 'sr1.z', predicates: [], nodeIds: [91, 90, 92] },
+      },
+      expect.anything()
+    );
+    expect(saved).toEqual(created);
+  });
+
+  it('saveFromResults bails (null, no create call) when the semantic section is unavailable or empty', async () => {
+    const unavailable = createGateway({
+      createCollection: jest.fn(),
+      runSearch: jest.fn().mockResolvedValue(SEARCH_RESPONSE),
+    });
+    const unavailableResult = renderSearchHook({ gateway: unavailable }).result;
+    await act(async () => {
+      await unavailableResult.current.submitSearch('movie');
+    });
+    let saved;
+    await act(async () => {
+      saved = await unavailableResult.current.saveFromResults();
+    });
+    expect(saved).toBeNull();
+    expect(unavailable.createCollection).not.toHaveBeenCalled();
+
+    const empty = createGateway({
+      createCollection: jest.fn(),
+      runSearch: jest.fn().mockResolvedValue({
+        ...SEMANTIC_RESPONSE,
+        semantic: [],
+        counts: {
+          name: 1,
+          semantic: 0,
+          total: 1,
+          name_truncated: false,
+          semantic_capped_segments: false,
+        },
+      }),
+    });
+    const emptyResult = renderSearchHook({ gateway: empty }).result;
+    await act(async () => {
+      await emptyResult.current.submitSearch('movie');
+    });
+    await act(async () => {
+      saved = await emptyResult.current.saveFromResults();
+    });
+    expect(saved).toBeNull();
+    expect(empty.createCollection).not.toHaveBeenCalled();
+  });
+
+  it('saveFromResults bails without a resultRef (nothing to replay)', async () => {
+    const gateway = createGateway({
+      createCollection: jest.fn(),
+      runSearch: jest.fn().mockResolvedValue({
+        ...SEMANTIC_RESPONSE,
+        result_ref: undefined,
+      }),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    let saved;
+    await act(async () => {
+      saved = await result.current.saveFromResults();
+    });
+
+    expect(saved).toBeNull();
+    expect(gateway.createCollection).not.toHaveBeenCalled();
+  });
+});
+
+describe('useSearchResults entry-click recording', () => {
+  it('routes once through the gateway seam and absorbs failures silently', async () => {
+    const gateway = createGateway();
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await expect(result.current.recordEntryClick(11)).resolves.toBe(true);
+    });
+    expect(gateway.recordSearchClick).toHaveBeenCalledTimes(1);
+    expect(gateway.recordSearchClick).toHaveBeenCalledWith(11);
+
+    gateway.recordSearchClick.mockRejectedValueOnce(new Error('boom'));
+    await act(async () => {
+      await expect(result.current.recordEntryClick(12)).resolves.toBe(false);
+    });
+  });
+});
+
+describe('useSearchResults NL-parsed predicates consumption', () => {
+  const NL_ATOMS = [{ type: 'path', value: 'movies', prefix: '/movies' }, { type: 'like' }];
+  const PARSED_RESPONSE = {
+    ...SEARCH_RESPONSE,
+    result_ref: 'sr1.parsed',
+    predicates: NL_ATOMS,
+  };
+
+  it('stores the response predicates verbatim on the step snapshot', async () => {
+    const gateway = createGateway({ runSearch: jest.fn().mockResolvedValue(PARSED_RESPONSE) });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.chain[0].snapshot.predicates).toEqual(NL_ATOMS);
+    expect(result.current.chain[0].snapshot.resultRef).toBe('sr1.parsed');
+  });
+
+  it('a parser-free response (no predicates key) stores an empty array', async () => {
+    const { result } = renderSearchHook();
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+
+    expect(result.current.chain[0].snapshot.predicates).toEqual([]);
+  });
+
+  it('each step keeps its own atoms; undoToStep restores the per-step snapshot with ZERO extra searches', async () => {
+    const step2 = {
+      ...SEARCH_RESPONSE,
+      name_matches: [{ node_id: 11, name: 'movie.pdf' }],
+      result_ref: 'sr1.step2',
+      predicates: [{ type: 'size', min: 1048576 }],
+      counts: { name: 1, semantic: 0, total: 1, name_truncated: false },
+    };
+    const gateway = createGateway({
+      runSearch: jest.fn().mockResolvedValueOnce(PARSED_RESPONSE).mockResolvedValueOnce(step2),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    await act(async () => {
+      await result.current.submitSearch('big');
+    });
+    expect(result.current.chain[1].snapshot.predicates).toEqual([{ type: 'size', min: 1048576 }]);
+
+    act(() => {
+      result.current.undoToStep(0);
+    });
+    expect(result.current.chain).toHaveLength(1);
+    expect(result.current.chain[0].snapshot.predicates).toEqual(NL_ATOMS);
+    expect(gateway.runSearch).toHaveBeenCalledTimes(2);
+  });
+
+  it('exitResults clears the atom state with the chain', async () => {
+    const gateway = createGateway({ runSearch: jest.fn().mockResolvedValue(PARSED_RESPONSE) });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    act(() => {
+      result.current.exitResults();
+    });
+
+    expect(result.current.chain).toEqual([]);
+    expect(result.current.zoneCounts).toEqual({ zoneA: 0, zoneB: 0, zoneC: 0 });
+  });
+
+  it('saveFromResults still posts predicates: [] while the snapshot carries atoms', async () => {
+    const created = { collection: { collection_id: 5 }, undo: { action_id: 77 } };
+    const gateway = createGateway({
+      runSearch: jest.fn().mockResolvedValue({
+        name_matches: [],
+        semantic: [
+          { node_id: 91, name: 'zeta.jpg', score: 0.9 },
+          { node_id: 90, name: 'alpha.jpg', score: 0.8 },
+        ],
+        result_ref: 'sr1.savepred',
+        counts: {
+          name: 0,
+          semantic: 2,
+          total: 2,
+          name_truncated: false,
+          semantic_capped_segments: false,
+        },
+        predicates: NL_ATOMS,
+      }),
+      createCollection: jest.fn().mockResolvedValue(created),
+    });
+    const { result } = renderSearchHook({ gateway });
+
+    await act(async () => {
+      await result.current.submitSearch('movie');
+    });
+    await act(async () => {
+      await result.current.saveFromResults();
+    });
+
+    expect(gateway.createCollection).toHaveBeenCalledWith(
+      {
+        name: 'movie',
+        semantic: { resultRef: 'sr1.savepred', predicates: [], nodeIds: [91, 90] },
+      },
+      expect.anything()
+    );
+  });
+});

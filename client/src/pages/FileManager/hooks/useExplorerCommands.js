@@ -28,6 +28,7 @@ export function useExplorerCommands({
   setSelectedFiles,
   setSelectionMode,
   showError,
+  onUndoable,
   // dialogs / UI state (shell-owned)
   closeUploadDialog,
   closeBulkDeleteDialog,
@@ -107,6 +108,23 @@ export function useExplorerCommands({
     [currentNodeIdRef, getCurrentNodeIdNow, refreshNow, setTreeUpdateTrigger]
   );
 
+  // Bulk undo seam (FileManager.md §7 / useBulkOperations.md §2.6): the shell's
+  // handleUndoable renders the toast; the undo re-reads the FILE surface the
+  // batch touched (listing + tree), and copy-undo additionally notifies the
+  // pinned trash icon (the batch trashes the created nodes on undo).
+  const bulkUndoable = useCallback(
+    (payload, textKey, params, meta) => {
+      if (typeof onUndoable !== 'function') return;
+      const refresh = () => {
+        if (typeof refreshNow === 'function') refreshNow();
+        setTreeUpdateTrigger({ type: 'refresh', timestamp: Date.now() });
+        if (meta && meta.action === 'copy') notifyTrashChanged();
+      };
+      onUndoable(payload, textKey, params, refresh);
+    },
+    [onUndoable, refreshNow, setTreeUpdateTrigger]
+  );
+
   const {
     folderPickerOpen,
     folderPickerAction,
@@ -134,7 +152,12 @@ export function useExplorerCommands({
     setSelectedFiles,
     setSelectionMode,
     () => currentNodeIdRef?.current ?? currentNodeId,
-    { markProcessing, clearProcessing, shareToken: isShareLinkMode ? shareToken : undefined }
+    {
+      markProcessing,
+      clearProcessing,
+      shareToken: isShareLinkMode ? shareToken : undefined,
+      onUndoable: bulkUndoable,
+    }
   );
 
   const dismissFailedItemsSafe = useCallback(() => {
@@ -142,20 +165,23 @@ export function useExplorerCommands({
     if (typeof dismissFailedItemsFromBulk === 'function') dismissFailedItemsFromBulk();
   }, [dismissFailedItems, dismissFailedItemsFromBulk]);
 
-  const { handleFileDownload: handleFileDownloadOp, handleFileRename: handleFileRenameOp } =
-    useFileOperations({
-      onProgress: updateProgress,
-      setProcessingMap,
-      onActionComplete: handleOperationComplete,
-      onClose: () => {
-        setActionSheetOpen(false);
-        setActionSheetFile(null);
-      },
-      onConflictResolveStart: () => {
-        setSelectionMode(false);
-        setSelectedFiles(new Set());
-      },
-    });
+  const {
+    handleFileDownload: handleFileDownloadOp,
+    handleFileRename: handleFileRenameOp,
+    notifyUploadQueueDrained,
+  } = useFileOperations({
+    onProgress: updateProgress,
+    setProcessingMap,
+    onActionComplete: handleOperationComplete,
+    onClose: () => {
+      setActionSheetOpen(false);
+      setActionSheetFile(null);
+    },
+    onConflictResolveStart: () => {
+      setSelectionMode(false);
+      setSelectedFiles(new Set());
+    },
+  });
 
   const executeExplorerUpload = useCallback(
     async (filesToUpload, parentNodeId, onConflict = 'error') => {
@@ -194,6 +220,7 @@ export function useExplorerCommands({
           error: t('fileManager.uploadNoPermission'),
           keepOnError: true,
         });
+        notifyUploadQueueDrained();
         return;
       }
 
@@ -279,6 +306,7 @@ export function useExplorerCommands({
         }));
 
         if (explorerUploadCancelAllRequestedRef.current.has(progressId)) {
+          notifyUploadQueueDrained();
           handleOperationComplete({ opType: 'upload', startedNodeId: uploadParentNodeId });
           return;
         }
@@ -321,6 +349,7 @@ export function useExplorerCommands({
           }, 3000);
         }
 
+        notifyUploadQueueDrained();
         handleOperationComplete({ opType: 'upload', startedNodeId: uploadParentNodeId });
         setTreeUpdateTrigger({
           type: 'refresh',
@@ -347,6 +376,7 @@ export function useExplorerCommands({
           keepOnError: true,
           fileItems: [...fileItems],
         });
+        notifyUploadQueueDrained();
         handleOperationComplete({ opType: 'upload', startedNodeId: uploadParentNodeId });
       } finally {
         explorerUploadAbortControllersRef.current.delete(progressId);
@@ -361,6 +391,7 @@ export function useExplorerCommands({
       user,
       updateProgress,
       handleOperationComplete,
+      notifyUploadQueueDrained,
       setTreeUpdateTrigger,
       t,
     ]

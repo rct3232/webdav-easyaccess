@@ -6,7 +6,7 @@
  * backend via createTestDatabase() (sqlite default leg; real PG adapter leg).
  */
 
-const { createTestDatabase } = require('@server/test-utils');
+const { createTestDatabase, dbRun } = require('@server/test-utils');
 const storage = require('@server/store/storage');
 const createFileNodeRepository = require('@server/store/repositories/FileNodeRepository');
 
@@ -380,6 +380,39 @@ describe('FileNodeRepository conformance', () => {
     const second = await repo.untrashSubtree([child.id, stranger.id]);
     expect(second.changes).toBe(2);
     expect((await repo.getNode(stranger.id)).deletedAt).toBeNull();
+  });
+
+  it('A13: renameNodeTx/untrashSubtreeTx join the caller TX (failure after restore rolls both back)', async () => {
+    const parent = await repo.createNode(null, uniqueName('fn-tx-p'), 'directory');
+    const node = await repo.createNode(parent.id, uniqueName('fn-tx-n'), 'file');
+    await repo.markSubtreeDeleted([node.id]);
+    const originalName = node.name;
+    const restoredName = uniqueName('fn-tx-restored');
+    const executor = storage.getExecutor();
+
+    // Undo executor shape: node restore/rename then a later step throws before
+    // the journal/suggestion flip — the whole TX must unwind on BOTH dialects.
+    await expect(
+      executor.transaction(async (tx) => {
+        await repo.renameNodeTx(tx, node.id, restoredName);
+        await repo.untrashSubtreeTx(tx, [node.id]);
+        throw new Error('injected failure after node restore');
+      })
+    ).rejects.toThrow();
+
+    const untouched = await repo.getNodeIncludingTrashed(node.id);
+    expect(untouched.name).toBe(originalName);
+    expect(untouched.deletedAt).not.toBeNull();
+    await expect(repo.getNode(node.id)).resolves.toBeNull();
+
+    // Success path: the same tx-bound calls commit together and become live.
+    await executor.transaction(async (tx) => {
+      await repo.renameNodeTx(tx, node.id, restoredName);
+      await repo.untrashSubtreeTx(tx, [node.id]);
+    });
+    const restored = await repo.getNode(node.id);
+    expect(restored.name).toBe(restoredName);
+    expect(restored.deletedAt).toBeNull();
   });
 
   it('A13: getObjectMapBySubtree returns every object_map row of the subtree (any status)', async () => {
@@ -817,5 +850,569 @@ describe('FileNodeRepository conformance', () => {
     expect(root).not.toBeNull();
     expect(root.id).toBe(created.id);
     expect(root.name).toBe(username);
+  });
+
+  describe('filecache content-hash repair surface (T0.1/T0.8)', () => {
+    let dirNode;
+    let liveFile;
+    let trashedFile;
+    let hashedFile;
+
+    beforeEach(async () => {
+      dirNode = await repo.createNode(null, uniqueName('fn-hash-dir'), 'directory');
+      liveFile = await repo.createNode(dirNode.id, uniqueName('fn-hash-live'), 'file');
+      trashedFile = await repo.createNode(dirNode.id, uniqueName('fn-hash-trashed'), 'file');
+      hashedFile = await repo.createNode(dirNode.id, uniqueName('fn-hash-set'), 'file');
+      await repo.upsertCache(liveFile.id, 10, 'text/plain', null);
+      await repo.upsertCache(trashedFile.id, 20, 'text/plain', null);
+      await repo.upsertCache(hashedFile.id, 30, 'text/plain', 'already-hashed');
+      await repo.markSubtreeDeleted([trashedFile.id]);
+    });
+
+    it('countCacheRowsWithNullContentHash counts only NULL-hash rows (delta-based)', async () => {
+      const before = await repo.countCacheRowsWithNullContentHash();
+
+      const extra = await repo.createNode(null, uniqueName('fn-hash-extra'), 'file');
+      await repo.upsertCache(extra.id, 5, 'text/plain', null);
+      const mid = await repo.countCacheRowsWithNullContentHash();
+      expect(mid).toBe(before + 1);
+
+      await repo.setCacheContentHash(extra.id, 'abc');
+      const after = await repo.countCacheRowsWithNullContentHash();
+      expect(after).toBe(before);
+    });
+
+    it('listCacheRowsWithNullContentHash lists file rows with NULL hash, domain-shaped and ordered', async () => {
+      const rows = await repo.listCacheRowsWithNullContentHash();
+      const relevant = rows.filter((r) =>
+        [liveFile.id, trashedFile.id, hashedFile.id].includes(r.nodeId)
+      );
+
+      expect(relevant).toHaveLength(2); // the already-hashed row is excluded
+      expect(relevant.map((r) => r.nodeId)).toEqual([liveFile.id, trashedFile.id]); // ascending
+
+      const live = relevant.find((r) => r.nodeId === liveFile.id);
+      expect(live).toMatchObject({
+        nodeId: liveFile.id,
+        type: 'file',
+        deletedAt: null,
+      });
+      expect(typeof live.name).toBe('string');
+
+      const trashed = relevant.find((r) => r.nodeId === trashedFile.id);
+      expect(trashed.deletedAt).not.toBeNull(); // trash-aware consumers need the state
+    });
+
+    it('honours the limit option', async () => {
+      const rows = await repo.listCacheRowsWithNullContentHash({ limit: 1 });
+      expect(rows).toHaveLength(1);
+    });
+
+    it('setCacheContentHash writes only the NULL row; a re-write is a no-op', async () => {
+      const set = await repo.setCacheContentHash(liveFile.id, 'deadbeef');
+      expect(set.changes).toBe(1);
+
+      const cache = await repo.getCache(liveFile.id);
+      expect(cache.content_hash).toBe('deadbeef');
+
+      // Idempotency contract: an already-set row is NEVER touched again.
+      const rewrite = await repo.setCacheContentHash(liveFile.id, 'c0ffee');
+      expect(rewrite.changes).toBe(0);
+      const after = await repo.getCache(liveFile.id);
+      expect(after.content_hash).toBe('deadbeef');
+    });
+
+    it('setCacheContentHash reports changes=0 for an unknown node', async () => {
+      const res = await repo.setCacheContentHash(999999999, 'deadbeef');
+      expect(res.changes).toBe(0);
+    });
+  });
+
+  describe('listSubtreeCacheRows (T0.9 AI-hygiene subtree read)', () => {
+    it('returns live subtree rows with filecache columns, node-id ascending', async () => {
+      const parent = await repo.createNode(null, uniqueName('fn-sub-parent'), 'directory');
+      const child = await repo.createNode(parent.id, uniqueName('fn-sub-child'), 'directory');
+      const fileA = await repo.createNode(child.id, uniqueName('fn-sub-a'), 'file');
+      const fileB = await repo.createNode(parent.id, uniqueName('fn-sub-b'), 'file');
+      const outside = await repo.createNode(null, uniqueName('fn-sub-out'), 'file');
+      await repo.insertAncestorRows([
+        { ancestorId: parent.id, descendantId: parent.id, depth: 0 },
+        { ancestorId: parent.id, descendantId: child.id, depth: 1 },
+        { ancestorId: child.id, descendantId: child.id, depth: 0 },
+        { ancestorId: parent.id, descendantId: fileA.id, depth: 2 },
+        { ancestorId: child.id, descendantId: fileA.id, depth: 1 },
+        { ancestorId: fileA.id, descendantId: fileA.id, depth: 0 },
+        { ancestorId: parent.id, descendantId: fileB.id, depth: 1 },
+        { ancestorId: fileB.id, descendantId: fileB.id, depth: 0 },
+        { ancestorId: outside.id, descendantId: outside.id, depth: 0 },
+      ]);
+
+      await repo.upsertCache(fileA.id, 11, 'image/png', 'hash-a');
+      // fileB deliberately has NO filecache row
+
+      const rows = await repo.listSubtreeCacheRows(parent.id);
+      const ids = rows.map((row) => row.nodeId);
+      expect(ids).toEqual([...ids].sort((x, y) => x - y));
+      expect(ids).toEqual(expect.arrayContaining([parent.id, child.id, fileA.id, fileB.id]));
+      expect(ids).not.toContain(outside.id);
+
+      const a = rows.find((row) => row.nodeId === fileA.id);
+      expect(a).toMatchObject({
+        parentId: child.id,
+        name: fileA.name,
+        type: 'file',
+        size: 11,
+        mimeType: 'image/png',
+        contentHash: 'hash-a',
+      });
+      expect(typeof a.createdAt).toBe('string');
+
+      const b = rows.find((row) => row.nodeId === fileB.id);
+      expect(b.size).toBeNull();
+      expect(b.contentHash).toBeNull();
+
+      // trashed nodes disappear from the read (caller-expanded subtree ids,
+      // matching the trash-service usage)
+      await repo.markSubtreeDeleted([child.id, fileA.id]);
+      const afterIds = (await repo.listSubtreeCacheRows(parent.id)).map((row) => row.nodeId);
+      expect(afterIds).not.toContain(child.id);
+      expect(afterIds).not.toContain(fileA.id);
+    });
+  });
+
+  describe('summarizeTrashedSubtree (T0.10 dashboard trash read)', () => {
+    it('aggregates trashed file rows of the subtree (count, bytes, oldest deleted_at)', async () => {
+      const root = await repo.createNode(null, uniqueName('fn-tr-root'), 'directory');
+      const folder = await repo.createNode(root.id, uniqueName('fn-tr-folder'), 'directory');
+      const inner = await repo.createNode(folder.id, uniqueName('fn-tr-inner'), 'file');
+      const solo = await repo.createNode(root.id, uniqueName('fn-tr-solo'), 'file');
+      const live = await repo.createNode(root.id, uniqueName('fn-tr-live'), 'file');
+      const outside = await repo.createNode(null, uniqueName('fn-tr-out'), 'file');
+      await repo.insertAncestorRows([
+        { ancestorId: root.id, descendantId: root.id, depth: 0 },
+        { ancestorId: root.id, descendantId: folder.id, depth: 1 },
+        { ancestorId: folder.id, descendantId: folder.id, depth: 0 },
+        { ancestorId: root.id, descendantId: inner.id, depth: 2 },
+        { ancestorId: folder.id, descendantId: inner.id, depth: 1 },
+        { ancestorId: inner.id, descendantId: inner.id, depth: 0 },
+        { ancestorId: root.id, descendantId: solo.id, depth: 1 },
+        { ancestorId: solo.id, descendantId: solo.id, depth: 0 },
+        { ancestorId: root.id, descendantId: live.id, depth: 1 },
+        { ancestorId: live.id, descendantId: live.id, depth: 0 },
+        { ancestorId: outside.id, descendantId: outside.id, depth: 0 },
+      ]);
+      await repo.upsertCache(inner.id, 100, 'text/plain', null);
+      await repo.upsertCache(solo.id, 250, 'text/plain', null);
+      await repo.upsertCache(live.id, 999, 'text/plain', null);
+      await repo.upsertCache(outside.id, 999, 'text/plain', null);
+
+      // baseline: nothing trashed yet (outside trims are irrelevant to the subtree)
+      await expect(repo.summarizeTrashedSubtree(root.id)).resolves.toEqual({
+        itemCount: 0,
+        totalBytes: 0,
+        oldestDeletedAt: null,
+      });
+
+      // trash marking covers the whole subtree — folder rows never count,
+      // children of trashed folders count exactly once each
+      await repo.markSubtreeDeleted([folder.id, inner.id, solo.id]);
+      const summary = await repo.summarizeTrashedSubtree(root.id);
+      expect(summary.itemCount).toBe(2);
+      expect(summary.totalBytes).toBe(350);
+      expect(typeof summary.oldestDeletedAt).toBe('string');
+      expect(Date.parse(summary.oldestDeletedAt)).not.toBeNaN();
+
+      // restore drains the aggregate back
+      await repo.untrashSubtree([folder.id, inner.id, solo.id]);
+      await expect(repo.summarizeTrashedSubtree(root.id)).resolves.toMatchObject({
+        itemCount: 0,
+        totalBytes: 0,
+        oldestDeletedAt: null,
+      });
+    });
+
+    it('reports zeros for an unknown subtree root', async () => {
+      await expect(repo.summarizeTrashedSubtree(999999999)).resolves.toEqual({
+        itemCount: 0,
+        totalBytes: 0,
+        oldestDeletedAt: null,
+      });
+    });
+  });
+
+  describe('summarizeSubtreeStorageUsage (storage usage series)', () => {
+    async function makeTree(prefix) {
+      const root = await repo.createNode(null, uniqueName(`${prefix}-root`), 'directory');
+      const folder = await repo.createNode(root.id, uniqueName(`${prefix}-folder`), 'directory');
+      const fileA = await repo.createNode(folder.id, uniqueName(`${prefix}-a`), 'file');
+      const fileB = await repo.createNode(root.id, uniqueName(`${prefix}-b`), 'file');
+      const fileC = await repo.createNode(root.id, uniqueName(`${prefix}-c`), 'file');
+      const outside = await repo.createNode(null, uniqueName(`${prefix}-out`), 'file');
+      await repo.insertAncestorRows([
+        { ancestorId: root.id, descendantId: root.id, depth: 0 },
+        { ancestorId: root.id, descendantId: folder.id, depth: 1 },
+        { ancestorId: folder.id, descendantId: folder.id, depth: 0 },
+        { ancestorId: root.id, descendantId: fileA.id, depth: 2 },
+        { ancestorId: folder.id, descendantId: fileA.id, depth: 1 },
+        { ancestorId: fileA.id, descendantId: fileA.id, depth: 0 },
+        { ancestorId: root.id, descendantId: fileB.id, depth: 1 },
+        { ancestorId: fileB.id, descendantId: fileB.id, depth: 0 },
+        { ancestorId: root.id, descendantId: fileC.id, depth: 1 },
+        { ancestorId: fileC.id, descendantId: fileC.id, depth: 0 },
+        { ancestorId: outside.id, descendantId: outside.id, depth: 0 },
+      ]);
+      return { root, folder, fileA, fileB, fileC, outside };
+    }
+
+    it('S3 mode sums active+history object sizes across live and trashed rows (no deleted_at filter)', async () => {
+      const { root, fileA, fileB, fileC, outside } = await makeTree('fn-sus-s3-tree');
+      const insertObject = (nodeId, key, version, status, size) =>
+        dbRun(
+          `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status, size)
+           VALUES (?, ?, 's3', ?, ?, ?)`,
+          [Number(nodeId), key, version, status, size]
+        );
+
+      await insertObject(fileA.id, uniqueName('fn-sus-s3-a1'), 1, 'active', 100);
+      await insertObject(fileA.id, uniqueName('fn-sus-s3-a2'), 2, 'history', 50);
+      await insertObject(fileB.id, uniqueName('fn-sus-s3-b1'), 1, 'active', 200);
+      await insertObject(fileB.id, uniqueName('fn-sus-s3-b2'), 2, 'pending', 999);
+      await insertObject(fileB.id, uniqueName('fn-sus-s3-b3'), 3, 'orphaned', 888);
+      await insertObject(fileC.id, uniqueName('fn-sus-s3-c1'), 1, 'active', 300);
+      await insertObject(outside.id, uniqueName('fn-sus-s3-out'), 1, 'active', 777);
+      await repo.markSubtreeDeleted([fileC.id]);
+
+      await expect(repo.summarizeSubtreeStorageUsage(root.id)).resolves.toEqual({
+        bytes: 650,
+        liveBytes: 300,
+        trashBytes: 300,
+        versionBytes: 50,
+        itemCount: 4,
+        trashItemCount: 1,
+        oldestTrashedAt: expect.any(String),
+        nullSizeCount: 0,
+      });
+
+      // A NULL size on a counted version marks the aggregate incomplete.
+      await insertObject(fileB.id, uniqueName('fn-sus-s3-b4'), 4, 'active', null);
+      await expect(
+        repo.summarizeSubtreeStorageUsage(root.id, { includeVersions: true })
+      ).resolves.toEqual({
+        bytes: 650,
+        liveBytes: 300,
+        trashBytes: 300,
+        versionBytes: 50,
+        itemCount: 5,
+        trashItemCount: 1,
+        oldestTrashedAt: expect.any(String),
+        nullSizeCount: 1,
+      });
+    });
+
+    it('WebDAV mode sums current filecache sizes over file rows (live + trash), reporting missing rows', async () => {
+      const { root, folder, fileA, fileB, fileC, outside } = await makeTree('fn-sus-wd-tree');
+      await repo.upsertCache(fileA.id, 10, 'text/plain', null);
+      await repo.upsertCache(fileB.id, 20, 'text/plain', null);
+      await repo.upsertCache(folder.id, 500, 'text/plain', null); // directories never count
+      await repo.upsertCache(outside.id, 900, 'text/plain', null);
+      await repo.markSubtreeDeleted([fileB.id]);
+
+      await expect(
+        repo.summarizeSubtreeStorageUsage(root.id, { includeVersions: false })
+      ).resolves.toEqual({
+        bytes: 30,
+        liveBytes: 10,
+        trashBytes: 20,
+        versionBytes: 0,
+        itemCount: 3,
+        trashItemCount: 1,
+        oldestTrashedAt: expect.any(String),
+        nullSizeCount: 1, // fileC has no filecache row
+      });
+
+      await repo.upsertCache(fileC.id, 40, 'text/plain', null);
+      await expect(
+        repo.summarizeSubtreeStorageUsage(root.id, { includeVersions: false })
+      ).resolves.toEqual({
+        bytes: 70,
+        liveBytes: 50,
+        trashBytes: 20,
+        versionBytes: 0,
+        itemCount: 3,
+        trashItemCount: 1,
+        oldestTrashedAt: expect.any(String),
+        nullSizeCount: 0,
+      });
+    });
+
+    it('reports zeros for an unknown subtree root', async () => {
+      await expect(repo.summarizeSubtreeStorageUsage(999999999)).resolves.toEqual({
+        bytes: 0,
+        liveBytes: 0,
+        trashBytes: 0,
+        versionBytes: 0,
+        itemCount: 0,
+        trashItemCount: 0,
+        oldestTrashedAt: null,
+        nullSizeCount: 0,
+      });
+    });
+  });
+
+  describe('search surface (T0.11 — searchNodesByName / sampleVisibleNodeIds)', () => {
+    /**
+     * ACL scoping mirrors the fileService listing parity rule
+     * (collections service `loadVisibleCandidates` precedent): the requester's
+     * own-root subtree ∪ granted path subtrees (node + closure descendants) ∪
+     * point-granted file nodes. Grants are written directly through the
+     * permissions_user_paths table (the permissionStore seam the conformance
+     * harness avoids on purpose).
+     */
+    async function grantPathPermission(userId, fileNodeId) {
+      await dbRun(
+        'INSERT INTO permissions_user_paths (user_id, file_node_id, permission) VALUES (?, ?, ?)',
+        [Number(userId), Number(fileNodeId), 'read']
+      );
+    }
+
+    /**
+     * Closure maintenance is a caller concern (the ancestry helper does it in
+     * production); repo-level fixtures insert the chain rows explicitly.
+     */
+    async function addClosure(parentId, childId) {
+      const rows = [{ ancestorId: Number(childId), descendantId: Number(childId), depth: 0 }];
+      if (parentId != null) {
+        // The parent's chain already includes the parent itself (depth 0),
+        // so the direct-parent row falls out of the walk — dedupe by ancestor.
+        const seen = new Set([Number(childId)]);
+        for (const entry of await repo.getAncestorChain(parentId)) {
+          const ancestorId = Number(entry.ancestorId);
+          if (seen.has(ancestorId)) continue;
+          seen.add(ancestorId);
+          rows.push({
+            ancestorId,
+            descendantId: Number(childId),
+            depth: Number(entry.depth) + 1,
+          });
+        }
+      }
+      await repo.insertAncestorRows(rows);
+    }
+
+    let ownerId;
+    let otherId;
+    let ownerRoot;
+    let grantedFolder;
+    let grantedInside;
+    let pointGranted;
+    let hiddenSibling;
+    let trashedMatch;
+
+    beforeAll(async () => {
+      const User = require('@server/models/User');
+      const suffix = uniqueName('fnsearch');
+      const owner = await User.create(`${suffix}-own`, `${suffix}-own@conf.test`, 'pw', false);
+      const other = await User.create(`${suffix}-oth`, `${suffix}-oth@conf.test`, 'pw', false);
+      ownerId = owner.id;
+      otherId = other.id;
+
+      ownerRoot = await repo.createNode(null, `${suffix}-own`, 'directory');
+      await addClosure(null, ownerRoot.id);
+      grantedFolder = await repo.createNode(ownerRoot.id, `${suffix}-shared-folder`, 'directory');
+      await addClosure(ownerRoot.id, grantedFolder.id);
+      grantedInside = await repo.createNode(
+        grantedFolder.id,
+        `${suffix}-shared-memo-inside.txt`,
+        'file'
+      );
+      await addClosure(grantedFolder.id, grantedInside.id);
+      pointGranted = await repo.createNode(ownerRoot.id, `${suffix}-point-shared-2.txt`, 'file');
+      await addClosure(ownerRoot.id, pointGranted.id);
+      hiddenSibling = await repo.createNode(ownerRoot.id, `${suffix}-hidden-sibling.txt`, 'file');
+      await addClosure(ownerRoot.id, hiddenSibling.id);
+      trashedMatch = await repo.createNode(ownerRoot.id, `${suffix}-trashed.txt`, 'file');
+      await addClosure(ownerRoot.id, trashedMatch.id);
+      await repo.markSubtreeDeleted([trashedMatch.id]);
+
+      await grantPathPermission(otherId, grantedFolder.id);
+      await grantPathPermission(otherId, pointGranted.id);
+    });
+
+    it('searchNodesByName matches containment over the requester-visible set only', async () => {
+      const ownerRows = await repo.searchNodesByName(ownerId, '-shared-', { limit: 100 });
+      const ownerIds = ownerRows.map((r) => r.id);
+      expect(ownerIds).toContain(grantedInside.id);
+      expect(ownerIds).toContain(pointGranted.id);
+      expect(ownerIds).not.toContain(hiddenSibling.id);
+      expect(ownerIds).not.toContain(trashedMatch.id);
+
+      const otherRows = await repo.searchNodesByName(otherId, '-shared-', { limit: 100 });
+      const otherIds = otherRows.map((r) => r.id);
+      expect(otherIds).toContain(grantedInside.id); // path grant → closure descendants
+      expect(otherIds).toContain(pointGranted.id); // point grant
+      expect(otherIds).not.toContain(hiddenSibling.id); // unreadable never appears
+    });
+
+    it('lower() applies to BOTH sides (ASCII-case-folded match) and rows are name/id ordered', async () => {
+      const upper = await repo.createNode(ownerRoot.id, 'FNSEARCH-UPPER.TXT', 'file');
+      await addClosure(ownerRoot.id, upper.id);
+      // name-asc fixtures with an unambiguous binary + collation order
+      const ordB = await repo.createNode(ownerRoot.id, 'fnsearch-ord-b.txt', 'file');
+      await addClosure(ownerRoot.id, ordB.id);
+      const ordA = await repo.createNode(ownerRoot.id, 'fnsearch-ord-a.txt', 'file');
+      await addClosure(ownerRoot.id, ordA.id);
+      // same-name tie-break: two visible nodes named identically under
+      // different parents (the per-parent unique index forbids duplicates)
+      const tieDir = await repo.createNode(ownerRoot.id, 'fnsearch-ord-tie-dir', 'directory');
+      await addClosure(ownerRoot.id, tieDir.id);
+      const tie1 = await repo.createNode(tieDir.id, 'fnsearch-ord-tie.txt', 'file');
+      await addClosure(tieDir.id, tie1.id);
+      const tie2 = await repo.createNode(grantedFolder.id, 'fnsearch-ord-tie.txt', 'file');
+      await addClosure(grantedFolder.id, tie2.id);
+
+      const rows = await repo.searchNodesByName(ownerId, 'FNSEARCH-UPPER', { limit: 100 });
+      expect(rows.map((r) => r.id)).toContain(upper.id);
+
+      const ordered = await repo.searchNodesByName(ownerId, 'fnsearch-ord', { limit: 100 });
+      const names = ordered.map((r) => r.name);
+      expect(names).toEqual([...names].sort());
+      expect(names.indexOf('fnsearch-ord-a.txt')).toBeLessThan(names.indexOf('fnsearch-ord-b.txt'));
+
+      const tieIdxs = ordered
+        .map((r, i) => (r.name === 'fnsearch-ord-tie.txt' ? i : -1))
+        .filter((i) => i >= 0);
+      expect(tieIdxs).toHaveLength(2);
+      expect(tieIdxs[1] - tieIdxs[0]).toBe(1); // node_id asc keeps identical names adjacent
+      const tieIds = tieIdxs.map((i) => ordered[i].id);
+      expect(tieIds).toEqual([Math.min(tie1.id, tie2.id), Math.max(tie1.id, tie2.id)]);
+      expect(ordered.map((r) => r.id)).toEqual(expect.arrayContaining([ordA.id, ordB.id]));
+    });
+
+    it('searchNodesByName honours the limit option', async () => {
+      const rows = await repo.searchNodesByName(ownerId, 'fnsearch-ord', { limit: 2 });
+      expect(rows).toHaveLength(2);
+    });
+
+    it('whole-string containment: no token split (multi-word miss returns nothing)', async () => {
+      const rows = await repo.searchNodesByName(ownerId, 'fnsearch ord .TXT', { limit: 100 });
+      expect(rows).toHaveLength(0);
+    });
+
+    it('sampleVisibleNodeIds returns at most n ids drawn from the visible set', async () => {
+      const sample = await repo.sampleVisibleNodeIds(ownerId, 2);
+      expect(sample.length).toBeLessThanOrEqual(2);
+      const visible = await repo.searchNodesByName(ownerId, 'fnsearch', { limit: 1000 });
+      const visibleIds = new Set(visible.map((r) => r.id));
+      expect(visibleIds.size).toBeGreaterThan(2);
+      for (const id of sample) {
+        expect(visibleIds.has(Number(id))).toBe(true);
+      }
+
+      const otherSample = await repo.sampleVisibleNodeIds(otherId, 100);
+      const otherVisible = new Set(
+        (await repo.searchNodesByName(otherId, 'fnsearch', { limit: 1000 })).map((r) => r.id)
+      );
+      for (const id of otherSample) {
+        expect(otherVisible.has(Number(id))).toBe(true);
+      }
+      expect(otherSample.some((id) => Number(id) === pointGranted.id)).toBe(true);
+      expect(otherSample.some((id) => Number(id) === grantedInside.id)).toBe(true);
+      expect(otherSample.some((id) => Number(id) === hiddenSibling.id)).toBe(false);
+    });
+  });
+
+  describe('listVisibleFileNodeIds (searchService §2.5a ACL anchoring set)', () => {
+    let ownerId;
+    let otherId;
+    let ownerRoot;
+    let ownChild;
+    let grantedFolder;
+    let grantedInside;
+    let pointGranted;
+    let deniedSibling;
+    let trashedNode;
+
+    async function addClosure(parentId, childId) {
+      const rows = [{ ancestorId: Number(childId), descendantId: Number(childId), depth: 0 }];
+      if (parentId != null) {
+        const seen = new Set([Number(childId)]);
+        for (const entry of await repo.getAncestorChain(parentId)) {
+          const ancestorId = Number(entry.ancestorId);
+          if (seen.has(ancestorId)) continue;
+          seen.add(ancestorId);
+          rows.push({ ancestorId, descendantId: Number(childId), depth: Number(entry.depth) + 1 });
+        }
+      }
+      await repo.insertAncestorRows(rows);
+    }
+
+    beforeAll(async () => {
+      const User = require('@server/models/User');
+      const suffix = uniqueName('fnvisible');
+      const owner = await User.create(`${suffix}-own`, `${suffix}-own@conf.test`, 'pw', false);
+      const other = await User.create(`${suffix}-oth`, `${suffix}-oth@conf.test`, 'pw', false);
+      ownerId = owner.id;
+      otherId = other.id;
+
+      ownerRoot = await repo.createNode(null, `${suffix}-own`, 'directory');
+      await addClosure(null, ownerRoot.id);
+      ownChild = await repo.createNode(ownerRoot.id, `${suffix}-own-child.txt`, 'file');
+      await addClosure(ownerRoot.id, ownChild.id);
+      grantedFolder = await repo.createNode(ownerRoot.id, `${suffix}-granted-folder`, 'directory');
+      await addClosure(ownerRoot.id, grantedFolder.id);
+      grantedInside = await repo.createNode(
+        grantedFolder.id,
+        `${suffix}-granted-inside.txt`,
+        'file'
+      );
+      await addClosure(grantedFolder.id, grantedInside.id);
+      pointGranted = await repo.createNode(ownerRoot.id, `${suffix}-point-granted.txt`, 'file');
+      await addClosure(ownerRoot.id, pointGranted.id);
+      deniedSibling = await repo.createNode(ownerRoot.id, `${suffix}-denied.txt`, 'file');
+      await addClosure(ownerRoot.id, deniedSibling.id);
+      trashedNode = await repo.createNode(ownerRoot.id, `${suffix}-trashed.txt`, 'file');
+      await addClosure(ownerRoot.id, trashedNode.id);
+
+      await dbRun(
+        'INSERT INTO permissions_user_paths (user_id, file_node_id, permission) VALUES (?, ?, ?)',
+        [Number(otherId), Number(grantedFolder.id), 'read']
+      );
+      await dbRun(
+        'INSERT INTO permissions_user_paths (user_id, file_node_id, permission) VALUES (?, ?, ?)',
+        [Number(otherId), Number(pointGranted.id), 'read']
+      );
+      await repo.markSubtreeDeleted([trashedNode.id]);
+    });
+
+    it("returns EXACTLY the owner's live own-root subtree (id ascending)", async () => {
+      const ids = await repo.listVisibleFileNodeIds(ownerId);
+      const expected = [
+        ownerRoot.id,
+        ownChild.id,
+        grantedFolder.id,
+        grantedInside.id,
+        pointGranted.id,
+        deniedSibling.id,
+      ].sort((a, b) => a - b);
+      expect(ids).toEqual(expected);
+      expect(ids).not.toContain(trashedNode.id);
+    });
+
+    it('returns EXACTLY the granted path subtree + point grant for a foreign requester', async () => {
+      const ids = await repo.listVisibleFileNodeIds(otherId);
+      expect(ids).toEqual(
+        [grantedFolder.id, grantedInside.id, pointGranted.id].sort((a, b) => a - b)
+      );
+      expect(ids).not.toContain(deniedSibling.id);
+      expect(ids).not.toContain(ownerRoot.id);
+      expect(ids).not.toContain(trashedNode.id);
+    });
+
+    it('returns an empty set for a requester with no root and no grants', async () => {
+      const User = require('@server/models/User');
+      const suffix = uniqueName('fnvisible-stranger');
+      const stranger = await User.create(`${suffix}`, `${suffix}@conf.test`, 'pw', false);
+      await expect(repo.listVisibleFileNodeIds(stranger.id)).resolves.toEqual([]);
+    });
   });
 });

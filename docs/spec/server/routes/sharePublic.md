@@ -47,17 +47,17 @@ Business logic is delegated to `shareAccessService`, which exports:
 
 ### 2.4 Request/Response Spec
 
-- **GET /:token/info:** 200: `{ token, nodeId, fileName, fileType, isDirectory, displayPath, createdAt, expiresAt, downloadCount, isExpired }`; 만료 시 403 또는 404 + isExpired
-- **GET /:token:** streams file blob (resolved via `fileNodeService.getNode` + `blobStorageService.downloadBlob(nodeId)`); 만료 시 403
-- **GET /:token/preview:** streams file (inline) using chunked response; 만료 시 403
-- **GET /:token/check-my-permission:** 200: `{ hasSufficientPermission, nodeId? }` — `nodeId` is the first missing node id, `null` when permission is sufficient; 비인증 401
+- **GET /:token/info:** 200: `{ token, nodeId, fileName, fileType, isDirectory, displayPath, createdAt, expiresAt, downloadCount, isExpired }`; 403 on expiry or 404 + isExpired
+- **GET /:token:** streams file blob (resolved via `fileNodeService.getNode` + `blobStorageService.downloadBlob(nodeId)`); 403 on expiry
+- **GET /:token/preview:** streams file (inline) using chunked response; 403 on expiry
+- **GET /:token/check-my-permission:** 200: `{ hasSufficientPermission, nodeId? }` — `nodeId` is the first missing node id, `null` when permission is sufficient; unauthenticated 401
 - **POST /:token/add-to-my-permissions:** 200: `{ message }`
 
 Notes:
 
 - **Headers must remain stable** for `/preview`: `Content-Disposition: inline` and `Content-Type` derived from filename.
 - Response body bytes are identical to non-streaming behavior; only the server→client transfer uses chunked writes.
-- Range requests are **not supported** today (`req.headers.range` is not honored); adding `206 Partial Content` range support is tracked in `docs/IMPROVEMENT_PLAN.md`.
+- Range requests are **not supported** today (`req.headers.range` is not honored).
 
 ### 2.5 Related Documents
 
@@ -70,5 +70,5 @@ Notes:
 - [ ] Download/preview stream correct file
 - [ ] check-my-permission, add-to-my-permissions require auth
 - [ ] check-my-permission returns `{ hasSufficientPermission, nodeId }` (nodeId null when access sufficient)
-- [ ] 만료된 링크 download/preview → 403
-- [ ] check-my-permission 비인증 → 401
+- [ ] expired link download/preview → 403
+- [ ] check-my-permission unauthenticated → 401

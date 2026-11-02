@@ -189,4 +189,21 @@ describe('useAuthSession', () => {
     expect(result.current.user).toBeNull();
     setItemSpy.mockRestore();
   });
+  it('logout clears the session recent-search-query store (useSearchResults §2.3)', async () => {
+    sessionStorage.setItem('token', 'existing-token');
+    authService.getMe.mockResolvedValue({ id: '1', username: 'user', is_admin: 0 });
+    sessionStorage.setItem(
+      'wea.recentSearchQueries',
+      JSON.stringify([{ id: 'movie', query: 'movie' }])
+    );
+
+    const { result } = renderHook(() => useAuthSession());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.logout();
+    });
+
+    expect(sessionStorage.getItem('wea.recentSearchQueries')).toBeNull();
+  });
 });

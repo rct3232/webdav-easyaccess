@@ -51,6 +51,7 @@ const FileGridItemContainer = ({
   return (
     <Box
       key={getEntryKey(file)}
+      data-testid={file.rowTestId}
       data-file-path={file.path}
       data-file-node-id={file.nodeId}
       {...dragHandlers}

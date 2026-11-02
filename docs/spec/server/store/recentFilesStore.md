@@ -23,7 +23,7 @@
 | addRecentFile      | (userId, fileNodeId) => Promise<Array>   | Add; dedupe by node_id; prepend; cap at MAX_RECENT_FILES. Name/type derivable from `file_nodes`. |
 | removeRecentFile   | (userId, fileNodeId) => Promise\<Array\> | Remove by node_id                                                                                |
 
-**REMOVED methods:** `applyBulkMove`, `removePaths` — node_ids are stable; rename/move does not change nodeId. `clearRecentFiles` — removed with DEF-23 (no consumer).
+**REMOVED methods:** `applyBulkMove`, `removePaths` — node_ids are stable; rename/move does not change nodeId. `clearRecentFiles` — removed (no consumer).
 
 ### 2.3 PostgreSQL v2 Table Mapping
 

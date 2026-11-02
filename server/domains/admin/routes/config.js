@@ -18,6 +18,8 @@ const {
   isSecret,
 } = require('../../../infrastructure/configRegistry');
 const { buildConfigSyncReport, syncConfigSyncEnv } = require('../services/configSyncService');
+const { commitSettingChange, isCuratedSettingKey } = require('../services/settingsJournalService');
+const { ensureLlmProbeTarget } = require('../../../infrastructure/adapters/llm/probe');
 const {
   runProbe,
   classifyToHealthCode,
@@ -91,6 +93,41 @@ function buildProbePayload(target, pending, effective) {
   }
 
   return payload;
+}
+
+const LLM_PROBE_ROLE_KEYS = {
+  chat: ['LLM_CHAT_BASE_URL', 'LLM_CHAT_API_KEY', 'LLM_CHAT_MODEL'],
+  vision: ['LLM_VISION_BASE_URL', 'LLM_VISION_API_KEY', 'LLM_VISION_MODEL'],
+  asr: ['LLM_ASR_BASE_URL', 'LLM_ASR_API_KEY', 'LLM_ASR_MODEL'],
+};
+
+/**
+ * LLM probe payload: explicit overrides win; missing credentials resolve from
+ * the config resolver server-side, so a masked client value never becomes the
+ * probe secret. The client only needs to send `{ role }`.
+ */
+function buildLlmProbePayload(pending) {
+  const role = String(pending.role || '');
+  const keys = LLM_PROBE_ROLE_KEYS[role];
+  if (!keys) return { role };
+  const resolver = getSharedResolver();
+  const resolveKey = (key) => {
+    const explicit = pending[key] ?? pending[toCamelProbeField(key)];
+    if (explicit !== undefined && explicit !== null && explicit !== SECRET_MASK) return explicit;
+    return typeof resolver.getConfigSync === 'function' ? resolver.getConfigSync(key) : undefined;
+  };
+  return {
+    role,
+    baseUrl: resolveKey(keys[0]),
+    apiKey: resolveKey(keys[1]),
+    model: resolveKey(keys[2]),
+  };
+}
+
+function toCamelProbeField(key) {
+  if (key.endsWith('_BASE_URL')) return 'baseUrl';
+  if (key.endsWith('_API_KEY')) return 'apiKey';
+  return 'model';
 }
 
 // Middleware to check if user is admin (same pattern as settings.js)
@@ -170,6 +207,10 @@ router.put(
           continue;
         }
         await Settings.set(key, String(value));
+      } else if (isCuratedSettingKey(key)) {
+        // Curated AI governance keys journal their previous value in the same
+        // TX as the write (settings-domain undo feed). Never secrets.
+        await commitSettingChange({ key, value: String(value), actor: req.user.id });
       } else {
         await Settings.set(key, String(value));
       }
@@ -209,8 +250,13 @@ router.post(
     delete pending.target;
 
     try {
+      if (target === 'llm') ensureLlmProbeTarget();
       const effective = await getSharedResolver().getEffectiveConfig();
-      const result = await runProbe(target, buildProbePayload(target, pending, effective));
+      const probePayload =
+        target === 'llm'
+          ? buildLlmProbePayload(pending)
+          : buildProbePayload(target, pending, effective);
+      const result = await runProbe(target, probePayload);
       getBackendHealth().report(target, { ok: true });
       res.json(result);
     } catch (error) {
@@ -240,7 +286,12 @@ router.post(
 // Admin health snapshot: full per-backend tracker state (code/hint/lastChecked).
 // Stateless token-claim admin check (no DB read) so it works during a DB outage.
 router.get('/health', authenticateToken, isAdminFromToken, (req, res) => {
-  res.json({ backends: getBackendHealth().getHealth() });
+  const backends = getBackendHealth().getHealth();
+  // vectorStore seam wire value (vectorStore.md §1, routes/admin.md §2.7):
+  // native when the boot probe selected a native adapter, fallback_js
+  // otherwise (the JS fallback is a performance warning, never a feature gate).
+  const vectorOps = backends.vector && backends.vector.status === 'ok' ? 'native' : 'fallback_js';
+  res.json({ backends, vectorOps });
 });
 
 // Env↔DB config-sync report (read-only). The env source is the running process
@@ -292,5 +343,10 @@ router.post(
     });
   })
 );
+
+// AI governance surface + unified re-embed launcher. Mounted here (the config
+// module is already mounted at /api/admin) so server/index.js stays untouched;
+// final paths are /api/admin/ai/*.
+router.use('/ai', require('./ai'));
 
 module.exports = router;

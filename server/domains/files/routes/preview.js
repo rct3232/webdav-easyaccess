@@ -107,6 +107,22 @@ router.get(
       throw notFoundError(SERVER_ERROR_CODES.files.notFound);
     }
 
+    // §3.4 usage signal (register (a)): a successful ticket read is a preview.
+    // Share principals carry no usage_events row (the subject must be a user).
+    if (!aclService.isSharePrincipal(entry.principalId)) {
+      const { getUsageService } = require('../../../infrastructure/usageService');
+      getUsageService()
+        .recordEvent({
+          userId: Number(entry.principalId),
+          nodeId: fileNodeId,
+          action: 'preview',
+        })
+        .catch((error) => {
+          // eslint-disable-next-line no-console
+          console.error('usage recordEvent failed:', error);
+        });
+    }
+
     const node = await fileNodeService.getNode(fileNodeId);
     const filename = node ? node.name : 'preview';
     const encodedFilename = encodeURIComponent(filename);
@@ -143,7 +159,7 @@ router.post(
     const principalId = req.principalId;
     const user = req.user?.full;
 
-    const { downloadService } = getComposition();
+    const { aclService, downloadService } = getComposition();
 
     const result = await downloadService.downloadMultiple(parsedNodeIds, principalId, user);
 
@@ -207,6 +223,22 @@ router.post(
 
     archive.pipe(res);
     await archive.finalize();
+
+    // §3.4 usage signal (register (a)): one `download` event per requested
+    // node that streamed without error; share principals record nothing.
+    if (!aclService.isSharePrincipal(principalId)) {
+      const failedNodeIds = new Set(errors.map((entry) => Number(entry.nodeId)));
+      const { getUsageService } = require('../../../infrastructure/usageService');
+      for (const nodeId of parsedNodeIds) {
+        if (failedNodeIds.has(nodeId)) continue;
+        getUsageService()
+          .recordEvent({ userId: Number(principalId), nodeId, action: 'download' })
+          .catch((error) => {
+            // eslint-disable-next-line no-console
+            console.error('usage recordEvent failed:', error);
+          });
+      }
+    }
 
     opStore.setDownloadProgress(downloadId, {
       status: 'completed',

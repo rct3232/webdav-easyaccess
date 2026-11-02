@@ -91,3 +91,54 @@ describe('FileGrid', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 });
+
+describe('FileGrid — member tile containers (P-4)', () => {
+  const memberRow = (overrides = {}) => ({
+    nodeId: 90210,
+    path: '',
+    basename: 'poster.pdf',
+    type: 'file',
+    mime: 'application/pdf',
+    isCollectionMember: true,
+    published: false,
+    shared_excluded: false,
+    state: 'normal',
+    hasWritePermission: false,
+    rowTestId: 'member-row-90210',
+    ...overrides,
+  });
+
+  it('renders file.rowTestId on the tile container and routes clicks through onFileClick', () => {
+    const onFileClick = jest.fn();
+    renderWithProviders(
+      <FileGrid {...defaultProps} files={[memberRow()]} onFileClick={onFileClick} />
+    );
+    fireEvent.click(screen.getByTestId('member-row-90210'));
+    expect(onFileClick).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: 90210 }),
+      expect.any(Object),
+      0
+    );
+  });
+
+  it('a revoked member tile is disabled — clicks inert', () => {
+    const onFileClick = jest.fn();
+    renderWithProviders(
+      <FileGrid
+        {...defaultProps}
+        files={[memberRow({ state: 'revoked' })]}
+        onFileClick={onFileClick}
+      />
+    );
+    fireEvent.click(screen.getByTestId('member-row-90210'));
+    expect(onFileClick).not.toHaveBeenCalled();
+  });
+
+  it('plain file tiles carry NO container data-testid (zero DOM delta)', () => {
+    const { container } = renderWithProviders(<FileGrid {...defaultProps} />);
+    // Member rows are the ONLY rows that get a container data-testid (via
+    // file.rowTestId); MUI icons legitimately carry their own data-testid, so
+    // the zero-delta check is scoped to the member slot.
+    expect(container.querySelector('[data-testid^="member-row-"]')).toBeNull();
+  });
+});

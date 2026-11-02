@@ -81,8 +81,8 @@ Checklist for unit test writing:
 - value = '' – Confirm disabled
 - helperText = ' ' (space) when no error – preserves layout
 - fullScreen for mobile layouts
-- value가 기존 이름과 동일: parent가 onConfirm 전에 비교하여 API 호출 생략 가능; 또는 API 호출 시 200 (no-op)
-- validateFileName 금지 문자: shared 검증; 에러 prop 표시
+- value equals the existing name: the parent may compare before onConfirm and skip the API call; or the call returns 200 (no-op)
+- forbidden characters via shared validateFileName; rendered through the error prop
 
 ### 2.9 API Error Behavior (consistent with CreateFolderDialog, LoginDialog, useFileOperations)
 

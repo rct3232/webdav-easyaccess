@@ -9,6 +9,7 @@ import {
   setAccessToken,
   setRefreshToken,
 } from '../services/authTokenStore';
+import { clearRecentQueries } from '../services/recentQueriesStorage';
 import { normalizeAuthUser } from '../utils/normalizeAuthUser';
 
 export function useAuthSession() {
@@ -36,6 +37,10 @@ export function useAuthSession() {
     // block the local session clear) before dropping local state.
     revokeRefreshToken();
     removeTokens();
+
+    // Session-scoped search chips are dropped alongside the session itself
+    // (useSearchResults.md §2.3 Decision). Best-effort, must not block logout.
+    clearRecentQueries();
 
     try {
       localStorage.removeItem('token');

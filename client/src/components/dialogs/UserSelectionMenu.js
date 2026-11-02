@@ -26,6 +26,7 @@ const UserSelectionMenu = ({
   handleAddUser,
   permissionRequest,
   handleUserSelect,
+  onBack,
 }) => {
   const { t } = useTranslation();
   if (!folderMenuPath) return null;
@@ -149,18 +150,22 @@ const UserSelectionMenu = ({
 
       return (
         <>
-          <MenuItem
-            onClick={(e) => {
-              e.stopPropagation();
-              setFolderMenuView('manage');
-            }}
-          >
-            <ListItemText primary={t('dialogs.back')} />
-          </MenuItem>
+          {onBack && (
+            <>
+              <MenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onBack();
+                }}
+              >
+                <ListItemText primary={t('dialogs.back')} />
+              </MenuItem>
 
-          <MenuItem disabled sx={{ py: 0 }}>
-            <Box sx={{ width: '100%', height: 1, bgcolor: 'divider' }} />
-          </MenuItem>
+              <MenuItem disabled sx={{ py: 0 }}>
+                <Box sx={{ width: '100%', height: 1, bgcolor: 'divider' }} />
+              </MenuItem>
+            </>
+          )}
 
           {!reviewRequesterOption.alreadyAdded ? (
             <MenuItem
@@ -182,18 +187,22 @@ const UserSelectionMenu = ({
 
     return (
       <>
-        <MenuItem
-          onClick={(e) => {
-            e.stopPropagation();
-            setFolderMenuView('manage');
-          }}
-        >
-          <ListItemText primary={t('dialogs.back')} />
-        </MenuItem>
+        {onBack && (
+          <>
+            <MenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onBack();
+              }}
+            >
+              <ListItemText primary={t('dialogs.back')} />
+            </MenuItem>
 
-        <MenuItem disabled sx={{ py: 0 }}>
-          <Box sx={{ width: '100%', height: 1, bgcolor: 'divider' }} />
-        </MenuItem>
+            <MenuItem disabled sx={{ py: 0 }}>
+              <Box sx={{ width: '100%', height: 1, bgcolor: 'divider' }} />
+            </MenuItem>
+          </>
+        )}
 
         {availableUsers.length === 0 ? (
           <MenuItem disabled>

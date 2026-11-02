@@ -16,9 +16,9 @@
 - **Source:** `server/domains/recentFiles/routes.js`
 - **Test file:** `server/domains/recentFiles/__tests__/recentFiles.test.js`
 
-**Architecture note:** Business logic is extracted into `server/domains/recentFiles/service.js`, which exports: `getRecentFiles(userId)`, `addRecentFile(userId, fileNodeId)`, `removeRecentFile(userId, fileNodeId)`. `applyBulkMove` and `removePaths` are **REMOVED** — node_ids are stable across rename/move, so no post-operation synchronization is needed. `clearRecentFiles` / the clear-all route are **REMOVED (DEF-23)** — no UI ever specified a clear-all affordance. The service delegates to `server/store/recentFilesStore` for persistence.
+**Architecture note:** Business logic is extracted into `server/domains/recentFiles/service.js`, which exports: `getRecentFiles(userId)`, `addRecentFile(userId, fileNodeId)`, `removeRecentFile(userId, fileNodeId)`. `applyBulkMove` and `removePaths` are **REMOVED** — node_ids are stable across rename/move, so no post-operation synchronization is needed. `clearRecentFiles` / the clear-all route are **REMOVED** — no UI ever specified a clear-all affordance. The service delegates to `server/store/recentFilesStore` for persistence.
 
-**Trash filter (DEF-16 P4):** enrichment resolves each entry's node through the live-row read
+**Trash filter:** enrichment resolves each entry's node through the live-row read
 (`getNode` — trashed → null). A trashed node's `recent_files` DB row is KEPT, but the entry is
 HIDDEN from every listing response (enrichment returns nothing for it). Restoring the node makes
 the entry visible again.

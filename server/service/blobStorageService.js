@@ -62,7 +62,7 @@ function createBlobStorageService({
     if (!row) {
       throw new Error('No object_map entry found for s3Key: ' + s3Key);
     }
-    await fileNodesStore.activateObject(s3Key);
+    await fileNodesStore.activateObject(s3Key, size);
     await fileNodesStore.upsertCache(row.file_node_id, size, mimeType, null);
   }
 
@@ -83,7 +83,7 @@ function createBlobStorageService({
     }
     const newS3Key = crypto.randomUUID();
     await blobStore.uploadBlob(newS3Key, buffer);
-    await fileNodesStore.upsertObjectMap(fileNodeId, newS3Key, 'active');
+    await fileNodesStore.upsertObjectMap(fileNodeId, newS3Key, 'active', buffer.length);
     return newS3Key;
   }
 
@@ -111,11 +111,11 @@ function createBlobStorageService({
     return newS3Key;
   }
 
-  async function linkObject(fileNodeId, s3Key) {
+  async function linkObject(fileNodeId, s3Key, size = null) {
     if (isWebdavMode) {
       throw new Error('linkObject is not applicable in WebDAV mode');
     }
-    await fileNodesStore.insertObject(fileNodeId, s3Key, 'active');
+    await fileNodesStore.insertObject(fileNodeId, s3Key, 'active', size);
   }
 
   async function ensureExclusiveBlob(fileNodeId) {
@@ -129,7 +129,7 @@ function createBlobStorageService({
     const count = await fileNodesStore.countActiveObjectsByS3Key(row.s3_key);
     if (count > 1) {
       const newS3Key = await duplicateBlob(row.s3_key);
-      await fileNodesStore.upsertObjectMap(fileNodeId, newS3Key, 'active');
+      await fileNodesStore.upsertObjectMap(fileNodeId, newS3Key, 'active', row.size);
       return newS3Key;
     }
     return row.s3_key;

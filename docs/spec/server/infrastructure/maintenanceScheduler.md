@@ -1,0 +1,213 @@
+# maintenanceScheduler Spec
+
+## 1. Overview
+
+| Item      | Description                                                                                                                                                                                                                                                          |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role      | Startup maintenance hooks + periodic schedules: the GC cron and the fail-safe startup scan (current); AI-adjacent nightly one-shots (§3). All schedules are functions in THIS module — new schedulers are never new module files (CODING_STYLE.md Express Patterns). |
+| Source    | `server/infrastructure/maintenanceScheduler.js`                                                                                                                                                                                                                      |
+| Test file | `server/infrastructure/__tests__/maintenanceScheduler.test.js`                                                                                                                                                                                                       |
+
+---
+
+## 2. Current behavior (implemented)
+
+Startup hooks: optional GC cron scheduling and the fail-safe orphaned-node startup scan.
+Both are fire-and-forget; failures are logged, never fatal.
+
+### 2.1 Public exports
+
+| Export                                                                                  | Signature                          | Behavior                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------------------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shouldSkip()`                                                                          | `() => boolean`                    | `WEA_SKIP_GC_SCHEDULER` truthy (`1/true/yes/on`) ⇒ all GC scheduling disabled (test seam).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `resolveIntervalMs()`                                                                   | `() => number`                     | `GC_INTERVAL_MS` via the shared `configResolver.getConfigSync` (DB-only — `dbOnly` registry entry; env intentionally ignored; resolver primed with DB settings at boot). Non-finite or ≤0 ⇒ `0` (disabled).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `startGcScheduler({ gcService })`                                                       | `(opts) => NodeJS.Timeout \| null` | `shouldSkip()` or missing service ⇒ `null`; interval 0 ⇒ `null`; else `setInterval(runGcCycle)` — silent on success, `console.error` on failure (never throws into boot).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `runStartupFailSafeRecovery({ failSafeService, adminReportsWriter, contentHashProbe })` | `async (opts) => report`           | Startup ONE-SHOT: `failSafeService.runStartupRecovery()`; logs orphan count only when non-zero (threshold-gated) + the `pendingUpload` section count with the `repair-sync` pointer (contract: [uploadService.md](../services/uploadService.md) §2.5.1). Also merges the boot completeness section: awaits `contentHashProbe` (default: `adminReportsService.collectContentHashCompleteness`) and writes ONE best-effort `kind='failsafe'` row whose payload carries the scan report plus `contentHashCompleteness` (`status` `partial` when `nullCount > 0` or the count failed, else `ok`); a throwing probe is logged and omitted — boot never fails. Missing service ⇒ empty report; thrown errors ⇒ logged, `{scanned:0,...,error}` returned. |
+
+Startup one-shots are the module's stance: **report-only at boot, never destructive**.
+The AI worker's `recoverStaleRunning` one-shot belongs to `aiJobService` startup,
+NOT this module — this module only schedules PERIODIC work.
+
+---
+
+## 3. Target additions
+
+Two planned scheduler functions per CODING*STYLE.md Express Patterns (`shouldSkip`/`resolveIntervalMs` seams,
+no new module files) plus the evolution/nightly integration points. Existing §2 content
+is unchanged; new functions mirror its idioms (per-function `WEA_SKIP*\*` seam, DB-only
+interval resolution, log-never-throw).
+
+### 3.1 `startUsageRollupScheduler({ usageService, ... })` — nightly rollup
+
+- Fires once per nightly anchor (§3.3). Chain: `usageService.rollupNodeActivity()`
+  (`usage_events` → `node_activity` upserts, applying the item accumulator
+  `score ← score·2^(−Δt/H) + Σ w_a` plus the count/`last_seen_at` columns), then
+  `collectionsStore.recomputeActivityScores()` (Σ member item scores →
+  `collections.activity_score`) and the retention tail: raw
+  `usage_events` rolled off at 90d (GC-parity delete), `actionJournalStore.expireJournalRows()`
+  (payload NULLed, rows survive — actionJournalStore §2.5 names
+  THIS module as its GC caller) and `collectionsStore.purgeExpiredTombstones(cutoff)`
+  (lifetime = `ARCHIVE_RETENTION_DAYS`) — one nightly data-hygiene slot, ordered
+  rollup-before-roll-off so no unrolled event is deleted.
+- Seam: `WEA_SKIP_ROLLUP_SCHEDULER` (truthy ⇒ no schedule; unit tests + hermetic E2E).
+- Implementation contract:
+  - The tick sequences the five legs IN ORDER (`usageService.rollupNodeActivity()` →
+    `collectionsStore.recomputeActivityScores()` → `usageService.rollOffExpiredEvents()`
+    → `actionJournalStore.expireJournalRows()` → `collectionsStore.purgeExpiredTombstones(cutoff)`).
+    Any leg failure aborts the remaining legs (logged, retried next anchor — idempotent
+    re-runs make the retry a no-op for already-consumed intervals).
+  - DI: `usageService` is required (missing ⇒ `null`); the store legs are resolved
+    lazily (`collectionsStore`, `actionJournalStore` facades) with DI overrides for
+    tests, mirroring `resolveAdminReportsWriter`.
+  - Rollup config is read per-fire (T2 hot, dbOnly): weights
+    `AI_USAGE_W_{OPEN,PREVIEW,DOWNLOAD,SEARCH_HIT,LIKE}` (defaults 1/2/3/1/5) and
+    `AI_ACTIVITY_HALF_LIFE_DAYS` (default 30) are resolved by `usageService`
+    (product constants — NOT AI-profile numbers); the
+    `usage_events` roll-off horizon is `AI_USAGE_EVENT_RETENTION_DAYS` (default `90`,
+    `0` = retention off); the tombstone cutoff is now − `ARCHIVE_RETENTION_DAYS`
+    (default `30`, key shared with evolution pass 4 per `collectionsService.md` §3).
+  - The run does NOT persist an `admin_reports` row (the `kind` CHECK enum has no
+    rollup kind): the tick is
+    log-only (`console.error` on failure, silent on success, never throws out of the
+    timer).
+  - The usage-event RECORDING path is `usageService.recordEvent({ userId, nodeId, action })`
+    (validation + `usage_events` insert). The recording points (download / preview /
+    search-hit / like / list-entry-click endpoints) wire it in their owning waves
+    (searchService logs `search_hit` per returned node; like toggle; download/
+    preview = files domain) — this module only rolls up.
+
+### 3.2 `startEvolutionScheduler({ evolutionService })` — nightly backbone slot
+
+- Fires once per nightly anchor and calls
+  `evolutionService.runEvolutionPass({ passes: 'full' })` (nightly runs ALL
+  passes incl. archive/purge; upload-triggered cheap passes are armed by the upload hook
+  inside evolutionService and are NOT scheduled here — this slot guarantees the
+  "nightly at least once/day" invariant even in `upload` trigger mode).
+- Config seam chain (read at FIRE time, T2 hot — [evolutionService](../services/evolutionService.md) §2.2 owns semantics): `AI_EVOLUTION_ENABLED`
+  false or `AI_EVOLUTION_NIGHTLY_ENABLED` false ⇒ tick logs `skipped` and returns
+  (pause never destroys queued work; journal/digest untouched).
+- `AI_EVOLUTION_DEBOUNCE_S` (default 90, T2/dbOnly) governs the per-user upload-batch
+  trailing-edge re-arm in evolutionService; the scheduler slot itself is the fixed
+  nightly anchor — the two triggers share one `runEvolutionPass` and never double-fire
+  (per-user lock group makes a concurrent pair a no-op; lockManager precedent
+  `migrationService.js:330-348`).
+- Seam: `WEA_SKIP_EVOLUTION_SCHEDULER`.
+
+### 3.3 Nightly anchor resolution
+
+- `resolveNightlyTickCron()`-style helper mirroring `resolveIntervalMs`: interval fixed
+  at 24h; the anchor hour comes from `AI_NIGHTLY_ANCHOR_HOUR_UTC` (T2/dbOnly, default 3) — each of §3.1–§3.2 schedules `setTimeout` to the next anchor then re-arms
+  (drift-tolerant; a missed tick (sleeping laptop) runs at the next anchor, passes are
+  idempotent re-scans so nothing is "wrong", only late).
+- Both functions return `null` (disabled) on seam or missing service, exactly like
+  `startGcScheduler`.
+- Anchor math: `resolveAnchorHour()` reads the dbOnly key via the shared resolver
+  sync seam (`getConfigSync`, GC precedent) and falls back to `3` for non-integer or
+  out-of-`0..23` values; `resolveNightlyDelayMs(nowMs, anchorHour)` returns the ms to the
+  NEXT occurrence of the anchor hour (UTC, top-of-hour) in `(0, 24h]` — a delay computed
+  as exactly `0` collapses to `24h` (boot/restarm AT the anchor instant waits for the next
+  anchor: "never twice in one day", no hot re-arm). Each scheduler re-arms with the SAME
+  resolution (anchor hour re-read at fire time — hot). The returned handle is the
+  FIRST pending timer; re-arms replace it internally (fire-and-forget boot wiring never
+  cancels; tests use fake timers + `jest.clearAllTimers()`).
+
+### 3.4 Admin-reports retention (append-only writer + scheduled prune)
+
+- **Writer contract:** `createAdminReportsWriter()` only appends; it has no
+  `pruneReports` seam and performs no DELETE. Retention is a maintenance concern.
+- `runAdminReportsRetention({ store?, now?, retentionDays?, batchSize?, lockManager? })`
+  is the ONE retention core: resolve `ADMIN_REPORTS_RETENTION_DAYS` (T2/dbOnly, default
+  30, `0` = off) at call time; delete rows with `created_at < now − retentionDays` in
+  bounded batches (`ADMIN_REPORTS_RETENTION_BATCH`, T2/dbOnly, default 1000) until fewer
+  than one batch remains; return `{ deleted, cutoffMs }`. It holds the
+  `admin-reports-retention` lock (`lockManager.acquireLock`, TTL 30 min, `waitMs: 0`);
+  a held lock ⇒ `{ skipped: 'locked' }`. Failures reject to the caller (the scheduler
+  logs; boot logs) — the job never writes an `admin_reports` row (no recursion).
+- `startAdminReportsRetentionScheduler({ ...same seams })` returns `null` under
+  `WEA_SKIP_ADMIN_REPORTS_RETENTION` or when
+  `ADMIN_REPORTS_RETENTION_INTERVAL_MS` (T2/dbOnly, default 86400000, `0` = disabled) is
+  non-positive; otherwise it re-arms a `setTimeout` at the resolved interval (hot read
+  per arm), logs failures and never throws out of the timer.
+- Boot runs `runAdminReportsRetention()` once (fire-and-forget) next to the other
+  startup hooks so long-downtime deployments converge immediately; the periodic timer
+  covers the steady state. Both call sites are gated by the same skip seam.
+
+### 3.5 Unchanged
+
+`startGcScheduler`, `runStartupFailSafeRecovery`, `shouldSkip`, `resolveIntervalMs` keep
+their §2 contracts verbatim; boot wiring (`server/index.js`) gains the new scheduler calls
+next to the existing ones, after migrationGate/init like the GC scheduler.
+
+### 3.6 Storage-suggestions expiry (pending rows past `expires_at`)
+
+- `runStorageSuggestionExpiry({ store?, now?, batchSize?, lockManager?, log? })` is the ONE
+  expiry core (the persisted-suggestion retention leg of
+  `docs/features/storage-management.md`): resolve `STORAGE_SUGGESTION_EXPIRY_BATCH`
+  (T2/dbOnly, default 1000) at call time; call the store facade
+  (`store/storageSuggestionsStore.md` §2.3 `expireStale({ now, limit })`) in bounded batches
+  until fewer than one batch remains — `pending` rows with `expires_at < now` flip to
+  `expired` (rows survive; `expires_at IS NULL` never expires under retention `0`); return
+  `{ expired, ids? }`-style counts (`{ expired, cutoffMs }`). It holds the
+  `storage-suggestions-expiry` lock (`lockManager.acquireLock`, TTL 30 min, `waitMs: 0`);
+  a held lock ⇒ `{ expired: 0, skipped: 'locked' }`. Failures reject to the caller (the
+  scheduler logs); the job writes no `admin_reports` row.
+- `startStorageSuggestionExpiryScheduler({ ...seams })` returns `null` under
+  `WEA_SKIP_STORAGE_SUGGESTION_EXPIRY` or when `STORAGE_SUGGESTION_EXPIRY_INTERVAL_MS` (T2/dbOnly,
+  default 86400000, `0` = disabled) is non-positive; otherwise it re-arms a `setTimeout` at
+  the resolved interval (hot read per arm), logs failures and never throws out of the timer.
+- Boot calls `runStorageSuggestionExpiry()` once (fire-and-forget, same posture as §3.4) and
+  starts the periodic scheduler; both gated by the same skip seam.
+
+### 3.7 Storage-usage snapshots (daily per-user series)
+
+- `runStorageUsageSnapshot({ userStore?, fileNodesStore?, snapshotsStore?, now?, retentionDays?, lockManager?, log?, storageMode? })`
+  is ONE capture + retention pass. It holds the `storage-usage-snapshot` lock
+  (`lockManager.acquireLock`, TTL 30 min, `waitMs: 0`); a held lock ⇒
+  `{ captured: 0, skipped: 'locked' }`. For every NON-ADMIN user with a root node it calls
+  `fileNodesStore.summarizeSubtreeStorageUsage(root.id, { includeVersions })` and upserts
+  `{ userId, day: <UTC YYYY-MM-DD>, bytes: summary.bytes }` into `storage_usage_snapshots`
+  (same-day overwrite keeps `created_at`). `includeVersions` is true in S3 mode (active
+  objects partition into live/trash; history objects count as version bytes) and false in
+  WebDAV mode (current filecache rows; no version history). A non-zero `nullSizeCount`
+  skips THAT user with a warning — a partial series is never persisted.
+  After capture it prunes rows with `day < today − STORAGE_USAGE_RETENTION_DAYS` (UTC;
+  `0` = no prune). Returns `{ captured, skippedUsers, pruned, day }`. DB failures reject to
+  the caller (the scheduler logs; idempotent upserts make the retry safe).
+- `startStorageUsageSnapshotScheduler({ ...same seams })` returns `null` under
+  `WEA_SKIP_STORAGE_USAGE_SNAPSHOT` or when `STORAGE_USAGE_SNAPSHOT_INTERVAL_MS`
+  (T2/dbOnly, default `86400000`, `0` = disabled) is non-positive; otherwise it re-arms a
+  `setTimeout` at the resolved interval (hot read per arm) and logs failures without
+  throwing. There is **no boot-time capture** — the first point lands at the first tick;
+  `server/index.js` wires only the scheduler start call.
+
+## 4. Verification Scenarios
+
+- [ ] Existing: GC interval 0/unset ⇒ no timer; `WEA_SKIP_GC_SCHEDULER` ⇒ no timer;
+      startup fail-safe scan report-only, errors swallowed to `{error}`
+- [ ] Each new scheduler returns null under its `WEA_SKIP_*` seam and with the
+      injected service absent — same shape as GC
+- [ ] Retention: the writer never deletes; `runAdminReportsRetention` deletes
+      `now − ADMIN_REPORTS_RETENTION_DAYS` rows in `..._BATCH` chunks under the
+      `admin-reports-retention` lock, returns `retention_off`/`locked` skips, and
+      the scheduler re-arms at `..._INTERVAL_MS` (0 = disabled)
+- [ ] Expiry: `runStorageSuggestionExpiry` flips `pending` rows past `expires_at` in
+      `STORAGE_SUGGESTION_EXPIRY_BATCH` chunks under the `storage-suggestions-expiry` lock
+      (`NULL` `expires_at` exempt), returns `locked` skips, and the scheduler re-arms at
+      `STORAGE_SUGGESTION_EXPIRY_INTERVAL_MS` (0 = disabled, `WEA_SKIP_STORAGE_SUGGESTION_EXPIRY` seam)
+- [ ] Storage-usage snapshot: one row per non-admin user with a root under the
+      `storage-usage-snapshot` lock; NULL sizes skip that user with a warning; WebDAV mode
+      aggregates current filecache bytes; the scheduler re-arms at
+      `STORAGE_USAGE_SNAPSHOT_INTERVAL_MS` (`0` = disabled,
+      `WEA_SKIP_STORAGE_USAGE_SNAPSHOT` seam) and never captures at boot
+- [ ] Rollup order: events rolled BEFORE the 90d roll-off deletes; a forced
+      rollup failure aborts the roll-off (journal-expire/tombstone-purge legs skipped too,
+      retried next anchor)
+- [ ] `expireJournalRows` run: applied-past-expiry rows NULL payloads, counts
+      logged into the nightly report; `undone` rows untouched
+- [ ] Evolution slot with `AI_EVOLUTION_ENABLED=false` fires the timer but
+      performs zero acts (spy on `runEvolutionPass` not called / called-and-skipped);
+      upload-mode DB still gets exactly one FULL pass per day
+- [ ] Debounce vs nightly: a pass already running when the anchor fires
+      no-ops on the lock (no interleaved double-journal of the same act)
+- [ ] Anchor math: tick lands within the configured hour; a server restart
+      across the anchor executes the pass at the NEXT anchor, never twice in one day

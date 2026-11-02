@@ -14,11 +14,11 @@ The application runs its own **ACL** independent of the WebDAV server. Permissio
 
 Defined in `shared/constants.js` as `PERMISSIONS`:
 
-| Level | Value   | Typical use                                                                                                                                                                                                                                                                                                               |
-| ----- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| read  | `read`  | List and download; see folder contents.                                                                                                                                                                                                                                                                                   |
-| write | `write` | Create, upload, rename, move, copy, delete in that folder. Delete trashes the subtree (DEF-16 P2) — rows survive and trash visibility is again write-based (`GET /api/files/trash`); permanent delete of a trashed item (purge) requires the same write check (`POST /api/files/trash/purge`), empty trash is admin-only. |
-| admin | `admin` | Same as write plus grant/revoke permissions for that folder.                                                                                                                                                                                                                                                              |
+| Level | Value   | Typical use                                                                                                                                                                                                                                                                                                   |
+| ----- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| read  | `read`  | List and download; see folder contents.                                                                                                                                                                                                                                                                       |
+| write | `write` | Create, upload, rename, move, copy, delete in that folder. Delete trashes the subtree — rows survive and trash visibility is again write-based (`GET /api/files/trash`); permanent delete of a trashed item (purge) requires the same write check (`POST /api/files/trash/purge`), empty trash is admin-only. |
+| admin | `admin` | Same as write plus grant/revoke permissions for that folder.                                                                                                                                                                                                                                                  |
 
 Use `PERMISSIONS.isValid(permission)` to check a value. Ordering for "higher" is: read &lt; write &lt; admin.
 
@@ -29,7 +29,9 @@ Use `PERMISSIONS.isValid(permission)` to check a value. Ordering for "higher" is
 ### Owner exception
 
 - A user owns their **home root node** and every descendant of it in the `file_nodes` tree.
-- Ownership is resolved by nodeId via the closure table: `isOwnerNode(userId, nodeId)` returns `true` when the target node is the user's root node or `fileNodesStore.isAncestor(rootNodeId, nodeId)` holds (see `server/domains/permissions/policy/ownerNodeResolver.js`).
+- Ownership is resolved by nodeId via the closure table: `isOwnerNode(userId, nodeId)` returns `true` when the user is an **admin** (the admin-owns-everything convention below), or the target node is the user's root node, or `fileNodesStore.isAncestor(rootNodeId, nodeId)` holds (see `server/domains/permissions/policy/ownerNodeResolver.js`).
+- **Admin convention:** `permissionPolicy.js` codifies admin ⇒ full access for read/write/manage (`isAdminUser(user) → true`); `isOwnerNode` honors the same convention — an admin user is the owner of every node (the admin check precedes the home/ancestry path).
+- **Scope of the admin convention:** admin-owns-everything governs **file-ACL surfaces** only (read/write/manage resolution and `isOwnerNode` consumers in files/trash/sharing/permissionPolicy). Personal-storage surfaces — collections, likes, the Storage surface — are **excluded**: the admin actor is a pure operator and never participates there; collections/file-likes endpoints are server-gated 403 (`collections.forbidden`) and storage endpoints use `storage.forbidden`, and admin-as-grantee is banned at grant creation.
 - The owner has full access (read, write, and effectively admin) on owned nodes with **no explicit permission record** required.
 - **No self-grants:** Creating a folder under the user's own home does **not** write a permission row for the creator (the home-root `ADMIN` grant covers descendants via inheritance). Permission rows exist only for grants that carry external meaning (access given to other users or received from other users).
 
@@ -103,7 +105,7 @@ Source: `server/domains/permissions/routes/folderPermissions.js`, `filePermissio
 
 When writing or reviewing permission tests, cover at least:
 
-For user-facing negative browser flows that intersect with permissions, see [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md). Keep the full ACL allow/deny matrix primarily in middleware, route integration, and related lower-level tests.
+Keep the full ACL allow/deny matrix primarily in middleware, route integration, and related lower-level tests.
 
 - **Ancestor inheritance:** Grant read on a directory node; a user can list that folder and its descendants without explicit grants on the descendants (depth N resolution).
 - **Depth 0 vs depth N:** A grant on the target node itself (depth 0) wins over a weaker grant inherited from an ancestor.
@@ -129,16 +131,16 @@ These scenarios should be verified in both middleware/unit tests and API integra
 
 - The "shared with me" surface (`__shared__` sidebar tree and `/files/__shared__`) is backed by `GET /api/permissions/shared`, which returns only grants where the requesting user is the grantee **and the node is outside the user's own home subtree**.
 - Because folder creation no longer self-grants, and the listing additionally excludes the user's own subtree via the closure table, own folders (including existing historical self-grant rows) never appear as "shared".
-- **Trashed nodes are excluded from the shared listing** (DEF-16 P4): the underlying SQL join carries `AND fn.deleted_at IS NULL`, so a grant on a trashed node no longer surfaces as "shared with me". The grant ROW survives the trash (restore brings the entry back) — only the listing read is gated.
+- **Trashed nodes are excluded from the shared listing**: the underlying SQL join carries `AND fn.deleted_at IS NULL`, so a grant on a trashed node no longer surfaces as "shared with me". The grant ROW survives the trash (restore brings the entry back) — only the listing read is gated.
 - Each entry carries its real `name` and `type`; the client must not fabricate `node-<id>` / `file-<id>` placeholder names.
 
-## Trash channel permissions (DEF-16 P3/P7)
+## Trash channel permissions
 
 | Action                                         | Gate                                                                                                        | Notes                                                                                                                                                                                                                |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | See a trashed row (`GET /api/files/trash`)     | write permission on the row (or admin)                                                                      | Permission rows survive the trash; read-only grantees are invisible (degenerate case: a permission revoked while trashed makes the ex-deleter's item invisible to them — documented, no restore path left for them). |
 | Restore (`POST /api/files/trash/restore`)      | write on the trashed node + write on the first live parent folder (move-dest precedent)                     | Admin bypasses; share tokens refused.                                                                                                                                                                                |
-| Purge one item (`POST /api/files/trash/purge`) | **delete perm = the same write check a hard-delete requires today** (`checkFilePermission`, admin bypasses) | Owners and write-grantees can purge their own items (ACL review 2026-09-10); the FK cascade removes permission/share rows at purge time.                                                                             |
+| Purge one item (`POST /api/files/trash/purge`) | **delete perm = the same write check a hard-delete requires today** (`checkFilePermission`, admin bypasses) | Owners and write-grantees can purge their own items; the FK cascade removes permission/share rows at purge time.                                                                                                     |
 | Empty trash (`POST /api/files/trash/empty`)    | **admin-only** (403 for non-admin)                                                                          | Bulk physical delete of all topmost trashed items.                                                                                                                                                                   |
 
 Permission rows, share links and closure rows survive the trash and are removed only by the purge

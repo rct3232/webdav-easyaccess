@@ -82,7 +82,7 @@ nodes). With the synthesized activeObject, the webdav→s3 `shouldSkip`/`process
 identically: they read `activeObject.s3_key` only as the resume marker and always download the source
 from `nodePath`.
 
-**Trashed nodes are part of the snapshot (DEF-16 P8):** both enumerations above INCLUDE trashed rows
+**Trashed nodes are part of the snapshot:** both enumerations above INCLUDE trashed rows
 (`deleted_at` set) — intentionally and explicitly, so a trashed item survives the cutover **still
 trashed** (`deleted_at` is untouched by the copy; the file_nodes rows are never rewritten by blob
 migration). S3 source: trash performs no physical I/O and leaves `sync_status='active'` + the active
@@ -93,7 +93,7 @@ instead), so the `Not('orphaned_node')` enumeration includes it.
 `orphaned_node` file nodes are excluded because they represent known-unrecoverable writes (the blob
 PUT failed after the DB commit); they are a fail-safe/manual-review concern, never migration input.
 
-**Trash-aware blob paths (DEF-16 P8):** for a trashed node the blob I/O uses the reserved trash
+**Trash-aware blob paths:** for a trashed node the blob I/O uses the reserved trash
 namespace instead of the display path:
 
 - **webdav→s3**: the source blob of a trashed webdav node lives at `/.wea-trash/<nodeId>` (the trash
@@ -115,10 +115,13 @@ metadata), while the physical I/O path is trash-aware.
 
 1. `path = fileNodeService.getNodePath(nodeId)`; the I/O path is `buildTrashPath(nodeId)` when the node is trashed, `path` otherwise.
 2. Auto-resume-skip if an active row has a non-null `s3_key` (unless `force`).
-3. `buf = srcBlobStore.downloadBlob(ioPath)` — trash path for a trashed node.
+3. `buf = srcBlobStore.downloadBlob(ioPath)` — trash path for a trashed node. A source read
+   that fails with a recognized transport interruption (`socket hang up`, `ECONNRESET`,
+   `EPIPE`, `ETIMEDOUT`, or `ECONNREFUSED`) is retried once after a short delay; missing blobs
+   and other failures are not retried.
 4. `key = uuid`.
 5. `destBlobStore.uploadBlob(key, buf)` — flat UUID key, no directory structure.
-6. `upsertObjectMap(nodeId, key, 'active')` (`storage_backend='s3'`, `s3_key=UUID`).
+6. `upsertObjectMap(nodeId, key, 'active', buf.length)` (`storage_backend='s3'`, `s3_key=UUID`, per-version size).
 7. Upsert filecache `{ size, mime, content_hash: sha256(buf) }`.
 8. **`updateSyncStatus(nodeId, 'active')`** — a webdav-native node was left `pending_upload` at create
    time; after a successful copy it is set `active` so post-cutover (S3-mode) state matches the S3
@@ -162,16 +165,18 @@ metadata), while the physical I/O path is trash-aware.
 - [ ] Round-trip WebDAV→S3→WebDAV: all content hashes equal, tree preserved
 - [ ] S3 destination is flat (UUID keys only, no directories); WebDAV destination preserves structure and mkdirs ancestors
 - [ ] dry-run writes nothing (destination store count `0`, DB unchanged, no `object_map` flips)
-- [ ] apply writes the expected `object_map` state per direction: webdav→s3 upserts `(s3, key, active)` and sets `sync_status='active'`; s3→webdav flips `storage_backend='webdav'` inline while preserving `s3_key`
+- [ ] apply writes the expected `object_map` state per direction: webdav→s3 upserts `(s3, key, active, bytes)` and sets `sync_status='active'`; s3→webdav flips `storage_backend='webdav'` inline while preserving `s3_key`
 - [ ] webdav-source snapshot: a native webdav file (no `object_map` row, `sync_status='pending_upload'`) is enumerated and copied; the synthesized activeObject is `{ s3_key: null, storage_backend: 'webdav' }`
 - [ ] webdav-source snapshot: a node with a preserved active `s3_key` (prior migration) is skipped on rerun (resume marker), while native files are still copied
 - [ ] webdav-source snapshot: file nodes with `sync_status='orphaned_node'` are excluded
 - [ ] s3-source snapshot unchanged: only `active` file nodes with an active `object_map` row are enumerated
-- [ ] trash survival (DEF-16 P8): a trashed node is part of the snapshot in BOTH directions and is still trashed (`deleted_at` set) after apply; webdav→s3 reads its source blob FROM the trash path (`/.wea-trash/<nodeId>`); s3→webdav writes its destination blob TO the trash path (display path untouched)
+- [ ] trash survival: a trashed node is part of the snapshot in BOTH directions and is still trashed (`deleted_at` set) after apply; webdav→s3 reads its source blob FROM the trash path (`/.wea-trash/<nodeId>`); s3→webdav writes its destination blob TO the trash path (display path untouched)
 - [ ] metadata migration (sqlite↔PG, whole-row copy) preserves `deleted_at` verbatim in both directions
 - [ ] automatic resume: fail on node N → rerun → completed skipped, remainder copied, no duplicates
 - [ ] idempotent: full rerun → `0` copied
 - [ ] error isolation: a failing node doesn't stop the run; errors reported
+- [ ] a source download interrupted by a recognized transport failure is retried once; a
+      missing blob or non-transport source error is not retried
 - [ ] partial-blob safety: an unfinished destination blob (size mismatch) is not treated as complete
 - [ ] `onProgress` called after each node with the documented shape
 - [ ] `mode='apply'` blocks writes when the internal dry-run pass fails

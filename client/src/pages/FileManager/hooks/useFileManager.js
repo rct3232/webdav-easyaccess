@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate } from 'react-router-dom';
 import explorerGateway from '../../../services/explorerGateway';
 import { resolvePath, getAncestors } from '../../../services/fileService';
@@ -8,12 +9,79 @@ import { normalizePath, getParentPath, getBasename } from '../../../utils/pathUt
 const VIRTUAL_RECENT = '__recent__';
 const VIRTUAL_SHARED = '__shared__';
 const VIRTUAL_TRASH = '__trash__';
+const VIRTUAL_COLLECTIONS = '__collections__';
 const TRASH_TRAIL_MAX_DEPTH = 32;
+// §4.8 digest parity: client-side copy of the per-collection last-visit stamps.
+const DIGEST_VISITS_KEY = 'collections.digestVisits';
+
+const readDigestVisits = () => {
+  try {
+    return JSON.parse(window.localStorage.getItem(DIGEST_VISITS_KEY) || '{}') || {};
+  } catch {
+    return {};
+  }
+};
+
+const writeDigestVisit = (collectionId) => {
+  try {
+    const visits = readDigestVisits();
+    visits[collectionId] = new Date().toISOString();
+    window.localStorage.setItem(DIGEST_VISITS_KEY, JSON.stringify(visits));
+  } catch {
+    // storage-unavailable: digest deltas simply stop being requested
+  }
+};
+
+/**
+ * P-4 member-row adapter (useFileManager.md §2.3.2) — the ONE normalization
+ * point from the `serializeItem` wire shape to a FILE-SHAPE row so the shared
+ * FileList/FileGrid/FileDetail renderers and the selection/drag machinery
+ * apply unchanged:
+ * - `size` is OMITTED (the wire carries none; the FileListItem slot hides the
+ *   caption for size-less member rows instead of lying '0 B');
+ * - `hasWritePermission: false` kills drag/drop through the existing
+ *   useFileViewCommon empty-drag rule;
+ * - `state:'revoked'` rows get the translated placeholder NAME while `mime`
+ *   stays null and the extension-less placeholder basename keeps
+ *   isImageOrVideoFile false — a revoked row can never request a thumbnail;
+ * - `rowTestId`/`moreButtonTestId` preserve the member E2E testids through
+ *   the shared renderer (files carry none ⇒ zero DOM delta);
+ * - `path` is '' — previews resolve by nodeId (metadata/blob endpoints),
+ *   never by path.
+ */
+export const toMemberRow = (item, t) => {
+  const revoked = item.state === 'revoked';
+  return {
+    nodeId: item.node_id,
+    path: '',
+    name: item.name ?? null,
+    basename: item.name ?? (revoked ? t('fileManager.collectionsUnavailable') : null),
+    type: item.type ?? 'file',
+    mime: item.mime ?? null,
+    lastmod: item.lastmod ?? item.created_at ?? null,
+    // M-8: the client-side date-sort key — MEMBERSHIP-ADDED date on the members
+    // surface, NODE creation time on the liked surface; revoked rows arrive null
+    // and pin to the date-sort end (CollectionsListView.md §2.5).
+    created_at: item.created_at ?? null,
+    membership: item.membership,
+    published: item.published,
+    added_by: item.added_by ?? null,
+    state: item.state ?? 'normal',
+    liked: item.liked ?? false,
+    reason: item.reason ?? null,
+    shared_excluded: item.shared_excluded === true,
+    isCollectionMember: true,
+    hasWritePermission: false,
+    rowTestId: `member-row-${item.node_id}`,
+    moreButtonTestId: 'member-menu-button',
+  };
+};
 
 export const useFileManager = (user, options = {}) => {
   const { onLoadComplete, onLoadError, shareToken, linkInfo } = options;
   const { '*': urlPath } = useParams();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const onLoadCompleteRef = useRef(onLoadComplete);
   const onLoadErrorRef = useRef(onLoadError);
@@ -60,6 +128,40 @@ export const useFileManager = (user, options = {}) => {
     }
     if (first === VIRTUAL_RECENT) return { kind: 'recent', path: '/__recent__' };
     if (first === VIRTUAL_SHARED) return { kind: 'shared', path: '/__shared__' };
+    if (first === VIRTUAL_COLLECTIONS) {
+      // Collections overlay routes (T0.4): /files/__collections__,
+      // /files/__collections__/__archive__ and the member view
+      // /files/__collections__/collection/<id>. Virtual-node ids never enter
+      // the nodeId explorer state (D1 route-based selection).
+      // Operator rule (PLAN §14 client half): the collections/likes/archive
+      // surfaces are user-only — for admin every deep link under
+      // __collections__ resolves to the home view (deep-link fallback,
+      // never an error toast).
+      if (user?.is_admin) {
+        return { kind: 'home', path: '/' };
+      }
+      if (
+        segments[1] === 'collection' &&
+        Number.isInteger(Number(segments[2])) &&
+        Number(segments[2]) > 0
+      ) {
+        return {
+          kind: 'collection',
+          path: `/__collections__/collection/${Number(segments[2])}`,
+          collectionId: Number(segments[2]),
+        };
+      }
+      if (segments[1] === '__archive__') {
+        return { kind: 'collections-archive', path: '/__collections__/__archive__' };
+      }
+      // P-5 Likes surface (owner ruling §10): static child row of the section
+      // — member-parity listing fed by GET /api/file-likes/items (fileLikes.md
+      // §2.4.2), never a top-level `__liked__` virtual root.
+      if (segments[1] === 'liked') {
+        return { kind: 'collections-liked', path: '/__collections__/liked' };
+      }
+      return { kind: 'collections', path: '/__collections__' };
+    }
     if (first === VIRTUAL_TRASH) {
       // Trash view (DEF-16 P9): /files/__trash__ lists topmost trashed items;
       // /files/__trash__/node/<nodeId> lists the trashed children of that
@@ -71,7 +173,7 @@ export const useFileManager = (user, options = {}) => {
       return { kind: 'trash', path: '/__trash__', trashNodeId };
     }
     return { kind: 'legacy', path: `/${normalized}`, legacyPath: `/${normalized}` };
-  }, [urlPath]);
+  }, [urlPath, user]);
 
   // Admin's home is the filesystem root (`/`), so its homeNodeId is null;
   // regular users get their named home node. Mirrors useFolderTreeController.
@@ -88,6 +190,21 @@ export const useFileManager = (user, options = {}) => {
   }, [isShareMode, shareCurrentNodeId, urlView, homeNodeId]);
 
   const [files, setFiles] = useState([]);
+  // Collections member mode: Decision B (2026-09-29 owner ruling) — the FULL row
+  // set arrives in ONE response (cursor paging retired); `items` is the complete
+  // set in server order (display slicing 50+50 is the member host's job,
+  // CollectionsListView.md §2.5).
+  const [collectionMembers, setCollectionMembers] = useState({
+    items: [],
+    digest: undefined,
+    publishPendingCount: undefined,
+    collectionId: null,
+  });
+  // P-5 liked-surface fetch state (GET /api/file-likes/items rows through the
+  // same toMemberRow machinery — full set, one response; no membership).
+  const [likedItems, setLikedItems] = useState({
+    items: [],
+  });
   const [loading, setLoading] = useState(true);
   const [hasWritePermission, setHasWritePermission] = useState(false);
   const [ancestors, setAncestors] = useState([]);
@@ -113,6 +230,10 @@ export const useFileManager = (user, options = {}) => {
     if (urlView.kind === 'recent') return '/__recent__';
     if (urlView.kind === 'shared') return '/__shared__';
     if (urlView.kind === 'trash') return '/__trash__';
+    if (urlView.kind === 'collections') return '/__collections__';
+    if (urlView.kind === 'collections-archive') return '/__collections__/__archive__';
+    if (urlView.kind === 'collections-liked') return '/__collections__/liked';
+    if (urlView.kind === 'collection') return urlView.path;
     if (urlView.kind === 'node' && ancestors.length > 0) {
       return normalizePath('/' + ancestors.map((a) => a.name || '').join('/'));
     }
@@ -189,6 +310,10 @@ export const useFileManager = (user, options = {}) => {
       urlView.kind === 'recent' ||
       urlView.kind === 'shared' ||
       urlView.kind === 'trash' ||
+      urlView.kind === 'collections' ||
+      urlView.kind === 'collections-archive' ||
+      urlView.kind === 'collections-liked' ||
+      urlView.kind === 'collection' ||
       urlView.kind === 'home'
     ) {
       setAncestors([]);
@@ -242,6 +367,53 @@ export const useFileManager = (user, options = {}) => {
     return undefined;
   }, [urlView]);
 
+  /**
+   * P-5 optimistic unlike removal: the Likes surface drops the row the moment
+   * the unlike starts; the notifier-driven re-read converges either way (a
+   * failed write re-lists the row from the server truth).
+   */
+  const applyLikedRemoval = useCallback((nodeId) => {
+    setLikedItems((prev) => {
+      if (!prev.items.some((row) => row.nodeId === nodeId)) return prev;
+      return { ...prev, items: prev.items.filter((row) => row.nodeId !== nodeId) };
+    });
+  }, []);
+
+  /**
+   * P-4 member-local thumbnail merge: `useThumbnailLazyLoad` results from the
+   * delegated member renderer land on `collectionMembers.items` only — the
+   * session `handleThumbnailsLoaded` never sees member nodeIds.
+   */
+  const handleMemberThumbnailsLoaded = useCallback((thumbnailMap) => {
+    if (thumbnailMap instanceof Map && thumbnailMap.size > 0) {
+      setLikedItems((prev) => {
+        let changed = false;
+        const items = prev.items.map((row) => {
+          const thumbnailUrl = thumbnailMap.get(row.nodeId);
+          if (thumbnailUrl && !row.thumbnailUrl) {
+            changed = true;
+            return { ...row, thumbnailUrl };
+          }
+          return row;
+        });
+        return changed ? { ...prev, items } : prev;
+      });
+    }
+    setCollectionMembers((prev) => {
+      if (!(thumbnailMap instanceof Map) || thumbnailMap.size === 0) return prev;
+      let changed = false;
+      const items = prev.items.map((row) => {
+        const thumbnailUrl = thumbnailMap.get(row.nodeId);
+        if (thumbnailUrl && !row.thumbnailUrl) {
+          changed = true;
+          return { ...row, thumbnailUrl };
+        }
+        return row;
+      });
+      return changed ? { ...prev, items } : prev;
+    });
+  }, []);
+
   const openTrashFolder = useCallback(
     (nodeId, name) => {
       if (nodeId == null) {
@@ -281,6 +453,14 @@ export const useFileManager = (user, options = {}) => {
   const loadFiles = useCallback(async () => {
     const requestId = ++requestIdRef.current;
     setLoading(true);
+    if (urlView.kind !== 'collection') {
+      setCollectionMembers((prev) =>
+        prev.collectionId == null ? prev : { ...prev, items: [], collectionId: null }
+      );
+    }
+    if (urlView.kind !== 'collections-liked') {
+      setLikedItems((prev) => (prev.items.length === 0 ? prev : { items: [] }));
+    }
     try {
       if (urlView.kind === 'recent') {
         const recentFilesList = await explorerGateway.loadRecentFiles();
@@ -337,6 +517,40 @@ export const useFileManager = (user, options = {}) => {
         if (requestId === requestIdRef.current) {
           setFiles(sharedFiles);
         }
+      } else if (urlView.kind === 'collections' || urlView.kind === 'collections-archive') {
+        // Overlay list/cards come from the collections seams; no explorer listing.
+        if (requestId === requestIdRef.current) {
+          setFiles([]);
+        }
+      } else if (urlView.kind === 'collection') {
+        // Decision B: ONE full fetch — the COMPLETE row set in one response.
+        // `since` (digest delta) stays; display slicing is the member host's job.
+        const collectionId = urlView.collectionId;
+        const since = readDigestVisits()[collectionId];
+        const page = await explorerGateway.loadCollectionItems(
+          collectionId,
+          since ? { since } : {}
+        );
+        writeDigestVisit(collectionId);
+        if (requestId === requestIdRef.current) {
+          setCollectionMembers({
+            items: (page?.items ?? []).map((item) => toMemberRow(item, t)),
+            digest: page?.digest,
+            publishPendingCount: page?.publish_pending_count,
+            collectionId,
+          });
+        }
+      } else if (urlView.kind === 'collections-liked') {
+        // Overlay listing (P-5, Decision B): ONE full fetch; the file region
+        // renders likedItems through the shared member renderer — the explorer
+        // file list stays empty.
+        const page = await explorerGateway.loadLikedItems();
+        if (requestId === requestIdRef.current) {
+          setFiles([]);
+          setLikedItems({
+            items: (page?.items ?? []).map((item) => toMemberRow(item, t)),
+          });
+        }
       } else if (urlView.kind === 'trash') {
         const trashFiles = await explorerGateway.loadTrashEntries(
           urlView.trashNodeId != null ? { parentId: urlView.trashNodeId } : {}
@@ -392,12 +606,14 @@ export const useFileManager = (user, options = {}) => {
   }, [
     urlView.kind,
     urlView.trashNodeId,
+    urlView.collectionId,
     fillTrashNameFromChildren,
     isShareMode,
     shareCurrentNodeId,
     currentNodeId,
     user,
     shareToken,
+    t,
   ]);
 
   // Location key drives the listing reload; the display path (ancestors) must not retrigger it.
@@ -407,12 +623,20 @@ export const useFileManager = (user, options = {}) => {
     ? `share:${shareCurrentNodeId}`
     : urlView.kind === 'trash'
       ? `trash:${urlView.trashNodeId ?? 'root'}`
-      : `${urlView.kind}:${currentNodeId}`;
+      : urlView.kind === 'collection'
+        ? `collection:${urlView.collectionId}`
+        : `${urlView.kind}:${currentNodeId}`;
 
   useEffect(() => {
     if (!locationKey) return undefined;
     if (prevLocationRef.current !== locationKey) {
       setFiles([]);
+      // Drop the permission-gated FAB synchronously with the location change —
+      // loadPermission below restores the real value. Read-only synthetic views
+      // (recent/shared/trash/collections) settle on the same `false` right after,
+      // and stale async answers are discarded by the permId guard, so this can
+      // never stomp a fresher value.
+      setHasWritePermission(false);
       prevLocationRef.current = locationKey;
     }
 
@@ -420,7 +644,15 @@ export const useFileManager = (user, options = {}) => {
 
     loadFiles();
 
-    if (urlView.kind === 'recent' || urlView.kind === 'shared' || urlView.kind === 'trash') {
+    if (
+      urlView.kind === 'recent' ||
+      urlView.kind === 'shared' ||
+      urlView.kind === 'trash' ||
+      urlView.kind === 'collections' ||
+      urlView.kind === 'collections-archive' ||
+      urlView.kind === 'collections-liked' ||
+      urlView.kind === 'collection'
+    ) {
       setHasWritePermission(false);
       return undefined;
     }
@@ -477,5 +709,9 @@ export const useFileManager = (user, options = {}) => {
     trashTrail,
     openTrashFolder,
     homeNodeId,
+    collectionMembers,
+    likedItems,
+    applyLikedRemoval,
+    handleMemberThumbnailsLoaded,
   };
 };

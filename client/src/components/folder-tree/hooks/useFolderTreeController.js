@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getRecentFiles } from '../../../services/recentFilesRepository';
 import { onRecentFilesChange } from '../../../services/recentFilesNotifier';
 import folderTreeGateway from '../../../services/folderTreeGateway';
+import explorerGateway from '../../../services/explorerGateway';
 
 const EMPTY_ANCESTORS = [];
+
+/**
+ * True for the `__collections__` virtual root and every child route (list,
+ * archive, liked, member). Route-state helper for the section auto-expand
+ * contract — exported for unit coverage.
+ */
+export const isCollectionsRoute = (path) =>
+  path === '/__collections__' || (path || '').startsWith('/__collections__/');
 
 const useFolderTreeController = ({
   currentNodeId,
@@ -18,6 +27,13 @@ const useFolderTreeController = ({
   const [recentFilesList, setRecentFilesList] = useState([]);
   const [sharedExpanded, setSharedExpanded] = useState(false);
   const [recentExpanded, setRecentExpanded] = useState(false);
+  // -- AI-platform §3: __collections__ section state (flat depth-1 rows only).
+  const [collectionsTreeRows, setCollectionsTreeRows] = useState([]);
+  // Route-driven initial state: a remount on a collections route starts
+  // expanded (an undo/notifier refresh must never collapse the section).
+  const [collectionsExpanded, setCollectionsExpanded] = useState(() =>
+    isCollectionsRoute(currentPath)
+  );
 
   const homeNodeId = user?.is_admin ? null : (user?.rootNodeId ?? null);
 
@@ -69,6 +85,39 @@ const useFolderTreeController = ({
     }
   }, [user, loadSharedFolders]);
 
+  // §3: flat collection rows (activity order, server-given) — no badge read.
+  // loaded through the explorerGateway seams only; notifier refreshes rows.
+  // Operator rule (PLAN §14 client half): admins never load collections —
+  // no loadCollections call, no subscription, no /api/collections traffic.
+  const loadCollectionsRows = useCallback(async () => {
+    try {
+      const active = await explorerGateway.loadCollections({
+        sort: 'activity',
+        include: 'mine,shared',
+      });
+      setCollectionsTreeRows(active?.collections ?? []);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to load collections rows:', error);
+      setCollectionsTreeRows([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user || user.is_admin) {
+      setCollectionsTreeRows([]);
+      return undefined;
+    }
+
+    loadCollectionsRows();
+    const unsubscribe = explorerGateway.subscribeToCollections(loadCollectionsRows);
+    return () => {
+      // Safe-cleanup idiom: a test-injected mock may resolve the subscription
+      // seam to a non-callable; never let unmount throw.
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [user, loadCollectionsRows]);
+
   const buildSharedFolderTree = useMemo(() => {
     if (sharedFolders.length === 0) return [];
 
@@ -106,6 +155,19 @@ const useFolderTreeController = ({
       setRecentExpanded(true);
     }
   }, [currentNodeId, currentPath, homeNodeId, chain, sharedFolders]);
+
+  // Collections route auto-expand: entering a collections route (including a
+  // move between collection children) expands the section. A manual collapse on
+  // an unchanged route is never overridden, and notifier row refreshes do not
+  // participate in this effect.
+  const previousCollectionsPathRef = useRef(currentPath);
+  useEffect(() => {
+    const previousPath = previousCollectionsPathRef.current;
+    previousCollectionsPathRef.current = currentPath;
+    if (previousPath === currentPath) return;
+    if (!isCollectionsRoute(currentPath)) return;
+    setCollectionsExpanded(true);
+  }, [currentPath]);
 
   const onToggleExpand = useCallback((nodeId) => {
     setExpandedNodeIds((prev) => {
@@ -151,6 +213,63 @@ const useFolderTreeController = ({
     onNodeClick('/__recent__');
   }, [onNodeClick]);
 
+  // -- §3 collections handlers -------------------------------------------------
+
+  // Returning to the list view re-fetches the rows: opening a collection stamps
+  // the server digest cursor (GET /:id/items), so the cleared dots appear on the
+  // refreshed rows (ruling 2026-10-01 — replaces the localStorage write effect).
+  // Transition-only: the mount load (or a same-path re-render) never double-fetches.
+  const previousPathRef = useRef(currentPath);
+  useEffect(() => {
+    const previousPath = previousPathRef.current;
+    previousPathRef.current = currentPath;
+    if (currentPath !== '/__collections__' || previousPath === '/__collections__') return;
+    if (!user || user.is_admin) return;
+    loadCollectionsRows();
+  }, [currentPath, user, loadCollectionsRows]);
+
+  // New-dot rule (ruling 2026-10-01): dot ⇔ the requester NEVER opened the
+  // collection — the server-cursor row field `last_visited_at` is null/absent.
+  const newCollectionIds = useMemo(
+    () =>
+      (collectionsTreeRows ?? [])
+        .filter((row) => row?.last_visited_at == null)
+        .map((row) => row.collection_id),
+    [collectionsTreeRows]
+  );
+
+  const handleCollectionsToggle = useCallback(
+    (e) => {
+      e.stopPropagation();
+      const nextExpanded = !collectionsExpanded;
+      setCollectionsExpanded(nextExpanded);
+      if (nextExpanded) {
+        onNodeClick('/__collections__');
+      }
+    },
+    [collectionsExpanded, onNodeClick]
+  );
+
+  const handleCollectionsClick = useCallback(() => {
+    onNodeClick('/__collections__');
+  }, [onNodeClick]);
+
+  const handleArchiveClick = useCallback(() => {
+    onNodeClick('/__collections__/__archive__');
+  }, [onNodeClick]);
+
+  // P-5: static Likes child row (owner ruling — section child, not a root).
+  const handleLikedClick = useCallback(() => {
+    onNodeClick('/__collections__/liked');
+  }, [onNodeClick]);
+
+  const handleCollectionClick = useCallback(
+    (collectionId) => {
+      onNodeClick(`/__collections__/collection/${collectionId}`);
+    },
+    [onNodeClick]
+  );
+
   return {
     homeNodeId,
     expandedNodeIds,
@@ -165,6 +284,15 @@ const useFolderTreeController = ({
     handleRecentToggle,
     handleRecentClick,
     recentFilesList,
+    // §3 AI-platform collections section
+    collectionsExpanded,
+    handleCollectionsToggle,
+    handleCollectionsClick,
+    handleCollectionClick,
+    handleArchiveClick,
+    handleLikedClick,
+    collectionsTreeRows,
+    newCollectionIds,
   };
 };
 

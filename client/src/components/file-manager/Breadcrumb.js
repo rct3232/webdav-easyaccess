@@ -7,6 +7,7 @@ import {
   Share as ShareIcon,
   AccessTime as AccessTimeIcon,
   DeleteOutline as DeleteOutlineIcon,
+  Collections as CollectionsIcon,
   KeyboardArrowDown as KeyboardArrowDownIcon,
   KeyboardArrowUp as KeyboardArrowUpIcon,
 } from '@mui/icons-material';
@@ -27,6 +28,7 @@ const Breadcrumb = ({
   shareRootName,
   showFolderTreeToggle,
   currentPath = '',
+  collectionName = null,
 }) => {
   const { t } = useTranslation();
   const scrollContainerRef = useRef(null);
@@ -36,6 +38,16 @@ const Breadcrumb = ({
   const isSharedView = !isShareMode && currentPath === '/__shared__';
   // DEF-16 P9: trash view (any depth) — Trash chip + trashed folder trail.
   const isTrashView = !isShareMode && currentPath === '/__trash__';
+  // M-9 (2026-09-30 owner decision (a)): collections virtual routes swap the
+  // home chip for `Collections` and trail the destination (name / Likes).
+  const isCollectionsMemberView =
+    !isShareMode && (currentPath || '').startsWith('/__collections__/collection/');
+  const isCollectionsLikedView = !isShareMode && currentPath === '/__collections__/liked';
+  // F2 (2026-10-01 §11 follow-up, closing the M-9 gap): the archive route fell
+  // through to the generic Home chip — it now mirrors the member/liked chain.
+  const isCollectionsArchiveView = !isShareMode && currentPath === '/__collections__/__archive__';
+  const isCollectionsView =
+    isCollectionsMemberView || isCollectionsLikedView || isCollectionsArchiveView;
 
   // Share mode: keep the existing path-segment rendering (do not regress; C2.5).
   const shareSegments = (() => {
@@ -72,12 +84,32 @@ const Breadcrumb = ({
         )
         .map((a) => ({ nodeId: a.nodeId, name: a.name }));
 
-  const segments = isShareMode ? shareSegments : chainSegments;
+  // M-9: the collections trails carry the destination chip (member NAME /
+  // Likes); unresolved name ⇒ transient '…' segment (option (a) — never hides).
+  // F2: the archive surface needs NO name resolution — static nav.collectionsArchive
+  // label (tree parity with the sidebar ArchiveNode).
+  const collectionsTrail = isCollectionsMemberView
+    ? [{ name: collectionName ?? '…', path: currentPath }]
+    : isCollectionsLikedView
+      ? [{ name: t('nav.collectionsLiked'), path: currentPath }]
+      : isCollectionsArchiveView
+        ? [{ name: t('nav.collectionsArchive'), path: currentPath }]
+        : [];
+
+  const segments = isShareMode
+    ? shareSegments
+    : isCollectionsView
+      ? collectionsTrail
+      : chainSegments;
 
   let homeIcon;
   let homeLabel;
   let homeClickTarget;
-  if (isRecentView) {
+  if (isCollectionsView) {
+    homeIcon = <CollectionsIcon />;
+    homeLabel = t('nav.collections');
+    homeClickTarget = '/__collections__';
+  } else if (isRecentView) {
     homeIcon = <AccessTimeIcon />;
     homeLabel = t('nav.recentShort');
     homeClickTarget = '/__recent__';

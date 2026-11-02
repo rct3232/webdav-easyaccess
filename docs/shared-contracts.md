@@ -35,8 +35,34 @@ Defined in `shared/serverMessageCodes.js`.
 
 - All values are i18n keys. The client is responsible for translation; the server only sends the key and optional `params`.
 - When adding or changing a code, update:
-  - Server usage (where the code is thrown or returned)
-  - Client locale files (e.g. `client/src/locales/en.json`, `ko.json`) so the key exists and is translated.
+- Server usage (where the code is thrown or returned)
+- Client locale files (e.g. `client/src/locales/en.json`, `ko.json`) so the key exists and is translated.
+
+### Error-code domains introduced by the AI platform
+
+The collections/search/undo-feed/AI/storage surfaces (`docs/spec/server/routes/{collections,search,actions,storage}.md`) add five domain keys to `SERVER_ERROR_CODES`. Concrete keys (`serverErrors.<domain>.<key>`; the `en.json`/`ko.json` mirror is mandatory per the rules above):
+
+| Domain        | Keys                                                                                                                                                                                                                                                                                                          | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ------------------- | ------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `collections` | `nameRequired`, `invalidName`, `invalidSort`, `invalidInclude`, `invalidPublishMode`, `invalidRole`, `emptyNodeIds`, `previewTargetRequired`, `mergeSameCollection`, `invalidDefinition`, `forbidden`, `notFound`, `granteeNotFound`, `grantNotFound`, `suggestionNotFound`, `alreadyArchived`, `notArchived` | `notArchived` = restore/permanent-delete on an active collection (archived state required). `notFound` doubles as the no-access 404 masquerade; every ownership / shared-write violation collapses into the single 403 `forbidden`. `collections.forbidden` is ALSO the **admin-operator gate code** (operator rule): every collections/file-likes endpoint and the admin-grantee grant ban respond 403 with it. Storage endpoints use `storage.forbidden` instead (separate personal-storage surface). Name collision is **not** an error (auto-suffix counter, docs/features/collections-platform.md §3.1); membership/batch-cap violations ride on `emptyNodeIds`. `invalidDefinition` = malformed rule payload (unknown kind / predicate type / bad atom). |
+| `search`      | `queryRequired`, `queryTooLong`, `clickTargetRequired`, `fail`                                                                                                                                                                                                                                                | `tooManySegments` is a RESERVED (optional) key: the ≤3-segment cap is currently a silent scorer truncation, not an error. `clickTargetRequired` guards the list-entry-click recording point (`POST /api/search/click`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `ai`          | `notConfigured`, `budgetExceeded`, `providerProbeFailed`, `nonConformingEndpoint`                                                                                                                                                                                                                             | `notConfigured` is returned (409, never 404) when an AI-surface request needs an unconfigured role. The search `semantic_unavailable_reason` is a readiness token (`not_configured                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | preparing | provisioning_failed | probe_failed | non_conforming | disabled`), not an error key (HTTP stays 200 there; see `docs/spec/server/routes/search.md`§2.4.1).`providerProbeFailed`carries the probe`reason`in`params`. |
+| `actions`     | `invalidDomain`, `notFound`, `cascadeConfirmRequired`, `fingerprintMismatch`, `expired`, `alreadyUndone`                                                                                                                                                                                                      | `cascadeConfirmRequired` is the non-tip-undo case (`params: { laterChanges }`). `expired` = journal payload NULLed at retention.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `storage`     | `emptyNodeIds`, `invalidSuggestionId`, `suggestionNotFound`, `forbidden`                                                                                                                                                                                                                                      | Storage accept/dismiss (`routes/storage.md`) plus the admin operator gate. Membership/batch-cap violations ride on `storage.emptyNodeIds`; `invalidSuggestionId` (400) and `suggestionNotFound` (404) govern the dismiss route; `forbidden` (403) is the non-admin gate for every storage endpoint.                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+
+Admin reports repair codes (`docs/spec/server/routes/admin.md` §2.2.6 — extend the existing `admin` domain; `en.json`/`ko.json` mirror is mandatory per the rules above): `admin.reportNotFound` (404 — unknown `admin_reports` row), `admin.repairNotAvailable` (400 — row/action without a registered repair dispatch), and the success message `serverMessages.admin.reportRepaired` (200 — dispatch completion).
+
+AI admin launcher codes (`docs/spec/server/routes/admin.md` §2.2.7 — same `admin` domain): `admin.reembedRateLimited` (429, `params: { retry_after_seconds }`), `admin.reembedAlreadyActive` (409 — the previous launch still has pending/running ids), and `admin.reembedModelUnavailable` (409 — no active embed model). The shared error envelope is unchanged; routes that map bare-string service errors MUST re-attach `params` because `mapServiceError` drops them.
+
+**AI admin contract manifest:** `shared/aiAdminContract.js` is the single field inventory for
+`GET /api/admin/ai/summary` and `/api/admin/ai/reembed/preview` (nested type schema,
+`not_instrumented` v1 lists, launcher/coverage reason tokens, failed-job limit 20, impact
+metrics). `shared/fixtures/aiAdminPanel.fixture.js` is the sentinel payload used by the
+server shape/route tests, the client render matrix, MSW and the i18n mirror test. Adding or
+renaming a summary/preview field means updating the manifest + fixture and both sides'
+tests in the same change. Response fields remain snake_case.
+
+**Wire casing:** new admin AI endpoints return snake_case response fields (`node_id`, `last_error`, `retry_after_seconds`, `action_id`) while request bodies stay camelCase. Existing endpoints keep their current shape.
 
 ---
 
@@ -55,6 +81,21 @@ Defined in `shared/constants.js`. Both client and server may import `@webdav-eas
 | `AUDIO_EXTENSIONS`          | Recognized audio extensions     | Array of strings                                                                                                   |
 | `TEXT_EXTENSIONS`           | Recognized text extensions      | Array of strings                                                                                                   |
 
+AI-platform enums (same file, same `ALL`/`isValid` shape as the existing status enums):
+
+| Constant                   | Purpose                                                          | Allowed values / notes                                                                                                       |
+| -------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `COLLECTION_ORIGIN`        | Collection provenance                                            | `system`, `user`, `seed`, `search` — silent evolution touches `system` only (invariant 3)                                    |
+| `COLLECTION_STATUS`        | Collection lifecycle                                             | `active`, `archived`                                                                                                         |
+| `PUBLISH_MODE`             | Per-collection shared-view publish gate                          | `ask` (default), `off`, `auto`                                                                                               |
+| `GRANT_ROLE`               | Collection grant role (separate channel from file `PERMISSIONS`) | `viewer`, `editor` (owner is implicit, not a grant row)                                                                      |
+| `JOURNAL_DOMAIN`           | `action_journal.domain`                                          | `collection`, `batch`, `settings`, `permissions`, `file`, `sharing`                                                          |
+| `LLM_ROLE`                 | LLM adapter role                                                 | `embed`, `chat`, `vision`, `asr`                                                                                             |
+| `MERGE_SUGGESTION_STATE`   | `collection_merge_suggestions.state`                             | `pending`, `merged`, `dismissed`, `rejected` — mirrors the DDL CHECK; `dismissed → pending` on a re-surfaced pair            |
+| `STORAGE_SUGGESTION_STATE` | `storage_suggestions.state`                                      | `pending`, `accepted`, `dismissed`, `expired` — separate enum from merge suggestions (`accepted`/`expired` are storage-only) |
+| `USAGE_ACTION`             | `usage_events.action`                                            | `open`, `download`, `preview`, `search_hit`, `like`                                                                          |
+| `AI_JOB_KIND`              | `ai_jobs.kind`                                                   | `embed`, `features`, `caption`, `asr`, `backfill` — mirrors the DDL CHECK (parity-tested)                                    |
+
 Use these constants instead of magic strings so client and server stay in sync.
 
 ---
@@ -67,8 +108,8 @@ Defined in `shared/validation.js`. Used by both client and server for form and i
 
 - **Success:** `null`.
 - **Error:** Either:
-  - A string (i18n key), e.g. `'validation.fileNameRequired'`, `'validation.emailInvalid'`, or
-  - An object `{ key, ...params }`, e.g. `{ key: 'validation.passwordMinLength', minLength }`, `{ key: 'validation.required', fieldName }`.
+- A string (i18n key), e.g. `'validation.fileNameRequired'`, `'validation.emailInvalid'`, or
+- An object `{ key,...params }`, e.g. `{ key: 'validation.passwordMinLength', minLength }`, `{ key: 'validation.required', fieldName }`.
 
 **Functions:**
 
@@ -84,10 +125,27 @@ Defined in `shared/validation.js`. Used by both client and server for form and i
 **Reserved name namespace (`.wea-`):** names starting with `.wea-` (case-insensitive) are
 RESERVED — `validateFileName` returns `'validation.fileNameReserved'` for them. The server
 enforces the same check on create/upload/folder/rename routes (400 `files.fileNameReserved`), so
-the trash subsystem's hidden root namespace `/.wea-trash/<nodeId>` (DEF-16) can never collide with
+the trash subsystem's hidden root namespace `/.wea-trash/<nodeId>` can never collide with
 a user-created node.
 
 **Client usage:** If the result is a string, use `t(result)`. If it is an object, use `t(result.key, result)` (or `t(result.key, { fieldName: result.fieldName })` etc.). Changing the return shape (e.g. adding a new param) requires updating client display logic and any tests that assert on validation output.
+
+---
+
+## Files Metadata Row
+
+Shared by the server response, the client metadata repository seam, and tests (`docs/spec/server/routes/files.md` §2.2; `api.md`). `POST /api/files/metadata` returns an array of rows:
+
+| Field                | Type           | Notes                                                                           |
+| -------------------- | -------------- | ------------------------------------------------------------------------------- |
+| `nodeId`             | number         | Camel casing is the files-domain legacy shape — unchanged by this contract      |
+| `name`, `type`       | string         | Node name / `file` \| `directory`                                               |
+| `size`, `mime`       | number \| null | From `filecache`; null for directories and cache-less rows                      |
+| `lastmod`            | string         | ISO timestamp (node `updatedAt`)                                                |
+| `hasReadPermission`  | boolean        | Additive; resolved with the directory-listing permission engine                 |
+| `hasWritePermission` | boolean        | Additive; same engine (admin bypass ⇒ both true; read-only grant ⇒ write false) |
+
+Rows for nodes the requester cannot READ are omitted (skip behavior unchanged). No new error codes: the endpoint keeps the existing validation failures (`files.sourceDestRequired`, `files.invalidPath`).
 
 ---
 

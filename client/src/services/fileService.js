@@ -556,9 +556,16 @@ export const batchCopyFiles = async (copies, onConflict = 'error') => {
   return response.data;
 };
 
-/** Poll bulk operation status. Returns { status, progress, total, results, errorMessage }. */
-export const getBulkOperationStatus = async (jobId) => {
-  const response = await get(`${API_BASE}/bulk-operation/${encodeURIComponent(jobId)}`);
+/**
+ * Poll bulk operation status. Returns { status, progress, total, results, errorMessage }.
+ * The poller owns retry/backoff (useBulkOperations.md §2.6.1), so the transport
+ * retry is disabled by default and the caller passes its own timeout/signal.
+ */
+export const getBulkOperationStatus = async (jobId, options = {}) => {
+  const response = await get(`${API_BASE}/bulk-operation/${encodeURIComponent(jobId)}`, {
+    maxRetries: 0,
+    ...options,
+  });
   return response.data;
 };
 

@@ -176,12 +176,12 @@ function getSqliteConnection() {
     sqliteDb = null;
   }
 
-  let sqlite3;
+  let DatabaseSync;
   try {
-    sqlite3 = require('sqlite3').verbose();
+    ({ DatabaseSync } = require('node:sqlite'));
   } catch (error) {
     throw createError(SERVER_ERROR_CODES.storage.postgresqlNotConfigured, 500, {
-      reason: 'sqlite3_module_missing',
+      reason: 'node_sqlite_unavailable',
     });
   }
 
@@ -190,16 +190,24 @@ function getSqliteConnection() {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  sqliteDb = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-      console.error('Failed to open SQLite database:', err.message);
-    }
-  });
+  // node:sqlite DatabaseSync is synchronous: open failures throw here instead
+  // of surfacing lazily on the first statement. Log (parity with the sqlite3
+  // npm driver) and rethrow so callers map the failure via mapDatabaseError.
+  try {
+    // allowExtension at OPEN is required by node:sqlite for the vectorStore
+    // seam's vec0 adapter (vectorStore.md §2.4a): enableLoadExtension() throws
+    // ERR_INVALID_STATE on a handle opened without it. Merely permitting the
+    // load has no effect until an extension is explicitly loaded.
+    sqliteDb = new DatabaseSync(dbPath, { allowExtension: true });
+  } catch (error) {
+    console.error('Failed to open SQLite database:', error.message);
+    throw error;
+  }
   sqliteDb.__weaPath = dbPath;
   sqliteDb.__weaClosed = false;
 
-  sqliteDb.run('PRAGMA journal_mode = WAL', () => {});
-  sqliteDb.run('PRAGMA foreign_keys = ON', () => {});
+  sqliteDb.exec('PRAGMA journal_mode = WAL');
+  sqliteDb.exec('PRAGMA foreign_keys = ON');
 
   return sqliteDb;
 }
@@ -209,40 +217,58 @@ function closeSqliteDb() {
   const db = sqliteDb;
   sqliteDb = null;
   return new Promise((resolve, reject) => {
-    db.close((err) => {
-      if (err) reject(err);
-      else resolve();
-    });
+    try {
+      db.close();
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
   });
+}
+
+// node:sqlite rejects boolean, undefined and Date bind values; the sqlite3 npm
+// driver coerced booleans to 1/0, undefined to NULL and Dates to strings.
+// Normalizing here preserves the historical binding behavior for call sites.
+// BigInt binds pass through untouched — integer PKs MUST be bound as BigInt
+// (docs/spec/server/store/storage.md, docs/features/collections-platform.md §4.13).
+function normalizeBindValue(value) {
+  if (value === undefined) return null;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (value instanceof Date) return value.toISOString();
+  return value;
 }
 
 function sqliteQuery(sql, params = []) {
   const db = getSqliteConnection();
   return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve({ rows: rows || [] });
-    });
+    try {
+      const rows = db.prepare(sql).all(...params.map(normalizeBindValue));
+      resolve({ rows: rows || [] });
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 
 function sqliteRun(sql, params = []) {
   const db = getSqliteConnection();
   return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve({ changes: this.changes, lastID: this.lastID });
-    });
+    try {
+      const info = db.prepare(sql).run(...params.map(normalizeBindValue));
+      resolve({ changes: info.changes, lastID: info.lastInsertRowid });
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 
-// node-sqlite3's db.serialize() only covers the synchronous portion of an async
-// callback, so two concurrent withSqliteTransaction() calls can interleave
-// BEGIN/COMMIT and fail with "cannot start a transaction within a transaction".
-// Serializing whole transactions on a single promise chain keeps them atomic
-// (single-connection assumption; see getSqliteConnection). getSqliteConnection()
-// is re-resolved per transaction so a queued transaction never uses a stale
-// (closed or re-pointed) handle across test suites.
+// node:sqlite executes synchronously, but withSqliteTransaction() calls can
+// still interleave at await points inside the callback (BEGIN, user callback
+// awaits, COMMIT). Serializing whole transactions on a single promise chain
+// keeps them atomic (single-connection assumption; see getSqliteConnection).
+// getSqliteConnection() is re-resolved per transaction so a queued
+// transaction never uses a stale (closed or re-pointed) handle across test
+// suites.
 let sqliteTransactionQueue = Promise.resolve();
 
 async function withSqliteTransaction(callback) {

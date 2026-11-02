@@ -5,6 +5,13 @@ export const getSetupStatus = async () => {
   return response.data;
 };
 
+// Static wizard-surface manifest projection (chat/vision/asr rows only —
+// embed is not wizard-configurable, docs/spec/server/routes/setup.md §2.4a).
+export const getLlmPresets = async () => {
+  const response = await get('/setup/llm-presets');
+  return response.data;
+};
+
 export const testSetup = async (target, payload) => {
   try {
     const response = await post('/setup/test', { target, ...payload });

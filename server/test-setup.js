@@ -32,7 +32,7 @@ for (const key of DB_IDENTITY_KEYS) process.env[key] = '';
 // name so a mistyped value cannot point a test run at a real DB.
 const TEST_PG_DATABASE_KEYS = ['WEA_TEST_PG_HOST', 'WEA_TEST_PG_PORT', 'WEA_TEST_PG_USER'];
 if (process.env.WEA_TEST_PG_DATABASE) {
-  const allowlisted = ['webdav_test', 'webdav_e2e'];
+  const allowlisted = ['webdav_test', 'webdav_vector_test', 'webdav_e2e'];
   if (!allowlisted.includes(process.env.WEA_TEST_PG_DATABASE)) {
     throw new Error(
       `Refusing real-PG test run: WEA_TEST_PG_DATABASE="${process.env.WEA_TEST_PG_DATABASE}" is not an ` +
@@ -43,6 +43,13 @@ if (process.env.WEA_TEST_PG_DATABASE) {
     if (process.env[key] === undefined) process.env[key] = '';
   }
 }
+
+// Safety net for the register (f) leak class: any require-time SQLite open that
+// precedes createTestDatabase()'s per-suite WEA_SQLITE_PATH must never land in
+// the repo's default `data/webdav.db`. Point the unset default at a unique
+// per-worker temp file (createTestDatabase overwrites this per suite anyway).
+process.env.WEA_SQLITE_PATH =
+  process.env.WEA_SQLITE_PATH || `/tmp/wea-test-default-${process.pid}.db`;
 
 // node-postgres returns BIGINT (int8) as strings by default. SQLite returns
 // numbers, and tests assert numeric values (counts, ids). Normalize int8 →

@@ -2,6 +2,7 @@
 
 const { mapDatabaseError } = require('../../../utils/errorHandler');
 const { mapNodeRow, mapChildRow } = require('../fileNodeShared');
+const { toIsoString } = require('../../../utils/sharedHelpers');
 
 /**
  * postgres implementation of FileNodeRepository (`$n` placeholders).
@@ -151,9 +152,39 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
+    // Caller-owned TX variant (undo executor): identical statement on `tx` so
+    // the restore joins the journal transaction instead of autocommitting on a
+    // separate pooled connection.
+    async untrashSubtreeTx(tx, nodeIds) {
+      if (!nodeIds || nodeIds.length === 0) return { changes: 0 };
+      try {
+        const placeholders = buildInPlaceholders(nodeIds.length);
+        const res = await tx.run(
+          `UPDATE file_nodes SET deleted_at = NULL WHERE id IN (${placeholders})`,
+          nodeIds.map(Number)
+        );
+        return { changes: res.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async renameNode(id, newName) {
       try {
         const res = await executor.run(
+          `UPDATE file_nodes SET name = $2, updated_at = NOW() WHERE id = $1`,
+          [Number(id), String(newName)]
+        );
+        return { changes: res.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    // Caller-owned TX variant (undo executor) — same UPDATE, `tx.run`.
+    async renameNodeTx(tx, id, newName) {
+      try {
+        const res = await tx.run(
           `UPDATE file_nodes SET name = $2, updated_at = NOW() WHERE id = $1`,
           [Number(id), String(newName)]
         );
@@ -327,7 +358,7 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
-    async upsertObjectMap(fileNodeId, s3Key, status) {
+    async upsertObjectMap(fileNodeId, s3Key, status, size = null) {
       try {
         // DEF-11: the previous active row becomes managed history (not orphaned).
         await executor.run(
@@ -340,9 +371,15 @@ module.exports = function createPostgresFileNodeRepository(executor) {
         );
         const versionNumber = Number(verRes.rows[0].next_ver);
         const res = await executor.run(
-          `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
-           VALUES ($1, $2, 's3', $3, $4)`,
-          [Number(fileNodeId), String(s3Key), versionNumber, String(status)]
+          `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status, size)
+           VALUES ($1, $2, 's3', $3, $4, $5)`,
+          [
+            Number(fileNodeId),
+            String(s3Key),
+            versionNumber,
+            String(status),
+            size == null ? null : Number(size),
+          ]
         );
         return { changes: res.changes };
       } catch (error) {
@@ -393,12 +430,12 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
-    async insertObject(fileNodeId, s3Key, status) {
+    async insertObject(fileNodeId, s3Key, status, size = null) {
       try {
         const res = await executor.run(
-          `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
-           VALUES ($1, $2, 's3', 1, $3)`,
-          [Number(fileNodeId), String(s3Key), String(status)]
+          `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status, size)
+           VALUES ($1, $2, 's3', 1, $3, $4)`,
+          [Number(fileNodeId), String(s3Key), String(status), size == null ? null : Number(size)]
         );
         return { changes: res.changes };
       } catch (error) {
@@ -458,11 +495,12 @@ module.exports = function createPostgresFileNodeRepository(executor) {
       }
     },
 
-    async activateObject(s3Key) {
+    async activateObject(s3Key, size = null) {
       try {
         const res = await executor.run(
-          `UPDATE object_map SET status = 'active' WHERE s3_key = $1 AND status = 'pending'`,
-          [String(s3Key)]
+          `UPDATE object_map SET status = 'active', size = COALESCE($2, size)
+            WHERE s3_key = $1 AND status = 'pending'`,
+          [String(s3Key), size == null ? null : Number(size)]
         );
         return { changes: res.changes };
       } catch (error) {
@@ -661,6 +699,326 @@ module.exports = function createPostgresFileNodeRepository(executor) {
           [Number(fileNodeId)]
         );
         return rows[0] || null;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    // ---- content-hash completeness surface (T0.1/T0.8) ------------------
+
+    async countCacheRowsWithNullContentHash() {
+      try {
+        const { rows } = await executor.query(
+          'SELECT COUNT(*) AS cnt FROM filecache WHERE content_hash IS NULL'
+        );
+        return Number(rows[0].cnt);
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async listCacheRowsWithNullContentHash({ limit = 500, afterId = 0 } = {}) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT fc.file_node_id, fn.name, fn.type, fn.deleted_at
+             FROM filecache fc
+             JOIN file_nodes fn ON fn.id = fc.file_node_id
+            WHERE fc.content_hash IS NULL AND fn.type = 'file' AND fn.id > $1
+            ORDER BY fc.file_node_id ASC
+            LIMIT $2`,
+          [Number(afterId), Number(limit)]
+        );
+        return rows.map((row) => ({
+          nodeId: Number(row.file_node_id),
+          name: row.name,
+          type: row.type,
+          deletedAt: toIsoString(row.deleted_at),
+        }));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async listSubtreeCacheRows(ancestorId) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT n.id, n.parent_id, n.name, n.type, n.created_at,
+                  fc.size, fc.mime_type, fc.content_hash
+             FROM file_nodes n
+             JOIN node_ancestors a ON a.descendant_id = n.id
+             LEFT JOIN filecache fc ON fc.file_node_id = n.id
+            WHERE a.ancestor_id = $1 AND n.deleted_at IS NULL
+            ORDER BY n.id`,
+          [Number(ancestorId)]
+        );
+        return rows.map((row) => ({
+          nodeId: Number(row.id),
+          parentId: row.parent_id != null ? Number(row.parent_id) : null,
+          name: row.name,
+          type: row.type,
+          createdAt: toIsoString(row.created_at),
+          size: row.size != null ? Number(row.size) : null,
+          mimeType: row.mime_type ?? null,
+          contentHash: row.content_hash ?? null,
+        }));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    // Storage trash-card aggregate (T0.10): trashed FILE rows of the subtree
+    // (trash marking marks the whole subtree — children of trashed folders are
+    // counted once each; directories carry no filecache size).
+    async summarizeTrashedSubtree(ancestorId) {
+      try {
+        const { rows } = await executor.query(
+          `SELECT COUNT(*) AS item_count,
+                  COALESCE(SUM(fc.size), 0) AS total_bytes,
+                  MIN(n.deleted_at) AS oldest_deleted_at
+             FROM file_nodes n
+             JOIN node_ancestors a ON a.descendant_id = n.id
+             LEFT JOIN filecache fc ON fc.file_node_id = n.id
+            WHERE a.ancestor_id = $1 AND n.deleted_at IS NOT NULL AND n.type = 'file'`,
+          [Number(ancestorId)]
+        );
+        const row = rows[0] || {};
+        return {
+          itemCount: Number(row.item_count ?? 0),
+          totalBytes: Number(row.total_bytes ?? 0),
+          oldestDeletedAt: toIsoString(row.oldest_deleted_at ?? null),
+        };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    // Storage-usage breakdown aggregate (storageService §2.2): live + trash +
+    // version bytes of a subtree. S3 mode partitions active objects into
+    // live/trash by the node's `deleted_at` and counts every history object as
+    // version bytes; WebDAV mode counts the current filecache row of each file
+    // as live/trash and reports no version history. No `deleted_at` filter —
+    // trash is part of the user's logical storage. NULL sizes are reported so
+    // the caller can mark the aggregate incomplete.
+    async summarizeSubtreeStorageUsage(ancestorId, { includeVersions = true } = {}) {
+      try {
+        const { rows } = includeVersions
+          ? await executor.query(
+              `SELECT COALESCE(SUM(om.size), 0) AS total_bytes,
+                      COALESCE(SUM(CASE WHEN om.status = 'active' AND n.deleted_at IS NULL THEN om.size ELSE 0 END), 0) AS live_bytes,
+                      COALESCE(SUM(CASE WHEN om.status = 'active' AND n.deleted_at IS NOT NULL THEN om.size ELSE 0 END), 0) AS trash_bytes,
+                      COALESCE(SUM(CASE WHEN om.status = 'history' THEN om.size ELSE 0 END), 0) AS version_bytes,
+                      COUNT(*) AS item_count,
+                      COALESCE(SUM(CASE WHEN om.status = 'active' AND n.deleted_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS trash_item_count,
+                      MIN(CASE WHEN n.deleted_at IS NOT NULL AND n.type = 'file' THEN n.deleted_at END) AS oldest_trashed_at,
+                      COALESCE(SUM(CASE WHEN om.size IS NULL THEN 1 ELSE 0 END), 0) AS null_size_count
+                 FROM object_map om
+                 JOIN node_ancestors a ON a.descendant_id = om.file_node_id
+                 JOIN file_nodes n ON n.id = om.file_node_id
+                WHERE a.ancestor_id = $1 AND om.status IN ('active', 'history')`,
+              [Number(ancestorId)]
+            )
+          : await executor.query(
+              `SELECT COALESCE(SUM(fc.size), 0) AS total_bytes,
+                      COALESCE(SUM(CASE WHEN n.deleted_at IS NULL THEN fc.size ELSE 0 END), 0) AS live_bytes,
+                      COALESCE(SUM(CASE WHEN n.deleted_at IS NOT NULL THEN fc.size ELSE 0 END), 0) AS trash_bytes,
+                      0 AS version_bytes,
+                      COUNT(n.id) AS item_count,
+                      COALESCE(SUM(CASE WHEN n.deleted_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS trash_item_count,
+                      MIN(CASE WHEN n.deleted_at IS NOT NULL THEN n.deleted_at END) AS oldest_trashed_at,
+                      COALESCE(SUM(CASE WHEN fc.size IS NULL THEN 1 ELSE 0 END), 0) AS null_size_count
+                 FROM file_nodes n
+                 JOIN node_ancestors a ON a.descendant_id = n.id
+                 LEFT JOIN filecache fc ON fc.file_node_id = n.id
+                WHERE a.ancestor_id = $1 AND n.type = 'file'`,
+              [Number(ancestorId)]
+            );
+        const row = rows[0] || {};
+        return {
+          bytes: Number(row.total_bytes ?? 0),
+          liveBytes: Number(row.live_bytes ?? 0),
+          trashBytes: Number(row.trash_bytes ?? 0),
+          versionBytes: Number(row.version_bytes ?? 0),
+          itemCount: Number(row.item_count ?? 0),
+          trashItemCount: Number(row.trash_item_count ?? 0),
+          oldestTrashedAt: toIsoString(row.oldest_trashed_at ?? null),
+          nullSizeCount: Number(row.null_size_count ?? 0),
+        };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async setCacheContentHash(fileNodeId, contentHash) {
+      try {
+        // Guarded on content_hash IS NULL — the idempotency contract: an
+        // already-hashed row is never touched again.
+        const res = await executor.run(
+          `UPDATE filecache SET content_hash = $1, updated_at = NOW()
+            WHERE file_node_id = $2 AND content_hash IS NULL`,
+          [String(contentHash), Number(fileNodeId)]
+        );
+        return { changes: res.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    // ---- search surface (T0.11) ----------------------------------------
+
+    /**
+     * Name-section search over the requester-visible live rows
+     * (docs/spec/server/services/searchService.md §2.5). Visibility = the
+     * fileService-listing closure/owner rule: the requester's own-root subtree
+     * ∪ path-granted subtrees (node + closure descendants) ∪ point-granted
+     * file nodes. Matching is `lower(name) LIKE lower('%q%')` — lower() on
+     * BOTH sides is mandatory and the whole query string must be contained
+     * (no token split). Order: name asc, then node_id asc.
+     */
+    async searchNodesByName(userId, query, { limit = 200 } = {}) {
+      const trimmed = String(query ?? '').trim();
+      if (!trimmed) return [];
+      const cap = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : 200;
+      try {
+        const root = await this.getUserRootNode(userId);
+        const rootId = root ? Number(root.id) : null;
+
+        let paramIndex = 0;
+        const next = () => `$${(paramIndex += 1)}`;
+        const params = [];
+        const arms = [];
+        const likeParam = next();
+        params.push(trimmed);
+        if (rootId != null) {
+          const rootEq = next();
+          const rootAnc = next();
+          params.push(rootId, rootId);
+          arms.push(
+            `(fn.id = ${rootEq} OR EXISTS (SELECT 1 FROM node_ancestors oa WHERE oa.ancestor_id = ${rootAnc} AND oa.descendant_id = fn.id))`
+          );
+        }
+        const pathGrant = next();
+        params.push(Number(userId));
+        arms.push(
+          `EXISTS (SELECT 1 FROM permissions_user_paths p WHERE p.user_id = ${pathGrant} AND (p.file_node_id = fn.id OR EXISTS (SELECT 1 FROM node_ancestors pa WHERE pa.ancestor_id = p.file_node_id AND pa.descendant_id = fn.id)))`
+        );
+        const fileGrant = next();
+        params.push(Number(userId));
+        arms.push(
+          `EXISTS (SELECT 1 FROM permissions_user_files f WHERE f.user_id = ${fileGrant} AND f.file_node_id = fn.id)`
+        );
+        const limitParam = next();
+        params.push(cap);
+
+        const { rows } = await executor.query(
+          `SELECT fn.id, fn.name
+             FROM file_nodes fn
+            WHERE fn.deleted_at IS NULL
+              AND lower(fn.name) LIKE lower('%' || ${likeParam} || '%')
+              AND (${arms.join(' OR ')})
+            ORDER BY fn.name ASC, fn.id ASC
+            LIMIT ${limitParam}`,
+          params
+        );
+        return rows.map((row) => ({ id: Number(row.id), name: row.name }));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    /**
+     * All live node ids visible to the requester (searchService §2.5a scorer
+     * seam — the ACL anchoring set). Same visibility rule as
+     * sampleVisibleNodeIds/searchNodesByName; no sampling, no limit.
+     */
+    async listVisibleFileNodeIds(userId) {
+      try {
+        const root = await this.getUserRootNode(userId);
+        const rootId = root ? Number(root.id) : null;
+
+        let paramIndex = 0;
+        const next = () => `$${(paramIndex += 1)}`;
+        const params = [];
+        const arms = [];
+        if (rootId != null) {
+          const rootEq = next();
+          const rootAnc = next();
+          params.push(rootId, rootId);
+          arms.push(
+            `(fn.id = ${rootEq} OR EXISTS (SELECT 1 FROM node_ancestors oa WHERE oa.ancestor_id = ${rootAnc} AND oa.descendant_id = fn.id))`
+          );
+        }
+        const pathGrant = next();
+        params.push(Number(userId));
+        arms.push(
+          `EXISTS (SELECT 1 FROM permissions_user_paths p WHERE p.user_id = ${pathGrant} AND (p.file_node_id = fn.id OR EXISTS (SELECT 1 FROM node_ancestors pa WHERE pa.ancestor_id = p.file_node_id AND pa.descendant_id = fn.id)))`
+        );
+        const fileGrant = next();
+        params.push(Number(userId));
+        arms.push(
+          `EXISTS (SELECT 1 FROM permissions_user_files f WHERE f.user_id = ${fileGrant} AND f.file_node_id = fn.id)`
+        );
+
+        const { rows } = await executor.query(
+          `SELECT fn.id
+             FROM file_nodes fn
+            WHERE fn.deleted_at IS NULL
+              AND (${arms.join(' OR ')})
+            ORDER BY fn.id`,
+          params
+        );
+        return rows.map((row) => Number(row.id));
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    /**
+     * Random sample of at most n requester-visible live node ids
+     * (searchService §2.5 — per-query dynamic-baseline corpus sample, P1).
+     * Same visibility rule as searchNodesByName.
+     */
+    async sampleVisibleNodeIds(userId, n) {
+      const size = Number.isFinite(Number(n)) && Number(n) > 0 ? Number(n) : 0;
+      if (size === 0) return [];
+      try {
+        const root = await this.getUserRootNode(userId);
+        const rootId = root ? Number(root.id) : null;
+
+        let paramIndex = 0;
+        const next = () => `$${(paramIndex += 1)}`;
+        const params = [];
+        const arms = [];
+        if (rootId != null) {
+          const rootEq = next();
+          const rootAnc = next();
+          params.push(rootId, rootId);
+          arms.push(
+            `(fn.id = ${rootEq} OR EXISTS (SELECT 1 FROM node_ancestors oa WHERE oa.ancestor_id = ${rootAnc} AND oa.descendant_id = fn.id))`
+          );
+        }
+        const pathGrant = next();
+        params.push(Number(userId));
+        arms.push(
+          `EXISTS (SELECT 1 FROM permissions_user_paths p WHERE p.user_id = ${pathGrant} AND (p.file_node_id = fn.id OR EXISTS (SELECT 1 FROM node_ancestors pa WHERE pa.ancestor_id = p.file_node_id AND pa.descendant_id = fn.id)))`
+        );
+        const fileGrant = next();
+        params.push(Number(userId));
+        arms.push(
+          `EXISTS (SELECT 1 FROM permissions_user_files f WHERE f.user_id = ${fileGrant} AND f.file_node_id = fn.id)`
+        );
+        const limitParam = next();
+        params.push(size);
+
+        const { rows } = await executor.query(
+          `SELECT fn.id
+             FROM file_nodes fn
+            WHERE fn.deleted_at IS NULL
+              AND (${arms.join(' OR ')})
+            ORDER BY RANDOM()
+            LIMIT ${limitParam}`,
+          params
+        );
+        return rows.map((row) => Number(row.id));
       } catch (error) {
         throw mapDatabaseError(error);
       }

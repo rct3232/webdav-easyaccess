@@ -32,7 +32,7 @@
 
 - `sharePermissionGateway` — all grant/revoke operations use nodeId payloads via this gateway
 
-> **Removed dependency:** `collectSubfolderPaths` was deleted in Wave 4. Server-side closure table inheritance handles permission propagation; the client no longer enumerates subfolder paths for directory grants.
+> **Removed dependency:** `collectSubfolderPaths` is deleted. Server-side closure table inheritance handles permission propagation; the client does not enumerate subfolder paths for directory grants.
 
 ### 2.5 Execution Semantics
 

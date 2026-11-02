@@ -37,6 +37,38 @@ async function getWebDAVClient() {
   return createClient(url, clientOptions);
 }
 
+const CONNECTION_RETRY_DELAYS_MS = [50, 150];
+
+function isTransientWebdavTransportError(error) {
+  if (!error) return false;
+  const code = error.code || error.cause?.code;
+  if (code && ['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT'].includes(code)) {
+    return true;
+  }
+  return /socket hang up|ECONNRESET|ECONNREFUSED|EPIPE|network error/i.test(
+    String(error.message || '')
+  );
+}
+
+async function getDirectoryContentsWithRetry(client, path) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= CONNECTION_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await client.getDirectoryContents(path);
+    } catch (error) {
+      lastError = error;
+      if (
+        !isTransientWebdavTransportError(error) ||
+        attempt === CONNECTION_RETRY_DELAYS_MS.length
+      ) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, CONNECTION_RETRY_DELAYS_MS[attempt]));
+    }
+  }
+  throw lastError;
+}
+
 async function testConnection() {
   try {
     const client = await getWebDAVClient();
@@ -46,7 +78,7 @@ async function testConnection() {
     let lastError = null;
     for (const testPath of testPaths) {
       try {
-        const items = await client.getDirectoryContents(testPath);
+        const items = await getDirectoryContentsWithRetry(client, testPath);
         const { getBackendHealth } = require('../infrastructure/backendHealth');
         getBackendHealth().report('webdav', { ok: true });
         return {

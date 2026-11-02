@@ -74,4 +74,4 @@ User objects returned by the auth API carry a `rootNodeId` field that resolves t
 - [ ] GET /me returns user when authenticated
 - [ ] Register duplicate handling: username uniqueness is checked first (service.js:108-122); when both username and email are taken, `serverErrors.auth.usernameTaken` (400) is always returned — `emailTaken` is only returned after the username check passes
 - [ ] Refresh with empty/invalid refreshToken → 401
-- [ ] GET /me 만료 토큰 → 401
+- [ ] GET /me expired token → 401

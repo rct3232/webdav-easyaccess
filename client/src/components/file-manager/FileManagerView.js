@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Box,
@@ -9,8 +9,17 @@ import {
   CircularProgress,
   AppBar,
   Toolbar,
+  IconButton,
 } from '@mui/material';
-import { CheckCircle as CheckCircleIcon } from '@mui/icons-material';
+import { alpha } from '@mui/material/styles';
+import {
+  AutoAwesome as AutoAwesomeIcon,
+  CheckCircle as CheckCircleIcon,
+  Cloud as CloudIcon,
+  FolderOpen as FolderOpenIcon,
+  KeyboardArrowDown as KeyboardArrowDownIcon,
+  KeyboardArrowUp as KeyboardArrowUpIcon,
+} from '@mui/icons-material';
 
 import {
   FLOATING_BOTTOM_HEIGHT_MOBILE,
@@ -44,6 +53,151 @@ import {
   LoginDialog,
 } from '../dialogs';
 import { FolderTree } from '../folder-tree';
+import CollectionsListView from './CollectionsListView';
+import SearchQueryChipBar from './SearchQueryChipBar';
+import { FileListSkeleton, FileGridSkeleton, FileDetailSkeleton } from './FileSkeletons';
+import { useInfiniteScroll } from '../../hooks/useInfiniteScroll';
+import { UndoToast } from '../feedback';
+
+// -- Search results-mode zones (FileManagerView.md §3) — presentational
+// composition only: rows, ordering, counts and callbacks all arrive prepared
+// on the `searchResults` model (pure-view rule). Zone headers carry plain
+// icons: A FolderOpen + path, B Cloud, C wand-stars (unmirrored).
+
+const SearchZoneHeader = ({ zoneKey, icon, label, count, collapsed, onToggle }) => (
+  <Box
+    data-testid={`search-zone-header-${zoneKey}`}
+    onClick={onToggle}
+    sx={{
+      position: 'sticky',
+      top: 0,
+      zIndex: 5,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 1,
+      py: 0.5,
+      cursor: 'pointer',
+      backgroundColor: (theme) => alpha(theme.palette.background.paper, 0.7),
+      backdropFilter: 'blur(12px)',
+      WebkitBackdropFilter: 'blur(12px)',
+      borderBottom: '1px solid',
+      borderColor: 'divider',
+    }}
+  >
+    {icon}
+    <Typography variant="subtitle2" noWrap sx={{ minWidth: 0 }}>
+      {label}
+    </Typography>
+    <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>
+      {count}
+    </Typography>
+    <IconButton
+      data-testid={`search-zone-toggle-${zoneKey}`}
+      size="small"
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggle();
+      }}
+      sx={{
+        ml: 'auto',
+        flexShrink: 0,
+        color: 'primary.main',
+        minWidth: 44,
+        minHeight: 44,
+      }}
+    >
+      {collapsed ? <KeyboardArrowDownIcon /> : <KeyboardArrowUpIcon />}
+    </IconButton>
+  </Box>
+);
+
+const SearchZone = ({
+  zoneKey,
+  label,
+  count,
+  rows,
+  viewMode,
+  collapsed,
+  pending = false,
+  onToggle,
+  rendererProps,
+}) => {
+  const { displayedFiles, loadMoreRef, hasMore } = useInfiniteScroll(rows, {
+    initialCount: 50,
+    incrementCount: 50,
+  });
+
+  const icon =
+    zoneKey === 'a' ? (
+      <FolderOpenIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
+    ) : zoneKey === 'b' ? (
+      <CloudIcon
+        data-testid="search-zone-glyph-b"
+        fontSize="small"
+        sx={{ color: 'text.secondary', flexShrink: 0 }}
+      />
+    ) : (
+      <AutoAwesomeIcon
+        data-testid="search-zone-glyph-c"
+        fontSize="small"
+        sx={{ color: 'text.secondary', flexShrink: 0 }}
+      />
+    );
+
+  const renderRows = () => {
+    if (pending) return <SearchZoneSkeleton viewMode={viewMode} />;
+    if (rows.length === 0) return null;
+    if (viewMode === VIEW_MODES.GRID) {
+      return (
+        <FileGrid
+          {...rendererProps}
+          files={displayedFiles}
+          loadMoreRef={loadMoreRef}
+          hasMore={hasMore}
+        />
+      );
+    }
+    if (viewMode === VIEW_MODES.DETAIL) {
+      return <FileDetail {...rendererProps} files={displayedFiles} />;
+    }
+    return (
+      <FileList
+        {...rendererProps}
+        files={displayedFiles}
+        loadMoreRef={loadMoreRef}
+        hasMore={hasMore}
+      />
+    );
+  };
+
+  return (
+    <Box>
+      <SearchZoneHeader
+        zoneKey={zoneKey}
+        icon={icon}
+        label={label}
+        count={count}
+        collapsed={collapsed}
+        onToggle={onToggle}
+      />
+      <Collapse in={!collapsed} unmountOnExit>
+        {renderRows()}
+      </Collapse>
+    </Box>
+  );
+};
+
+const SearchZoneSkeleton = ({ viewMode }) => (
+  <Box data-testid="search-zone-skeleton">
+    {viewMode === VIEW_MODES.GRID ? (
+      <FileGridSkeleton count={4} />
+    ) : viewMode === VIEW_MODES.DETAIL ? (
+      <FileDetailSkeleton count={4} />
+    ) : (
+      <FileListSkeleton count={4} />
+    )}
+  </Box>
+);
 
 const FileManagerView = ({
   shareContext,
@@ -56,6 +210,8 @@ const FileManagerView = ({
   messaging,
   explorerHandlers,
   trashState,
+  collectionsModel,
+  searchResults,
 }) => {
   const { t } = useTranslation();
   const { shareToken, isShareLinkMode, shareRootPath, shareRootName, shareRootNodeId } =
@@ -115,12 +271,58 @@ const FileManagerView = ({
     currentNodeId,
     viewMode,
     setViewMode,
+    memberViewMode,
+    setMemberViewMode,
+    likedViewMode,
+    setLikedViewMode,
+    memberSortMode,
+    setMemberSortMode,
     sortMode,
     setSortMode,
     searchQuery,
     setSearchQuery,
+    onSubmitQuery,
+    llmConfigured = false,
+    onSearchBarExpandedChange,
   } = controlsState;
+  // AI-platform §3: results-mode surface — the shell prepares the model; the
+  // view swaps the breadcrumb row for the chip bar and hosts the accordion
+  // zones inside the listing (no separate overlay surface exists).
+  const searchResultsMode = searchResults?.mode === 'results';
+  const searchPending = searchResults?.mode === 'pending';
+  const searchSurfaceActive = Boolean(searchResults) && (searchResultsMode || searchPending);
+  // FAB ↔ search-button morph truth (FloatingSearchBar §2.5 — the bar reports
+  // it; the FAB is controlled-mount through this boolean).
+  const [searchBarMorphed, setSearchBarMorphed] = useState(false);
   const isTrashView = trashMode === true || currentPath === '/__trash__';
+  // P-2: the single toolbar sort button swaps its menu by surface — collections
+  // list AND archive surfaces show the 5 server options (ephemeral), everything
+  // else keeps the files radio menu.
+  // P-4 toggle contract: the collections LIST/ARCHIVE surfaces hide the
+  // view-mode buttons (grid-parity cards); the MEMBERS surface keeps the sort
+  // HIDDEN (server-fixed activity→node_id order) but SHOWS the three view-mode
+  // buttons bound to the per-surface `memberViewMode` key (file viewMode
+  // untouched) — the P-3 inert flags retire here.
+  const isCollectionsListSurface = collectionsModel?.mode === 'list';
+  const isCollectionsMemberSurface = collectionsModel?.mode === 'members';
+  // P-5: the Likes surface is a member-parity CONSUMER of the same mode — the
+  // shell flags it (likedSurface) so ONLY the view-mode key binding swaps
+  // (`likedViewMode`); sort/bulk stay member-treated, banners never arrive
+  // (the liked model omits digest/publishPendingCount/onPublishBatch).
+  const isCollectionsLikedSurface =
+    isCollectionsMemberSurface && collectionsModel?.likedSurface === true;
+  const memberSurfaceViewMode = isCollectionsLikedSurface ? likedViewMode : memberViewMode;
+  const setMemberSurfaceViewMode = isCollectionsLikedSurface ? setLikedViewMode : setMemberViewMode;
+  // M-9: the member-route breadcrumb NAME resolves from the shell's already-fetched
+  // useCollections list (matched by collectionId). null ⇒ Breadcrumb renders the
+  // transient ellipsis segment (owner option (a) — the trail never hides).
+  const memberCollectionName = useMemo(() => {
+    if (!isCollectionsMemberSurface || isCollectionsLikedSurface) return null;
+    const found = (collectionsModel?.collections ?? []).find(
+      (collection) => collection.collection_id === collectionsModel?.collectionId
+    );
+    return found?.name ?? null;
+  }, [isCollectionsMemberSurface, isCollectionsLikedSurface, collectionsModel]);
   // FAB가 자신의 실제 표시 여부를 보고(single source of truth) — 검색창 확장 트리거로 사용
   const [fabPresent, setFabPresent] = useState(false);
   const { displayedFiles, loading, processingMap, handleThumbnailsLoaded, loadMoreRef, hasMore } =
@@ -176,6 +378,8 @@ const FileManagerView = ({
     shareDialogV2File,
     mobileShareFile,
     propertiesFile,
+    propertiesCollections,
+    propertiesAiEnrichment,
     bulkDeleteFilePaths,
     bulkConflictData,
     setBulkConflictData,
@@ -209,7 +413,12 @@ const FileManagerView = ({
     contentAreaDragType,
     handleActionSheetDownload,
     handleActionSheetPreview,
+    handleToggleLike,
+    handleOpenAddToCollection,
   } = interaction;
+  // T0.5: like rows render only where the set seam applies — share-link and
+  // trash views withhold the callback (hidden, not disabled; §3.1).
+  const likeToggleHandler = isShareLinkMode || isTrashView ? undefined : handleToggleLike;
   const {
     handleRename,
     handleBulkDeleteConfirm,
@@ -225,6 +434,8 @@ const FileManagerView = ({
     openUploadDialog,
     openCreateFolderDialog,
     onShareTargetSave,
+    handleOpenCollectionFromProperties,
+    handleFilesBulkAddToCollection,
   } = commands;
   const {
     progressItems,
@@ -244,6 +455,40 @@ const FileManagerView = ({
     showRefreshSuccess,
     textContent,
   } = refreshIndicator;
+
+  // §3 results-mode zones — view-ready rows/callbacks from the shell-prepared
+  // `searchResults` model; the view only pages (50+50 per zone) and swaps
+  // regions. Row identity/ordering/promotion are `useSearchResults`-owned.
+  const zoneARows = searchResults?.zoneARows ?? [];
+  const zoneBRows = searchResults?.zoneBRows ?? [];
+  const zoneCRows = searchResults?.zoneCRows ?? [];
+  const zoneCounts = searchResults?.zoneCounts ?? { zoneA: 0, zoneB: 0, zoneC: 0 };
+  const zonesCollapsed = searchResults?.zonesCollapsed ?? {};
+  const zoneRendererProps = {
+    processingMap,
+    onFileClick: searchResults?.onRowOpen,
+    onMoreClick: handleMoreClick,
+    showMoreButton: !selectionMode,
+    onLongPressSelect: handleLongPressSelect,
+    onContextMenu: handleViewContextMenu,
+    onFileDrop: handleFileDrop,
+    onDropPermissionDenied: handleDropPermissionDenied,
+    onDragStart: handleDragStartFromView,
+    onDragEnd: handleDragEndFromView,
+    internalDraggedNodeId: contentAreaDraggedNodeId,
+    selectionMode,
+    selectedFiles,
+    onFileCheck: handleFileCheck,
+    loading: false,
+    onThumbnailsLoaded: handleThumbnailsLoaded,
+  };
+  // Zone B/C rows are snapshot entries, not session rows — their lazy-load
+  // answers land on the zone-local merge in `useSearchResults` (view stays
+  // pure); Zone A rows ARE session rows and keep the session merge above.
+  const zoneServerRendererProps = {
+    ...zoneRendererProps,
+    onThumbnailsLoaded: searchResults?.onZoneThumbnailsLoaded ?? handleThumbnailsLoaded,
+  };
 
   return (
     <Box
@@ -351,20 +596,33 @@ const FileManagerView = ({
             position: 'relative',
           }}
         >
-          <Breadcrumb
-            currentPath={currentPath}
-            ancestors={isTrashView ? (trashTrail ?? []) : ancestors}
-            onNodeClick={isTrashView ? handleTrashBreadcrumbClick : handleFolderTreeNodeClick}
-            {...(isShareLinkMode
-              ? { shareRootPath, shareRootName, showFolderTreeToggle: true }
-              : { user })}
-            {...(isMobile
-              ? {
-                  onToggleFolderTree: () => setDrawerOpen(!drawerOpen),
-                  isFolderTreeOpen: drawerOpen,
-                }
-              : {})}
-          />
+          {searchSurfaceActive ? (
+            <SearchQueryChipBar
+              terms={searchResults.terms ?? []}
+              isMobile={isMobile}
+              inExpandSlot={isMobile}
+              onRevertToStep={searchResults.onRevertToStep}
+              onExit={searchResults.onExit}
+              onLibraryAdd={searchResults.onLibraryAdd}
+              onSave={searchResults.onSave}
+            />
+          ) : (
+            <Breadcrumb
+              currentPath={currentPath}
+              collectionName={isCollectionsMemberSurface ? memberCollectionName : undefined}
+              ancestors={isTrashView ? (trashTrail ?? []) : ancestors}
+              onNodeClick={isTrashView ? handleTrashBreadcrumbClick : handleFolderTreeNodeClick}
+              {...(isShareLinkMode
+                ? { shareRootPath, shareRootName, showFolderTreeToggle: true }
+                : { user })}
+              {...(isMobile
+                ? {
+                    onToggleFolderTree: () => setDrawerOpen(!drawerOpen),
+                    isFolderTreeOpen: drawerOpen,
+                  }
+                : {})}
+            />
+          )}
 
           {isMobile && (
             <Collapse in={drawerOpen} timeout="auto">
@@ -427,10 +685,32 @@ const FileManagerView = ({
             handleSelectAll={handleSelectAll}
             handleDeselectAll={handleDeselectAll}
             selectedFiles={selectedFiles}
-            sortMode={sortMode}
-            setSortMode={setSortMode}
-            viewMode={viewMode}
-            setViewMode={setViewMode}
+            sortMode={isCollectionsMemberSurface ? memberSortMode : sortMode}
+            setSortMode={isCollectionsMemberSurface ? setMemberSortMode : setSortMode}
+            sortSurface={isCollectionsListSurface ? 'collections' : 'files'}
+            collectionSort={isCollectionsListSurface ? collectionsModel.sort : undefined}
+            onCollectionSortChange={
+              isCollectionsListSurface ? collectionsModel.onSortChange : undefined
+            }
+            viewModeHidden={isCollectionsListSurface}
+            memberMode={isCollectionsMemberSurface}
+            collectionsMode={isCollectionsListSurface}
+            collectionsArchiveView={
+              isCollectionsListSurface && collectionsModel.include === 'mine,archived'
+            }
+            onCollectionsBulkAction={
+              isCollectionsListSurface ? collectionsModel.onBulkAction : undefined
+            }
+            onBulkMemberExclude={
+              isCollectionsMemberSurface ? collectionsModel.onBulkMemberExclude : undefined
+            }
+            onBulkAddToCollection={
+              isCollectionsMemberSurface
+                ? collectionsModel.onBulkAddToCollection
+                : handleFilesBulkAddToCollection
+            }
+            viewMode={isCollectionsMemberSurface ? memberSurfaceViewMode : viewMode}
+            setViewMode={isCollectionsMemberSurface ? setMemberSurfaceViewMode : setViewMode}
             selectionActionsDisabled={bulkMoveCopyInProgress}
             handleBulkMove={handleBulkMove}
             handleBulkCopy={handleBulkCopy}
@@ -575,7 +855,97 @@ const FileManagerView = ({
                 </Box>
               )}
 
-              {viewMode === VIEW_MODES.LIST ? (
+              {searchSurfaceActive ? (
+                <Box sx={{ display: 'grid', gap: 2 }}>
+                  {zoneCounts.zoneA > 0 && (
+                    <SearchZone
+                      zoneKey="a"
+                      label={currentPath}
+                      count={zoneCounts.zoneA}
+                      rows={zoneARows}
+                      viewMode={viewMode}
+                      pending={searchPending}
+                      collapsed={zonesCollapsed.a === true && !searchPending}
+                      onToggle={() => searchResults.onToggleZone?.('a')}
+                      rendererProps={zoneRendererProps}
+                    />
+                  )}
+                  {zoneCounts.zoneB > 0 && (
+                    <SearchZone
+                      zoneKey="b"
+                      label={t('fileManager.searchZoneAllResults')}
+                      count={zoneCounts.zoneB}
+                      rows={zoneBRows}
+                      viewMode={viewMode}
+                      pending={searchPending}
+                      collapsed={zonesCollapsed.b === true && !searchPending}
+                      onToggle={() => searchResults.onToggleZone?.('b')}
+                      rendererProps={zoneServerRendererProps}
+                    />
+                  )}
+                  {zoneCounts.zoneC > 0 && (
+                    <SearchZone
+                      zoneKey="c"
+                      label={t('fileManager.searchZoneSuggestedResults')}
+                      count={zoneCounts.zoneC}
+                      rows={zoneCRows}
+                      viewMode={viewMode}
+                      pending={searchPending}
+                      collapsed={zonesCollapsed.c === true && !searchPending}
+                      onToggle={() => searchResults.onToggleZone?.('c')}
+                      rendererProps={zoneServerRendererProps}
+                    />
+                  )}
+                  {zoneCounts.zoneA === 0 &&
+                    zoneCounts.zoneB === 0 &&
+                    zoneCounts.zoneC === 0 &&
+                    (searchPending ? (
+                      <SearchZoneSkeleton viewMode={viewMode} />
+                    ) : (
+                      <Typography
+                        data-testid="search-no-results"
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ py: 1 }}
+                      >
+                        {t('fileManager.searchNoResults')}
+                      </Typography>
+                    ))}
+                </Box>
+              ) : collectionsModel ? (
+                /* AI-platform §3: __collections__ virtual node replaces the FileList
+                   region (list cards / member rows) — no file-grid fallback. */
+                <CollectionsListView
+                  mode={collectionsModel.mode}
+                  collections={collectionsModel.collections}
+                  sort={collectionsModel.sort}
+                  mergeSlot={collectionsModel.mergeSlot}
+                  include={collectionsModel.include}
+                  onPseudoTileNavigate={collectionsModel.onPseudoTileNavigate}
+                  items={collectionsModel.items}
+                  memberViewMode={memberSurfaceViewMode}
+                  memberSortMode={isCollectionsMemberSurface ? memberSortMode : undefined}
+                  memberLoading={loading}
+                  onMemberRowClick={handleFileClick}
+                  onMemberRowCheck={handleFileCheck}
+                  onMemberRowLongPressSelect={handleLongPressSelect}
+                  onMemberThumbnailsLoaded={collectionsModel.onMemberThumbnailsLoaded}
+                  digest={collectionsModel.digest}
+                  publishPendingCount={collectionsModel.publishPendingCount}
+                  onCardAction={collectionsModel.onCardAction}
+                  onMemberAction={collectionsModel.onMemberAction}
+                  onPublishBatch={collectionsModel.onPublishBatch}
+                  selectionMode={selectionMode}
+                  selectedFiles={selectedFiles}
+                  onCardClick={collectionsModel.onCardClick}
+                  onCardLongPressSelect={collectionsModel.onCardLongPressSelect}
+                  previewThumbnails={collectionsModel.previewThumbnails}
+                  onPreviewThumbnailsLoaded={collectionsModel.onPreviewThumbnailsLoaded}
+                  bulkConfirm={collectionsModel.bulkConfirm}
+                  onBulkConfirm={collectionsModel.onBulkConfirm}
+                  onBulkConfirmDismiss={collectionsModel.onBulkConfirmDismiss}
+                />
+              ) : viewMode === VIEW_MODES.LIST ? (
                 <FileList
                   files={displayedFiles}
                   processingMap={processingMap}
@@ -756,6 +1126,20 @@ const FileManagerView = ({
                 setFolderPickerOpen(true);
               }
         }
+        onToggleLike={likeToggleHandler}
+        onAddToCollection={
+          isShareLinkMode || isTrashView || !handleOpenAddToCollection
+            ? undefined
+            : (file) => {
+                // The closure captures the still-open contextMenu position
+                // (handleAction closes the menu before invoking the callback),
+                // anchoring the shell-owned submenu at the same spot.
+                handleOpenAddToCollection(file, {
+                  mouseX: contextMenu?.mouseX ?? 0,
+                  mouseY: contextMenu?.mouseY ?? 0,
+                });
+              }
+        }
         onShare={
           isShareLinkMode || isTrashView
             ? undefined
@@ -862,16 +1246,32 @@ const FileManagerView = ({
         </Alert>
       </Snackbar>
 
-      <Snackbar
-        open={message.show}
-        autoHideDuration={message.type === 'error' ? 5000 : 3000}
-        onClose={clearMessage}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert onClose={clearMessage} severity={message.type} sx={{ width: '100%' }}>
-          {message.text}
-        </Alert>
-      </Snackbar>
+      {message.action ? (
+        /* useMessage action slot (undo toasts, T0.7): the snackbar host renders
+           the action variant through UndoToast — [icon] {text} [action]. */
+        <UndoToast
+          show={message.show}
+          text={message.text}
+          type={message.type}
+          action={{
+            label: t(message.action.labelKey),
+            onAction: message.action.onClick,
+            disabled: message.action.disabled,
+          }}
+          onClose={clearMessage}
+        />
+      ) : (
+        <Snackbar
+          open={message.show}
+          autoHideDuration={message.type === 'error' ? 5000 : 3000}
+          onClose={clearMessage}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert onClose={clearMessage} severity={message.type} sx={{ width: '100%' }}>
+            {message.text}
+          </Alert>
+        </Snackbar>
+      )}
 
       <FileOperationProgress
         items={progressItems}
@@ -894,6 +1294,23 @@ const FileManagerView = ({
           setSearchQuery={setSearchQuery}
           isMobile={isMobile}
           fabVisible={fabPresent}
+          {...(onSubmitQuery
+            ? {
+                onSubmitQuery,
+                ...(typeof searchResults?.cancelSearch === 'function'
+                  ? { onCancelQuery: searchResults.cancelSearch }
+                  : {}),
+                resultsModeActive: searchResultsMode || searchPending,
+                isPending: searchPending,
+                llmConfigured,
+                onExpandedChange: (isExpanded) => {
+                  setSearchBarMorphed(isExpanded);
+                  if (typeof onSearchBarExpandedChange === 'function') {
+                    onSearchBarExpandedChange(isExpanded);
+                  }
+                },
+              }
+            : {})}
         />
       )}
 
@@ -907,6 +1324,7 @@ const FileManagerView = ({
             }}
             isMobile={isMobile}
             onVisibilityChange={setFabPresent}
+            morphed={searchBarMorphed}
           />
         ) : (
           <FAB
@@ -915,6 +1333,7 @@ const FileManagerView = ({
             hasWritePermission={hasWritePermission}
             isMobile={isMobile}
             onVisibilityChange={setFabPresent}
+            morphed={searchBarMorphed}
           />
         ))}
 
@@ -979,6 +1398,21 @@ const FileManagerView = ({
           }
           onPreview={
             isTrashView ? undefined : isShareLinkMode ? undefined : handleActionSheetPreview
+          }
+          onToggleLike={likeToggleHandler}
+          onAddToCollection={
+            isShareLinkMode || isTrashView || !handleOpenAddToCollection
+              ? undefined
+              : (file) => {
+                  // The sheet closes before invoking (handleAction); the
+                  // shell-owned AddToCollectionMenu opens viewport-centered —
+                  // the mobile analogue of the context-menu-anchored desktop
+                  // flow (FileManager.md §7 host wiring).
+                  handleOpenAddToCollection(file, {
+                    mouseX: Math.max(16, window.innerWidth / 2 - 140),
+                    mouseY: Math.max(16, window.innerHeight / 2 - 120),
+                  });
+                }
           }
           onProperties={
             isShareLinkMode
@@ -1104,6 +1538,14 @@ const FileManagerView = ({
           onClose={closePropertiesDialog}
           file={propertiesFile}
           activeFileStorage={activeFileStorage}
+          aiEnrichment={isShareLinkMode ? null : propertiesAiEnrichment}
+          collections={propertiesCollections}
+          onOpenCollection={handleOpenCollectionFromProperties}
+          {...(likeToggleHandler &&
+          propertiesFile?.isRecentFile !== true &&
+          propertiesFile?.isTrashed !== true
+            ? { onToggleLike: likeToggleHandler }
+            : {})}
           onTrashRestore={isTrashView ? handleTrashRestore : undefined}
           onTrashPurge={isTrashView ? handleTrashPurge : undefined}
         />

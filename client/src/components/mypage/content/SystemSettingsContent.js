@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import {
   Accordion,
   AccordionDetails,
@@ -35,13 +36,18 @@ import { usePageHeader } from '../../../contexts/PageHeaderContext';
 import MigrationDialog from './MigrationDialog';
 import MetadataMigrationDialog from './MetadataMigrationDialog';
 import SystemConfigEditor from './SystemConfigEditor';
+import AdminReportsContent from './AdminReportsContent';
+import { mapAiRoleState } from '../../../utils/aiRoleState';
 
 const SystemSettingsContent = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { setTitle, setActions } = usePageHeader();
+  const openAiPanel = () => navigate('/mypage', { state: { category: 'admin-ai' } });
 
   const [tempSettings, setTempSettings] = useState({ registration_enabled: 'false' });
   const [registrationSaving, setRegistrationSaving] = useState(false);
+  const registrationTouchedRef = useRef(false);
   const [showHiddenFiles, setShowHiddenFiles] = useState(() => getShowHiddenFiles());
   const [message, setMessage] = useState({ type: '', text: '' });
   const [cleanupLoading, setCleanupLoading] = useState(false);
@@ -63,7 +69,9 @@ const SystemSettingsContent = () => {
   const loadSettings = useCallback(async () => {
     try {
       const data = await adminService.getSettings();
-      setTempSettings(data);
+      // A slow initial settings read must not overwrite a user's in-flight
+      // registration toggle (the switch is interactive before the fetch lands).
+      if (!registrationTouchedRef.current) setTempSettings(data);
     } catch (error) {
       setMessage({ type: 'error', text: t('admin.settingsLoadFail') });
     }
@@ -113,6 +121,7 @@ const SystemSettingsContent = () => {
   }, [loadSettings, loadActiveBackends, loadHealth, loadMigrationPresence]);
 
   const handleToggleRegistration = async () => {
+    registrationTouchedRef.current = true;
     const newValue = tempSettings.registration_enabled === 'true' ? 'false' : 'true';
     const nextSettings = { ...tempSettings, registration_enabled: newValue };
     setTempSettings(nextSettings);
@@ -251,6 +260,18 @@ const SystemSettingsContent = () => {
     ([name, health]) => health?.status === 'fail' && activeBackends.has(name)
   );
 
+  // AI role rows (T1.1c): every `ai.<role>` tracker row maps to the admin
+  // 5-state display (not_configured | preparing | probe_failed | partial | ok,
+  // llmAdapter.md §2.4). Admin visible-STATE — rendered whenever the snapshot
+  // carries AI rows, independently of the failing-backend condition.
+  const aiRoleEntries = Object.entries(backendHealth)
+    .filter(([key]) => key.startsWith('ai.'))
+    .map(([key, row]) => ({ key, role: key.slice(3), row, mapped: mapAiRoleState(row) }))
+    .filter(
+      (entry) =>
+        entry.mapped && ['preparing', 'probe_failed', 'partial'].includes(entry.mapped.state)
+    );
+
   const syncSummary = configSyncReport?.summary;
   const configSyncActionable = (syncSummary?.drift || 0) > 0 || (syncSummary?.envOnly || 0) > 0;
   const syncFindings = configSyncReport?.findings || [];
@@ -259,7 +280,16 @@ const SystemSettingsContent = () => {
 
   return (
     <Box>
-      {failedBackends.length > 0 && (
+      <Button
+        size="small"
+        variant="outlined"
+        onClick={openAiPanel}
+        sx={{ mb: 2 }}
+        data-testid="open-ai-panel"
+      >
+        {t('admin.aiPanel.openAiPanel')}
+      </Button>
+      {(failedBackends.length > 0 || aiRoleEntries.length > 0) && (
         <Alert severity="warning" sx={{ mb: 3 }} data-testid="backend-health-card">
           <Typography variant="subtitle2">{t('admin.health.title')}</Typography>
           <Box component="ul" sx={{ mt: 1, mb: 0, pl: 3 }}>
@@ -281,6 +311,37 @@ const SystemSettingsContent = () => {
               </li>
             ))}
           </Box>
+          {aiRoleEntries.length > 0 && (
+            <Box sx={{ mt: failedBackends.length > 0 ? 1 : 0 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="subtitle2">{t('admin.ai.title')}</Typography>
+                <Button size="small" onClick={openAiPanel}>
+                  {t('admin.aiPanel.openAiPanel')}
+                </Button>
+              </Box>
+              <Box component="ul" sx={{ mt: 1, mb: 0, pl: 3 }}>
+                {aiRoleEntries.map(({ key, role, row, mapped }) => {
+                  const detail =
+                    mapped.state === 'preparing'
+                      ? [mapped.phase, mapped.progress].filter(Boolean).join(', ')
+                      : mapped.state === 'probe_failed'
+                        ? mapped.reason
+                        : mapped.state === 'partial'
+                          ? t(row?.hint, { defaultValue: row?.hint })
+                          : '';
+                  return (
+                    <li key={key}>
+                      <Typography variant="body2">
+                        {t(`admin.ai.role.${role}`, { defaultValue: role })}:{' '}
+                        {t(`admin.aiState.${mapped.state}`)}
+                        {detail ? ` (${detail})` : ''}
+                      </Typography>
+                    </li>
+                  );
+                })}
+              </Box>
+            </Box>
+          )}
         </Alert>
       )}
       {metadataPresence?.otherHasData && (
@@ -437,6 +498,8 @@ const SystemSettingsContent = () => {
           {configSyncApplying ? <CircularProgress size={24} /> : <AutorenewIcon />}
         </IconButton>
       </Box>
+
+      <AdminReportsContent onSnackbar={(msg) => setMessage(msg)} />
 
       <Accordion
         expanded={advancedOpen}

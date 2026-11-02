@@ -8,6 +8,8 @@ import {
   DeleteObjectsCommand,
 } from '@aws-sdk/client-s3';
 
+import { s3Endpoint } from './ports';
+
 /**
  * Direct MinIO access for E2E scenarios that assert blob-level behavior with
  * no non-blob observable (e.g. the migration E2E's "no duplicate blobs"
@@ -15,12 +17,13 @@ import {
  * `e2e/global-setup.ts`.
  *
  * Bucket contract (Option A Phase 1): every helper takes the bucket explicitly
- * so the migration suite can target its DEDICATED `e2e-migration-bucket` and
- * never empty/list the shared `e2e-test-bucket` that the s3-mode platform
- * tests write to — the suites can therefore run concurrently.
+ * so the migration suite can target its project-scoped destination buckets
+ * (`e2e-migration-<project>`) and never empty/list the shared
+ * `e2e-test-bucket` that the s3-mode platform tests write to — the suites can
+ * therefore run concurrently.
  */
 
-const E2E_S3_ENDPOINT = process.env.S3_ENDPOINT || 'http://127.0.0.1:9010';
+const E2E_S3_ENDPOINT = process.env.S3_ENDPOINT || s3Endpoint;
 const E2E_S3_REGION = process.env.AWS_REGION || 'us-east-1';
 const E2E_S3_ACCESS_KEY = process.env.AWS_ACCESS_KEY_ID || 'minioadmin';
 const E2E_S3_SECRET_KEY = process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin';
@@ -93,8 +96,8 @@ export async function ensureS3BucketExists(bucket: string): Promise<void> {
 /**
  * Delete every object currently in `bucket`. Used by the migration E2E to give
  * its "no duplicate blobs" assertions a deterministic baseline per case. The
- * migration suite passes its dedicated bucket, so it never empties the shared
- * platform bucket.
+ * migration suite passes its project-scoped destination bucket, so it never
+ * empties the shared platform bucket.
  */
 export async function emptyS3Bucket(bucket: string): Promise<void> {
   const client = getS3Client();

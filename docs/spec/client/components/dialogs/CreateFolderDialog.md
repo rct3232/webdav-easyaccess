@@ -80,8 +80,8 @@ Checklist for unit test writing:
 - currentPath with trailing – `${currentPath}/${folderName}`
 - Trimmed folder name used for API and onComplete
 - Progress item remove: true after 3s on success
-- 폴더명 길이 제한: validateFileName(shared) 기준; 초과 시 validation error
-- 동일 경로에 동시 생성 요청: 409 또는 400(이미 존재); 에러 표시 후 사용자 재시도
+- folder-name length limit per shared validateFileName; validation error when exceeded
+- concurrent create at the same path: 409 or 400 (already exists); error shown, user retries
 
 ### 2.9 API Error Behavior
 

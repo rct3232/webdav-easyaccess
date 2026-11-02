@@ -18,7 +18,8 @@ Detailed implementation contracts live in:
 When the app boots with incomplete configuration (e.g. a fresh install with no `.env`), it
 enters **setup mode** and serves a first-run **setup wizard UI** at `/setup`. The operator
 configures the metadata backend, file-storage backend and credentials, the admin account,
-an optional JWT secret, and optional SMTP/CORS/port settings through the browser. The wizard persists
+an optional JWT secret, optional SMTP/CORS/port settings, and optionally the chat/vision/asr
+AI backends through the browser. The wizard persists
 the result by **upserting non-T0 values into the metadata DB `settings` table** (row key = raw
 env var name); of the T0 keys only an optional `JWT_SECRET` is written to `.env`. It then
 instructs a server restart — after restart the app is fully configured and the wizard is no
@@ -34,20 +35,20 @@ Key properties:
 
 - **Persistence target:** non-T0 settings are upserted into the connected metadata DB
   `settings` table (`POST /api/setup/apply`); **T0 keys are never written to the DB by the
-  wizard** — they are `.env`-owned (decisions **D5/D6/D7**, Phase B). Of the T0 keys only
+  wizard** — they are `.env`-owned. Of the T0 keys only
   `JWT_SECRET` is `.env`-writable, and only when the operator supplies one (an omitted `jwt`
   block leaves `.env` untouched; the boot-time ephemeral fallback then applies). The metadata
   backend is the default SQLite unless the remote DB keys (`WEA_DB_*`) are declared in `.env` —
   see `docs/SETUP.md`.
-- **Restart handling:** a "Restart required" screen only (decision **D2**). No self re-exec;
+- **Restart handling:** a "Restart required" screen only. No self re-exec;
   the operator restarts the process.
-- **Scope:** the wizard serves **non-T0 only** — file storage, email, server/CORS, and the
-  admin password (decision **D7**, Phase B). The one T0 exception is the **optional**
+- **Scope:** the wizard serves **non-T0 only** — file storage, email, server/CORS, the
+  admin password, and the optional AI backends. The one T0 exception is the **optional**
   `JWT_SECRET`, written to `.env` only when the operator supplies one (see the Admin-account
   bullet below). The metadata-backend step (sqlite/PostgreSQL radio) is removed; PostgreSQL
-  connectivity is boot-verified (D6) and monitored by the backend-health card.
+  connectivity is boot-verified and monitored by the backend-health card.
 - **Admin account:** username is fixed to `admin` (matches `ensureDefaultAdmin`); the wizard
-  sets the admin **password** only (decision **D6**). `JWT_SECRET` is **optional** (D7): the
+  sets the admin **password** only. `JWT_SECRET` is **optional**: the
   wizard writes it to `.env` only when the operator supplies one — otherwise the boot-time
   ephemeral random secret applies.
 
@@ -57,7 +58,7 @@ Key properties:
 flowchart LR
     A["Boot with no .env"] --> B["Setup mode (loopback-only bind, server stays up)"]
     B --> C["Login redirects to /setup"]
-    C --> D["Wizard steps 1–5"]
+    C --> D["Wizard steps 1–6"]
     D --> E["POST /api/setup/apply"]
     E --> F["Merge-write .env (0600)"]
     F --> G["Restart required screen"]
@@ -70,6 +71,35 @@ flowchart LR
   missing `S3_*` keys (`server/infrastructure/adapters/blobstore/index.js:7-13`, called from
   `server/index.js:164-172`). The boot guard wraps that block in try/catch and logs a warning
   instead (see Restart contract and setup-mode behavior below).
+
+---
+
+## Wizard steps
+
+Six screens: five input steps followed by the restart-required screen (client contract:
+`docs/spec/client/pages/Setup.md` §2.5).
+
+1. **File storage** — s3 (bucket/region/access key/secret/endpoint) or webdav
+   (url/username/password), each with a connection test (`POST /api/setup/test`). The
+   metadata backend is not a step: it is `.env`-owned and presence-selected at boot, and the
+   wizard never writes `WEA_DB_*`.
+2. **Admin password + optional JWT** — username fixed to `admin`; the JWT secret may be left
+   blank (`.env` untouched, boot-time ephemeral secret applies).
+3. **Optional** — port, CORS origins, SMTP.
+4. **AI (optional, skippable)** — configure chat/vision/asr only: preset picker → role
+   checkboxes → per-role base-url/key/model → per-role test (`POST /api/setup/test` target
+   `llm`, presets from `GET /api/setup/llm-presets`). The embed role has no wizard surface —
+   the built-in engine ships configured and the step shows only its readiness card in the
+   waiting state. Entered values are written as DB `settings` rows (`LLM_*`, T2 hot), never
+   `.env`, so they apply without a restart. A fully skipped step sends no `llm` block
+   (None-state product); AI presence is never a completeness factor. Setup mode itself makes
+   zero download attempts — built-in embed provisioning runs on the first configured boot
+   after the restart (`docs/spec/server/infrastructure/llmPresets.md` §2.3).
+5. **Apply** — writes the `.env` T0 subset (only a supplied `JWT_SECRET`) and every non-T0
+   value, including the optional `llm` rows, to the connected metadata DB `settings` table;
+   updates the admin password; returns `restart_required: true`.
+6. **Restart required** — shown on `200 { restart_required: true }`; no self re-exec. The
+   `llm` rows are live immediately; only the boot-frozen blocks need the restart.
 
 ---
 
@@ -124,13 +154,13 @@ modify a `.env` file.
    `WEA_SQLITE_PATH`) is `.env`-owned and **never written by apply**.
 2. **Runtime layer → DB `settings`:** `apply` upserts every **non-T0** wizard value (file
    storage, email, server/CORS, `JWT_EXPIRES_IN`) into the connected metadata DB `settings`
-   table (row key = raw env var name, D11). Secret values are stored as **plaintext strings**
+   table (row key = raw env var name). Secret values are stored as **plaintext strings**
    — there is no field-level encryption and no key to keep or generate. Per-request runtime
    flags such as `registration_enabled` stay where they are, backed by the `SettingsRepository`
    facade (`server/store/repositories/SettingsRepository.js` with `sqlite/` and `postgres/`
    implementations, executed through the `DbExecutor` seam); DDL
    `settings(key, value, updated_at)` at
-   `server/store/postgresql/ddl/001_initial_normalized_schema.sql:31-35`).
+   `server/store/postgresql/ddl/001_initial_normalized_schema.sql` (`settings` table).
 
 The two layers are independent: the wizard/CLI write the optional `JWT_SECRET` into `.env`
 (only when the operator supplies one) plus the DB `settings` rows, while the existing admin
@@ -153,14 +183,14 @@ ephemeral random fallback, and the explicitly set placeholder only triggers a "c
 
 ---
 
-## Admin-password semantics (D6)
+## Admin-password semantics
 
 The wizard sets the admin **password** (username fixed to `admin`); `JWT_SECRET` is optional —
 apply writes it to `.env` only when the operator supplies one (otherwise the boot-time ephemeral
 random secret applies). The wizard does not create or rename users. Apply never writes an
 `ADMIN_DEFAULT_PASSWORD` value and never
 chooses a metadata backend — the DB connection is `.env`-owned, so a `metadata` block with
-`backend: 'postgresql'` is rejected (`400`, D7). The metadata backend is whatever the boot used
+`backend: 'postgresql'` is rejected (`400`). The metadata backend is whatever the boot used
 (sqlite default or the `.env`-declared PostgreSQL):
 
 - `admin` already exists in the connected metadata store from the setup-mode boot
@@ -183,7 +213,7 @@ invalidates all existing sessions (full re-login; refresh tokens are in-memory).
 therefore mandatory after any wizard write:
 
 - `apply` responds `200 { "restart_required": true }`.
-- The wizard shows a "Restart required" screen; there is no self re-exec (D2).
+- The wizard shows a "Restart required" screen; there is no self re-exec.
 - The boot guard in `server/index.js` (the `setImmediate` composition at
   `server/index.js:164-172`) is wrapped in try/catch; when `!setup_complete` the server logs a
   warning ("running in setup mode — file operations disabled") and stays up instead of crashing.
@@ -235,7 +265,9 @@ While the app is in setup mode (`setup_complete === false`) the HTTP listener is
 - A fully **env-only** first run is equivalent to option (3): pre-populate every key the
   completeness rules require (see §Setup completeness rules and `docs/SETUP.md`) in `.env` and
   boot — `setup_complete` is derived, so the app starts fully configured on the first boot and
-  binds all interfaces immediately (no wizard, no setup window).
+  binds all interfaces immediately (no wizard, no setup window). That first configured boot is
+  a CONFIGURED boot: if the built-in embed provider is missing its model weights, the
+  provisioning attempt runs blocking-before-listen (`docs/spec/server/infrastructure/llmPresets.md` §2.3).
 - The bind host is selected at `listen()` time from the boot-derived `setup_complete` state
   (`server/index.js`). A restart is the only transition: setup-incomplete boots are
   loopback-only; once `.env` makes the config complete, the next boot binds all interfaces
@@ -247,7 +279,7 @@ While the app is in setup mode (`setup_complete === false`) the HTTP listener is
 
 ---
 
-## Optional JWT secret and boot-time ephemeral fallback (D7)
+## Optional JWT secret and boot-time ephemeral fallback
 
 `JWT_SECRET` remains a T0, `.env`-owned key (frozen at require time, read-only/masked in the
 admin Deploy-time summary, rejected by admin config `PUT`, excluded from config-sync) but is now

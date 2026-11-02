@@ -12,6 +12,18 @@ const { authenticateToken } = require('../../../utils/auth');
 const { asyncHandler, createError } = require('../../../utils/errorHandler');
 const { isEmailEnabled } = require('../../../utils/email');
 const { computeSetupStatus } = require('../../../infrastructure/setupStatus');
+const { getBackendHealth } = require('../../../infrastructure/backendHealth');
+
+// Live LLM capability flags (§4.12): derived per request from the shared
+// tracker's ai.<role> rows (status 'ok' ⇒ true) so a re-probe flips them
+// without a restart (email_enabled precedent).
+function deriveAiFlags() {
+  const health = getBackendHealth().getHealth();
+  return {
+    embed: health['ai.embed']?.status === 'ok',
+    chat: health['ai.chat']?.status === 'ok',
+  };
+}
 
 // Public settings endpoint (no authentication required); served under
 // /api/settings via the dedicated publicRouter mount only.
@@ -24,6 +36,7 @@ publicRouter.get(
       registration_enabled: registrationEnabled,
       email_enabled: emailEnabled,
       setup_complete: computeSetupStatus(process.env).setup_complete,
+      ai: deriveAiFlags(),
     });
   })
 );

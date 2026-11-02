@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const sqlite3 = require('sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 const fs = require('fs');
 const path = require('path');
 const { convertPostgresToSqlite } = require('../sqliteSchemaInit');
@@ -25,30 +25,28 @@ function splitStatements(sql) {
 }
 
 function run(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve(this);
-    });
-  });
+  try {
+    const info = db.prepare(sql).run(...params);
+    return Promise.resolve(info);
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 function all(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
+  try {
+    return Promise.resolve(db.prepare(sql).all(...params));
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 function get(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
+  try {
+    return Promise.resolve(db.prepare(sql).get(...params));
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 describe('DDL Smoke Test', () => {
@@ -63,7 +61,7 @@ describe('DDL Smoke Test', () => {
       const rawDdl = fs.readFileSync(ddlPath, 'utf8');
       const convertedDdl = convertPostgresToSqlite(rawDdl);
 
-      db = new sqlite3.Database(':memory:');
+      db = new DatabaseSync(':memory:');
 
       await run(db, 'PRAGMA foreign_keys = ON');
       await run(db, 'PRAGMA defer_foreign_keys = ON');
@@ -75,22 +73,24 @@ describe('DDL Smoke Test', () => {
       }
     });
 
-    afterAll((done) => {
-      db.close((err) => {
-        if (err) console.error(err);
-        done();
-      });
+    afterAll(() => {
+      try {
+        db.close();
+      } catch (error) {
+        console.error(error);
+      }
     });
 
-    it('creates exactly 13 tables', async () => {
+    it('creates exactly 37 tables (core + full §5 platform schema)', async () => {
       const rows = await all(
         db,
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
       );
 
-      expect(rows.length).toBe(13);
+      expect(rows.length).toBe(37);
 
       const expectedTables = [
+        // Core (pre-platform)
         'users',
         'settings',
         'file_nodes',
@@ -104,10 +104,41 @@ describe('DDL Smoke Test', () => {
         'recent_files',
         'permission_requests',
         'locks',
+        // §5 collections platform
+        'collections',
+        'collection_items',
+        'collection_exclusions',
+        'collection_grants',
+        'collection_visibility',
+        'collection_tombstones',
+        'collection_digest_cursors',
+        'collection_merge_suggestions',
+        'file_likes',
+        // §5 usage signals + undo journal
+        'usage_events',
+        'node_activity',
+        'action_journal',
+        // §5 suggestions + admin reports
+        'storage_suggestions',
+        'admin_reports',
+        'storage_usage_snapshots',
+        // §5 AI foundation
+        'llm_models',
+        'collection_centroids',
+        'ai_tag_raw',
+        'embeddings',
+        'embeddings_chunk',
+        'ai_enrichments',
+        'ai_jobs',
+        'ai_usage_daily',
+        'query_parses',
       ];
 
       const actualTables = rows.map((r) => r.name).sort();
       expect(actualTables).toEqual(expectedTables.sort());
+      // §4.18 dissolution: the retired tag tables are gone from 001 entirely.
+      expect(actualTables).not.toContain('tag_embeddings');
+      expect(actualTables).not.toContain('tag_parents');
     });
 
     it('FK constraints work on self-referencing file_nodes.parent_id', async () => {
@@ -183,6 +214,29 @@ describe('DDL Smoke Test', () => {
 
       const sizeCol = info.find((c) => c.name === 'size');
       expect(sizeCol.type).toBe('INTEGER');
+    });
+
+    it('maps BIGINT to nullable INTEGER for object_map.size', async () => {
+      const info = await all(db, 'PRAGMA table_info(object_map)');
+
+      const sizeCol = info.find((c) => c.name === 'size');
+      expect(sizeCol.type).toBe('INTEGER');
+      expect(sizeCol.notnull).toBe(0);
+    });
+
+    it('maps storage_usage_snapshots bytes to INTEGER and keeps the (user_id, day) PK', async () => {
+      const info = await all(db, 'PRAGMA table_info(storage_usage_snapshots)');
+      const bytes = info.find((c) => c.name === 'bytes');
+      expect(bytes.type).toBe('INTEGER');
+      expect(bytes.notnull).toBe(1);
+      expect(
+        info
+          .filter((c) => c.pk > 0)
+          .map((c) => c.name)
+          .sort()
+      ).toEqual(['day', 'user_id']);
+      const indexes = await all(db, 'PRAGMA index_list(storage_usage_snapshots)');
+      expect(indexes.some((index) => index.name === 'storage_usage_snapshots_day_idx')).toBe(true);
     });
 
     it('maps TIMESTAMPTZ to TEXT for users.created_at', async () => {

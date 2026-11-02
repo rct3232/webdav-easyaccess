@@ -1,10 +1,12 @@
 /**
  * withSqliteTransaction concurrency regression.
  *
- * node-sqlite3's db.serialize() only covers the synchronous portion of an async
- * callback, so concurrent withSqliteTransaction() calls could interleave
- * BEGIN/COMMIT and fail with "cannot start a transaction within a transaction".
- * Transactions are now serialized on a single promise chain (see storage.js).
+ * Under the original sqlite3 npm driver, db.serialize() only covered the
+ * synchronous portion of an async callback, so concurrent
+ * withSqliteTransaction() calls could interleave BEGIN/COMMIT and fail with
+ * "cannot start a transaction within a transaction". Transactions are
+ * serialized on a single promise chain (see storage.js); under the node:sqlite
+ * driver the queue remains what keeps BEGIN/callback awaits/COMMIT atomic.
  */
 const storage = require('@server/store/storage');
 const { createTestDatabase } = require('@server/test-utils');

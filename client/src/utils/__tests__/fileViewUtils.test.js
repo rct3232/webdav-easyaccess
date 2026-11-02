@@ -15,6 +15,7 @@ import {
   getFileItemState,
   getDropTargetStyles,
   getEntryKey,
+  getCollectionEntryKey,
 } from '../fileViewUtils';
 
 describe('fileViewUtils', () => {
@@ -135,6 +136,15 @@ describe('fileViewUtils', () => {
     });
   });
 
+  describe('getCollectionEntryKey', () => {
+    it('builds the synthetic card selection key (no numeric-nodeId collision space)', () => {
+      const key = getCollectionEntryKey(12);
+      expect(key).toBe('/__collections__/collection/12');
+      // getEntryKey resolves it through the path fallback, never as a nodeId.
+      expect(getEntryKey({ path: key })).toBe(key);
+    });
+  });
+
   describe('getDropTargetStyles', () => {
     it('returns sx object with primary.main when isDropTarget true', () => {
       const sx = getDropTargetStyles(true);
@@ -145,5 +155,45 @@ describe('fileViewUtils', () => {
     it('returns empty object when isDropTarget false', () => {
       expect(getDropTargetStyles(false)).toEqual({});
     });
+  });
+});
+
+describe('getFileItemState — member-revoked rule (P-4)', () => {
+  const base = { nodeId: 5, path: '', type: 'file', basename: 'x.txt' };
+
+  it('disables a MEMBER row with state revoked', () => {
+    const state = getFileItemState(
+      { ...base, isCollectionMember: true, state: 'revoked' },
+      false,
+      new Set(),
+      new Map()
+    );
+    expect(state.isDisabled).toBe(true);
+  });
+
+  it('keeps a member row with state normal enabled', () => {
+    const state = getFileItemState(
+      { ...base, isCollectionMember: true, state: 'normal' },
+      false,
+      new Set(),
+      new Map()
+    );
+    expect(state.isDisabled).toBe(false);
+  });
+
+  it('a plain FILE row carrying a stray state key is NOT disabled (no bare state sniff)', () => {
+    const state = getFileItemState({ ...base, state: 'revoked' }, false, new Set(), new Map());
+    expect(state.isDisabled).toBe(false);
+  });
+
+  it('member-revoked rows still report selection when selected', () => {
+    const state = getFileItemState(
+      { ...base, isCollectionMember: true, state: 'revoked' },
+      true,
+      new Set([5]),
+      new Map()
+    );
+    expect(state.isSelected).toBe(true);
+    expect(state.isDisabled).toBe(true);
   });
 });

@@ -36,6 +36,11 @@ describe('SystemSettingsContent', () => {
     mockSetShowHiddenFiles.mockClear();
   });
 
+  it('renders the AI operations cross-link', () => {
+    renderSystemSettingsContent();
+    expect(screen.getByTestId('open-ai-panel')).toBeInTheDocument();
+  });
+
   it('renders registration and show hidden files toggles', async () => {
     renderSystemSettingsContent();
 
@@ -74,6 +79,38 @@ describe('SystemSettingsContent', () => {
       expect(putBody).toEqual({ registration_enabled: 'true' });
     });
     expect(screen.getByText(/registration setting saved/i)).toBeInTheDocument();
+  });
+
+  it('keeps a user registration toggle when the initial settings read resolves late', async () => {
+    const user = userEvent.setup();
+    let releaseSettings;
+    let markGetStarted;
+    const settingsGate = new Promise((resolve) => {
+      releaseSettings = resolve;
+    });
+    const getStarted = new Promise((resolve) => {
+      markGetStarted = resolve;
+    });
+    server.use(
+      http.get('/api/admin/settings', async () => {
+        markGetStarted();
+        await settingsGate;
+        return HttpResponse.json({ registration_enabled: 'false' });
+      }),
+      http.put('/api/admin/settings', () =>
+        HttpResponse.json({ messageCode: 'serverMessages.admin.settingsSaved' })
+      )
+    );
+
+    renderSystemSettingsContent();
+    await getStarted;
+
+    const registrationSwitch = screen.getAllByRole('switch')[0];
+    await user.click(registrationSwitch);
+    await waitFor(() => expect(registrationSwitch).toBeChecked());
+
+    releaseSettings();
+    await waitFor(() => expect(registrationSwitch).toBeChecked());
   });
 
   it('toggle show hidden files persists to localStorage', async () => {
@@ -406,6 +443,51 @@ describe('SystemSettingsContent', () => {
     expect(screen.queryByTestId('backend-health-card')).not.toBeInTheDocument();
   });
 
+  it('does not show the card for healthy or not-configured AI role rows', async () => {
+    server.use(
+      http.get('/api/admin/health', () =>
+        HttpResponse.json({
+          backends: {
+            postgresql: { status: 'ok' },
+            s3: { status: 'unknown' },
+            webdav: { status: 'ok' },
+            'ai.embed': { status: 'ok' },
+            'ai.chat': { status: 'unknown' },
+          },
+        })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    await waitFor(() => {
+      expect(screen.getByText(/allow registration/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('backend-health-card')).not.toBeInTheDocument();
+  });
+
+  it('shows a partial AI warning inside the backend-health card', async () => {
+    server.use(
+      http.get('/api/admin/health', () =>
+        HttpResponse.json({
+          backends: {
+            postgresql: { status: 'ok' },
+            s3: { status: 'unknown' },
+            webdav: { status: 'ok' },
+            'ai.embed': { status: 'ok', hint: 'serverErrors.ai.providerProbeFailed' },
+          },
+        })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    const card = await screen.findByTestId('backend-health-card');
+    expect(within(card).getByText(/partial/i)).toBeInTheDocument();
+    expect(within(card).getByText(/Embed/)).toBeInTheDocument();
+    expect(within(card).getByText(/AI provider probe failed/i)).toBeInTheDocument();
+  });
+
   it('renders only the failing backends on the backend-health card', async () => {
     server.use(
       http.get('/api/admin/config', () =>
@@ -476,6 +558,33 @@ describe('SystemSettingsContent', () => {
     expect(await screen.findByText(/sync environment/i)).toBeInTheDocument();
     expect(screen.getByText(/copy the values the server is currently using/i)).toBeInTheDocument();
     expect(screen.getByText(/metadata migration/i)).toBeInTheDocument();
+  });
+
+  it('mounts the Admin reports section between the config-sync row and the Advanced settings accordion without fetching on mount', async () => {
+    let listCalls = 0;
+    server.use(
+      http.get('/api/admin/reports', () => {
+        listCalls += 1;
+        return HttpResponse.json({ reports: [] });
+      })
+    );
+
+    // Zero-prop parent contract: rendered inside the page panel with no props consumed.
+    renderSystemSettingsContent();
+
+    const section = await screen.findByTestId('admin-reports-section');
+    expect(within(section).getByRole('button', { name: /refresh reports/i })).toBeInTheDocument();
+    expect(listCalls).toBe(0);
+
+    const syncRow = screen.getByText(/sync environment/i);
+    const accordionTitle = screen.getByText(/advanced settings/i);
+    // Block order: config-sync row → admin reports section → Advanced settings accordion.
+    expect(
+      syncRow.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      section.compareDocumentPosition(accordionTitle) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
   it('opens the sync preview and disables Apply when nothing is actionable', async () => {
@@ -617,5 +726,59 @@ describe('SystemSettingsContent', () => {
       expect(within(dialog).getByText(/sync apply failed/i)).toBeInTheDocument();
     });
     expect(screen.getByRole('dialog', { name: /database sync/i })).toBeInTheDocument();
+  });
+  it('renders the AI role 5-state rows in the health card whenever the snapshot carries ai.* rows', async () => {
+    server.use(
+      http.get('/api/admin/health', () =>
+        HttpResponse.json({
+          backends: {
+            postgresql: { status: 'ok' },
+            s3: { status: 'unknown' },
+            webdav: { status: 'ok' },
+            'ai.embed': {
+              status: 'unknown',
+              preparing: true,
+              phase: 'provisioning',
+              progress: '1/7 files',
+            },
+            'ai.chat': { status: 'fail', code: 'unknown', reason: 'probe: HTTP 401' },
+          },
+        })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    const card = await screen.findByTestId('backend-health-card');
+    expect(within(card).getByText(/ai capabilities/i)).toBeInTheDocument();
+    // preparing row: phase/progress detail, no backend failure needed for the card
+    expect(within(card).getByText(/embed: preparing/i)).toBeInTheDocument();
+    expect(within(card).getByText(/provisioning, 1\/7 files/i)).toBeInTheDocument();
+    // failing probe row: probe_failed + the raw reason diagnostic
+    expect(within(card).getByText(/chat: probe failed/i)).toBeInTheDocument();
+    expect(within(card).getByText(/probe: HTTP 401/i)).toBeInTheDocument();
+  });
+
+  it('shows a hint-bearing ok row as partial and hides healthy ok rows', async () => {
+    server.use(
+      http.get('/api/admin/health', () =>
+        HttpResponse.json({
+          backends: {
+            postgresql: { status: 'ok' },
+            s3: { status: 'unknown' },
+            webdav: { status: 'ok' },
+            'ai.embed': { status: 'ok' },
+            'ai.chat': { status: 'ok', hint: 'ai.provisionFailed' },
+          },
+        })
+      )
+    );
+
+    renderSystemSettingsContent();
+
+    const card = await screen.findByTestId('backend-health-card');
+    expect(within(card).queryByText(/embed: ok/i)).not.toBeInTheDocument();
+    expect(within(card).getByText(/chat: partial/i)).toBeInTheDocument();
+    expect(within(card).getByText(/model provisioning failed/i)).toBeInTheDocument();
   });
 });

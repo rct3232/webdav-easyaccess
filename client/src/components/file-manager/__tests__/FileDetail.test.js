@@ -4,7 +4,7 @@
  * @see docs/TESTING_STRATEGY.md
  */
 import React from 'react';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, within } from '@testing-library/react';
 import { renderWithProviders } from '../../../test-utils';
 import FileDetail from '../FileDetail';
 
@@ -94,5 +94,178 @@ describe('FileDetail', () => {
     const moreButtons = screen.getAllByRole('button', { name: /more actions/i });
     fireEvent.click(moreButtons[0]);
     expect(onMoreClick).toHaveBeenCalledWith(mockFiles[0], expect.any(Object));
+  });
+});
+
+describe('FileDetail — member row slots (P-4)', () => {
+  const memberRow = (overrides = {}) => ({
+    nodeId: 90210,
+    path: '',
+    basename: 'poster.pdf',
+    type: 'file',
+    mime: 'application/pdf',
+    lastmod: '2026-09-01T00:00:00Z',
+    isCollectionMember: true,
+    published: false,
+    shared_excluded: false,
+    state: 'normal',
+    hasWritePermission: false,
+    rowTestId: 'member-row-90210',
+    moreButtonTestId: 'member-menu-button',
+    ...overrides,
+  });
+
+  it('renders rowTestId on the TableRow and the More button testid; the size cell shows -', () => {
+    renderWithProviders(<FileDetail {...defaultProps} files={[memberRow()]} />);
+    const row = screen.getByTestId('member-row-90210');
+    expect(row.tagName).toBe('TR');
+    expect(within(row).getByTestId('member-menu-button')).toBeInTheDocument();
+    expect(within(row).getByText('poster.pdf')).toBeInTheDocument();
+    // size + no mime fallback dashes — NOT a fabricated '0 B'
+    expect(within(row).queryByText(/0 B|KB/i)).not.toBeInTheDocument();
+  });
+
+  it('a revoked member row (state revoked) is disabled — click does not dispatch', () => {
+    const onFileClick = jest.fn();
+    renderWithProviders(
+      <FileDetail
+        {...defaultProps}
+        files={[memberRow({ state: 'revoked', basename: 'Unavailable', mime: null })]}
+        onFileClick={onFileClick}
+      />
+    );
+    fireEvent.click(screen.getByTestId('member-row-90210'));
+    expect(onFileClick).not.toHaveBeenCalled();
+  });
+
+  it('member rows render the state badges INLINE in the name cell, before the name (§11 follow-up 3)', () => {
+    const { rerender } = renderWithProviders(
+      <FileDetail
+        {...defaultProps}
+        files={[memberRow({ published: false, shared_excluded: true })]}
+      />
+    );
+    const row = screen.getByTestId('member-row-90210');
+    const excluded = within(row).getByTestId('member-excluded-badge-90210');
+    // R2 (2026-10-01): an excluded row is un-publishable forever — both flags
+    // render the VpnLock ONLY (MemberStateBadges.md §2.3).
+    expect(within(row).queryByTestId('member-publish-pending-badge-90210')).toBeNull();
+    expect(excluded.getAttribute('aria-label')).toBe("Not owner's file — not shared");
+    // inline geometry: plain 16px icons (no plate), BEFORE the name text
+    expect(getComputedStyle(excluded).position).not.toBe('absolute');
+    expect(getComputedStyle(excluded).width).not.toBe('28px');
+    const name = within(row).getByText('poster.pdf');
+    expect(excluded.compareDocumentPosition(name)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    rerender(<FileDetail {...defaultProps} files={[memberRow({ published: false })]} />);
+    const pendingRow = screen.getByTestId('member-row-90210');
+    const pending = within(pendingRow).getByTestId('member-publish-pending-badge-90210');
+    expect(pending.getAttribute('aria-label')).toBe('Awaiting publish');
+    expect(pending.compareDocumentPosition(within(pendingRow).getByText('poster.pdf'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+  });
+
+  it('a revoked member row renders NEITHER badge', () => {
+    renderWithProviders(
+      <FileDetail
+        {...defaultProps}
+        files={[
+          memberRow({
+            state: 'revoked',
+            shared_excluded: true,
+            basename: 'Unavailable',
+            mime: null,
+          }),
+        ]}
+      />
+    );
+    const row = screen.getByTestId('member-row-90210');
+    expect(within(row).queryByTestId('member-excluded-badge-90210')).toBeNull();
+    expect(within(row).queryByTestId('member-publish-pending-badge-90210')).toBeNull();
+  });
+
+  it('plain file rows render no member testids (zero DOM delta) and keep sizes', () => {
+    const { container } = renderWithProviders(<FileDetail {...defaultProps} />);
+    // MUI icons carry their own data-testid; scope the check to the member slots.
+    expect(container.querySelector('[data-testid^="member-row-"]')).toBeNull();
+    expect(container.querySelector('[data-testid="member-menu-button"]')).toBeNull();
+    expect(
+      container.querySelector(
+        '[data-testid^="member-excluded-badge"], [data-testid^="member-publish-pending-badge"]'
+      )
+    ).toBeNull();
+    expect(screen.getByText(/1 KB|1\.00 KB/i)).toBeInTheDocument();
+  });
+});
+
+describe('FileDetail — search-server-row slots', () => {
+  const searchRow = (overrides = {}) => ({
+    nodeId: 77003,
+    path: '',
+    basename: 'movie-notes.pdf',
+    type: 'file',
+    mime: 'application/pdf',
+    size: 2048,
+    lastmod: '2026-01-01T00:00:00Z',
+    isSearchServerRow: true,
+    hasWritePermission: false,
+    rowTestId: 'server-search-row-77003',
+    ...overrides,
+  });
+
+  it('TableRow carries rowTestId + data-file-node-id (forwarding verified, item 5)', () => {
+    renderWithProviders(<FileDetail {...defaultProps} files={[searchRow()]} />);
+    const row = screen.getByTestId('server-search-row-77003');
+    expect(row.tagName).toBe('TR');
+    expect(row.getAttribute('data-file-node-id')).toBe('77003');
+  });
+
+  it('renders the two-color highlight ranges in the name cell, Tooltip path intact', () => {
+    renderWithProviders(
+      <FileDetail
+        {...defaultProps}
+        files={[
+          searchRow({
+            highlights: [
+              { start: 0, end: 5, kind: 'committed' },
+              { start: 6, end: 11, kind: 'live' },
+            ],
+          }),
+        ]}
+      />
+    );
+    const row = screen.getByTestId('server-search-row-77003');
+    expect(within(row).getByTestId('search-highlight-range').textContent).toBe('movie');
+    expect(within(row).getByTestId('filter-highlight-range').textContent).toBe('notes');
+    expect(
+      getComputedStyle(within(row).getByTestId('filter-highlight-range')).backgroundColor
+    ).toBe('rgb(247, 209, 84)');
+  });
+
+  it('shows the EditOff badge when the search server row is read-only', () => {
+    renderWithProviders(<FileDetail {...defaultProps} files={[searchRow()]} />);
+    expect(
+      within(screen.getByTestId('server-search-row-77003')).getByTestId(
+        'search-readonly-badge-77003'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('size cell shows - for un-enriched search rows and the real value after enrichment', () => {
+    const { rerender } = renderWithProviders(
+      <FileDetail {...defaultProps} files={[searchRow({ size: null })]} />
+    );
+    const row = screen.getByTestId('server-search-row-77003');
+    expect(within(row).queryByText(/0 B|KB/i)).not.toBeInTheDocument();
+
+    rerender(<FileDetail {...defaultProps} files={[searchRow({ size: 4096 })]} />);
+    expect(within(screen.getByTestId('server-search-row-77003')).getByText(/4\.00 KB|4 KB/));
+  });
+
+  it('plain file rows render zero search-slot DOM', () => {
+    const { container } = renderWithProviders(<FileDetail {...defaultProps} />);
+    expect(container.querySelector('[data-testid^="search-"]')).toBeNull();
+    expect(container.querySelectorAll('mark')).toHaveLength(0);
+    expect(screen.getByText('doc.pdf')).toBeInTheDocument();
   });
 });

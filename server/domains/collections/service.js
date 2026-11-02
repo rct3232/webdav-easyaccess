@@ -1,0 +1,1764 @@
+'use strict';
+
+/**
+ * collectionsService — business logic behind /api/collections
+ * (docs/spec/server/services/collectionsService.md). Functions take the
+ * requester userId first, throw bare string codes (translated by the
+ * router-level ERROR_MAP), and return domain objects the route serializes
+ * snake_case. Every user-visible mutation reaches the DB through the
+ * collectionsStore journaled mutators (actionJournalStore.commitChange is the
+ * only write path); results carry `undo: { actionId }` pointers (§4.11).
+ * DB-backed only — zero CacheAdapter/operationProgress imports (invariant 8).
+ */
+
+const collectionsStore = require('../../store/collectionsStore');
+const fileLikesStore = require('../../store/fileLikesStore');
+const actionJournalStore = require('../../store/actionJournalStore');
+const userStore = require('../../store/userStore');
+const permissionStore = require('../../domains/permissions/stores/permissionStore');
+const aclService = require('../../domains/permissions/services/aclService');
+const { isOwnerNode } = require('../../domains/permissions/policy/ownerNodeResolver');
+const { createFileNodesStore } = require('../../store/fileNodesStore');
+const { validateFileName } = require('@webdav-easyaccess/shared/validation');
+const {
+  PERMISSIONS,
+  COLLECTION_ORIGIN,
+  COLLECTION_STATUS,
+  PUBLISH_MODE,
+  GRANT_ROLE,
+} = require('@webdav-easyaccess/shared/constants');
+const aiTagStore = require('../../store/aiTagStore');
+const embeddingsStore = require('../../store/embeddingsStore');
+const aiJobsStore = require('../../store/aiJobsStore');
+const llmModelsStore = require('../../store/llmModelsStore');
+const usageStore = require('../../store/usageStore');
+const { decayItemScore, HALF_LIFE_DAYS } = require('../../infrastructure/usage/activityScore');
+const { getPresetByFamilyRole } = require('../../infrastructure/adapters/llm/presets');
+const { foldTag } = require('../ai/tagVocabulary');
+const definitionEngine = require('./definitionEngine');
+const { createNamer } = require('./namingService');
+const shareService = require('./shareService');
+const wire = require('./wire');
+
+// Sharing predicates (roles, read masquerade, publish gate) are owned by
+// shareService — the collections routes' grants/self-revocation/publish
+// endpoints delegate there directly (docs/spec/server/services/
+// collectionShareService.md). Destructured for unchanged call sites.
+const { getCollectionForRead, requireOwner, requireOwnerOrRole } = shareService;
+
+// Constants with later-task owners (§3.1/§3.4): item activity scores arrive
+// with the T0.6 node_activity rollup store. `similar` grouping resolves the
+// ACTIVE embed model from the llm_models registry (never a fixed placeholder).
+const VALID_SORTS = ['activity', 'name', 'created', 'updated', 'similar'];
+const STORE_SORTS = new Set(['activity', 'name', 'created', 'updated']);
+const VALID_INCLUDE_TOKENS = ['mine', 'shared', 'archived'];
+const MAX_NODE_IDS = 200;
+const PREVIEW_SAMPLE_CAP = 12;
+const SEED_NEIGHBORS_K = 200;
+/**
+ * Seed-vector admission threshold stored ON a seed collection definition at
+ * create time (collectionsService.md §2.7; 0.62 = the routes-spec example).
+ * Ownership: the constant is the CREATE-TIME default written into
+ * `definition.theta`; read-time admission policy (θ_in/θ_out hysteresis) is
+ * owned by the active model profile (§2.3), never by this service.
+ */
+const SEED_VECTOR_THETA = 0.62;
+const SIMILAR_CLUSTER_COSINE = 0.7;
+
+// Runtime seams (boot singletons / lazy requires); unit tests swap them so the
+// DB-backed suite can exercise both the configured and the absent capability
+// without booting an LLM. `undefined` = resolve the production default.
+const runtimeSeams = {
+  llmAdapter: undefined,
+};
+
+function __setRuntimeSeamsForTests(seams = {}) {
+  Object.assign(runtimeSeams, seams);
+}
+
+function __resetRuntimeSeamsForTests() {
+  runtimeSeams.llmAdapter = undefined;
+}
+
+const REMOVAL_JOURNAL_ACTIONS = new Set(['remove-item', 'remove-items', 'exclude']);
+
+function serviceError(code) {
+  const error = new Error(code);
+  const statuses = {
+    notFound: 404,
+    forbidden: 403,
+    alreadyArchived: 409,
+    notArchived: 409,
+    aiNotConfigured: 409,
+    granteeNotFound: 404,
+    grantNotFound: 404,
+    suggestionNotFound: 404,
+  };
+  if (statuses[code]) error.status = statuses[code];
+  return error;
+}
+
+function toFiniteId(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function resolveCollectionName(ownerId, baseName) {
+  let candidate = baseName;
+  for (let i = 2; await collectionsStore.existsActiveName(ownerId, candidate); i += 1) {
+    candidate = `${baseName} (${i})`;
+  }
+  return candidate;
+}
+
+/**
+ * The installed llmAdapter, or null before boot. `roleConfigured('embed')` is
+ * the presence gate; pre-boot (no adapter) keeps the legacy config-key check.
+ */
+function resolveLlmAdapter() {
+  if (runtimeSeams.llmAdapter !== undefined) return runtimeSeams.llmAdapter;
+  const { getLlmAdapter } = require('../../infrastructure/llmAdapterRuntime');
+  return getLlmAdapter();
+}
+
+async function embedRoleConfigured() {
+  const adapter = resolveLlmAdapter();
+  if (adapter && typeof adapter.roleConfigured === 'function') {
+    try {
+      return Boolean(await adapter.roleConfigured('embed'));
+    } catch (error) {
+      return false;
+    }
+  }
+  // Pre-boot fallback: resolve the LLM_EMBED_* config keys (dbOnly registry
+  // group) per call — hot per §6.
+  const { getSharedResolver } = require('../../infrastructure/configResolver');
+  const resolver = getSharedResolver();
+  const baseUrl = await resolver.getConfig('LLM_EMBED_BASE_URL');
+  const model = await resolver.getConfig('LLM_EMBED_MODEL');
+  return Boolean(String(baseUrl || '').trim()) && Boolean(String(model || '').trim());
+}
+
+// ---------------------------------------------------------------------------
+// Requester-visible candidate set (predicate evaluation + previews).
+// Own-root subtree (readable by ownership) + granted nodes/subtrees —
+// listing parity with fileService; per-node point checks in the engine
+// (services spec §2.3 as-built Decision).
+// ---------------------------------------------------------------------------
+
+async function loadVisibleCandidates(userId) {
+  const fileNodesStore = createFileNodesStore();
+  const nodesById = new Map();
+
+  const root = await fileNodesStore.getUserRootNode(userId);
+  if (root) {
+    nodesById.set(Number(root.id), root);
+    for (const row of await fileNodesStore.getDescendants(root.id)) {
+      nodesById.set(Number(row.id), row);
+    }
+  }
+
+  const grants = await permissionStore.getUserPermissions(userId);
+  for (const grant of grants || []) {
+    const nodeId = Number(grant.file_node_id);
+    if (!nodeId) continue;
+    if (grant.type === 'path') {
+      const folder = await fileNodesStore.getNode(nodeId);
+      if (!folder) continue;
+      nodesById.set(Number(folder.id), folder);
+      for (const row of await fileNodesStore.getDescendants(folder.id)) {
+        nodesById.set(Number(row.id), row);
+      }
+    } else {
+      const node = await fileNodesStore.getNode(nodeId);
+      if (node) nodesById.set(Number(node.id), node);
+    }
+  }
+  return nodesById;
+}
+
+async function buildProviders(userId) {
+  const fileNodesStore = createFileNodesStore();
+  const likedNodeIds = new Set(await fileLikesStore.listLikedNodeIds(userId));
+  return {
+    likedNodeIds,
+    getSize: async (nodeId) => {
+      const cache = await fileNodesStore.getCache(nodeId);
+      return cache && cache.size != null ? Number(cache.size) : null;
+    },
+    // T0.9 tag atoms (§2.3 None-column cosine-free path): the engine hands the
+    // atom value over; the fold is the CALLER's pure function (§4.18) and the
+    // store lookup stays string-equality. The P1 vector variant swaps this
+    // resolver behind the same seam — engine and grammar unchanged.
+    listNodesByTag: async (value) => {
+      const folded = foldTag(value);
+      if (!folded) return [];
+      return aiTagStore.listNodeIdsByRawTag(folded);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Vector membership context (§2.3 — pooled vectors only)
+// ---------------------------------------------------------------------------
+
+function parseVectorText(value) {
+  if (Array.isArray(value)) {
+    const out = value.map(Number);
+    return out.every((n) => Number.isFinite(n)) ? out : null;
+  }
+  if (typeof value !== 'string' || value.length === 0) return null;
+  const out = value.split(',').map(Number);
+  return out.length > 0 && out.every((n) => Number.isFinite(n)) ? out : null;
+}
+
+/** Clamp an offset-derived membership threshold to [0,1] (collectionsService §2.3). */
+function clampCosine(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+/**
+ * Resolve a definition's pooled reference vector + θ band from the ACTIVE
+ * embed model. A cross-model reference (seed/centroid row from another space)
+ * is ignored — membership never compares spaces. `centroid_ref: null` resolves
+ * the OWNING collection's centroid (`collectionId`), the system cluster
+ * definition contract (collectionsService.md §2.3).
+ */
+async function resolveVectorReference(definition, collectionId = null) {
+  const parsed = definitionEngine.parseDefinition(definition);
+  if (!parsed.vector) return null;
+  const model = await llmModelsStore.getActiveByRole('embed');
+  if (!model) return null;
+  const modelId = Number(model.id);
+
+  let reference = null;
+  if (parsed.kind === 'seed_vector') {
+    const seedId = Number(parsed.vector.seed_ref ?? parsed.vector.seedRef);
+    const row = Number.isInteger(seedId) && seedId > 0 ? await embeddingsStore.get(seedId) : null;
+    if (!row || Number(row.modelId) !== modelId) return null;
+    reference = parseVectorText(row.vector);
+  } else {
+    const rawRef = parsed.vector.centroid_ref ?? parsed.vector.centroidRef;
+    const selfRef = rawRef === null || rawRef === undefined;
+    const ownerId = Number(collectionId);
+    const refId = selfRef
+      ? Number.isInteger(ownerId) && ownerId > 0
+        ? ownerId
+        : null
+      : Number(rawRef);
+    const rows =
+      refId !== null && Number.isInteger(refId) && refId > 0
+        ? await collectionsStore.getCentroids([refId], modelId)
+        : [];
+    reference = rows.length > 0 ? parseVectorText(rows[0].centroid) : null;
+  }
+  if (!reference || reference.length === 0) return null;
+
+  const preset = getPresetByFamilyRole(model.provider, 'embed');
+  const band = (preset && preset.profile && preset.profile.membershipHysteresis) || {};
+  const theta = Number(parsed.vector.theta);
+  if (!Number.isFinite(theta)) return null;
+  const inDelta = Number(band.inDelta);
+  const outDelta = Number(band.outDelta);
+  return {
+    modelId,
+    reference,
+    thetaIn: Number.isFinite(inDelta) ? clampCosine(theta + inDelta) : theta,
+    thetaOut: Number.isFinite(outDelta) ? clampCosine(theta + outDelta) : theta,
+  };
+}
+
+/**
+ * Score one candidate set against a definition's pooled reference.
+ * `collectionId` resolves a self-centroid (`centroid_ref: null`) definition.
+ * @returns {Promise<{ scoreFor: (nodeId:number) => number|null, thetaIn:number, thetaOut:number, previousMembers:Set<number> }|null>}
+ */
+async function buildVectorContext(
+  definition,
+  candidateIds,
+  previousMembers = new Set(),
+  collectionId = null
+) {
+  const resolved = await resolveVectorReference(definition, collectionId);
+  if (!resolved) return null;
+  const ids = [...new Set((candidateIds || []).map(Number))].filter(
+    (id) => Number.isInteger(id) && id > 0
+  );
+  const byNode = new Map();
+  if (ids.length > 0) {
+    const rows = await embeddingsStore.getByNodeIds(ids);
+    for (const row of rows || []) {
+      if (Number(row.modelId) !== resolved.modelId) continue;
+      const vector = parseVectorText(row.vector);
+      if (!vector || vector.length !== resolved.reference.length) continue;
+      byNode.set(Number(row.nodeId), vector);
+    }
+  }
+  return {
+    thetaIn: resolved.thetaIn,
+    thetaOut: resolved.thetaOut,
+    previousMembers:
+      previousMembers instanceof Set ? previousMembers : new Set(previousMembers || []),
+    scoreFor: (nodeId) => {
+      const vector = byNode.get(Number(nodeId));
+      return vector ? definitionEngine.cosineSimilarity(resolved.reference, vector) : null;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Access guards
+// ---------------------------------------------------------------------------
+
+/** §4.9b auto-pin on user touch of a system collection (non-journaled). */
+async function touchSystemAutoPin(collection) {
+  if (collection && collection.origin === COLLECTION_ORIGIN.SYSTEM) {
+    const result = await collectionsStore.setAutoPin(collection.id);
+    return Boolean(result && result.changes > 0);
+  }
+  return false;
+}
+
+async function canReadNode(userId, nodeId) {
+  if (await isOwnerNode(userId, nodeId)) return true;
+  return aclService.checkFilePermission(userId, nodeId, PERMISSIONS.READ);
+}
+
+// ---------------------------------------------------------------------------
+// Member view composition (stored ∪ derived − exclusions, §2.3/§2.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Compose the stored member rows for a collection. The read path never
+ * evaluates a definition (D1/D2): `collection_items` is the single membership
+ * state, written by the upload hook and the evolution reconcile pass.
+ */
+async function composeMemberRows(userId, collection) {
+  const stored = await collectionsStore.listStoredItems(collection.id);
+  const storedByNodeId = new Map();
+  for (const item of stored) storedByNodeId.set(item.nodeId, item);
+  return { storedByNodeId };
+}
+
+/**
+ * Render member rows with the join-time enrichment table (§2.4):
+ * normal | revoked (null name/type) | trashed hidden | cross-leak omitted.
+ * Grantees additionally pass the publish gate.
+ */
+async function resolveMemberRows(userId, collection) {
+  const fileNodesStore = createFileNodesStore();
+  const { storedByNodeId } = await composeMemberRows(userId, collection);
+
+  const nodeIds = [...storedByNodeId.keys()];
+  const likedSet = new Set(await fileLikesStore.filterLiked(userId, nodeIds));
+  const isRequesterOwner = collection.ownerId === userId;
+
+  const rows = [];
+  for (const nodeId of nodeIds) {
+    const stored = storedByNodeId.get(nodeId);
+    const node = await fileNodesStore.getNode(nodeId);
+    if (!node) continue; // trashed → hidden (row kept); purged rows cascade away
+
+    const foreign = !(await isOwnerNode(collection.ownerId, nodeId));
+    if (!isRequesterOwner && foreign) continue; // cross-leak rule (§3.2/§4.7)
+
+    const published = Boolean(stored.published);
+    // Publish gate via the shareService live resolution (spec §2.3):
+    // grantees see published rows only (auto mode admits by mode).
+    if (!isRequesterOwner && !shareService.isVisibleToGrantee(collection, stored)) continue;
+
+    const readable = await canReadNode(userId, nodeId);
+    const ruleManaged = Boolean(stored.source && stored.source !== 'manual');
+    rows.push({
+      nodeId,
+      membership: ruleManaged ? 'derived' : 'stored',
+      published,
+      addedBy: stored.addedBy,
+      createdAt: stored.createdAt,
+      state: readable ? 'normal' : 'revoked',
+      name: readable ? node.name : null,
+      type: readable ? node.type : null,
+      mimeType: readable ? (node.mimeType ?? null) : null,
+      reason: stored.reason ?? null,
+      sharedExcluded: foreign,
+      liked: likedSet.has(nodeId),
+    });
+  }
+  return rows;
+}
+
+/**
+ * Card preview rows (P-3, owner ruling; 2026-10-01 amendment): the ≤4
+ * newest-added members of an already-resolved member view — only revoked rows
+ * NEVER surface (name/thumbnail after access loss is a leak). Foreign-owned
+ * (shared_excluded) members DO preview to their viewer: the member list already
+ * renders them to the owner, and the grantee view omits them upstream, so the
+ * old preview-side exclusion protected nobody and only desynced card vs list.
+ * Ordering is createdAt desc (added time), deterministic tie-break nodeId desc;
+ * pure in-memory over rows resolveMemberRows already returned — ZERO extra queries.
+ */
+const PREVIEW_ITEM_CAP = 4;
+
+function buildPreviewItems(rows) {
+  return rows
+    .filter((row) => row.state !== 'revoked')
+    .slice()
+    .sort((a, b) => {
+      const at = String(a.createdAt ?? '');
+      const bt = String(b.createdAt ?? '');
+      if (at !== bt) return at < bt ? 1 : -1;
+      return b.nodeId - a.nodeId;
+    })
+    .slice(0, PREVIEW_ITEM_CAP);
+}
+
+/**
+ * Item ordering (§3.4 item ordering): read-time lazy decay
+ * `S_read = S·2^(−(now−updated_at)/H)` over the per-user `node_activity`
+ * accumulator rows, then activity score desc with the deterministic
+ * `node_id` asc tie-break. Rows without an accumulator (all-zero state)
+ * score 0 and fall back to node_id asc — behavior is stable when scores are
+ * absent. H = `AI_ACTIVITY_HALF_LIFE_DAYS` (dbOnly T2 constant, default 30).
+ */
+function activityHalfLifeDays() {
+  try {
+    const { getSharedResolver } = require('../../infrastructure/configResolver');
+    const raw = getSharedResolver().getConfigSync('AI_ACTIVITY_HALF_LIFE_DAYS');
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : HALF_LIFE_DAYS;
+  } catch {
+    return HALF_LIFE_DAYS;
+  }
+}
+
+async function attachActivityScores(userId, rows) {
+  if (rows.length === 0) return rows;
+  const now = Date.now();
+  const halfLifeDays = activityHalfLifeDays();
+  const activity = await usageStore.listNodeActivity(
+    userId,
+    rows.map((row) => Number(row.nodeId))
+  );
+  const byNodeId = new Map(activity.map((row) => [Number(row.nodeId), row]));
+  return rows.map((row) => {
+    const accumulator = byNodeId.get(Number(row.nodeId));
+    const score = accumulator
+      ? decayItemScore(accumulator.score, accumulator.updatedAtMs, now, halfLifeDays)
+      : 0;
+    return { ...row, score };
+  });
+}
+
+function sortItemRows(rows) {
+  return rows
+    .slice()
+    .sort((a, b) => (a.score !== b.score ? b.score - a.score : a.nodeId - b.nodeId));
+}
+
+// ---------------------------------------------------------------------------
+// List (§3.1)
+// ---------------------------------------------------------------------------
+
+function parseInclude(raw) {
+  const value = raw ?? 'mine,shared';
+  if (typeof value !== 'string') return null;
+  const tokens = value
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean);
+  if (tokens.length === 0) return null;
+  const set = new Set();
+  for (const token of tokens) {
+    if (!VALID_INCLUDE_TOKENS.includes(token)) return null;
+    set.add(token);
+  }
+  return set;
+}
+
+/**
+ * `similar` (§3.1): greedy nearest-neighbor over centroid vectors in JS
+ * (≤~20 rows); centroid-less rows are singleton clusters. cluster order =
+ * first appearance over the activity-ordered input (stable). Centroids are
+ * model-keyed (§2.3), so the read uses the ACTIVE embed model — the same
+ * resolution the definition/preview paths use. Without an active embed model
+ * there is no grouping space: every row is a singleton.
+ */
+async function groupBySimilarity(rows) {
+  const activeModel = await llmModelsStore.getActiveByRole('embed');
+  const modelId = activeModel ? Number(activeModel.id) : null;
+  const centroids =
+    Number.isInteger(modelId) && modelId > 0
+      ? await collectionsStore.getCentroids(
+          rows.map((row) => row.id),
+          modelId
+        )
+      : [];
+  const vectorById = new Map();
+  for (const entry of centroids) {
+    const vector = parseCentroid(entry.centroid);
+    if (vector) vectorById.set(Number(entry.collectionId), vector);
+  }
+
+  const clusters = [];
+  for (const row of rows) {
+    const vector = vectorById.get(row.id);
+    let home = null;
+    if (vector) {
+      for (const cluster of clusters) {
+        if (cluster.vector && cosineSimilarity(vector, cluster.vector) >= SIMILAR_CLUSTER_COSINE) {
+          home = cluster;
+          break;
+        }
+      }
+    }
+    if (!home) {
+      home = { rows: [], vector: vector || null };
+      clusters.push(home);
+    }
+    home.rows.push(row);
+  }
+
+  return clusters.flatMap((cluster, index) =>
+    cluster.rows.map((row) => ({ ...row, clusterIndex: index }))
+  );
+}
+
+function parseCentroid(raw) {
+  if (Array.isArray(raw)) return raw.map(Number);
+  if (typeof raw !== 'string') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(Number) : null;
+  } catch {
+    return null;
+  }
+}
+
+function cosineSimilarity(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || a.length === 0) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    const x = Number(a[i]);
+    const y = Number(b[i]);
+    dot += x * y;
+    normA += x * x;
+    normB += y * y;
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+async function listCollections(userId, { sort, include } = {}) {
+  const effectiveSort = sort ?? 'activity';
+  if (!VALID_SORTS.includes(effectiveSort)) throw serviceError('invalidSort');
+  const includeSet = parseInclude(include);
+  if (!includeSet) throw serviceError('invalidInclude');
+
+  const storeSort = STORE_SORTS.has(effectiveSort) ? effectiveSort : 'activity';
+  // Include-token semantics (routes.md §2.4 Decision, RCA 2026-09-23):
+  //   `mine,shared` → own ACTIVE + granted  (the __collections__ list view)
+  //   `mine,archived` → own ARCHIVED only   (the __archive__ surface + badge:
+  //                    CollectionsSection §2.3 "exactly the status=archived" rows)
+  //   any include carrying `shared` alongside `archived` → the full
+  //                    active ∪ archived ∪ granted set (dashboard status counts).
+  // listForUser defaults to `status='active'` (store contract), so archived rows
+  // can only ever arrive through listArchived — never duplicated.
+  let rows = [];
+  if (includeSet.has('archived') && !includeSet.has('shared')) {
+    rows = await collectionsStore.listArchived(userId);
+  } else {
+    rows = await collectionsStore.listForUser(userId, { sort: storeSort });
+    if (includeSet.has('archived')) {
+      rows = rows.concat(await collectionsStore.listArchived(userId));
+    }
+  }
+  if (!includeSet.has('shared')) {
+    rows = rows.filter((row) => row.ownerId === userId);
+  }
+
+  if (effectiveSort === 'similar') {
+    rows = await groupBySimilarity(rows);
+  }
+
+  // One batched cursor read for the whole list (ruling 2026-10-01): rows carry
+  // the requester-scoped `last_visited_at` — the sidebar new-dot source
+  // (dot ⇔ null, never opened; absent map key = null).
+  const cursorMap = await collectionsStore.listDigestCursorMap(userId);
+  const collections = [];
+  for (const row of rows) {
+    const isOwner = row.ownerId === userId;
+    let grantedRole = null;
+    if (!isOwner) {
+      const grant = await collectionsStore.getGrant(row.id, userId);
+      if (!grant) continue;
+      grantedRole = grant.role;
+    }
+    const view = await resolveMemberRows(userId, row);
+    collections.push(
+      wire.serializeCollection(row, {
+        grantedRole,
+        itemCount: view.length,
+        includeDefinition: isOwner,
+        previewItems: buildPreviewItems(view),
+        lastVisitedAt: cursorMap[row.id] ?? null,
+      })
+    );
+  }
+  return { collections };
+}
+
+/**
+ * Single collection read (routes spec §2.4.2 404-masquerade Decision; the
+ * §2.2 table gains the row in this PR). Owner sees the definition; grantees
+ * get `granted_role` and no definition; ungranted reads 404.
+ */
+async function getCollection(userId, collectionId) {
+  const { collection, grant } = await getCollectionForRead(userId, collectionId);
+  const isOwner = collection.ownerId === userId;
+  const view = await resolveMemberRows(userId, collection);
+  return {
+    collection: wire.serializeCollection(collection, {
+      grantedRole: grant ? grant.role : null,
+      itemCount: view.length,
+      includeDefinition: isOwner,
+      previewItems: buildPreviewItems(view),
+    }),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Creation
+// ---------------------------------------------------------------------------
+
+async function createCollection(userId, { name } = {}) {
+  if (typeof name !== 'string' || name.trim().length === 0) throw serviceError('nameRequired');
+  if (validateFileName(name)) throw serviceError('invalidName');
+  const finalName = await resolveCollectionName(userId, name.trim());
+  const created = await collectionsStore.createCollection(
+    { ownerId: userId, name: finalName, origin: COLLECTION_ORIGIN.USER },
+    { actor: userId }
+  );
+  return { collection: created, undo: { actionId: created.actionId } };
+}
+
+/**
+ * Seed creation (§2.7): embed-role gate, seed-vector definition with the
+ * documented θ default, and the confirmed preview ids as the initial batch
+ * (`published=true` — the dialog IS the batch approval). Candidate
+ * computation is shared with `preview({ seedNodeId })`; a missing embedding
+ * yields an EMPTY collection with the definition (never a refusal). A blank
+ * request name is filled by the §2.10 naming service.
+ */
+async function createSeedCollection(userId, { name, seedNodeId } = {}) {
+  const parsedSeedId = toFiniteId(seedNodeId);
+  if (!parsedSeedId) throw serviceError('previewTargetRequired');
+  const providedName = typeof name === 'string' ? name.trim() : '';
+  if (providedName && validateFileName(providedName)) throw serviceError('invalidName');
+  if (!(await embedRoleConfigured())) throw serviceError('aiNotConfigured');
+
+  const seedPreview = await evaluateSeedPreview(userId, parsedSeedId);
+  const baseName = providedName || (await generateSeedName(parsedSeedId));
+  const finalName = await resolveCollectionName(userId, baseName);
+
+  const created = await collectionsStore.createCollection(
+    {
+      ownerId: userId,
+      name: finalName,
+      origin: COLLECTION_ORIGIN.SEED,
+      definition: {
+        kind: 'seed_vector',
+        seed_ref: parsedSeedId,
+        theta: SEED_VECTOR_THETA,
+      },
+    },
+    { actor: userId }
+  );
+  // Initial batch (§2.7): `published` is passed explicitly — store defaults
+  // are never relied on. Empty preview ⇒ the collection is created empty.
+  if (seedPreview.ids.length > 0) {
+    await collectionsStore.addItems(
+      created.id,
+      seedPreview.ids,
+      userId,
+      { published: true, source: 'seed', reason: 'similar' },
+      { actor: userId }
+    );
+  }
+  return { collection: created, undo: { actionId: created.actionId } };
+}
+
+/** §2.10 seed name when the request omits one (the client normally sends it). */
+async function generateSeedName(seedNodeId) {
+  const node = await createFileNodesStore().getNode(seedNodeId);
+  const adapter = resolveLlmAdapter();
+  let chatConfigured = false;
+  if (adapter && typeof adapter.roleConfigured === 'function') {
+    try {
+      chatConfigured = Boolean(await adapter.roleConfigured('chat'));
+    } catch (error) {
+      chatConfigured = false;
+    }
+  }
+  const namer = createNamer({ llmAdapter: adapter, chatConfigured });
+  return namer({ kind: 'seed', seedName: node ? node.name : 'Seed' });
+}
+
+/**
+ * Search save leg (§2.2 row + §2.2.1 `{ name, semantic }` dispatch): the
+ * client supplies the flattened semantic-execution snapshot — `resultRef`
+ * (the run's result_ref, stored as the centroid REFERENCE; searchService.md
+ * §2.4 replay rule), the reserved predicate set, and the semantic-section
+ * member ids. No embed role is required: the snapshot is flattened and the
+ * stored definition is never evaluated at create time (§2.7 — replay chains
+ * are never persisted). Readability is classified per id with the §2.4 rule:
+ * readable ids join the initial batch (published=true explicit — the dialog
+ * IS the batch approval), unreadable ids land in `rejected_not_readable`.
+ */
+async function createSearchCollection(userId, { name, semantic } = {}) {
+  if (typeof name !== 'string' || name.trim().length === 0) throw serviceError('nameRequired');
+  if (validateFileName(name)) throw serviceError('invalidName');
+  if (!semantic || typeof semantic !== 'object' || Array.isArray(semantic)) {
+    throw serviceError('invalidDefinition');
+  }
+  const { resultRef, predicates, nodeIds } = semantic;
+  if (typeof resultRef !== 'string' || resultRef.trim().length === 0) {
+    throw serviceError('invalidDefinition');
+  }
+  // P1 reserves the predicate set: only the empty set is accepted.
+  if (!Array.isArray(predicates) || predicates.length > 0) {
+    throw serviceError('invalidDefinition');
+  }
+  if (!Array.isArray(nodeIds)) throw serviceError('invalidDefinition');
+  const parsed = parseNodeIds(nodeIds);
+
+  const addable = [];
+  const rejectedNotReadable = [];
+  for (const nodeId of parsed) {
+    if (await canReadNode(userId, nodeId)) {
+      addable.push(nodeId);
+    } else {
+      rejectedNotReadable.push(nodeId);
+    }
+  }
+
+  const finalName = await resolveCollectionName(userId, name.trim());
+  const created = await collectionsStore.createCollection(
+    {
+      ownerId: userId,
+      name: finalName,
+      origin: COLLECTION_ORIGIN.SEARCH,
+      definition: { kind: 'search', result_ref: resultRef, predicates: [] },
+    },
+    { actor: userId }
+  );
+  // Initial batch (§2.7): `published` is passed explicitly — store defaults
+  // are never relied on.
+  if (addable.length > 0) {
+    await collectionsStore.addItems(
+      created.id,
+      addable,
+      userId,
+      { published: true, source: 'search' },
+      { actor: userId }
+    );
+  }
+  return {
+    collection: created,
+    undo: { actionId: created.actionId },
+    rejected_not_readable: rejectedNotReadable,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Update / lifecycle
+// ---------------------------------------------------------------------------
+
+async function updateCollection(userId, collectionId, patch = {}) {
+  const { collection } = await getCollectionForRead(userId, collectionId);
+  await requireOwner(userId, collection);
+
+  let firstActionId = null;
+  let row = collection;
+
+  if (patch.name !== undefined && patch.name !== null) {
+    const { name } = patch;
+    if (typeof name !== 'string' || name.trim().length === 0) throw serviceError('nameRequired');
+    if (validateFileName(name)) throw serviceError('invalidName');
+    const finalName = await resolveCollectionName(userId, name.trim());
+    const renamed = await collectionsStore.renameCollection(
+      collectionId,
+      finalName,
+      { lockName: true },
+      { actor: userId }
+    );
+    firstActionId = renamed.actionId;
+    row = await collectionsStore.getCollection(collectionId);
+  }
+
+  if (patch.pinned !== undefined && patch.pinned !== null) {
+    if (typeof patch.pinned !== 'boolean') throw serviceError('invalidPublishMode');
+    const updated = await collectionsStore.setPinned(collectionId, patch.pinned, { actor: userId });
+    firstActionId = firstActionId ?? updated.actionId;
+    row = await collectionsStore.getCollection(collectionId);
+  }
+
+  if (patch.publishMode !== undefined && patch.publishMode !== null) {
+    if (!PUBLISH_MODE.isValid(patch.publishMode)) throw serviceError('invalidPublishMode');
+    const updated = await collectionsStore.setPublishMode(collectionId, patch.publishMode, {
+      actor: userId,
+    });
+    firstActionId = firstActionId ?? updated.actionId;
+    row = await collectionsStore.getCollection(collectionId);
+  }
+
+  // §4.9b auto-pin on user touch of a system collection — EXCEPT an explicit
+  // unpin: setAutoPin pins any `origin='system'` row with `pinned=FALSE`, so
+  // touching here would immediately undo the `pinned:false` the user just
+  // requested. The unpin persists until the next SEPARATE user touch
+  // (collectionsService.md §2.2, evolutionService.md §2.9).
+  if (patch.pinned !== false && (await touchSystemAutoPin(row))) {
+    // The response must reflect the pin the touch just applied.
+    row = await collectionsStore.getCollection(collectionId);
+  }
+  return { collection: row, undo: { actionId: firstActionId } };
+}
+
+/**
+ * Atomic properties-dialog save (collectionsService.md §2.2/§2.5): validates the
+ * complete patch, then applies only the changed metadata fields plus the grant
+ * upsert/revoke set through ONE journaled store command. Any validation failure
+ * aborts before the write; any write failure unwinds the whole TX. A no-change
+ * patch writes nothing and returns `undo:null`.
+ */
+function parseGrantPatch(rawGrants) {
+  if (rawGrants === undefined || rawGrants === null) return null;
+  if (typeof rawGrants !== 'object' || Array.isArray(rawGrants)) {
+    throw serviceError('invalidRole');
+  }
+  const rawUpsert = rawGrants.upsert === undefined ? [] : rawGrants.upsert;
+  const rawRevoke = rawGrants.revoke === undefined ? [] : rawGrants.revoke;
+  if (!Array.isArray(rawUpsert) || !Array.isArray(rawRevoke)) {
+    throw serviceError('invalidRole');
+  }
+
+  const revoke = [];
+  const revoked = new Set();
+  for (const value of rawRevoke) {
+    const granteeId = toFiniteId(value);
+    if (!granteeId) throw serviceError('granteeNotFound');
+    if (!revoked.has(granteeId)) {
+      revoked.add(granteeId);
+      revoke.push(granteeId);
+    }
+  }
+
+  const upsert = [];
+  const upsertIndex = new Map();
+  for (const entry of rawUpsert) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw serviceError('invalidRole');
+    }
+    if (!GRANT_ROLE.isValid(entry.role)) throw serviceError('invalidRole');
+    const granteeId = toFiniteId(entry.userId);
+    if (!granteeId) throw serviceError('granteeNotFound');
+    if (revoked.has(granteeId)) throw serviceError('invalidRole');
+    if (upsertIndex.has(granteeId)) {
+      upsert[upsertIndex.get(granteeId)] = { granteeId, role: entry.role };
+    } else {
+      upsertIndex.set(granteeId, upsert.length);
+      upsert.push({ granteeId, role: entry.role });
+    }
+  }
+  return { upsert, revoke };
+}
+
+async function updateProperties(userId, collectionId, patch = {}) {
+  const { collection } = await getCollectionForRead(userId, collectionId);
+  await requireOwner(userId, collection);
+
+  const storePatch = {};
+
+  if (patch.name !== undefined && patch.name !== null) {
+    if (typeof patch.name !== 'string' || patch.name.trim().length === 0) {
+      throw serviceError('nameRequired');
+    }
+    if (validateFileName(patch.name)) throw serviceError('invalidName');
+    const requested = patch.name.trim();
+    // Same-name is a no-op: the uniqueness probe must not see the current row.
+    if (requested !== collection.name) {
+      const finalName = await resolveCollectionName(userId, requested);
+      if (finalName !== collection.name) storePatch.name = finalName;
+    }
+  }
+
+  if (patch.pinned !== undefined && patch.pinned !== null) {
+    if (typeof patch.pinned !== 'boolean') throw serviceError('invalidPublishMode');
+    if (patch.pinned !== Boolean(collection.pinned)) storePatch.pinned = patch.pinned;
+  }
+
+  if (patch.publishMode !== undefined && patch.publishMode !== null) {
+    if (!PUBLISH_MODE.isValid(patch.publishMode)) throw serviceError('invalidPublishMode');
+    if (patch.publishMode !== collection.publishMode) storePatch.publishMode = patch.publishMode;
+  }
+
+  const grantPatch = parseGrantPatch(patch.grants);
+  if (grantPatch) {
+    const upsert = [];
+    const revoke = [];
+    for (const granteeId of grantPatch.revoke) {
+      // The owner has no grant row: revoking them is the same as revoking a
+      // missing grant (collectionShareService.md §2.4).
+      if (granteeId === collection.ownerId) throw serviceError('grantNotFound');
+      // eslint-disable-next-line no-await-in-loop
+      const existing = await collectionsStore.getGrant(collectionId, granteeId);
+      if (!existing) throw serviceError('grantNotFound');
+      revoke.push(granteeId);
+    }
+    for (const entry of grantPatch.upsert) {
+      if (entry.granteeId === collection.ownerId) throw serviceError('forbidden');
+      // eslint-disable-next-line no-await-in-loop
+      const grantee = await userStore.findById(entry.granteeId);
+      if (!grantee) throw serviceError('granteeNotFound');
+      if (grantee.is_admin) throw serviceError('forbidden');
+      // eslint-disable-next-line no-await-in-loop
+      const existing = await collectionsStore.getGrant(collectionId, entry.granteeId);
+      if (existing && existing.role === entry.role) continue;
+      upsert.push({ granteeId: entry.granteeId, role: entry.role });
+    }
+    if (upsert.length > 0 || revoke.length > 0) storePatch.grants = { upsert, revoke };
+  }
+
+  const updated = await collectionsStore.updateCollectionProperties(collectionId, storePatch, {
+    actor: userId,
+  });
+  const listed = await shareService.listGrants(userId, collectionId);
+  return {
+    collection: updated,
+    grants: listed.grants,
+    undo: updated.actionId == null ? null : { actionId: updated.actionId },
+  };
+}
+
+async function archiveCollection(userId, collectionId) {
+  const { collection } = await getCollectionForRead(userId, collectionId);
+  await requireOwner(userId, collection);
+  const result = await collectionsStore.archiveCollection(collectionId, { actor: userId });
+  if (result.changes === 0) throw serviceError('alreadyArchived');
+  await touchSystemAutoPin(await collectionsStore.getCollection(collectionId));
+  const refreshed = await collectionsStore.getCollection(collectionId);
+  return { collection: refreshed, undo: { actionId: result.actionId } };
+}
+
+async function restoreCollection(userId, collectionId) {
+  const { collection } = await getCollectionForRead(userId, collectionId);
+  await requireOwner(userId, collection);
+  if (collection.status !== COLLECTION_STATUS.ARCHIVED) throw serviceError('notArchived');
+  // The partial unique fires when the row turns active, so a collision is
+  // resolved with a silent suffix rename BEFORE the restore (§2.5 as-built).
+  if (await collectionsStore.existsActiveName(collection.ownerId, collection.name)) {
+    const finalName = await resolveCollectionName(collection.ownerId, collection.name);
+    await collectionsStore.renameCollection(
+      collectionId,
+      finalName,
+      { lockName: false },
+      { actor: userId }
+    );
+  }
+  const result = await collectionsStore.restoreCollection(collectionId, { actor: userId });
+  if (result.changes === 0) throw serviceError('notArchived');
+  await touchSystemAutoPin(await collectionsStore.getCollection(collectionId));
+  const refreshed = await collectionsStore.getCollection(collectionId);
+  return { collection: refreshed, undo: { actionId: result.actionId } };
+}
+
+async function deleteCollectionPermanent(userId, collectionId) {
+  const { collection } = await getCollectionForRead(userId, collectionId);
+  await requireOwner(userId, collection);
+  if (collection.status !== COLLECTION_STATUS.ARCHIVED) throw serviceError('notArchived');
+  const defFingerprint =
+    collection.origin === COLLECTION_ORIGIN.SYSTEM && collection.definition
+      ? definitionEngine.fingerprintDefinition(collection.definition)
+      : undefined;
+  await collectionsStore.deleteCollectionPermanent(collectionId, { defFingerprint });
+}
+
+// ---------------------------------------------------------------------------
+// Member view (GET /:id/items)
+// ---------------------------------------------------------------------------
+
+async function getItems(userId, collectionId, { since } = {}) {
+  const { collection } = await getCollectionForRead(userId, collectionId);
+  const isRequesterOwner = collection.ownerId === userId;
+
+  // Decision B (2026-09-29 owner ruling): the COMPLETE row set in ONE response
+  // (fileManager precedent — getChildren has no LIMIT; the client's
+  // useInfiniteScroll slices 50+50). The cursor filter/slice and next_cursor
+  // are deleted; retired `cursor`/`limit` params are ignored upstream (route
+  // does not read them). Ordering (score desc, node_id asc) is unchanged —
+  // the client renders the head of this array, no re-sort.
+  const rows = sortItemRows(
+    await attachActivityScores(userId, await resolveMemberRows(userId, collection))
+  );
+
+  const payload = {
+    items: rows,
+  };
+
+  if (isRequesterOwner) {
+    // owner-only key; the count rides the SAME resolved rows (zero extra reads)
+    payload.publishPendingCount = await shareService.publishPendingCount(
+      userId,
+      collectionId,
+      rows
+    );
+  }
+
+  if (since !== undefined && since !== null && since !== '') {
+    payload.digest = await computeDigest(collection, since);
+  }
+
+  // the read IS the visit (§4.8) — no separate reset endpoint exists
+  await collectionsStore.upsertDigestCursor(userId, collectionId, new Date().toISOString());
+  return payload;
+}
+
+async function computeDigest(collection, since) {
+  const sinceDate = new Date(since);
+  if (Number.isNaN(sinceDate.getTime())) {
+    return { added_since: 0, removed_since: 0 };
+  }
+  const sinceTime = sinceDate.getTime();
+
+  // zero-change fast path (§2.8): no membership change since `since`
+  const lastMemberChange = collection.lastMemberChangeAt
+    ? new Date(collection.lastMemberChangeAt).getTime()
+    : null;
+  const storedSince = await collectionsStore.listStoredItems(collection.id, {
+    since: new Date(sinceTime).toISOString(),
+  });
+  if (lastMemberChange !== null && lastMemberChange <= sinceTime && storedSince.length === 0) {
+    return { added_since: 0, removed_since: 0 };
+  }
+
+  // Materialized additions only — `created_at` IS the membership-added time
+  // for every `source` value. The read path never derives rows.
+  const added = storedSince.length;
+
+  let removed = 0;
+  const journalRows = await actionJournalStore.listBySubject(
+    'collection',
+    `collection:${collection.id}`
+  );
+  for (const row of journalRows) {
+    if (!REMOVAL_JOURNAL_ACTIONS.has(row.action)) continue;
+    if (row.createdAt && new Date(row.createdAt).getTime() > sinceTime) removed += 1;
+  }
+  // Member nodes trashed after `since` are removals too (row kept by the
+  // render table, absent from the current view). Purged nodes cascade their
+  // membership row away and are covered by the journal removal count above.
+  removed += await collectionsStore.countTrashedMembersSince(
+    collection.id,
+    new Date(sinceTime).toISOString()
+  );
+  return { added_since: added, removed_since: removed };
+}
+
+// ---------------------------------------------------------------------------
+// Membership mutations
+// ---------------------------------------------------------------------------
+
+function parseNodeIds(raw) {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_NODE_IDS) {
+    throw serviceError('emptyNodeIds');
+  }
+  const ids = [];
+  for (const value of raw) {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) throw serviceError('emptyNodeIds');
+    ids.push(parsed);
+  }
+  return ids;
+}
+
+async function addItems(userId, collectionId, nodeIds) {
+  const parsed = parseNodeIds(nodeIds);
+  const { collection } = await getCollectionForRead(userId, collectionId);
+  await requireOwnerOrRole(userId, collection, GRANT_ROLE.EDITOR);
+
+  const addable = [];
+  const rejectedNotReadable = [];
+  for (const nodeId of parsed) {
+    if (await canReadNode(userId, nodeId)) {
+      addable.push(nodeId);
+    } else {
+      rejectedNotReadable.push(nodeId);
+    }
+  }
+
+  // §4.7: stored rows start published=false unless publish_mode='auto'
+  const published = collection.publishMode === PUBLISH_MODE.AUTO;
+  const result = await collectionsStore.addItems(
+    collectionId,
+    addable,
+    userId,
+    { published, source: 'manual' },
+    { actor: userId }
+  );
+  await touchSystemAutoPin(collection);
+  return {
+    added: result.added,
+    already_members: result.alreadyMembers,
+    rejected_not_readable: rejectedNotReadable,
+    undo: { actionId: result.actionId },
+  };
+}
+
+async function removeItems(userId, collectionId, nodeIds) {
+  const parsed = parseNodeIds(nodeIds);
+  const { collection } = await getCollectionForRead(userId, collectionId);
+  const role = await requireOwnerOrRole(userId, collection, GRANT_ROLE.EDITOR);
+  const isOwner = role === 'owner';
+
+  const storedDeletes = [];
+  const excludeInserts = [];
+  const ignored = [];
+  for (const nodeId of parsed) {
+    const stored = await collectionsStore.getStoredItem(collectionId, nodeId);
+    if (stored) {
+      // editors may remove only what they added (§4.7)
+      if (!isOwner && stored.addedBy !== userId) throw serviceError('forbidden');
+      storedDeletes.push(nodeId);
+      continue;
+    }
+    if (!isOwner) throw serviceError('forbidden');
+    if (collection.origin === COLLECTION_ORIGIN.USER) {
+      // an exclusion on a user-origin collection is meaningless
+      ignored.push(nodeId);
+    } else {
+      excludeInserts.push(nodeId);
+    }
+  }
+
+  const result = await collectionsStore.removeItems(
+    collectionId,
+    { storedNodeIds: storedDeletes, excludeNodeIds: excludeInserts },
+    { actor: userId }
+  );
+  return {
+    removed: result.removed,
+    excluded: result.excluded,
+    ignored,
+    undo: { actionId: result.actionId },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Upload-hook rule check (§2.3-bis) — materializes membership at commit points
+// ---------------------------------------------------------------------------
+
+/**
+ * Point-evaluate the requester's ACTIVE definition-driven collections against
+ * ONE freshly committed node (no corpus scan — §2.6 mechanism). Each admitting
+ * collection materializes the membership row with `source='system'`, the
+ * matched reason, and the publish state from `publish_mode`; the journaled
+ * item command also bumps `last_member_change_at`. Exclusions and existing
+ * rows short-circuit. This hook adds but never removes.
+ * @returns {Promise<{ nodeId: number, admittedCollectionIds: number[] }>}
+ */
+async function checkUploadAdmissions(userId, nodeId) {
+  const parsedNodeId = toFiniteId(nodeId);
+  if (!parsedNodeId) throw serviceError('emptyNodeIds');
+
+  const fileNodesStore = createFileNodesStore();
+  const node = await fileNodesStore.getNode(parsedNodeId);
+  if (!node) return { nodeId: parsedNodeId, admittedCollectionIds: [] };
+
+  const nodesById = new Map();
+  let current = node;
+  while (current) {
+    nodesById.set(Number(current.id), current);
+    if (current.parentId == null) break;
+    current = await fileNodesStore.getNode(current.parentId);
+  }
+
+  const providers = await buildProviders(userId);
+  const collections = (
+    await collectionsStore.listForUser(userId, { status: COLLECTION_STATUS.ACTIVE })
+  ).filter((row) => row.ownerId === userId && definitionEngine.hasDefinition(row.definition));
+
+  const admittedCollectionIds = [];
+  for (const collection of collections) {
+    const exclusions = new Set(
+      (await collectionsStore.listExclusions(collection.id)).map((excludedId) => Number(excludedId))
+    );
+    if (exclusions.has(parsedNodeId)) continue;
+    if (await collectionsStore.getStoredItem(collection.id, parsedNodeId)) continue;
+
+    const isVector = definitionEngine.isVectorDefinition(collection.definition);
+    const vector = isVector
+      ? await buildVectorContext(collection.definition, [parsedNodeId], new Set(), collection.id)
+      : null;
+    if (isVector && !vector) continue;
+
+    const admitted = await definitionEngine.evaluateDefinition({
+      definition: collection.definition,
+      candidateNodes: [node],
+      nodesById,
+      providers,
+      vector,
+    });
+    const reason = admitted.get(parsedNodeId);
+    if (!reason) continue;
+
+    const published = collection.publishMode === PUBLISH_MODE.AUTO;
+    const result = await collectionsStore.addItems(
+      collection.id,
+      [parsedNodeId],
+      userId,
+      { published, source: 'system', reason },
+      { actor: 'system' }
+    );
+    if (result.added.length > 0) admittedCollectionIds.push(collection.id);
+  }
+  return { nodeId: parsedNodeId, admittedCollectionIds };
+}
+
+async function resolveOwnerIdForNode(nodeId) {
+  const fileNodesStore = createFileNodesStore();
+  let current = await fileNodesStore.getNode(nodeId);
+  while (current && current.parentId != null) {
+    current = await fileNodesStore.getNode(current.parentId);
+  }
+  if (!current) return null;
+  const owner = await userStore.findByUsername(current.name);
+  return owner && owner.id != null ? Number(owner.id) : null;
+}
+
+/**
+ * Commit-seam entry: resolve the node's owner and materialize admissions.
+ * Fire-and-forget callers log failures; the hook never throws into a request.
+ */
+async function checkUploadAdmissionsForNode(nodeId) {
+  const parsedNodeId = toFiniteId(nodeId);
+  if (!parsedNodeId) return { nodeId: parsedNodeId, admittedCollectionIds: [] };
+  const ownerId = await resolveOwnerIdForNode(parsedNodeId);
+  if (!ownerId) return { nodeId: parsedNodeId, admittedCollectionIds: [] };
+  return checkUploadAdmissions(ownerId, parsedNodeId);
+}
+
+// ---------------------------------------------------------------------------
+// Preview (§2.7)
+// ---------------------------------------------------------------------------
+
+const EMPTY_PREVIEW = { count: 0, sample: [], sample_truncated: false };
+
+async function preview(userId, target = {}) {
+  const hasSeed = target.seedNodeId !== undefined && target.seedNodeId !== null;
+  const hasDefinition = target.definition !== undefined && target.definition !== null;
+  if (hasSeed === hasDefinition) throw serviceError('previewTargetRequired');
+
+  if (hasSeed) {
+    const seedNodeId = toFiniteId(target.seedNodeId);
+    if (!seedNodeId) throw serviceError('previewTargetRequired');
+    if (!(await embedRoleConfigured())) throw serviceError('aiNotConfigured');
+    const result = await evaluateSeedPreview(userId, seedNodeId);
+    return {
+      count: result.count,
+      sample: result.sample,
+      sample_truncated: result.sample_truncated,
+      ...(result.degraded && { degraded: true }),
+    };
+  }
+
+  definitionEngine.parseDefinition(target.definition);
+  if (definitionEngine.isVectorDefinition(target.definition)) {
+    // Self-centroid (§2.3): `centroid_ref: null` is the OWNING collection's
+    // own centroid row — a free-standing definition preview has no owning
+    // collection, so the reference is unresolvable by shape (400).
+    if (
+      target.definition.kind === 'centroid' &&
+      (target.definition.centroid_ref ?? target.definition.centroidRef) == null
+    ) {
+      throw serviceError('invalidDefinition', 400);
+    }
+    // Vector definitions score pooled cosine against the ACTIVE embed model —
+    // same capability gate as the seed arm (§2.7).
+    if (!(await embedRoleConfigured())) throw serviceError('aiNotConfigured');
+  }
+  return runDefinitionPreview(userId, target.definition);
+}
+
+// ---------------------------------------------------------------------------
+// View-weighted soft boost (§2.3 — ordering only)
+// ---------------------------------------------------------------------------
+
+const VIEW_WEIGHT_ALPHA_DEFAULT = 0.1;
+
+/** α is a T2 dbOnly hot constant: read per call; invalid/absent → shipped default. */
+function viewWeightAlpha() {
+  try {
+    const { getSharedResolver } = require('../../infrastructure/configResolver');
+    const raw = getSharedResolver().getConfigSync('AI_VIEW_WEIGHT_ALPHA');
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : VIEW_WEIGHT_ALPHA_DEFAULT;
+  } catch {
+    return VIEW_WEIGHT_ALPHA_DEFAULT;
+  }
+}
+
+/**
+ * "views" = the per-user `node_activity` viewing signals (open + preview
+ * lifetime counts; `open` has no writer yet — deliberately unrecorded — while
+ * `preview` is recorded at the file-side commit points). Rows without an
+ * accumulator are 0 views.
+ */
+async function loadViewCounts(userId, nodeIds) {
+  const views = new Map();
+  if (nodeIds.length === 0) return views;
+  const rows = await usageStore.listNodeActivity(
+    userId,
+    nodeIds.map((nodeId) => Number(nodeId))
+  );
+  for (const row of rows || []) {
+    views.set(
+      Number(row.nodeId),
+      (Number(row.counts?.open) || 0) + (Number(row.counts?.preview) || 0)
+    );
+  }
+  return views;
+}
+
+/**
+ * Boosted ORDERING score (§2.3): `cosine × (1 + α·log10(1 + views))`.
+ * Admission/removal ALWAYS use the un-boosted cosine.
+ */
+function viewBoostedScore(score, views, alpha) {
+  return score * (1 + alpha * Math.log10(1 + views));
+}
+
+/**
+ * The ONE seed-candidate computation shared by preview and creation (§2.7):
+ * the seed's pooled embedding vs the requester-visible corpus. Pooled cosine
+ * (NOT the retrieval max-over-chunks scorer), k=200. The seed is excluded from
+ * its own candidate set BEFORE the top-K cut. Missing pooled embedding or a
+ * model-space mismatch ⇒ the degraded empty shape and a fire-and-forget
+ * idempotent embed job for files (preview never blocks on enrichment).
+ *
+ * @returns {Promise<{ ids: number[], count: number, sample: Array<{nodeId:number,name:string|null}>, sample_truncated: boolean, degraded?: boolean }>}
+ */
+async function evaluateSeedPreview(userId, seedNodeId) {
+  const pooled = await embeddingsStore.get(seedNodeId);
+  if (!pooled) {
+    await enqueueSeedEmbeddingJob(seedNodeId);
+    return { ...EMPTY_PREVIEW, ids: [], degraded: true };
+  }
+
+  const activeModel = await llmModelsStore.getActiveByRole('embed');
+  const seedModelId = Number(pooled.modelId);
+  if (!activeModel || Number(activeModel.id) !== seedModelId) {
+    return { ...EMPTY_PREVIEW, ids: [], degraded: true };
+  }
+  const seedVec = parseVectorText(pooled.vector);
+  if (!seedVec || seedVec.length === 0) {
+    return { ...EMPTY_PREVIEW, ids: [], degraded: true };
+  }
+
+  const fileNodesStore = createFileNodesStore();
+  const visibleIds = new Set(await fileNodesStore.listVisibleFileNodeIds(userId));
+  visibleIds.delete(seedNodeId);
+
+  const rows = await embeddingsStore.listAll(seedModelId);
+  const ranked = [];
+  for (const row of rows || []) {
+    const nodeId = Number(row.nodeId);
+    if (!visibleIds.has(nodeId)) continue;
+    const vector = parseVectorText(row.vector);
+    if (!vector || vector.length !== seedVec.length) continue;
+    const score = definitionEngine.cosineSimilarity(seedVec, vector);
+    if (score == null) continue;
+    ranked.push({ nodeId, score });
+  }
+  ranked.sort((a, b) => (a.score !== b.score ? b.score - a.score : a.nodeId - b.nodeId));
+  const ids = ranked.slice(0, SEED_NEIGHBORS_K).map((row) => row.nodeId);
+
+  // §2.3 view-weighted soft boost — ORDERING ONLY: the creation batch (`ids`)
+  // and `count` stay on the raw cosine; the preview sample re-ranks the top-K
+  // set so frequently-viewed files surface first. Zero views / α=0 reduce the
+  // multiplier to 1.0, preserving the raw cosine order.
+  const alpha = viewWeightAlpha();
+  const views = await loadViewCounts(userId, ids);
+  const sampleRanked = ranked
+    .slice(0, SEED_NEIGHBORS_K)
+    .map((row) => ({
+      nodeId: row.nodeId,
+      boosted: viewBoostedScore(row.score, views.get(row.nodeId) || 0, alpha),
+    }))
+    .sort((a, b) => (a.boosted !== b.boosted ? b.boosted - a.boosted : a.nodeId - b.nodeId));
+
+  const sample = [];
+  for (const { nodeId } of sampleRanked.slice(0, PREVIEW_SAMPLE_CAP)) {
+    const node = await fileNodesStore.getNode(nodeId);
+    sample.push({ nodeId, name: node ? node.name : null });
+  }
+  return {
+    ids,
+    count: ids.length,
+    sample,
+    sample_truncated: ids.length > PREVIEW_SAMPLE_CAP,
+  };
+}
+
+/** Fire-and-forget, idempotent enrichment for a file seed (§2.7). */
+async function enqueueSeedEmbeddingJob(seedNodeId) {
+  try {
+    const node = await createFileNodesStore().getNode(seedNodeId);
+    if (!node || node.type !== 'file') return;
+    await aiJobsStore.enqueue(seedNodeId, 'embed', 1, null);
+  } catch (error) {
+    // Enrichment absence must never block the preview; the backfill heals it.
+  }
+}
+
+async function previewCollection(userId, collectionId) {
+  const { collection } = await getCollectionForRead(userId, collectionId);
+  await requireOwner(userId, collection);
+  if (!definitionEngine.hasDefinition(collection.definition)) {
+    return { ...EMPTY_PREVIEW };
+  }
+  const stored = await collectionsStore.listStoredItems(collectionId);
+  return runDefinitionPreview(userId, collection.definition, {
+    previousMembers: new Set(stored.map((row) => Number(row.nodeId))),
+    collectionId,
+  });
+}
+
+async function runDefinitionPreview(
+  userId,
+  definition,
+  { previousMembers = new Set(), collectionId = null } = {}
+) {
+  const candidates = await loadVisibleCandidates(userId);
+  const providers = await buildProviders(userId);
+  const candidateIds = [...candidates.keys()];
+  const isVector = definitionEngine.isVectorDefinition(definition);
+  const vector = isVector
+    ? await buildVectorContext(definition, candidateIds, previousMembers, collectionId)
+    : null;
+  if (isVector && !vector) {
+    return { ...EMPTY_PREVIEW, degraded: true };
+  }
+  const admitted = await definitionEngine.evaluateDefinition({
+    definition,
+    candidateNodes: [...candidates.values()],
+    nodesById: candidates,
+    providers,
+    vector,
+  });
+  const ordered = [...admitted.keys()].sort((a, b) => a - b);
+  const sample = ordered.slice(0, PREVIEW_SAMPLE_CAP).map((nodeId) => {
+    const node = candidates.get(nodeId);
+    return { nodeId, name: node ? node.name : null };
+  });
+  return {
+    count: ordered.length,
+    sample,
+    sample_truncated: ordered.length > PREVIEW_SAMPLE_CAP,
+  };
+}
+
+/**
+ * Materialized-membership evaluation seam for the evolution reconcile pass
+ * (§2.3/§2.4-bis). Evaluates a definition over the requester-visible candidate
+ * set with the pooled-vector θ band and the hysteresis keep rule
+ * (`previousMembers`), then subtracts the collection's exclusions. Vector
+ * definitions run with `keepMissing`: an existing member whose pooled vector is
+ * missing or from another model survives; a non-member without a vector is not
+ * admitted. A vector definition with no resolvable reference (no active embed
+ * model / missing seed vector / foreign-model centroid) admits nothing and
+ * keeps its existing members (nothing can be scored).
+ *
+ * @param {number} userId - collection OWNER whose corpus defines the candidates
+ * @param {Object} definition - stored definition payload
+ * @param {{ previousMembers?: Set<number>|number[], collectionId?: number|null }} [options]
+ * @returns {Promise<Map<number, string>>} admitted nodeId → matched reason
+ */
+async function evaluateDefinitionMembership(
+  userId,
+  definition,
+  { previousMembers = new Set(), collectionId = null } = {}
+) {
+  if (!definitionEngine.hasDefinition(definition)) return new Map();
+  const previous =
+    previousMembers instanceof Set ? previousMembers : new Set(previousMembers || []);
+  const candidates = await loadVisibleCandidates(userId);
+  const providers = await buildProviders(userId);
+  const isVector = definitionEngine.isVectorDefinition(definition);
+  let vector = null;
+  if (isVector) {
+    vector = await buildVectorContext(definition, [...candidates.keys()], previous, collectionId);
+    if (vector) {
+      vector.keepMissing = true;
+    } else {
+      vector = {
+        previousMembers: previous,
+        thetaIn: 1,
+        thetaOut: 1,
+        keepMissing: true,
+        scoreFor: () => null,
+      };
+    }
+  }
+  const admitted = await definitionEngine.evaluateDefinition({
+    definition,
+    candidateNodes: [...candidates.values()],
+    nodesById: candidates,
+    providers,
+    vector,
+  });
+  if (collectionId != null) {
+    const exclusions = await collectionsStore.listExclusions(collectionId);
+    for (const excludedId of exclusions || []) admitted.delete(Number(excludedId));
+  }
+  return admitted;
+}
+
+// ---------------------------------------------------------------------------
+// Merge (§2.9)
+// ---------------------------------------------------------------------------
+
+async function listMergeSuggestions(userId) {
+  const ownedIds = new Set(
+    (await collectionsStore.listForUser(userId, { status: 'all' }))
+      .filter((row) => row.ownerId === userId)
+      .map((row) => row.id)
+  );
+  const pending = (await collectionsStore.listMergeSuggestions()).filter(
+    (row) => ownedIds.has(row.aId) && ownedIds.has(row.bId)
+  );
+  pending.sort((a, b) => b.score - a.score);
+
+  const suggestions = [];
+  for (const row of pending) {
+    const [aCollection, bCollection] = await Promise.all([
+      collectionsStore.getCollection(row.aId),
+      collectionsStore.getCollection(row.bId),
+    ]);
+    if (!aCollection || !bCollection) continue;
+    const [aRows, bRows] = await Promise.all([
+      resolveMemberRows(userId, aCollection),
+      resolveMemberRows(userId, bCollection),
+    ]);
+    const aIds = new Set(aRows.map((r) => r.nodeId));
+    const bIds = new Set(bRows.map((r) => r.nodeId));
+    const overlapCount = countOverlap(aIds, bIds);
+    const recommendation =
+      row.arbiterVerdict != null
+        ? { verdict: row.arbiterVerdict, reason: row.arbiterReason ?? null }
+        : null;
+    const samples = buildSuggestionSamples(aRows, bRows);
+    suggestions.push(
+      wire.serializeSuggestion(row, {
+        aName: aCollection.name,
+        bName: bCollection.name,
+        overlapCount,
+        mergedCount: aIds.size + bIds.size - overlapCount,
+        recommendation,
+        ...samples,
+        aPreviewItems: buildPreviewItems(aRows),
+        bPreviewItems: buildPreviewItems(bRows),
+      })
+    );
+  }
+  return { suggestions };
+}
+
+// Compare-overlay samples (routes/collections.md GET /merge-suggestions):
+// capped views of the authoritative counts, built in-memory over the rows
+// resolveMemberRows already returned — ZERO extra reads. Revoked rows are
+// excluded from every sample (their name/thumbnail after access loss is a
+// leak); ordering is node-id asc, so samples are deterministic.
+const MERGE_OVERLAP_SAMPLE_CAP = 8;
+const MERGE_UNIQUE_SAMPLE_CAP = 4;
+
+function buildSuggestionSamples(aRows, bRows) {
+  const aById = new Map(aRows.map((r) => [r.nodeId, r]));
+  const bById = new Map(bRows.map((r) => [r.nodeId, r]));
+  const overlapSample = [];
+  const sharedIds = [...aById.keys()].filter((id) => bById.has(id)).sort((x, y) => x - y);
+  for (const id of sharedIds) {
+    if (overlapSample.length >= MERGE_OVERLAP_SAMPLE_CAP) break;
+    if (aById.get(id).state !== 'normal' || bById.get(id).state !== 'normal') continue;
+    overlapSample.push({ a_node_id: id, b_node_id: id });
+  }
+  const uniqueSample = (byId, otherById, cap) => {
+    const out = [];
+    const onlyIds = [...byId.keys()].filter((id) => !otherById.has(id)).sort((x, y) => x - y);
+    for (const id of onlyIds) {
+      if (out.length >= cap) break;
+      const r = byId.get(id);
+      if (r.state !== 'normal') continue;
+      out.push({ node_id: id, name: r.name });
+    }
+    return out;
+  };
+  return {
+    overlapSample,
+    aUniqueSample: uniqueSample(aById, bById, MERGE_UNIQUE_SAMPLE_CAP),
+    bUniqueSample: uniqueSample(bById, aById, MERGE_UNIQUE_SAMPLE_CAP),
+  };
+}
+
+function countOverlap(a, b) {
+  let count = 0;
+  for (const id of a) if (b.has(id)) count += 1;
+  return count;
+}
+
+async function mergeCollections(userId, collectionId, otherId) {
+  const survivorId = Number(collectionId);
+  const otherNumber = Number(otherId);
+  if (!Number.isInteger(survivorId) || survivorId <= 0) throw serviceError('notFound');
+  if (!Number.isInteger(otherNumber) || otherNumber <= 0) throw serviceError('notFound');
+  if (survivorId === otherNumber) throw serviceError('mergeSameCollection');
+
+  const [{ collection: survivor }, { collection: other }] = await Promise.all([
+    getCollectionForRead(userId, survivorId),
+    getCollectionForRead(userId, otherNumber),
+  ]);
+  await requireOwner(userId, survivor);
+  await requireOwner(userId, other);
+  if (survivor.status !== COLLECTION_STATUS.ACTIVE || other.status !== COLLECTION_STATUS.ACTIVE) {
+    throw serviceError('notArchived');
+  }
+
+  const result = await collectionsStore.mergeCollections(survivorId, otherNumber, {
+    actor: userId,
+  });
+  const refreshed = await collectionsStore.getCollection(survivorId);
+  const rows = await resolveMemberRows(userId, refreshed);
+  return {
+    survivor: { id: refreshed.id, name: refreshed.name, itemCount: rows.length },
+    absorbedId: otherNumber,
+    undo: { actionId: result.actionId },
+  };
+}
+
+async function dismissMerge(userId, collectionId, otherId) {
+  const { survivorNumber, otherNumber } = await resolveOwnedPairOrThrow(
+    userId,
+    collectionId,
+    otherId,
+    'suggestionNotFound'
+  );
+  const suggestion = await pendingSuggestionForPair(survivorNumber, otherNumber);
+  if (!suggestion) throw serviceError('suggestionNotFound');
+  const result = await collectionsStore.setSuggestionState(suggestion.id, 'dismissed');
+  if (result.changes === 0) throw serviceError('suggestionNotFound');
+  return {
+    suggestion_id: suggestion.id,
+    state: 'dismissed',
+    dismissed_at: new Date().toISOString(),
+    dismiss_count: Number(suggestion.dismissCount ?? 0) + 1,
+  };
+}
+
+async function rejectMerge(userId, collectionId, otherId) {
+  const { survivorNumber, otherNumber } = await resolveOwnedPairOrThrow(
+    userId,
+    collectionId,
+    otherId,
+    'suggestionNotFound'
+  );
+  const suggestion = await pendingSuggestionForPair(survivorNumber, otherNumber);
+  if (!suggestion) throw serviceError('suggestionNotFound');
+  const result = await collectionsStore.setSuggestionState(suggestion.id, 'rejected');
+  if (result.changes === 0) throw serviceError('suggestionNotFound');
+  return {
+    suggestion_id: suggestion.id,
+    state: 'rejected',
+    rejected_at: new Date().toISOString(),
+  };
+}
+
+async function resolveOwnedPairOrThrow(userId, collectionId, otherId, missingCode) {
+  const survivorNumber = Number(collectionId);
+  const otherNumber = Number(otherId);
+  if (!Number.isInteger(survivorNumber) || survivorNumber <= 0) throw serviceError(missingCode);
+  if (!Number.isInteger(otherNumber) || otherNumber <= 0) throw serviceError(missingCode);
+  const [survivor, other] = await Promise.all([
+    collectionsStore.getCollection(survivorNumber),
+    collectionsStore.getCollection(otherNumber),
+  ]);
+  if (!survivor || !other || survivor.ownerId !== userId || other.ownerId !== userId) {
+    throw serviceError(missingCode);
+  }
+  return { survivorNumber, otherNumber };
+}
+
+async function pendingSuggestionForPair(collectionId, otherId) {
+  const low = Math.min(collectionId, otherId);
+  const high = Math.max(collectionId, otherId);
+  const rows = await collectionsStore.listMergeSuggestions([collectionId, otherId], {
+    state: 'pending',
+  });
+  return rows.find((row) => row.aId === low && row.bId === high) || null;
+}
+
+// ---------------------------------------------------------------------------
+// for-nodes chips (DEF-25 — listing contracts frozen)
+// ---------------------------------------------------------------------------
+
+async function getForNodes(userId, nodeIds) {
+  const parsed = parseNodeIds(nodeIds);
+
+  const byNode = new Map(parsed.map((nodeId) => [nodeId, new Set()]));
+  for (const pair of await collectionsStore.listForNodes(userId, parsed)) {
+    if (byNode.has(pair.nodeId)) byNode.get(pair.nodeId).add(pair.collectionId);
+  }
+
+  return {
+    memberships: parsed.map((nodeId) => ({
+      nodeId,
+      collectionIds: [...(byNode.get(nodeId) || [])].sort((a, b) => a - b),
+    })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sharing surface (grants CRUD, self-revocation, publish) — lives in
+// shareService.js (docs/spec/server/services/collectionShareService.md);
+// routes.js delegates those endpoints there directly.
+// ---------------------------------------------------------------------------
+
+module.exports = {
+  getCollection,
+  listCollections,
+  createCollection,
+  createSeedCollection,
+  createSearchCollection,
+  updateCollection,
+  updateProperties,
+  archiveCollection,
+  restoreCollection,
+  deleteCollectionPermanent,
+  getItems,
+  addItems,
+  removeItems,
+  preview,
+  previewCollection,
+  listMergeSuggestions,
+  mergeCollections,
+  dismissMerge,
+  rejectMerge,
+  getForNodes,
+  checkUploadAdmissions,
+  checkUploadAdmissionsForNode,
+  resolveOwnerIdForNode,
+  evaluateDefinitionMembership,
+  fingerprintDefinition: definitionEngine.fingerprintDefinition,
+  SEED_VECTOR_THETA,
+  __setRuntimeSeamsForTests,
+  __resetRuntimeSeamsForTests,
+};

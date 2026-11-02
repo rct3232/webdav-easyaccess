@@ -19,12 +19,12 @@
 
 ### 2.2 Props
 
-| Name             | Type     | Required | Default | Description                                                                                                                   |
-| ---------------- | -------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| categories       | array    | Y        | -       | Prepared visible category items, already filtered for the current user role. Each item contains `id`, `icon`, and `labelKey`. |
-| selectedCategory | string   | Y        | -       | Currently selected category id (e.g. 'account', 'sharing', 'admin-users', 'admin-settings', 'preferences')                    |
-| onSelectCategory | function | Y        | -       | Handler when a category is clicked                                                                                            |
-| isMobile         | boolean  | N        | false   | Whether in mobile layout (affects styling if needed)                                                                          |
+| Name             | Type     | Required | Default | Description                                                                                                                       |
+| ---------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| categories       | array    | Y        | -       | Prepared visible category items, already filtered for the current user role. Each item contains `id`, `icon`, and `labelKey`.     |
+| selectedCategory | string   | Y        | -       | Currently selected category id (e.g. 'account', 'sharing', 'storage', 'admin-users', 'admin-settings', 'admin-ai', 'preferences') |
+| onSelectCategory | function | Y        | -       | Handler when a category is clicked                                                                                                |
+| isMobile         | boolean  | N        | false   | Whether in mobile layout (affects styling if needed)                                                                              |
 
 ### 2.3 Callback Signatures
 

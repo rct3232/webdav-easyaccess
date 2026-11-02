@@ -15,6 +15,16 @@ import {
 export const getEntryKey = (file) => (file?.nodeId != null ? file.nodeId : file?.path);
 
 /**
+ * Synthetic selection key for a collection card (P-3 file-parity selection).
+ * Cards join the page-level selection Set (getEntryKey semantics) through this
+ * path-shaped key — it can never collide with a numeric file nodeId.
+ * @param {number|string} collectionId
+ * @returns {string} '/__collections__/collection/<id>'
+ */
+export const getCollectionEntryKey = (collectionId) =>
+  `/__collections__/collection/${collectionId}`;
+
+/**
  * Render processing icon based on processing type
  * @param {string} processingType - Type of processing ('move', 'copy', 'delete')
  * @returns {JSX.Element|null} Icon component or null
@@ -42,9 +52,13 @@ export const getFileItemState = (file, selectionMode, selectedFiles, processingM
   // Directory permission check (files are always accessible)
   const isPermissionDisabled = file.type === 'directory' && file.hasReadPermission === false;
 
+  // P-4 member rows: an EXPLICIT member-flag + state rule (file rows carry no
+  // `state`, so a stray key can never disable them — fileViewUtils.md §2.4).
+  const isMemberRevoked = file.isCollectionMember === true && file.state === 'revoked';
+
   const processingType = processingMap?.get(file.nodeId);
   const isProcessing = Boolean(processingType);
-  const isDisabled = isPermissionDisabled || isProcessing;
+  const isDisabled = isPermissionDisabled || isProcessing || isMemberRevoked;
 
   return {
     isSelected,

@@ -11,16 +11,21 @@ lets DB-sourced configuration take effect before require-time consts are capture
 
 ```
 1. Load .env → process.env (dotenv, override: false). T0 keys are read here.
-2. [D6] Pre-flight metadata-backend resolution (top of runBoot):
+2. Pre-flight metadata-backend resolution (boot entry, before mounts):
      - the backend is resolved from the generic remote-DB credential block: setting at least one
        of WEA_DB_HOST / WEA_DB_DATABASE / WEA_DB_USER / WEA_DB_PASSWORD selects the remote
        database (PostgreSQL is the only supported remote engine); setting none selects SQLite.
-     - a partial set (some but not all of the four) → storage.getBackend() throws
-       `Partial WEA_DB_* configuration: missing <keys> …` (server/store/storage.js); the
-       runBoot() catch in server/index.js logs `Initialization failed: <err>` and calls
-       process.exit(1), listing the missing keys. A complete-but-unreachable remote still
-       boots and reports the outage via GET /api/health.
-       The DB connection is .env-owned; there is no sqlite-wizard fallback for it (D6/D7).
+      - a partial set (some but not all of the four) → storage.getBackend() throws
+        `Partial WEA_DB_* configuration: missing <keys> …` (server/store/storage.js).
+        The resolution is validated at boot entry — a pre-flight `getBackend()` call at
+        the top of server/index.js, immediately after the dotenv block and BEFORE the
+        route mounts (which evaluate require-time store consumers such as
+        domains/permissions/routes/folderPermissions) — where a throw is surfaced with
+        the terminal handling: log `Initialization failed: <err>` and `process.exit(1)`,
+        listing the missing keys. Failures raised later in the sequence surface through
+        the runBoot() catch in server/index.js with identical handling. A
+        complete-but-unreachable remote still boots and reports the outage via GET /api/health.
+        The DB connection is .env-owned; there is no sqlite-wizard fallback for it.
 3. initMetadataSchema()            — connect the metadata DB + apply schema/migrations.
                                     (No admin seeding — deferred until after env population.)
 4. resolver = createConfigResolver({ settingsStore: Settings })
@@ -39,7 +44,7 @@ lets DB-sourced configuration take effect before require-time consts are capture
          into process.env so require-time consts see it.
      (CORS production warning uses the effective value.)
    else:
-     setup mode — no env population; the wizard serves non-T0 only (D7).
+     setup mode — no env population; the wizard serves non-T0 only.
 7. await ensureDefaultAdmin()
    — reads process.env.ADMIN_DEFAULT_PASSWORD, which may now be a DB-sourced,
      plaintext T1 value (the wizard stores it in DB for the postgresql path).
@@ -48,13 +53,25 @@ lets DB-sourced configuration take effect before require-time consts are capture
    failure recorded during boot must survive into the tracker so it is visible
    on the health card and the file-screen banner immediately after login. A
    post-probe reset would wipe it (surfaces would report `unknown` at boot).
+8b. Embed provider decision + built-in provisioning (llmPresets.md §2.3): read the resolver's
+   `LLM_EMBED_*` rows (already primed at step 4). Remote embed override enabled ⇒ NO built-in
+   trigger (role runs on the override; no caps-off signal for missing weights). Built-in active
+   ⇒ weights check against `WEA_MODEL_DIR`/data dir: present ⇒ no-op (zero egress); missing ⇒
+   the attempt runs — BLOCKING before listen with CLI per-file progress (failed attempt:
+   warn-only, embed caps OFF + admin reason, boot continues — the runBoot catch must not
+   fire). The boot that first leaves setup mode (post-restart) is an ordinary configured
+   boot: same posture, no special event or marker. Setup mode (wizard up) ⇒ the step no-ops
+   entirely — zero bytes fetched while `setup_complete=false`. `WEA_SKIP_EMBED_MODEL`
+   truthy (`1/true/yes/on`) ⇒ the built-in branch no-ops as well: no lock read, no weights
+   hash, no provisioning attempt, and the embed role resolves `not_configured`; a remote
+   embed override still resolves and runs normally.
 9. FFmpeg init (best-effort, warn-only).
-10. Boot connection probes for the ACTIVE file backend only (D3 / warn-only):
+10. Boot connection probes for the ACTIVE file backend only (warn-only):
     - WEA_FILE_STORAGE=webdav → utils/webdav `testConnection`; failure logs warn.
     - WEA_FILE_STORAGE=s3 → `backendProbe.probeS3`; missing S3 config logs
       SKIPPED (no failure record); probe failure records to the health tracker
       (survives because step 8 already ran).
-    Probing an unused backend would record a false alert (D3), so only the
+    Probing an unused backend would record a false alert, so only the
     active file backend is probed.
 11. getMigrationGate().reset() — fresh-process migration gate.
 12. mount / listen:
@@ -63,10 +80,15 @@ lets DB-sourced configuration take effect before require-time consts are capture
     - the setImmediate composition (getComposition / fail-safe / GC scheduler) runs as before;
       its fallback still uses computeSetupStatus(process.env).setup_complete (consistent post-populate).
     - the fail-safe startup scan is report-only and threshold-gated: it reports `orphaned_node`
-      nodes and (DEF-12/13, S3 mode only) file nodes stuck in `pending_upload` only when either
+      nodes and (S3 mode only) file nodes stuck in `pending_upload` only when either
       count is non-zero, and performs zero mutations (manual resolution via
       `POST /api/admin/maintenance/repair-sync`; the `pending_upload` scan returns an empty list
       in WebDAV mode, where healthy file nodes intentionally stay `pending_upload`).
+      The same scan gains a non-blocking content-hash completeness
+      probe — `COUNT(*) WHERE content_hash IS NULL` on `filecache`; `nullCount > 0` logs a
+      warn and persists the `failsafe` admin_reports row (`contentHashCompleteness`
+      payload). No boot-time backfill — manual repair via
+      `POST /api/admin/reports/:id/repair`.
 ```
 
 ## 3. Why admin seeding is deferred
@@ -84,11 +106,12 @@ default password.
 
 ## 5. Verification
 
-- [ ] Fresh boot (no `.env`, no remote-DB credentials): metadata backend defaults to SQLite; the DB connects locally and the wizard serves non-T0 only while non-T0 config is incomplete.
-- [ ] Partial `WEA_DB_*` credential set (some but not all of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD`) → boot fails: `storage.getBackend()` throws `Partial WEA_DB_* configuration: missing <keys> …`, the `runBoot()` catch logs `Initialization failed: …`, then `process.exit(1)`.
-- [ ] Full config in DB (T0 in `.env`): boots, T1 values visible to require-time consts,
+- [x] Fresh boot (no `.env`, no remote-DB credentials): metadata backend defaults to SQLite; the DB connects locally and the wizard serves non-T0 only while non-T0 config is incomplete.
+- [x] Partial `WEA_DB_*` credential set (some but not all of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD`) → boot fails: `storage.getBackend()` throws `Partial WEA_DB_* configuration: missing <keys> …` and the boot entry pre-flight (§2 step 2; the `runBoot()` catch for later failures) logs `Initialization failed: …`, then `process.exit(1)`.
+- [x] Full config in DB (T0 in `.env`): boots, T1 values visible to require-time consts,
       `ADMIN_DEFAULT_PASSWORD` honored when DB-sourced.
-- [ ] `.env` wins over DB for any T1 key (`populateT1Env` never overwrites existing env).
-- [ ] T2 keys never written into process.env (stay lazy).
-- [ ] PORT from DB used at listen; CORS origin list resolved per request.
-- [ ] A failing active-file-backend boot probe leaves the health tracker `fail` (reset runs first), so `GET /api/health` reports the failure and the file-screen banner shows immediately after login.
+- [x] `.env` wins over DB for any T1 key (`populateT1Env` never overwrites existing env).
+- [x] T2 keys never written into process.env (stay lazy).
+- [x] PORT from DB used at listen; CORS origin list resolved per request.
+- [x] A failing active-file-backend boot probe leaves the health tracker `fail` (reset runs first), so `GET /api/health` reports the failure and the file-screen banner shows immediately after login.
+- [x] Boot with NULL `filecache.content_hash` rows: warn logged, one `failsafe` admin_reports row with `contentHashCompleteness`, boot NOT blocked; the repair endpoint backfills and a re-boot reports `nullCount: 0`.

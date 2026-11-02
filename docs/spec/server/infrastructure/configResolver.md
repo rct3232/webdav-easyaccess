@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item        | Description                                                                                                                                                                                                                                                                                                                                                                             |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role        | Resolves the effective configuration value for any registered key using the D1 chain `.env → DB settings row → built-in default`, with per-tier source rules, a small TTL cache for T2 reads, and a masked effective-config report for the admin GET and setup status. DB `settings` rows hold plaintext values — there is no field-level encryption at rest and no decryption on read. |
-| Consumed by | the boot path (`populateT1Env` env mirror at server/index.js:243), the admin config API (server/domains/admin/routes/config.js), and setup routes / setup status (`computeSetupStatus` consumes the `getEffectiveConfig` map).                                                                                                                                                          |
+| Item        | Description                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role        | Resolves the effective configuration value for any registered key using the resolution chain `.env → DB settings row → built-in default`, with per-tier source rules, a small TTL cache for T2 reads, and a masked effective-config report for the admin GET and setup status. DB `settings` rows hold plaintext values — there is no field-level encryption at rest and no decryption on read. |
+| Consumed by | the boot path (`populateT1Env` env mirror at server/index.js:243), the admin config API (server/domains/admin/routes/config.js), and setup routes / setup status (`computeSetupStatus` consumes the `getEffectiveConfig` map).                                                                                                                                                                  |
 
 ---
 
@@ -44,11 +44,11 @@ getConfig(key):
   5. entry.default (when defined) → return it; else undefined
 ```
 
-- **Env precedence (D1):** an env value always wins and the DB is not touched. For secrets, an env value means "do not even read the DB".
+- **Env precedence:** an env value always wins and the DB is not touched. For secrets, an env value means "do not even read the DB".
 - **dbOnly entries (registry `dbOnly: true`):** never env-driven. Step 2 is skipped, so resolution is DB row → built-in default only; `getEffectiveConfig` reports `source:'db'` or `'default'` (never `'env'`), `populateT1Env` does not mirror them into `process.env`, and `configSync`/setup never treat env as authoritative. See `docs/features/config-source-resolution.md` and `docs/spec/server/infrastructure/configRegistry.md` §2.3.
 - **Boot-mirrored T1 keys (`markDbSourced`):** `populateT1Env` copies DB-sourced T1 values into `process.env` so require-time consts see them. Those keys are recorded as DB-sourced, so the resolver **skips the env-first step** for them — the DB row is the source (`'db'`), the env copy is just a boot mirror. Without this, every DB-backed T1 key would report `source:'env'` and the admin UI would lock it. A genuinely operator-set env value (present before boot population) is never mirrored and keeps `source:'env'`.
 - **Empty-string env values** are treated as unset (matches codebase `process.env.X || default` conventions).
-- **DB value shapes (D11):** `settings` rows store plaintext values — a JSON string on PG (parsed back to the string by the store on read) and raw TEXT on sqlite. The resolver returns a row's value **as stored**; there is no payload shape to detect and no master key dependency.
+- **DB value shapes:** `settings` rows store plaintext values — a JSON string on PG (parsed back to the string by the store on read) and raw TEXT on sqlite. The resolver returns a row's value **as stored**; there is no payload shape to detect and no master key dependency.
 - **`registration_enabled`:** the raw stored value (JSON boolean or string) is passed through; a boolean is returned as-is (boolean passthrough); no coercion, no default.
 
 ### 2.4 settingsStore Contract
@@ -69,7 +69,7 @@ The resolver reads **only** through the injected store. Public API it relies on:
 - TTL backstop: a cached row is used only when `now - loadedAt < ttlMs` (default 5000ms). Expired rows are re-read from the store.
 - `invalidateCache()` (admin/wizard write path) clears immediately; `invalidateCache(keys)` clears the listed keys.
 - `getEffectiveConfig()` and `loadAll()` perform a single bulk `getAll()` and **seed** the per-key cache from that snapshot.
-- Single-instance assumption (Q2). No cross-process invalidation.
+- Single-instance assumption: no cross-process invalidation.
 
 ### 2.6 Behavior of `getEffectiveConfig`
 

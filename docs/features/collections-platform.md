@@ -404,8 +404,7 @@ There is no vocabulary institution: no merge, no parent hints, no vector tag mat
 materialization of LLM tags. Read-time case/whitespace/Unicode folding is a pure function
 for counts/display; `ai_tag_raw` holds ONLY derived local facets (`mime:`/`ext:`/`month:`/
 `path:`), matched by folded string equality (§3.2). The semantic-expansion need lives in
-document/media-vector collections (§4.5/§4.6), never in tag fuzzy. (Measurements: PoC
-§6.5/§6.9.)
+document/media-vector collections (§4.5/§4.6), never in tag fuzzy.
 
 ### 4.19 Chat-model roles
 

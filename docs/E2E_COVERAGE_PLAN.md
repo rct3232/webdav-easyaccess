@@ -222,8 +222,8 @@ Notes:
   `E2E-TRASH-007` is the former `E2E-TRASH-008` ("Empty-trash control is hidden
   for non-admin users").
 - Dated logs written before 2026-11-01 (`docs/RCA_LOG.md`,
-  `docs/IMPROVEMENT_PLAN.md`, and root `PLAN_EXECUTION.md`) keep the old IDs.
-  This table is the translation; do not rewrite historical evidence.
+  `docs/IMPROVEMENT_PLAN.md`) keep the old IDs. This table is the translation; do not
+  rewrite historical evidence.
 - The flow inventory and the ownership map in this document use the new IDs.
 
 ### Release gate commands

@@ -43,6 +43,34 @@ describe('sqlite driver migration (node:sqlite, T0.12)', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('e2e source contains no sqlite3 npm requires', () => {
+    const repoRoot = path.join(__dirname, '../../../..');
+    const e2eRoot = path.join(repoRoot, 'e2e');
+    const offenders = [];
+    const SKIP_DIRS = new Set(['node_modules']);
+
+    function walk(dir) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          if (SKIP_DIRS.has(entry.name)) continue;
+          walk(path.join(dir, entry.name));
+        } else if (entry.name.endsWith('.ts')) {
+          const file = path.join(dir, entry.name);
+          const source = fs.readFileSync(file, 'utf8');
+          if (
+            /require\(\s*['"]sqlite3['"]\s*\)/.test(source) ||
+            /from\s+['"]sqlite3['"]/.test(source)
+          ) {
+            offenders.push(path.relative(repoRoot, file));
+          }
+        }
+      }
+    }
+
+    walk(e2eRoot);
+    expect(offenders).toEqual([]);
+  });
+
   describe('BigInt integer-PK binding through the executor', () => {
     let dbPath;
 

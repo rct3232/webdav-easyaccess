@@ -1328,6 +1328,36 @@ describe('capability matrix runtime authority (declared ≠ probed)', () => {
     expect(probeState.listWarnings().find((w) => w.role === 'chat')).toBeUndefined();
   });
 
+  it('publishRoleProbeOutcome publishes an already-run manual result without re-probing', async () => {
+    const r = makeResolver({ ...REMOTE_CHAT });
+    const preset = {
+      id: 'gemma-4-12b-it',
+      expected: { chat: true, vision_chat: true, asr: true },
+    };
+    const probeRole = jest.fn();
+    const { adapter } = buildAdapter({
+      resolver: r,
+      deps: { presetFor: () => preset, probeRole },
+    });
+
+    await adapter.publishRoleProbeOutcome('chat', { ok: true, role: 'chat', reason: null });
+    expect(adapter.getEffectiveCapabilities().chat).toBe(true);
+    expect(probeRole).not.toHaveBeenCalled();
+
+    await adapter.publishRoleProbeOutcome('chat', {
+      ok: false,
+      role: 'chat',
+      reason: 'schema: not JSON',
+    });
+    expect(adapter.getEffectiveCapabilities().chat).toBe(false);
+    expect(probeState.listWarnings().find((w) => w.role === 'chat')).toMatchObject({
+      capability: 'chat',
+      code: 'probe_failed',
+      reason: 'schema: not JSON',
+    });
+    expect(probeRole).not.toHaveBeenCalled();
+  });
+
   it('probeConfiguredRoles probes configured roles only and publishes each outcome', async () => {
     const r = makeResolver({ ...REMOTE_CHAT });
     const probed = [];

@@ -304,6 +304,11 @@ function createOpenAiCompatibleClient(spec = {}) {
     form.append('response_format', 'json');
     const prompt = isSet(opts.prompt) ? `${ESCAPE_PROMPT}\n${opts.prompt}` : ESCAPE_PROMPT;
     form.append('prompt', prompt);
+    // Deterministic transcription: the llama.cpp server default is the chat
+    // temperature (1.0), which made the same speech fixture alternate between
+    // 'none' and the transcript and flaked the ASR capability probe.
+    const temperature = Number.isFinite(opts.temperature) ? opts.temperature : 0;
+    form.append('temperature', String(temperature));
 
     const signal =
       typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'

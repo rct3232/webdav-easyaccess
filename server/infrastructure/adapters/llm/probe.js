@@ -51,6 +51,14 @@ const CHAT_PROBE_SENTENCE =
   'A golden retriever sleeps on the couch while rain taps against the window.';
 const CHAT_PROBE_INSTRUCTION =
   'Extract content tags from the sentence. Answer with JSON only: {"tags": ["...", ...]}';
+const CHAT_PROBE_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    tags: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['tags'],
+  additionalProperties: false,
+});
 
 // In-domain text probe samples (§2.4): two real, distinct mixed-ko/en
 // sentences. Constant-output endpoints return the same vector for both and are
@@ -66,40 +74,33 @@ function isSet(value) {
 }
 
 function classifyProbeOutcome(err) {
-  if (err instanceof SyntaxError) return 'schema';
+  if (err instanceof SyntaxError || err?.class === 'schema') return 'schema';
   return 'transport';
 }
 
-async function probeChatEndpoint({ baseUrl, apiKey, model }) {
-  const url = `${String(baseUrl).replace(/\/+$/, '')}/chat/completions`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      ...(isSet(apiKey) ? { authorization: `Bearer ${apiKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: CHAT_PROBE_INSTRUCTION },
-        { role: 'user', content: CHAT_PROBE_SENTENCE },
-      ],
-      temperature: 0,
-      stream: false,
-    }),
+async function probeChatEndpoint({ baseUrl, apiKey, model, fetchImpl }) {
+  // Use the SAME client as the runtime chat path: it adds
+  // `response_format: json_schema` when a schema is supplied (plus the preset
+  // `chat_template_kwargs`). A raw fetch without response_format makes models
+  // such as Hana wrap valid JSON in a markdown fence, which is a probe/model-
+  // contract mismatch, not a chat capability failure.
+  const row = findPreset('gemma-4-12b-it');
+  const client = createOpenAiCompatibleClient({
+    baseUrl,
+    apiKey,
+    model,
+    profile: row ? row.profile : null,
+    kwargs: row ? row.kwargs : null,
+    ...(fetchImpl ? { fetchImpl } : {}),
   });
-  if (!response.ok) {
-    throw probeError(
-      SETUP_TEST_FAILED_CODE,
-      HTTP_STATUS.BAD_REQUEST,
-      'Connection test failed',
-      toShortReason(`chat probe HTTP ${response.status}`)
-    );
-  }
-  const payload = await response.json();
-  const content = payload?.choices?.[0]?.message?.content;
-  const parsed = JSON.parse(content); // throws SyntaxError → schema failure
-  const tags = parsed?.tags;
+  const result = await client.chat(
+    [
+      { role: 'system', content: CHAT_PROBE_INSTRUCTION },
+      { role: 'user', content: CHAT_PROBE_SENTENCE },
+    ],
+    { schema: CHAT_PROBE_SCHEMA }
+  );
+  const tags = result?.json?.tags;
   const schemaValid =
     Array.isArray(tags) && tags.length > 0 && tags.every((tag) => typeof tag === 'string');
   if (!schemaValid) {
@@ -358,7 +359,7 @@ async function probeLlm(body) {
 
   try {
     if (role === 'chat') {
-      await probeChatEndpoint({ baseUrl, apiKey, model });
+      await probeChatEndpoint({ baseUrl, apiKey, model, fetchImpl });
     } else if (role === 'vision') {
       await probeVisionEndpoint({ baseUrl, apiKey, model, fetchImpl });
     } else {

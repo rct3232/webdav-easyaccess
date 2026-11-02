@@ -421,6 +421,16 @@ function createLlmAdapter(deps = {}) {
   }
 
   /**
+   * Publish an ALREADY-RUN suite outcome (the admin manual test) without
+   * re-probing the provider. Used only for a test against the stored config;
+   * pending-value tests must not touch the active capability matrix.
+   */
+  async function publishRoleProbeOutcome(role, outcome) {
+    if (!CAPABILITY_BY_ROLE[role]) return null;
+    return publishRoleCapability(role, outcome || { ok: false, reason: 'probe failed' });
+  }
+
+  /**
    * Run the §2.4 media positive controls against the active embed client and
    * cache the verdict per resolved-config signature (one activation pass per
    * signature, never per call). Text is published independently, so a media
@@ -1198,6 +1208,7 @@ function createLlmAdapter(deps = {}) {
     getRoleReadiness,
     getRoleClient,
     probeRole: probeRoleNow,
+    publishRoleProbeOutcome,
     probeConfiguredRoles,
     reconcileConfiguredRoles,
     getEffectiveCapabilities: () => probeState.getEffectiveCapabilities(),

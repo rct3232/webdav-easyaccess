@@ -131,6 +131,29 @@ function toCamelProbeField(key) {
   return 'model';
 }
 
+// Fields that turn an LLM config test into a PENDING-value test. Only a test
+// against the stored config may republish the adapter capability matrix.
+const LLM_PROBE_OVERRIDE_KEYS = {
+  chat: ['LLM_CHAT_BASE_URL', 'LLM_CHAT_API_KEY', 'LLM_CHAT_MODEL', 'baseUrl', 'apiKey', 'model'],
+  vision: [
+    'LLM_VISION_BASE_URL',
+    'LLM_VISION_API_KEY',
+    'LLM_VISION_MODEL',
+    'baseUrl',
+    'apiKey',
+    'model',
+  ],
+  asr: ['LLM_ASR_BASE_URL', 'LLM_ASR_API_KEY', 'LLM_ASR_MODEL', 'baseUrl', 'apiKey', 'model'],
+};
+
+function hasLlmProbeOverrides(role, pending) {
+  const keys = LLM_PROBE_OVERRIDE_KEYS[role] || [];
+  return keys.some((key) => {
+    const value = pending[key];
+    return value !== undefined && value !== null && value !== '' && value !== SECRET_MASK;
+  });
+}
+
 // Middleware to check if user is admin (same pattern as settings.js)
 const isAdmin = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.user.id);
@@ -272,6 +295,27 @@ router.post(
           ? buildLlmProbePayload(pending)
           : buildProbePayload(target, pending, effective);
       const result = await runProbe(target, probePayload);
+
+      // A successful manual LLM test against the STORED config must also
+      // publish the capability matrix; the AI dashboard reads probeState, not
+      // this route's one-shot health report. Pending-value tests are excluded
+      // (their values are not the active config).
+      if (target === 'llm') {
+        const role = String(pending.role || '');
+        if (['chat', 'vision', 'asr'].includes(role) && !hasLlmProbeOverrides(role, pending)) {
+          const adapter = getLlmAdapter();
+          try {
+            if (adapter && typeof adapter.publishRoleProbeOutcome === 'function') {
+              await adapter.publishRoleProbeOutcome(role, result);
+            } else if (adapter && typeof adapter.probeRole === 'function') {
+              await adapter.probeRole(role);
+            }
+          } catch {
+            /* capability republish is best-effort; the test result stands */
+          }
+        }
+      }
+
       getBackendHealth().report(target, { ok: true });
       res.json(result);
     } catch (error) {

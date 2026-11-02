@@ -383,6 +383,45 @@ describe('POST /api/admin/config/test', () => {
     );
   });
 
+  it('republishes the adapter capability after a successful stored-config LLM test', async () => {
+    fakeResolver.getConfigSync.mockImplementation((key) => {
+      if (key === 'JWT_EXPIRES_IN') return '30m';
+      if (key === 'LLM_ASR_BASE_URL') return 'http://llm.local/v1';
+      if (key === 'LLM_ASR_MODEL') return 'Hana';
+      return undefined;
+    });
+    const publishRoleProbeOutcome = jest.fn().mockResolvedValue({});
+    getLlmAdapter.mockReturnValue({ publishRoleProbeOutcome });
+    runProbe.mockResolvedValue({ ok: true, role: 'asr' });
+
+    const res = await request(app)
+      .post('/api/admin/config/test')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({ target: 'llm', role: 'asr' });
+
+    expect(res.status).toBe(200);
+    expect(publishRoleProbeOutcome).toHaveBeenCalledWith('asr', { ok: true, role: 'asr' });
+  });
+
+  it('does not republish the adapter capability for a pending-value LLM test', async () => {
+    const publishRoleProbeOutcome = jest.fn();
+    getLlmAdapter.mockReturnValue({ publishRoleProbeOutcome });
+    runProbe.mockResolvedValue({ ok: true, role: 'chat' });
+
+    const res = await request(app)
+      .post('/api/admin/config/test')
+      .set('Authorization', `Bearer ${buildToken()}`)
+      .send({
+        target: 'llm',
+        role: 'chat',
+        baseUrl: 'http://pending.local/v1',
+        model: 'pending-model',
+      });
+
+    expect(res.status).toBe(200);
+    expect(publishRoleProbeOutcome).not.toHaveBeenCalled();
+  });
+
   it('returns 400 ok:false with classified errorCode and reason when the probe throws', async () => {
     fakeResolver.getEffectiveConfig.mockResolvedValue({});
     const err = new Error('Connection test failed');

@@ -152,7 +152,11 @@ the previous value was unset) and invalidates the resolver cache for that key.
   `baseUrl`/`apiKey`/`model` overrides). The route registers the `llm` probe target
   (`ensureLlmProbeTarget()`) before `runProbe`, and resolves missing role credentials from
   the config resolver — stored secrets never round-trip through the client. The probe
-  outcome lands in the matching `ai.<role>` tracker row.
+  outcome lands in the matching `ai.<role>` tracker row. On a successful test that used
+  **stored** credentials (no pending overrides), the route also calls the adapter's
+  `publishRoleProbeOutcome(role, result)` so the capability matrix/dashboard reflects the
+  same result without a second provider call; a test with pending overrides never
+  republishes the stored-config matrix.
 - Reuses the wizard probe machinery (`server/infrastructure/backendProbe.js`): `runProbe(target, payload)`.
 
 **200:**

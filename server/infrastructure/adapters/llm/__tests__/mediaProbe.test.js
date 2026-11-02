@@ -362,3 +362,32 @@ describe('vision/asr probes use real fixtures and positive controls', () => {
     ).rejects.toMatchObject({ reason: 'asr_transcript_mismatch' });
   });
 });
+
+describe('chat probe uses the runtime structured-output contract', () => {
+  it('sends response_format and accepts the raw JSON produced under the schema', async () => {
+    const requests = [];
+    const server = await startServer((req, res, body) => {
+      if (req.url !== '/chat/completions') return json(res, 404, {});
+      const payload = JSON.parse(body.toString('utf8'));
+      requests.push(payload);
+      const content = payload.response_format
+        ? '{"tags":["dog","rain"]}'
+        : '```json\n{"tags":["dog","rain"]}\n```';
+      return json(res, 200, {
+        choices: [{ message: { content }, finish_reason: 'stop' }],
+      });
+    });
+    try {
+      const result = await probeLlm({
+        role: 'chat',
+        baseUrl: server.baseUrl,
+        model: 'Hana',
+      });
+      expect(result).toMatchObject({ ok: true, role: 'chat', reason: null });
+      expect(requests).toHaveLength(1);
+      expect(requests[0].response_format).toMatchObject({ type: 'json_schema' });
+    } finally {
+      await server.close();
+    }
+  });
+});

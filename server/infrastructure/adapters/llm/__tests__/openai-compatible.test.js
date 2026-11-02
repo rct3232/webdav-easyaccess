@@ -181,6 +181,7 @@ describe('remote OpenAI-compatible dialect client', () => {
     expect(capture.raw).toContain('name="prompt"');
     expect(capture.raw).toContain(ESCAPE_PROMPT);
     expect(capture.raw).toContain('name="model"');
+    expect(capture.raw).toMatch(/name="temperature"\r\n\r\n0/);
   });
 });
 

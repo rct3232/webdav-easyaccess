@@ -3,6 +3,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { spawn, spawnSync, execFileSync, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { DatabaseSync } from 'node:sqlite';
 
 import { expect, type Page } from '@playwright/test';
 
@@ -356,53 +357,32 @@ export async function queryScratchPg<T = Record<string, unknown>>(
 /**
  * Run a read-only query against a scratch sqlite file (Case 3: prove the
  * wizard's postgresql apply never seeded/updated users in the scratch sqlite
- * store). sqlite3 has no types; the local structural type keeps it typed.
+ * store). Uses the product's node:sqlite driver; rows are returned directly.
  */
-export function queryScratchSqlite<T = Record<string, unknown>>(
+export async function queryScratchSqlite<T = Record<string, unknown>>(
   dbPath: string,
   sql: string
 ): Promise<T[]> {
-  return new Promise((resolve, reject) => {
-    const { Database, OPEN_READONLY } = require('sqlite3') as {
-      Database: new (
-        path: string,
-        mode?: number
-      ) => {
-        all: (sql: string, cb: (err: Error | null, rows: T[]) => void) => void;
-        close: (cb?: (err: Error | null) => void) => void;
-      };
-      OPEN_READONLY: number;
-    };
-    const db = new Database(dbPath, OPEN_READONLY);
-    db.all(sql, (err, rows) => {
-      db.close(() => {});
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    return db.prepare(sql).all() as T[];
+  } finally {
+    db.close();
+  }
 }
 
 /**
  * Run a write/DDL statement against a scratch sqlite file (its own connection,
  * closed afterwards). Used by the migration spec to seed object_map rows and
- * flood the source `settings` table. sqlite3 has no types; the local
- * structural type keeps it typed.
+ * flood the source `settings` table. Uses the product's node:sqlite driver.
  */
-export function execScratchSqlite(dbPath: string, sql: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const { Database } = require('sqlite3') as {
-      Database: new (path: string) => {
-        run: (sql: string, cb: (err: Error | null) => void) => void;
-        close: (cb?: (err: Error | null) => void) => void;
-      };
-    };
-    const db = new Database(dbPath);
-    db.run(sql, (err) => {
-      db.close(() => {});
-      if (err) reject(err);
-      else resolve();
-    });
-  });
+export async function execScratchSqlite(dbPath: string, sql: string): Promise<void> {
+  const db = new DatabaseSync(dbPath);
+  try {
+    db.exec(sql);
+  } finally {
+    db.close();
+  }
 }
 
 /**

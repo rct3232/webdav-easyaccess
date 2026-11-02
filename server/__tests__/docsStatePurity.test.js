@@ -1,20 +1,19 @@
 'use strict';
 
 /**
- * Docs state-purity gate (AGENTS §2.1.5, PLAN.md §8, AI_FEATURE_PLAN §12 preamble).
+ * Docs state-purity gate (AGENTS §2.1.5).
  *
  * `docs/spec/**` and `docs/features/**` carry decided/implemented STATE only.
  * Dated rulings, rationale, retracted proposals, task/phase provenance, and
- * design-doc pointers must live only in AI_FEATURE_PLAN.md / PLAN.md /
- * PLAN_EXECUTION.md / POC.md.
- * This test codifies the PLAN §8 mechanical sweep (previously a manual grep)
+ * design-doc pointers must live outside the scoped spec/feature docs.
+ * This test codifies the docs gate mechanical sweep (previously a manual grep)
  * plus a §-pointer resolution check: every `§X.Y` citation in a scoped doc must
  * resolve to a numbered heading in a known reference document.
  *
  * WARN-tier markers (rollout labels like `(target)` on contract-spec checklists)
  * are printed, not asserted — they are sanctioned target-contract notation.
  *
- * @see PLAN.md §8 (Docs gate)
+ * @see docs/TESTING_STRATEGY.md
  */
 
 const fs = require('fs');

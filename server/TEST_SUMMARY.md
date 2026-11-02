@@ -13,8 +13,7 @@ Summary of the test implementation for the Express.js server application. All te
 - **Execution Time**: Reported per run by `npm run test`
 
 > P4 exit-gate pin (D4): these counts come from the canonical run at the `ai-feature` P4
-> closure tip and replace the historical 3382/3386/3381 pins. See
-> `PLAN_EXECUTION.md` §33.10.
+> closure tip and replace the historical 3382/3386/3381 pins.
 
 > New/extended suites since the 2026-09-04 snapshot: `infrastructure/__tests__/trashSoftDeleteSchema.test.js` (new; registered on the PG adapter leg), extended `failSafeService` (pending_upload scan/repair) and `gcService` (retention categories: garbage/version/guarded/pending-live) suites. 2026-09-10: trash-schema DDL folded into `001_initial_normalized_schema.sql` (single-file chain) — removed 5 tests (4 converter table-rebuild tests in `sqliteSchemaInit`, the pre-fold sqlite in-place migration scenario in `trashSoftDeleteSchema`).
 

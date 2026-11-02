@@ -1149,6 +1149,16 @@ describe('createGcService', () => {
     it('collects per-node purge failures without aborting the cycle', async () => {
       const failingFirst = await seedTrashedRoot({ name: 'fail-a', daysAgo: 40 });
       const succeedingSecond = await seedTrashedRoot({ name: 'ok-b', daysAgo: 40 });
+      // `getTopmostTrashedNodes` purges in `deleted_at DESC, name` order; both
+      // seeds stamp second-granularity `deleted_at`, so a second-boundary
+      // straddle flips the asserted call order (the name tie-break only holds
+      // within one second). Pin the SECOND seed strictly older (still inside
+      // the 40-day retention-expired window) to keep the asserted order
+      // deterministic under the real DESC contract.
+      await dbRun(
+        `UPDATE file_nodes SET deleted_at = datetime('now', '-40 days', '-1 seconds') WHERE id = ?`,
+        [succeedingSecond.root.id]
+      );
       const stubTrashService = {
         purgeNode: jest
           .fn()

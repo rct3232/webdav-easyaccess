@@ -40,19 +40,32 @@ function stripTransactionWrapper(sql) {
   return sql.replace(/BEGIN\s*;/gi, '').replace(/COMMIT\s*;/gi, '');
 }
 
+// node:sqlite (DatabaseSync) executes synchronously; the promise shapes are
+// kept for the executor contract (docs/spec/server/store/executor.md). Bind
+// values are normalized like the storage seam (booleans → 1/0,
+// undefined → NULL) so both executor paths behave identically.
+function normalizeSqliteBindValue(value) {
+  if (value === undefined) return null;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  return value;
+}
+
 function sqliteQueryOn(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => (err ? reject(err) : resolve({ rows: rows || [] })));
-  });
+  try {
+    const rows = db.prepare(sql).all(...(params || []).map(normalizeSqliteBindValue));
+    return Promise.resolve({ rows: rows || [] });
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 function sqliteRunOn(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve({ changes: this.changes, lastID: this.lastID });
-    });
-  });
+  try {
+    const info = db.prepare(sql).run(...(params || []).map(normalizeSqliteBindValue));
+    return Promise.resolve({ changes: info.changes, lastID: info.lastInsertRowid });
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 // Resolve the PG executor: an explicit client wins; otherwise the active pool.

@@ -1,15 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  Box,
-  ListItem,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Collapse,
-  Typography,
-  List,
-  Tooltip,
-} from '@mui/material';
+import React from 'react';
+import { Box, Collapse, List } from '@mui/material';
 import {
   Folder as FolderIcon,
   FolderOpen as FolderOpenIcon,
@@ -18,6 +8,7 @@ import {
 } from '@mui/icons-material';
 import { FileTreeSkeleton } from '../file-manager/FileSkeletons';
 import useFolderTreeItemController from './hooks/useFolderTreeItemController';
+import TreeRow, { TreeRowSpacer } from './TreeRow';
 
 /**
  * 통합된 폴더 트리 아이템 컴포넌트
@@ -120,23 +111,6 @@ const BaseFolderTreeItem = ({
     listFilesOptions,
     filterChildNames,
   });
-  const nameTextRef = useRef(null);
-  const [isNameTruncated, setIsNameTruncated] = useState(false);
-
-  const checkNameTruncation = useCallback(() => {
-    const el = nameTextRef.current;
-    if (!el) return;
-    setIsNameTruncated(el.scrollWidth > el.clientWidth);
-  }, []);
-
-  useEffect(() => {
-    checkNameTruncation();
-    const el = nameTextRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(checkNameTruncation);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [name, checkNameTruncation]);
 
   // 자식 렌더링 함수
   const isDropHighlight = (isDropTarget || isDraggingOver) && hasWritePermission;
@@ -176,135 +150,103 @@ const BaseFolderTreeItem = ({
 
   return (
     <>
-      <ListItem
-        data-testid="folder-tree-item"
-        disablePadding
-        sx={{
-          '&:hover': {
-            backgroundColor: isDisabled
-              ? 'transparent'
-              : isDropHighlight
-                ? 'transparent'
-                : 'action.hover',
+      <TreeRow
+        level={level}
+        name={name}
+        selected={isCurrent && !isDisabled}
+        disabled={isDisabled}
+        onClick={handleClick}
+        leading={
+          showExpandIcon ? (
+            <Box
+              component="span"
+              onClick={handleToggle}
+              sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+                width: 20,
+                height: 20,
+                justifyContent: 'center',
+              }}
+            >
+              {loading ? (
+                <Box
+                  sx={{
+                    width: 12,
+                    height: 12,
+                    border: '2px solid',
+                    borderColor: 'action.disabled',
+                    borderTopColor: 'primary.main',
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite',
+                    '@keyframes spin': {
+                      '0%': { transform: 'rotate(0deg)' },
+                      '100%': { transform: 'rotate(360deg)' },
+                    },
+                  }}
+                />
+              ) : isExpanded ? (
+                <ExpandMoreIcon fontSize="small" />
+              ) : (
+                <ChevronRightIcon fontSize="small" />
+              )}
+            </Box>
+          ) : (
+            <TreeRowSpacer />
+          )
+        }
+        icon={
+          isExpanded
+            ? openIcon || <FolderOpenIcon fontSize="small" />
+            : icon || <FolderIcon fontSize="small" />
+        }
+        textSx={{
+          opacity: isHidden || (name && name.startsWith('.')) ? 0.5 : 1,
+        }}
+        buttonSx={{
+          opacity: isDisabled ? 0.4 : 1,
+          backgroundColor: isDropHighlight ? 'primary.main' : 'transparent',
+          ...(isDropHighlight && {
+            color: 'white',
+            borderLeft: '3px solid',
+            borderLeftColor: 'primary.main',
+            '& .MuiListItemIcon-root': { color: 'white' },
+            '& .MuiTypography-root': { color: 'white' },
+          }),
+          '&.Mui-selected': {
+            backgroundColor: isDropHighlight ? 'primary.main' : 'transparent',
+            color: isDropHighlight ? 'white' : 'primary.main',
+            borderLeft: '3px solid',
+            borderLeftColor: 'primary.main',
+            '&:hover': {
+              backgroundColor: isDropHighlight ? 'primary.main' : 'action.hover',
+            },
+            '& .MuiListItemIcon-root': {
+              color: isDropHighlight ? 'white' : 'primary.main',
+            },
           },
         }}
-        draggable={!isMobile && !isDisabled}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onDragEnter={isMobile ? undefined : handleFolderDragEnter}
-        onDragOver={isMobile ? undefined : handleFolderDragOver}
-        onDragLeave={isMobile ? undefined : handleFolderDragLeave}
-        onDrop={isMobile ? undefined : handleFolderDrop}
-      >
-        <ListItemButton
-          onClick={handleClick}
-          selected={isCurrent && !isDisabled}
-          disabled={isDisabled}
-          sx={{
-            py: 0.5,
-            minHeight: 32,
-            pl: level * 2,
-            opacity: isDisabled ? 0.4 : 1,
-            backgroundColor: isDropHighlight ? 'primary.main' : 'transparent',
-            transition: 'all 0.2s',
-            ...(isDropHighlight && {
-              color: 'white',
-              borderLeft: '3px solid',
-              borderLeftColor: 'primary.main',
-              '& .MuiListItemIcon-root': { color: 'white' },
-              '& .MuiTypography-root': { color: 'white' },
-            }),
-            '&.Mui-selected': {
-              backgroundColor: isDropHighlight ? 'primary.main' : 'transparent',
-              color: isDropHighlight ? 'white' : 'primary.main',
-              borderLeft: '3px solid',
-              borderLeftColor: 'primary.main',
-              '&:hover': {
-                backgroundColor: isDropHighlight ? 'primary.main' : 'action.hover',
-              },
-              '& .MuiListItemIcon-root': {
-                color: isDropHighlight ? 'white' : 'primary.main',
-              },
+        listItemProps={{
+          'data-testid': 'folder-tree-item',
+          sx: {
+            '&:hover': {
+              backgroundColor: isDisabled
+                ? 'transparent'
+                : isDropHighlight
+                  ? 'transparent'
+                  : 'action.hover',
             },
-          }}
-        >
-          <ListItemIcon sx={{ minWidth: 24, mr: 0.5 }}>
-            {showExpandIcon ? (
-              <Box
-                component="span"
-                onClick={handleToggle}
-                sx={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  cursor: 'pointer',
-                  width: 20,
-                  height: 20,
-                  justifyContent: 'center',
-                }}
-              >
-                {loading ? (
-                  <Box
-                    sx={{
-                      width: 12,
-                      height: 12,
-                      border: '2px solid',
-                      borderColor: 'action.disabled',
-                      borderTopColor: 'primary.main',
-                      borderRadius: '50%',
-                      animation: 'spin 1s linear infinite',
-                      '@keyframes spin': {
-                        '0%': { transform: 'rotate(0deg)' },
-                        '100%': { transform: 'rotate(360deg)' },
-                      },
-                    }}
-                  />
-                ) : isExpanded ? (
-                  <ExpandMoreIcon fontSize="small" />
-                ) : (
-                  <ChevronRightIcon fontSize="small" />
-                )}
-              </Box>
-            ) : (
-              <Box sx={{ width: 20 }} />
-            )}
-          </ListItemIcon>
-          <ListItemIcon sx={{ minWidth: 24 }}>
-            {isExpanded
-              ? openIcon || <FolderOpenIcon fontSize="small" />
-              : icon || <FolderIcon fontSize="small" />}
-          </ListItemIcon>
-          <ListItemText
-            primary={
-              <Tooltip
-                title={isNameTruncated ? name || '' : ''}
-                disableInteractive
-                enterDelay={300}
-              >
-                <Typography
-                  ref={nameTextRef}
-                  variant="body2"
-                  component="span"
-                  sx={{
-                    fontSize: '0.875rem',
-                    fontWeight: isCurrent ? 700 : 400,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    display: 'block',
-                  }}
-                >
-                  {name}
-                </Typography>
-              </Tooltip>
-            }
-            sx={{
-              opacity: isHidden || (name && name.startsWith('.')) ? 0.5 : 1,
-              minWidth: 0,
-              overflow: 'hidden',
-            }}
-          />
-        </ListItemButton>
-      </ListItem>
+          },
+          draggable: !isMobile && !isDisabled,
+          onDragStart: handleDragStart,
+          onDragEnd: handleDragEnd,
+          onDragEnter: isMobile ? undefined : handleFolderDragEnter,
+          onDragOver: isMobile ? undefined : handleFolderDragOver,
+          onDragLeave: isMobile ? undefined : handleFolderDragLeave,
+          onDrop: isMobile ? undefined : handleFolderDrop,
+        }}
+      />
       {(hasChildren || loading) && (
         <Collapse in={isExpanded && (hasChildren || loading)} timeout="auto" unmountOnExit>
           <List component="div" disablePadding>

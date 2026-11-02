@@ -6,9 +6,9 @@ Summary of the test implementation for the React client application. All tests f
 
 ## Test Statistics
 
-- **Total Test Suites**: 157 (as of 2026-09-09)
-- **Total Tests**: 1421
-- **Pass Rate**: 100% (1421 passed, 0 failed) ✅
+- **Total Test Suites**: 198 (as of the 2026-10-31 client test-hardening run)
+- **Total Tests**: 2401
+- **Pass Rate**: 100% (2401 passed, 0 failed) ✅
 - **Execution Time**: Reported per run by `npm run test`
 
 ## Test Breakdown by Category
@@ -170,11 +170,32 @@ Tests that exercise full user flows (pages) with React Testing Library. API is m
 
 ### Key Modules & Overall Project Coverage
 
-The per-module and overall coverage percentages previously published in this file were captured from pre-reorganization runs and reference modules that no longer exist (e.g. `folderUtils.js`) or paths that have since moved. They are intentionally not reproduced here. Measure the current layout with `cd client && npm run test:coverage`; core business logic (utils, hooks) historically maintains the highest coverage.
+The per-module and overall coverage percentages previously published in this file were captured from pre-reorganization runs and reference modules that no longer exist (e.g. `folderUtils.js`) or paths that have since moved. They are intentionally not reproduced here. Measure the current layout with `cd client && npm run test`; core business logic (utils, hooks) historically maintains the highest coverage.
+
+## E2E (Playwright) — cross-reference
+
+Playwright ownership, case IDs, scratch slots, port bands and the enforced skip
+budgets are canonical in [docs/E2E_COVERAGE_PLAN.md](../docs/E2E_COVERAGE_PLAN.md);
+run procedures live in
+[docs/TEST_GIT_GUIDE.md](../docs/TEST_GIT_GUIDE.md). This file tracks the Jest
+tiers only.
+
+- P3 exit-gate runs (2026-10-27, port band 40, workers=1):
+  `s3-collections-desktop` 22 passed / 3 skipped / 0 failed,
+  `s3-collections-mobile` 24 passed / 1 skipped / 0 failed (serial, ~2 min each),
+  `s3-retrieval-desktop` 11 / 0 / 0, `s3-retrieval-mobile` 11 / 0 / 0 (the mobile
+  slot needed the documented per-port override `E2E_SCRATCH_RETRIEVAL_MOBILE_PORT=5062`
+  — WebKit refuses the band-40 default 5060, see `docs/RCA_LOG.md` 2026-10-27),
+  `s3-ai-desktop` 1 / 0 / 0 (pre-seeded `WEA_MODEL_DIR` weights resolved from the
+  default `/tmp/opencode/delta-base/models`).
+- The jest tiers above are the orchestrator's exit-gate ownership: this client
+  leg is pinned at 198 suites / 2401 tests; the server sqlite total is 207
+  suites / 3528 tests (3500 passed + 28 skipped) in `server/TEST_SUMMARY.md`,
+  while the real-PostgreSQL adapter snapshot is 32 suites / 492 passed + 1 skipped.
 
 ## Conclusion
 
-- 1421 tests across 157 suites, 100% pass rate (as of 2026-09-09)
+- 2401 tests across 198 suites, 100% pass rate (as of the 2026-10-31 AI-matrix demotion)
 - Tests are colocated with source under `components/`, `hooks/`, `pages/`, `services/`, `utils/`, `contexts/`
 - Coverage and integration goals documented
 - Test infrastructure and MSW setup in place (server created in `src/setupTests.js`)

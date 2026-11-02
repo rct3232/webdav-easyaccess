@@ -7,10 +7,9 @@
 | Role       | Metadata DB migration engine: moves all metadata rows between the `sqlite` and `postgresql` backends (both directions) via direct target connections. Performs a target scan, applies the schema to an explicit target, and runs a single-transaction wipe + copy whose cancellation rolls back everything. |
 | Depends on | `server/infrastructure/backendProbe.js` (`probePostgresql` pattern for direct `pg.Client` connections), `server/infrastructure/schemaManager.js` / `sqliteSchemaInit.js` (`convertPostgresToSqlite`), the settings-value contract of `server/store/settingsStore.js`                                        |
 | Files      | `server/domains/admin/services/metadataMigrationService.js` (new)                                                                                                                                                                                                                                           |
-| Test files | `server/domains/admin/services/__tests__/metadataMigrationService.test.js` (new; sqlite↔PG roundtrip under `test:ci:pg:adapters`)                                                                                                                                                                           |
+| Test files | `server/domains/admin/services/__tests__/metadataMigrationService.test.js` (new; sqlite↔PG roundtrip under `test:pg:adapters`)                                                                                                                                                                              |
 
-Source of truth: `docs/features/migration-mode.md`, `docs/spec/server/tools/metadata-migration.md`,
-`docs/features/migration-mode.md` (decisions D4–D6, D11, D14).
+Source of truth: `docs/features/migration-mode.md`, `docs/spec/server/tools/metadata-migration.md`.
 
 The service operates on **direct target connections** (`pg.Client` for PostgreSQL,
 node `sqlite3` (`sqlite3.Database`) for SQLite) — it does **not** use the app's own store/repository layer (which is
@@ -27,10 +26,10 @@ and default to direct-connection factories. The service does **not** derive the 
 itself: `direction` (and the `source`/`target` payloads) are passed in by the caller — the route
 worker derives them from the active backend (see §2.4).
 
-| Param                  | Type     | Description                                                                                                                                                                                                                            |
-| ---------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pgConnectionProvider` | function | `(pgConfig) => pg.Client` — direct PG connection factory. Defaults to a `pg.Client` built like `probePostgresql` in `server/infrastructure/backendProbe.js` (host/port/database/user/password, ssl option, `connectionTimeoutMillis`). |
-| `sqliteFactory`        | function | `(path) => sqlite connection` — direct SQLite factory (node sqlite3, `sqlite3.Database`).                                                                                                                                              |
+| Param                  | Type     | Description                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pgConnectionProvider` | function | `(pgConfig) => pg.Client` — direct PG connection factory. Defaults to a `pg.Client` built like `probePostgresql` in `server/infrastructure/backendProbe.js` (host/port/database/user/password, ssl option, `connectionTimeoutMillis`). The default connection timeout is `WEA_DB_CONNECTION_TIMEOUT_MS` (10,000 ms when unset), including explicit dialog targets. |
+| `sqliteFactory`        | function | `(path) => sqlite connection` — direct SQLite factory (node sqlite3, `sqlite3.Database`).                                                                                                                                                                                                                                                                          |
 
 ### 2.2 Public API
 
@@ -75,7 +74,7 @@ Read-only; never writes to the target.
   - `postgresql`: `{ host, port, database, user, password, ssl? }`.
   - `sqlite`: `{ sqlitePath }` (absolute path to the target `.db` file).
 
-### 2.5 Schema apply to an explicit target (D6)
+### 2.5 Schema apply to an explicit target
 
 If `schemaExists === false`, apply the DDL **to the explicit target connection** before copying:
 
@@ -93,7 +92,7 @@ If `schemaExists === false`, apply the DDL **to the explicit target connection**
 - `_schema_migrations` is **not** copied (see §2.8); the schema-apply records the applied DDL
   files on the target so subsequent app boots are no-ops.
 
-### 2.6 Single-transaction wipe + copy (D4, D5)
+### 2.6 Single-transaction wipe + copy
 
 `runMigration` runs **one target transaction**:
 
@@ -107,9 +106,9 @@ BEGIN
 COMMIT   // or ROLLBACK on error/cancel
 ```
 
-- **Wipe** is part of the same transaction as the copy (D5) — a mid-way cancel rolls back the
+- **Wipe** is part of the same transaction as the copy — a mid-way cancel rolls back the
   wipe too, so the target is never left partially emptied.
-- **Cancellation = ROLLBACK (D4):** the worker checks the cancel signal before/after each table;
+- **Cancellation = ROLLBACK:** the worker checks the cancel signal before/after each table;
   when cancelled (or on any error) the transaction is rolled back and both sides are unharmed.
 - The active backend is only ever **read**; the target is only ever **written**.
 
@@ -142,8 +141,7 @@ enforced on both backends):
   stores real `true/false`. The copy maps:
   - **→ PG:** `0 → false`, `1 → true`.
   - **→ sqlite:** `true → 1`, `false → 0`.
-    This is the only BOOLEAN column in the schema (`users.is_admin`,
-    `001_initial_normalized_schema.sql:20`).
+    This is the only BOOLEAN column in the schema (`users.is_admin`, DDL 001).
 - **Explicit-id inserts + sequence resync.** SERIAL-id tables (`users`, `file_nodes`,
   `permission_requests`) are inserted **with their explicit source `id`** so FK references stay
   intact. Afterwards the target sequences are resynced so new inserts do not collide:
@@ -154,7 +152,7 @@ enforced on both backends):
 - **`_schema_migrations` is never copied.** It exists on both backends and tracks each backend's
   applied DDL files; the target's schema-apply step manages it independently (§2.5).
 - **`locks`** is copied for completeness; stale lock rows are harmless (TTL-aware cleanup).
-- **`deleted_at` is copied verbatim (DEF-16 P8).** The copy derives the full column list from the
+- **`deleted_at` is copied verbatim.** The copy derives the full column list from the
   SOURCE schema (`information_schema.columns` / `PRAGMA table_info`) and copies whole rows, so the
   trash marker (`file_nodes.deleted_at`) carries over in both directions byte-for-byte: a trashed
   node is still trashed after the metadata migration. `file_nodes.deleted_at` needs no transform —
@@ -165,11 +163,11 @@ enforced on both backends):
 `onProgress(stage, table, done, total)` is invoked with **positional** arguments (no options
 object, no label) at each phase/batch boundary:
 
-| Field            | Description                                                                                                                                                          |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stage`          | `'scan'` \| `'schema'` \| `'wipe'` \| `'copy'` \| `'done'` (matches the extended job payload in `docs/spec/server/tools/blob-migration.md` §job payload and PLAN §4) |
-| `table`          | The table currently being copied during `'copy'` batches, else `null`                                                                                                |
-| `done` / `total` | Running per-table `COUNT(*)` pre-aggregation, `Σ done / Σ total` → overall `%`                                                                                       |
+| Field            | Description                                                                                                                                              |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`          | `'scan'` \| `'schema'` \| `'wipe'` \| `'copy'` \| `'done'` (matches the extended job payload in `docs/spec/server/tools/blob-migration.md` §job payload) |
+| `table`          | The table currently being copied during `'copy'` batches, else `null`                                                                                    |
+| `done` / `total` | Running per-table `COUNT(*)` pre-aggregation, `Σ done / Σ total` → overall `%`                                                                           |
 
 The service emits no human-readable label. The route worker composes
 `progress.currentLabel` as `"Copying <table> … <done>/<total>"` — or the stage name when

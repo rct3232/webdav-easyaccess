@@ -66,6 +66,6 @@
 - [ ] setJobCancelled marks job; returns false if not found
 - [ ] updateJob merges fields via Object.assign
 - [ ] Expired terminal job → getJob returns null, entry deleted
-- [ ] setDownloadProgress stores terminal state readable via the cache adapter (the former `getDownloadProgress` accessor was retired — live progress lives in the downloadService Map)
+- [ ] setDownloadProgress stores terminal state readable via the cache adapter (there is no `getDownloadProgress` accessor — live progress lives in the downloadService Map)
 - [ ] issuePreviewTicket / readPreviewTicket validates ticket
 - [ ] cleanupDownloadProgress schedules deletion after TTL

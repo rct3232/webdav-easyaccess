@@ -27,6 +27,20 @@ if (fs.existsSync(envPath)) {
   dotenv.config();
 }
 
+// [D6] Pre-flight metadata-backend resolution (docs/spec/server/infrastructure/
+// bootSequence.md §2 step 2) must run BEFORE the route mounts below: mounting
+// evaluates require-time store consumers (e.g. domains/permissions/routes/
+// folderPermissions calls createFileNodesStore() at module load), so a partial
+// WEA_DB_* set would otherwise throw past the runBoot() catch as an uncaught
+// exception. Fail with the specified terminal handling instead; the runBoot()
+// catch at the bottom keeps the same handling for later boot failures.
+try {
+  require('./store/storage').getBackend();
+} catch (preflightError) {
+  console.error('Initialization failed:', preflightError);
+  process.exit(1);
+}
+
 const app = express();
 
 // CORS hardening:
@@ -176,6 +190,16 @@ app.use(
 app.use('/api/share-links', setupModeGuardInstance, require('./domains/sharing/routes/shareLinks'));
 app.use('/api/share', setupModeGuardInstance, require('./domains/sharing/routes/sharePublic'));
 app.use('/api/recent-files', setupModeGuardInstance, require('./domains/recentFiles/routes'));
+app.use('/api/collections', setupModeGuardInstance, require('./domains/collections/routes'));
+app.use('/api/actions', setupModeGuardInstance, require('./domains/actions/routes'));
+app.use('/api/search', setupModeGuardInstance, require('./domains/ai/routes'));
+app.use('/api/ai', setupModeGuardInstance, require('./domains/ai/enrichmentRoutes'));
+app.use(
+  '/api/file-likes',
+  setupModeGuardInstance,
+  require('./domains/collections/fileLikesRoutes')
+);
+app.use('/api/storage', setupModeGuardInstance, require('./domains/storage/routes'));
 
 app.use('/api', require('./infrastructure/healthRoutes'));
 
@@ -208,9 +232,11 @@ if (fs.existsSync(clientBuildPath)) {
 const { initMetadataSchema, ensureDefaultAdmin } = require('./store/bootstrap');
 
 async function runBoot() {
-  // Backend selection is presence-based and validated inside
-  // storage.getBackend(): a partial WEA_DB_* credential set throws a terminal
-  // error that surfaces here (runBoot().catch → process.exit(1)); a
+  // Backend selection is presence-based and validated by the [D6] pre-flight
+  // above (storage.getBackend() throws on a partial WEA_DB_* set with the
+  // terminal `Initialization failed:` handling, before any route mount can
+  // evaluate require-time store consumers); failures raised from here on
+  // surface through the runBoot().catch at the bottom (process.exit(1)). A
   // complete-but-unreachable remote boots and reports via /api/health.
 
   await initMetadataSchema();
@@ -268,6 +294,123 @@ async function runBoot() {
       );
     else console.log(`[backend-health] ${backend}: ${from} → OK`);
   });
+
+  // 8b. Embed provider decision + built-in provisioning (bootSequence §2 step
+  // 8b, llmPresets §2.3): setup mode makes NO attempt (zero bytes, zero
+  // egress — the wizard never waits); a remote embed override active ⇒
+  // deferred, weights absence is the normal state; built-in active with
+  // weights present ⇒ idempotent no-op (zero egress); missing ⇒ the attempt
+  // runs BLOCKING before listen with CLI progress (failed attempt: warn-only,
+  // embed caps OFF + admin reason, boot continues — the runBoot catch must
+  // not fire).
+  if (bootStatus.setup_complete) {
+    try {
+      const provisioner = require('./infrastructure/adapters/llm/provision');
+      const [embedBaseUrl, embedModel] = await Promise.all([
+        resolver.getConfig('LLM_EMBED_BASE_URL'),
+        resolver.getConfig('LLM_EMBED_MODEL'),
+      ]);
+      const remoteOverrideActive =
+        String(embedBaseUrl ?? '').trim() !== '' && String(embedModel ?? '').trim() !== '';
+      if (remoteOverrideActive) {
+        console.log('Remote embed override active — built-in provisioning deferred');
+      } else if (provisioner.isEmbedModelDisabled()) {
+        console.log(
+          'Built-in embed model disabled (WEA_SKIP_EMBED_MODEL) — zero weights checks, zero inference'
+        );
+      } else {
+        const lock = provisioner.loadLock();
+        const modelDir = provisioner.resolveModelDir();
+        if (await provisioner.weightsPresent(modelDir, lock)) {
+          console.log('✓ Embed model weights present (built-in, zero egress)');
+        } else {
+          console.log('Built-in embed engine: weights missing — provisioning (blocking)…');
+          const outcome = await provisioner.runProvision({
+            setupComplete: true,
+            remoteOverrideActive: false,
+            modelDir,
+            lock,
+            health: getBackendHealth(),
+          });
+          if (outcome.status === 'failed') {
+            console.warn(`⚠ Embed provisioning failed (${outcome.reason}) — embed caps OFF`);
+          } else {
+            console.log(`✓ Embed provisioning: ${outcome.status}`);
+          }
+        }
+      }
+    } catch (err) {
+      // Posture 5 (llmAdapter §2.8 `provisioning`): warn-only, boot
+      // continues, embed caps OFF + admin reason.
+      console.warn('⚠ Embed provisioning error — embed caps OFF:', err.message);
+    }
+
+    // Adapter construction + registry sync (llmAdapter §2.2/§2.3): ONE
+    // instance installed for every consumer (worker, search, hooks). A
+    // failure leaves no adapter installed — consumers park, roles read
+    // unconfigured, AI surfaces degrade honestly.
+    try {
+      const { initLlmAdapter } = require('./infrastructure/llmAdapterRuntime');
+      const {
+        createBootPresetFor,
+        createBootProbeRole,
+        createPublishedMetadataFetcher,
+      } = require('./infrastructure/llmBootWiring');
+      const bootPresetFor = createBootPresetFor(resolver);
+      const llmAdapter = initLlmAdapter({
+        configResolver: resolver,
+        health: getBackendHealth(),
+        presetFor: bootPresetFor,
+        probeRole: createBootProbeRole(resolver),
+        fetchPublishedMetadata: createPublishedMetadataFetcher(resolver, {
+          presetFor: bootPresetFor,
+        }),
+      });
+      const { rows } = await llmAdapter.syncModelRegistry();
+      // Initial capability probe (llmAdapter §2.4 — the startup probe is the
+      // INITIAL probe; boot step 8b). Configured roles are probed once; the
+      // effective set drives the enrichment hook (declared ≠ probed ⇒ OFF).
+      // A remote embed override is activated only when its EG2 conformance
+      // verdict passes. Fire-and-forget: provider latency never delays listen;
+      // warn-only on failure and the next activation/debounced pass retries.
+      llmAdapter
+        .probeConfiguredRoles()
+        .then((outcomes) => {
+          const failed = Object.entries(outcomes)
+            .filter(([, outcome]) => !outcome.ok)
+            .map(([role, outcome]) => `${role} (${outcome.reason || 'probe failed'})`);
+          if (failed.length > 0) {
+            console.warn(`⚠ AI capability probe failed: ${failed.join(', ')}`);
+          }
+        })
+        .catch((err) => {
+          console.warn('⚠ AI capability probe error — capabilities stay OFF:', err.message);
+        });
+      console.log(
+        rows > 0
+          ? `✓ LLM model registry synced (${rows} changed)`
+          : '✓ LLM model registry up to date'
+      );
+    } catch (err) {
+      console.warn('⚠ LLM adapter init failed — AI roles stay unconfigured:', err.message);
+    }
+
+    // C6 (vectorStore.md §2.1): select the vector engine after the registry
+    // exists (the active embed model keys the space + runtime dim). Absent
+    // capability degrades to the JsFallback with a `vector` health row and a
+    // hint — boot NEVER blocks and no feature is gated off.
+    try {
+      const { initVectorStore } = require('./domains/ai/vectorStoreRuntime');
+      const store = await initVectorStore({ health: getBackendHealth() });
+      if (store) {
+        console.log(`✓ Vector engine: ${store.engine} (${store.impl})`);
+      } else {
+        console.log('Vector engine: no active embed model — JsFallback on demand');
+      }
+    } catch (err) {
+      console.warn('⚠ Vector store init failed — JsFallback on demand:', err.message);
+    }
+  }
 
   // Test WebDAV connection on startup — only when WebDAV is the active file
   // backend. Probing an unused backend would record a false health alert (D3).
@@ -341,7 +484,7 @@ async function runBoot() {
     // (reverse proxies keep working).
     const listenHost = resolveListenHost(bootStatus.setup_complete);
     const listenArgs = listenHost ? [port, listenHost] : [port];
-    app.listen(...listenArgs, () => {
+    const server = app.listen(...listenArgs, () => {
       if (listenHost) {
         console.log(`Server is running on ${listenHost}:${port} (setup mode — loopback only)`);
       } else {
@@ -361,12 +504,53 @@ async function runBoot() {
           const {
             runStartupFailSafeRecovery,
             startGcScheduler,
+            startUsageRollupScheduler,
+            startEvolutionScheduler,
+            runAdminReportsRetention,
+            startAdminReportsRetentionScheduler,
+            runStorageSuggestionExpiry,
+            startStorageSuggestionExpiryScheduler,
+            startStorageUsageSnapshotScheduler,
           } = require('./infrastructure/maintenanceScheduler');
+          const { getUsageService } = require('./infrastructure/usageService');
           const composition = getComposition();
           runStartupFailSafeRecovery({ failSafeService: composition.failSafeService })
             .then(() => {})
             .catch((err) => console.error('Fail-safe recovery on startup failed:', err));
           startGcScheduler({ gcService: composition.gcService });
+          startUsageRollupScheduler({ usageService: getUsageService() });
+          startEvolutionScheduler({
+            evolutionService: require('./domains/collections/evolutionService'),
+          });
+          runAdminReportsRetention()
+            .then((r) => {
+              if (r && r.deleted > 0) {
+                console.log(`✓ Admin-reports retention pruned ${r.deleted} row(s)`);
+              }
+            })
+            .catch((err) =>
+              console.error('Admin-reports retention on startup failed:', err.message)
+            );
+          startAdminReportsRetentionScheduler();
+          runStorageSuggestionExpiry()
+            .then((r) => {
+              if (r && r.expired > 0) {
+                console.log(`✓ Storage-suggestions expiry pruned ${r.expired} row(s)`);
+              }
+            })
+            .catch((err) =>
+              console.error('Storage-suggestions expiry on startup failed:', err.message)
+            );
+          startStorageSuggestionExpiryScheduler();
+          startStorageUsageSnapshotScheduler();
+          if (computeSetupStatus(process.env).setup_complete) {
+            const { startAiWorker } = require('./domains/ai/jobService');
+            startAiWorker()
+              .then((r) => {
+                if (r.started) console.log('✓ AI jobs worker started');
+              })
+              .catch((err) => console.error('AI worker start failed:', err));
+          }
         } catch (err) {
           const { setup_complete } = computeSetupStatus(process.env);
           if (!setup_complete) {
@@ -377,6 +561,10 @@ async function runBoot() {
         }
       });
     });
+    // Keep-alive must outlive E2E helper gaps; the 5 s default makes the
+    // Playwright APIRequestContext reuse a socket the server already closed
+    // (ECONNRESET on an otherwise healthy request). Test-only.
+    if (process.env.NODE_ENV === 'test') server.keepAliveTimeout = 65_000;
   }
 }
 

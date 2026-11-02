@@ -54,8 +54,88 @@ describe('useMyPageController', () => {
       expect(result.current.sidebarItems.map((item) => item.id)).toEqual([
         'account',
         'sharing',
+        'collections',
+        'storage',
         'preferences',
       ]);
+    });
+  });
+
+  // PIVOT (PLAN §14 client half): the owner-approved operator rule supersedes
+  // the T0.10 "visibility all" contract — admin is a pure operator and never
+  // a collections/dashboard participant.
+  it('hides the storage entry for admins (operator rule — nonAdminOnly)', async () => {
+    useAuth.mockReturnValue({ user: { is_admin: true } });
+    useLocation.mockReturnValue({ state: { category: 'account' } });
+
+    const { result } = renderHook(() => useMyPageController({ isMobile: false }));
+
+    await waitFor(() => {
+      expect(result.current.sidebarItems.map((item) => item.id)).not.toContain('storage');
+    });
+    expect(result.current.sidebarItems.map((item) => item.id)).not.toContain('collections');
+    expect(result.current.sidebarItems.map((item) => item.id)).toEqual([
+      'account',
+      'admin-users',
+      'admin-settings',
+      'admin-ai',
+      'preferences',
+    ]);
+  });
+
+  it('accepts the admin-ai deep-link for admins and rewrites it for non-admins', async () => {
+    useAuth.mockReturnValue({ user: { is_admin: true } });
+    useLocation.mockReturnValue({ state: { category: 'admin-ai' } });
+    const admin = renderHook(() => useMyPageController({ isMobile: false }));
+    await waitFor(() => expect(admin.result.current.selectedCategory).toBe('admin-ai'));
+
+    useAuth.mockReturnValue({ user: { is_admin: false } });
+    useLocation.mockReturnValue({ state: { category: 'admin-ai' } });
+    const user = renderHook(() => useMyPageController({ isMobile: false }));
+    await waitFor(() => expect(user.result.current.selectedCategory).toBe('account'));
+  });
+
+  it('rewrites the storage deep-link to the default section for admins (operator rule)', async () => {
+    useAuth.mockReturnValue({ user: { is_admin: true } });
+    useLocation.mockReturnValue({ state: { category: 'storage' } });
+
+    const { result } = renderHook(() => useMyPageController({ isMobile: false }));
+
+    await waitFor(() => {
+      expect(result.current.selectedCategory).toBe('account');
+    });
+  });
+
+  it('rewrites the collections deep-link to the default section for admins (operator rule)', async () => {
+    useAuth.mockReturnValue({ user: { is_admin: true } });
+    useLocation.mockReturnValue({ state: { category: 'collections' } });
+
+    const { result } = renderHook(() => useMyPageController({ isMobile: false }));
+
+    await waitFor(() => {
+      expect(result.current.selectedCategory).toBe('account');
+    });
+  });
+
+  it('accepts the collections deep-link category id for non-admins without rewriting it', async () => {
+    useAuth.mockReturnValue({ user: { is_admin: false } });
+    useLocation.mockReturnValue({ state: { category: 'collections' } });
+
+    const { result } = renderHook(() => useMyPageController({ isMobile: false }));
+
+    await waitFor(() => {
+      expect(result.current.selectedCategory).toBe('collections');
+    });
+  });
+
+  it('accepts the storage deep-link category id for non-admins without rewriting it (T0.10)', async () => {
+    useAuth.mockReturnValue({ user: { is_admin: false } });
+    useLocation.mockReturnValue({ state: { category: 'storage' } });
+
+    const { result } = renderHook(() => useMyPageController({ isMobile: false }));
+
+    await waitFor(() => {
+      expect(result.current.selectedCategory).toBe('storage');
     });
   });
 

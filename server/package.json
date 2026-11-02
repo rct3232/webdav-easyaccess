@@ -6,18 +6,19 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "test": "NODE_OPTIONS=--max-old-space-size=8192 jest",
-    "test:unit": "NODE_OPTIONS=--max-old-space-size=8192 jest --testPathIgnorePatterns='/routes/__tests__/'",
-    "test:integration": "NODE_OPTIONS=--max-old-space-size=8192 jest --testMatch='**/routes/__tests__/*.test.js'",
-    "test:ci": "NODE_OPTIONS=--max-old-space-size=8192 jest --ci --coverage --maxWorkers=2",
-    "test:ci:pg:adapters": "NODE_OPTIONS=--max-old-space-size=8192 WEA_TEST_PG_HOST=127.0.0.1 WEA_TEST_PG_PORT=5433 WEA_TEST_PG_USER=e2etest WEA_TEST_PG_PASSWORD=e2etest WEA_TEST_PG_DATABASE=webdav_test jest --ci --runInBand --testPathPatterns='(store/repositories/__tests__/.*conformance|domains/permissions/stores/repositories/__tests__/.*conformance|infrastructure/db/__tests__/executor|store/__tests__/(fileNodesStore|settingsStore|userStore|storage)|infrastructure/__tests__/(schemaManager|metadataPresence|trashSoftDeleteSchema)|domains/admin/services/__tests__/metadataMigrationService)'",
-    "test:coverage": "NODE_OPTIONS=--max-old-space-size=8192 jest --coverage",
+    "test": "NODE_OPTIONS='--max-old-space-size=8192 --experimental-vm-modules' jest --ci --coverage --maxWorkers=2",
+    "test:watch": "NODE_OPTIONS='--max-old-space-size=8192 --experimental-vm-modules' jest",
+    "test:unit": "NODE_OPTIONS='--max-old-space-size=8192 --experimental-vm-modules' jest --testPathIgnorePatterns='/routes/__tests__/'",
+    "test:integration": "NODE_OPTIONS='--max-old-space-size=8192 --experimental-vm-modules' jest --testMatch='**/routes/__tests__/*.test.js'",
+    "test:pg:adapters": "NODE_OPTIONS='--max-old-space-size=8192 --experimental-vm-modules' WEA_TEST_PG_HOST=127.0.0.1 WEA_TEST_PG_PORT=${WEA_TEST_PG_PORT:-5433} WEA_TEST_PG_USER=e2etest WEA_TEST_PG_PASSWORD=e2etest WEA_TEST_PG_DATABASE=webdav_test jest --ci --runInBand --testPathPatterns='(store/repositories/__tests__/.*conformance|domains/permissions/stores/repositories/__tests__/.*conformance|infrastructure/db/__tests__/executor|store/__tests__/(fileNodesStore|settingsStore|userStore|storage)|infrastructure/__tests__/(schemaManager|metadataPresence|trashSoftDeleteSchema)|domains/admin/services/__tests__/metadataMigrationService)'",
+    "test:pg:vector": "NODE_OPTIONS='--max-old-space-size=8192 --experimental-vm-modules' WEA_TEST_PG_HOST=127.0.0.1 WEA_TEST_PG_PORT=${WEA_TEST_PG_PORT:-5433} WEA_TEST_PG_USER=e2etest WEA_TEST_PG_PASSWORD=e2etest WEA_TEST_PG_DATABASE=webdav_vector_test jest --ci --runInBand --testPathPatterns='domains/ai/vectorStore/__tests__/pgvector'",
     "test:mutation": "stryker run",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1098.0",
+    "@huggingface/transformers": "^4.3.1",
     "@webdav-easyaccess/shared": "1.0.0",
     "archiver": "^7.0.1",
     "bcryptjs": "^2.4.3",
@@ -28,9 +29,10 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^7.0.11",
+    "pdfjs-dist": "^5.4.296",
     "pg": "^8.20.0",
     "sharp": "^0.32.6",
-    "sqlite3": "^5.1.7",
+    "sqlite-vec": "^0.1.9",
     "webdav": "^5.3.0"
   },
   "devDependencies": {
@@ -40,5 +42,8 @@
     "jest": "^30.2.0",
     "nodemon": "^3.0.2",
     "supertest": "^7.2.2"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

@@ -8,6 +8,10 @@ const { isImageFile, isVideoFile } = require('../../../utils/webdav');
 const { conflictError, notFoundError, forbiddenError } = require('../../../utils/errorHandler');
 const ownerNodeResolver = require('../../permissions/policy/ownerNodeResolver');
 const permissionStore = require('../../../store/permissionStore');
+const { sha256Buffer } = require('../../../utils/contentHash');
+
+/** Post-commit no-op when no hook is injected (legacy test constructions). */
+const NOOP_HOOK = { onNodeContentCommitted: async () => {} };
 
 function createFileService(options = {}) {
   const fileNodeService = options.fileNodeService;
@@ -21,9 +25,42 @@ function createFileService(options = {}) {
   const _fileNodesStore = options.fileNodesStore || null;
   const _conflictError = options.conflictError || conflictError;
   const _notFoundError = options.notFoundError || notFoundError;
+  const enrichmentHook = options.nodeContentHook || NOOP_HOOK;
   const remoteOps = blobStore
     ? createWebdavRemoteOps({ blobStore, fileStorageMode, fileNodeService })
     : null;
+
+  // Single per-node read/write resolution — the permission engine shared by
+  // listDirectoryWithPermissions and the nodeId batch entry point below
+  // (POST /api/files/metadata). Admin callers short-circuit to true/true with
+  // no queries; otherwise the check dispatches by node type exactly as the
+  // listing did (directory → checkFolderPermission, file → checkFilePermission,
+  // READ then WRITE). Callers own any filtering (share-scope exclusion in the
+  // listing, unreadable-row dropping in the metadata route) — this helper only
+  // resolves flags.
+  async function resolveNodePermissionFlags(userId, node, isAdmin) {
+    if (isAdmin) {
+      return { hasReadPermission: true, hasWritePermission: true };
+    }
+
+    const isDir = node.type === 'directory';
+    const check = isDir ? aclService.checkFolderPermission : aclService.checkFilePermission;
+    const hasReadPermission = await check(userId, node.id, PERMISSIONS.READ);
+    const hasWritePermission = await check(userId, node.id, PERMISSIONS.WRITE);
+    return { hasReadPermission, hasWritePermission };
+  }
+
+  // Batch facade of the listing permission engine: resolves read/write flags
+  // for an arbitrary set of { id, type } nodes for a principal.
+  // Returns Map<Number(nodeId), { hasReadPermission, hasWritePermission }>.
+  async function resolvePermissionsForNodes(userId, nodes, user) {
+    const isAdmin = user && aclService.isAdminUser(user);
+    const flagsByNodeId = new Map();
+    for (const node of nodes) {
+      flagsByNodeId.set(Number(node.id), await resolveNodePermissionFlags(userId, node, isAdmin));
+    }
+    return flagsByNodeId;
+  }
 
   async function listDirectoryWithPermissions(userId, parentNodeId, user) {
     const children = await fileNodeService.listDirectory(parentNodeId);
@@ -62,38 +99,11 @@ function createFileService(options = {}) {
 
     const results = [];
     for (const child of children) {
-      let hasReadPermission;
-      let hasWritePermission;
-
-      if (isAdmin) {
-        hasReadPermission = true;
-        hasWritePermission = true;
-      } else {
-        const isDir = child.type === 'directory';
-        if (isDir) {
-          hasReadPermission = await aclService.checkFolderPermission(
-            userId,
-            child.id,
-            PERMISSIONS.READ
-          );
-          hasWritePermission = await aclService.checkFolderPermission(
-            userId,
-            child.id,
-            PERMISSIONS.WRITE
-          );
-        } else {
-          hasReadPermission = await aclService.checkFilePermission(
-            userId,
-            child.id,
-            PERMISSIONS.READ
-          );
-          hasWritePermission = await aclService.checkFilePermission(
-            userId,
-            child.id,
-            PERMISSIONS.WRITE
-          );
-        }
-      }
+      const { hasReadPermission, hasWritePermission } = await resolveNodePermissionFlags(
+        userId,
+        child,
+        isAdmin
+      );
 
       // For SHARE principals only, exclude children the principal cannot read.
       // Share tokens must never disclose sibling/parent nodes outside the share
@@ -237,7 +247,21 @@ function createFileService(options = {}) {
       }
     }
 
-    return { nodeId, size: buffer.length, mimeType };
+    // Post-commit enrichment hook (Seam 2: WebDAV upload success) +
+    // content_hash write-side (aiJobService.md §2.2). The bytes are in
+    // memory — hash them with the write-side convention; a hook failure is
+    // best-effort and must never fail the user-facing upload.
+    const contentHash = sha256Buffer(buffer);
+    if (_fileNodesStore) {
+      try {
+        await _fileNodesStore.upsertCache(nodeId, buffer.length, mimeType, contentHash);
+      } catch (_) {
+        /* best-effort — content_hash population is enrichment metadata */
+      }
+    }
+    await enrichmentHook.onNodeContentCommitted(nodeId, contentHash);
+
+    return { nodeId, size: buffer.length, mimeType, contentHash };
   }
 
   async function downloadFile(fileNodeId, userId, user) {
@@ -433,7 +457,11 @@ function createFileService(options = {}) {
     // Soft delete: mark every row of the subtree. No physical row removal —
     // fileNodeService.deleteNode (hard delete) stays reserved for the repair
     // channel, upload/copy rollback and the admin permanent-delete route.
+    // NOTE: no enrichment hook here — aiJobService.md §2.2 defines exactly
+    // four content-commit seams and delete is not one of them (a soft-delete
+    // enqueues nothing).
     await fileNodeService.markSubtreeDeleted([nodeId, ...descendantIds]);
+
     return { deletedCount: descendantIds.length + 1 };
   }
 
@@ -473,9 +501,16 @@ function createFileService(options = {}) {
         effectiveS3Key = await blobStorageService.duplicateBlob(activeS3Key);
       }
 
+      // Read the source cache once for both size-bearing writes (object_map
+      // row + mirrored filecache): the COW blob is byte-identical.
+      const sourceCache = _fileNodesStore ? await _fileNodesStore.getCache(nodeId) : null;
       const newFile = await fileNodeService.createFile(destinationParentNodeId, targetName);
       const copiedNodeId = newFile.id;
-      await blobStorageService.linkObject(copiedNodeId, effectiveS3Key);
+      await blobStorageService.linkObject(
+        copiedNodeId,
+        effectiveS3Key,
+        sourceCache ? Number(sourceCache.size) : null
+      );
       // A copy is immediately usable and migratable: mirror the S3 upload
       // lifecycle end-state ('active') instead of leaving the new node
       // pending_upload, which would drop it from s3→webdav migration snapshots
@@ -485,17 +520,22 @@ function createFileService(options = {}) {
       // Mirror the source filecache row onto the copy: the COW blob is
       // byte-identical, so the copy lists the real size/mime without a
       // remote probe (without this the listing LEFT JOIN yields no row → 0 B).
-      if (_fileNodesStore) {
-        const sourceCache = await _fileNodesStore.getCache(nodeId);
-        if (sourceCache) {
-          await _fileNodesStore.upsertCache(
-            copiedNodeId,
-            Number(sourceCache.size),
-            sourceCache.mime_type,
-            null
-          );
-        }
+      // The SOURCE content_hash travels with it — the copy is the same bytes
+      // (aiJobService.md §2.2: reuse, never recompute).
+      let copiedContentHash = null;
+      if (sourceCache) {
+        copiedContentHash = sourceCache.content_hash ?? null;
+        await _fileNodesStore.upsertCache(
+          copiedNodeId,
+          Number(sourceCache.size),
+          sourceCache.mime_type,
+          copiedContentHash
+        );
       }
+
+      // Post-commit enrichment hook (Seam 3: Copy) — the hook applies the
+      // §2.2 decision table for the new node and never throws.
+      await enrichmentHook.onNodeContentCommitted(copiedNodeId, copiedContentHash);
 
       return { sourceNodeId: nodeId, copiedNodeId };
     }
@@ -522,16 +562,24 @@ function createFileService(options = {}) {
     }
 
     // Mirror listing metadata for files (directories carry no filecache row).
+    // The SOURCE content_hash travels with the copy — byte-identical bytes
+    // (aiJobService.md §2.2: reuse, never recompute).
+    let copiedContentHash = null;
     if (sourceNode.type === 'file' && _fileNodesStore) {
       const head = await blobStore.headBlob(copyPath);
       if (head) {
+        const sourceCache = await _fileNodesStore.getCache(nodeId);
+        copiedContentHash = (sourceCache && sourceCache.content_hash) || null;
         await _fileNodesStore.upsertCache(
           copiedNodeId,
           Number(head.contentLength) || 0,
           head.contentType || 'application/octet-stream',
-          null
+          copiedContentHash
         );
       }
+      // Post-commit enrichment hook (Seam 3: Copy) — file copies only; the
+      // hook itself also skips directory nodes, and never throws.
+      await enrichmentHook.onNodeContentCommitted(copiedNodeId, copiedContentHash);
     }
 
     return { sourceNodeId: nodeId, copiedNodeId };
@@ -539,6 +587,7 @@ function createFileService(options = {}) {
 
   return {
     listDirectoryWithPermissions,
+    resolvePermissionsForNodes,
     downloadFile,
     uploadFile,
     renameNode,

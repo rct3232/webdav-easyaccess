@@ -8,6 +8,11 @@
  */
 import { http, HttpResponse } from 'msw';
 
+import {
+  createAiAdminPanelFixture,
+  createAiAdminPreviewFixture,
+} from '@webdav-easyaccess/shared/fixtures/aiAdminPanel.fixture';
+
 const API_BASE = '/api';
 
 // Mock in-memory state for file operations (shared across handlers)
@@ -93,6 +98,86 @@ export function createDefaultMockAdminConfig() {
 
 export const mockAdminConfig = createDefaultMockAdminConfig();
 
+// Mock admin_reports state (docs/spec/server/routes/admin.md §2.2.6; tests may
+// override via server.use). Mirrors the server producers' payload shapes:
+// failsafe (startup scan + contentHashCompleteness), gc (runGcCycle result),
+// cleanup (cleanupOrphanedData result). Newest first, like the real list.
+export function createDefaultMockAdminReports() {
+  return [
+    {
+      id: 3,
+      kind: 'cleanup',
+      status: 'ok',
+      created_at: '2026-09-05T03:00:00.000Z',
+      payload: {
+        errors: [],
+        gc: {
+          tier1: {
+            orphanedRows: 1,
+            guardedRows: 0,
+            deletedBlobs: 1,
+            deletedRows: 1,
+            pendingDeletedRows: 0,
+            errors: [],
+          },
+          tier2: { scannedKeys: 4, untrackedKeys: 1, deletedKeys: 1, skipped: false, errors: [] },
+          tier3: { purgedNodes: 0, deletedBlobs: 0, deletedRows: 0, skipped: false, errors: [] },
+        },
+        orphanedNodes: [],
+        pendingUploadNodes: [],
+      },
+    },
+    {
+      id: 2,
+      kind: 'gc',
+      status: 'ok',
+      created_at: '2026-09-04T02:00:00.000Z',
+      payload: {
+        tier1: {
+          orphanedRows: 0,
+          guardedRows: 0,
+          deletedBlobs: 0,
+          deletedRows: 0,
+          pendingDeletedRows: 0,
+          errors: [],
+        },
+        tier2: { scannedKeys: 0, untrackedKeys: 0, deletedKeys: 0, skipped: false, errors: [] },
+        tier3: { purgedNodes: 0, deletedBlobs: 0, deletedRows: 0, skipped: true, errors: [] },
+      },
+    },
+    {
+      id: 1,
+      kind: 'failsafe',
+      status: 'partial',
+      created_at: '2026-09-03T01:00:00.000Z',
+      payload: {
+        scanned: 1,
+        resolved: 0,
+        manualReview: [{ nodeId: 11, path: '/alice/ghost.txt' }],
+        pendingUpload: {
+          scanned: 1,
+          nodes: [
+            {
+              nodeId: 12,
+              name: 'report.pdf',
+              type: 'file',
+              path: '/bob/report.pdf',
+              createdAt: '2026-09-01T00:00:00.000Z',
+              updatedAt: '2026-09-01T00:00:00.000Z',
+              classification: 'new-file',
+              pendingS3Key: '.wea-pending/12',
+              blobPresent: true,
+            },
+          ],
+        },
+        contentHashCompleteness: { nullCount: 3, checkedAt: '2026-09-03T01:00:00.000Z' },
+      },
+    },
+  ];
+}
+
+export const mockAdminReports = createDefaultMockAdminReports();
+
 // Mock migration job state (tests may override via server.use)
 export const mockMigrationJobs = new Map();
 
@@ -134,6 +219,7 @@ export function __resetHandlersState() {
     delete mockAdminConfig[key];
   }
   Object.assign(mockAdminConfig, createDefaultMockAdminConfig());
+  mockAdminReports.splice(0, mockAdminReports.length, ...createDefaultMockAdminReports());
   mockMigrationJobs.clear();
   mockMigrationInfo.source = 'webdav';
   mockMigrationInfo.direction = 'webdav-to-s3';
@@ -483,6 +569,9 @@ export const handlers = [
 
   http.delete(`${API_BASE}/recent-files/:fileNodeId`, () => HttpResponse.json([])),
 
+  // --- File likes (viewer-scoped whole-list read feeding file.liked) ---
+  http.get(`${API_BASE}/file-likes`, () => HttpResponse.json({ liked: [] })),
+
   http.get(`${API_BASE}/files/download`, ({ request }) => {
     const url = new URL(request.url);
     const nodeId = url.searchParams.get('nodeId');
@@ -773,6 +862,32 @@ export const handlers = [
     });
   }),
 
+  // Contract-sentinel fixture shared with the server/client shape tests. Tests
+  // override per scenario via `server.use` (same pattern as mockAdminReports).
+  http.get(`${API_BASE}/admin/ai/summary`, () => {
+    return HttpResponse.json(createAiAdminPanelFixture());
+  }),
+
+  http.get(`${API_BASE}/admin/ai/reembed/preview`, () => {
+    return HttpResponse.json(createAiAdminPreviewFixture());
+  }),
+
+  http.post(`${API_BASE}/admin/ai/reembed`, () => {
+    return HttpResponse.json({
+      job_ids: [],
+      enqueued: 0,
+      generation: 2,
+      generations: { embed: 2, features: 2, caption: 2, asr: 2 },
+      model_id: null,
+      undo: { action_id: 0 },
+      retry_after_seconds: 900,
+    });
+  }),
+
+  http.get(`${API_BASE}/actions`, () => {
+    return HttpResponse.json({ actions: [] });
+  }),
+
   http.post(`${API_BASE}/admin/config/test`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
     if (
@@ -811,6 +926,10 @@ export const handlers = [
         EMAIL_HOST: '',
       },
     });
+  }),
+
+  http.get(`${API_BASE}/setup/llm-presets`, () => {
+    return HttpResponse.json({ presets: [] });
   }),
 
   http.post(`${API_BASE}/setup/test`, async ({ request }) => {
@@ -1001,6 +1120,97 @@ export const handlers = [
 
   http.post(`${API_BASE}/admin/permissions/ensure-home-owner-admin`, () => {
     return HttpResponse.json({ updatedUsers: 0, upgradedPaths: 0, grantedPaths: 0, errors: [] });
+  }),
+
+  // --- Admin: persisted admin_reports list + row-level repair (docs/spec/server/routes/admin.md §2.2.6) ---
+  http.get(`${API_BASE}/admin/reports`, () => {
+    return HttpResponse.json({ reports: mockAdminReports });
+  }),
+
+  http.get(`${API_BASE}/admin/reports/:id`, ({ params }) => {
+    const row = mockAdminReports.find((r) => String(r.id) === String(params.id));
+    if (!row) {
+      return errorResponse('serverErrors.admin.reportNotFound', 404, {
+        reportId: Number(params.id),
+      });
+    }
+    return HttpResponse.json({ report: row });
+  }),
+
+  http.post(`${API_BASE}/admin/reports/:id/repair`, async ({ request, params }) => {
+    const body = await request.json().catch(() => ({}));
+    const idx = mockAdminReports.findIndex((r) => String(r.id) === String(params.id));
+    if (idx === -1) {
+      return errorResponse('serverErrors.admin.reportNotFound', 404, {
+        reportId: Number(params.id),
+      });
+    }
+    const row = mockAdminReports[idx];
+    const section =
+      row.payload && typeof row.payload === 'object'
+        ? row.payload.contentHashCompleteness
+        : undefined;
+
+    if (body.action === 'content_hash') {
+      if (row.kind !== 'failsafe' || !section || typeof section !== 'object') {
+        return errorResponse('serverErrors.admin.repairNotAvailable', 400);
+      }
+      const backfilled =
+        Number.isFinite(section.nullCount) && section.nullCount > 0 ? section.nullCount : 0;
+      const checkedAt = new Date().toISOString();
+      const report = {
+        ...row,
+        status: 'ok',
+        payload: {
+          ...row.payload,
+          contentHashCompleteness: {
+            ...section,
+            nullCount: 0,
+            checkedAt,
+            backfilled,
+            backfilledAt: checkedAt,
+          },
+        },
+      };
+      mockAdminReports[idx] = report;
+      return HttpResponse.json({
+        messageCode: 'serverMessages.admin.reportRepaired',
+        report,
+        result: { backfilled, nullCount: 0, errors: [], checkedAt },
+      });
+    }
+
+    if (body.action === 'repair-sync') {
+      const nodeId = Number(body.nodeId);
+      if (!body.nodeId || !Number.isFinite(nodeId) || nodeId <= 0) {
+        return errorResponse('serverErrors.files.sourceDestRequired', 400);
+      }
+      return HttpResponse.json({
+        messageCode: 'serverMessages.admin.repairSyncDone',
+        report: row,
+        result: {
+          nodeId,
+          action: body.repairAction || 'auto',
+          status: 'resolved',
+          path: null,
+          detail: 'mock repair',
+        },
+      });
+    }
+
+    if (body.action === 'perm-delete') {
+      const nodeId = Number(body.nodeId);
+      if (!body.nodeId || !Number.isInteger(nodeId) || nodeId <= 0) {
+        return errorResponse('serverErrors.files.sourceDestRequired', 400);
+      }
+      return HttpResponse.json({
+        messageCode: 'serverMessages.admin.permDeleteDone',
+        report: row,
+        result: { nodeId, deletedCount: 1 },
+      });
+    }
+
+    return errorResponse('serverErrors.admin.repairNotAvailable', 400);
   }),
 
   // --- Admin: blob migration (aligned with the blob-migration API contract) ---
@@ -1239,6 +1449,16 @@ export const handlers = [
       },
     });
   }),
+
+  // --- AI enrichment (GET /ai/enrichments/:nodeId) ---
+  // Default = readable-without-row contract; tests override with
+  // server.use(http.get(...)) to seed a payload.
+  http.get(`${API_BASE}/ai/enrichments/:nodeId`, ({ params }) =>
+    HttpResponse.json({
+      node_id: Number(params.nodeId),
+      enrichment: null,
+    })
+  ),
 
   // --- Thumbnails: single image fetch (GET /thumbnails/:hash.:ext?token=) ---
   // server/domains/thumbnails/routes.js + api.md "Thumbnails".

@@ -17,11 +17,11 @@
 
 ### 2.2 Implementation Status
 
-| Component                         | Status                                                                                                                      | Wave               |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| Factory (`createDownloadService`) | Implemented — accepts `{ fileNodeService, blobStorageService, aclService }`                                                 | Task W4.1 (Wave 4) |
-| `downloadMultiple`                | Implemented — uses `aclService.checkFilePermission` per file via `Promise.allSettled`                                       | Wave 4             |
-| `getDownloadProgress`             | Implemented — service-local in-memory Map (no TTL); exposed via `GET /api/files/download-progress/:id` (preview.js:226-242) | Wave 4             |
+| Component                         | Status                                                                                                                      |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Factory (`createDownloadService`) | Implemented — accepts `{ fileNodeService, blobStorageService, aclService }`                                                 |
+| `downloadMultiple`                | Implemented — uses `aclService.checkFilePermission` per file via `Promise.allSettled`                                       |
+| `getDownloadProgress`             | Implemented — service-local in-memory Map (no TTL); exposed via `GET /api/files/download-progress/:id` (preview.js:226-242) |
 
 ### 2.3 Factory Function Signature
 
@@ -110,7 +110,7 @@ Live progress lives in the **service's local in-memory Map** (`progressStore`, d
 
 The route additionally records the **terminal state** on the operationProgress store when the archive completes or errors (`opStore.setDownloadProgress(downloadId, { status: 'completed' | 'error', progress, total, current, zipName })`, preview.js:198-217) and schedules its cleanup (`opStore.cleanupDownloadProgress(downloadId)`, 5-minute TTL — preview.js:219).
 
-The progress is pollable via `GET /api/files/download-progress/:id`, which reads the service-local Map through `getDownloadProgress(downloadId)` (preview.js:226-242). TTL-based expiry is not implemented on the service-local Map. Redis-backed operationProgress scaling is tracked in `docs/IMPROVEMENT_PLAN.md`.
+The progress is pollable via `GET /api/files/download-progress/:id`, which reads the service-local Map through `getDownloadProgress(downloadId)` (preview.js:226-242). TTL-based expiry is not implemented on the service-local Map.
 
 ---
 

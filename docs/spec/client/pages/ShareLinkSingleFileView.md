@@ -47,7 +47,7 @@
   - the screen is full-viewport
   - there is no directory explorer shell
   - there are no authenticated upgrade/overlay actions layered into this view
-- If product behavior later adds authenticated actions for single-file public shares, this spec and the E2E plan must be updated together before implementation work proceeds.
+- If product behavior later adds authenticated actions for single-file public shares, this spec and the corresponding E2E scenarios must be updated together before implementation work proceeds.
 
 ### 2.7 Integration Test Scenarios
 

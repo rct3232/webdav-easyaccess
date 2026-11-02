@@ -3,7 +3,14 @@
  * @see docs/spec/client/services/explorerGateway.md
  * @see docs/TESTING_STRATEGY.md
  */
-import { checkConflicts, getFilesMetadata, listFiles, uploadMultipleFiles } from '../fileService';
+import {
+  checkConflicts,
+  getAncestors,
+  getFilesMetadata,
+  listFiles,
+  uploadMultipleFiles,
+} from '../fileService';
+import { getLikedNodeIds, setFileLike } from '../fileLikesRepository';
 import { getShowHiddenFiles } from '../../utils/localStorage';
 import { checkPermission, getSharedPermissions, getUserPermissions } from '../permissionService';
 import { addRecentFile, getRecentFiles, removeRecentFile } from '../recentFilesRepository';
@@ -38,6 +45,59 @@ jest.mock('../recentFilesRepository', () => {
 jest.mock('../recentFilesNotifier', () => {
   const { createRecentFilesNotifierMock } = require('../../testing/mocks/serviceMocks');
   return createRecentFilesNotifierMock();
+});
+
+jest.mock('../collectionsRepository', () => {
+  const fns = [
+    'addCollectionItems',
+    'archiveCollection',
+    'createCollection',
+    'deleteCollection',
+    'dismissMerge',
+    'getCollectionItems',
+    'getCollections',
+    'getGrants',
+    'getMemberships',
+    'getMergeSuggestions',
+    'grantCollection',
+    'mergeCollections',
+    'notifyEvolutionHint',
+    'previewCollection',
+    'previewExistingCollection',
+    'publishItems',
+    'rejectMerge',
+    'removeCollectionItems',
+    'restoreCollection',
+    'revokeGrant',
+    'updateCollection',
+    'runSearch',
+    'recordSearchClick',
+    'getActions',
+  ];
+  const mock = {};
+  for (const name of fns) mock[name] = jest.fn();
+  return mock;
+});
+
+jest.mock('../storageRepository', () => {
+  const fns = [
+    'getStorageHygiene',
+    'getStorageUsage',
+    'acceptStorageSuggestions',
+    'dismissStorageSuggestion',
+  ];
+  const mock = {};
+  for (const name of fns) mock[name] = jest.fn();
+  return mock;
+});
+
+jest.mock('../collectionsNotifier', () => ({
+  onCollectionsChange: jest.fn(),
+}));
+
+jest.mock('../fileLikesRepository', () => {
+  const { createFileLikesRepositoryMock } = require('../../testing/mocks/serviceMocks');
+  return createFileLikesRepositoryMock();
 });
 
 jest.mock('../../utils/localStorage', () => {
@@ -124,6 +184,24 @@ describe('explorerGateway', () => {
     expect(result).toHaveLength(1); // hidden file filtered out
     // hasAdminPermission comes from the server listing row, not getUserPermissions.
     expect(getUserPermissions).not.toHaveBeenCalled();
+  });
+
+  it('listing enrichment NEVER calls the membership seam and rows carry no membership fields (file-listing contract frozen)', async () => {
+    const collectionsRepository = require('../collectionsRepository');
+    listFiles.mockResolvedValueOnce([
+      { nodeId: 10, display_path: '/docs/report.txt', isHidden: false, hasAdminPermission: true },
+    ]);
+
+    const result = await listDirectory({
+      nodeId: 5,
+      options: { user: { id: '1', is_admin: false } },
+    });
+
+    expect(collectionsRepository.getMemberships).not.toHaveBeenCalled();
+    expect(result).toHaveLength(1);
+    expect(result[0].collectionIds).toBeUndefined();
+    expect(result[0].memberships).toBeUndefined();
+    expect(result[0].collection_ids).toBeUndefined();
   });
 
   it('returns raw share listings without hidden or permission enrichment', async () => {
@@ -359,5 +437,350 @@ describe('explorerGateway', () => {
 
     expect(addRecentFile).toHaveBeenCalledWith({ path: '/docs/report.txt' }, undefined);
     expect(result).toEqual([{ path: '/docs/report.txt' }]);
+  });
+
+  describe('explorerGateway collections re-exports (T0.3)', () => {
+    const {
+      getCollections,
+      createCollection,
+      updateCollection,
+      archiveCollection,
+      restoreCollection,
+      deleteCollection,
+      getCollectionItems,
+      addCollectionItems,
+      removeCollectionItems,
+      publishItems,
+      getMemberships,
+      previewCollection,
+      getMergeSuggestions,
+      mergeCollections,
+      dismissMerge,
+      rejectMerge,
+    } = require('../collectionsRepository');
+    const { onCollectionsChange } = require('../collectionsNotifier');
+
+    it('re-exports the collections seams under the §2.6 names, preserving shapes and fallbacks', async () => {
+      getCollections.mockResolvedValueOnce({ collections: [] });
+      await expect(explorerGateway.loadCollections({ sort: 'name' })).resolves.toEqual({
+        collections: [],
+      });
+      expect(getCollections).toHaveBeenCalledWith({ sort: 'name' });
+
+      createCollection.mockResolvedValueOnce({ undo: { action_id: 1 } });
+      await expect(explorerGateway.createCollection({ name: 'X' })).resolves.toEqual({
+        undo: { action_id: 1 },
+      });
+
+      updateCollection.mockResolvedValueOnce(null);
+      await expect(explorerGateway.updateCollection(17, { pinned: true })).resolves.toBeNull();
+
+      archiveCollection.mockResolvedValueOnce({ undo: { action_id: 2 } });
+      restoreCollection.mockResolvedValueOnce({ undo: { action_id: 3 } });
+      await explorerGateway.archiveCollection(17);
+      await explorerGateway.restoreCollection(17);
+      expect(archiveCollection).toHaveBeenCalledWith(17);
+      expect(restoreCollection).toHaveBeenCalledWith(17);
+
+      deleteCollection.mockResolvedValueOnce(true);
+      await expect(explorerGateway.deleteCollection(17)).resolves.toBe(true);
+
+      getCollectionItems.mockResolvedValueOnce({ items: [] });
+      await expect(
+        explorerGateway.loadCollectionItems(17, { since: '2026-09-01T00:00:00Z' })
+      ).resolves.toEqual({ items: [] });
+      expect(getCollectionItems).toHaveBeenCalledWith(17, { since: '2026-09-01T00:00:00Z' });
+
+      addCollectionItems.mockResolvedValueOnce({ added: [1] });
+      removeCollectionItems.mockResolvedValueOnce({ removed: [1] });
+      await explorerGateway.addCollectionItems(17, [1]);
+      await explorerGateway.removeCollectionItems(17, [1]);
+      expect(addCollectionItems).toHaveBeenCalledWith(17, [1]);
+      expect(removeCollectionItems).toHaveBeenCalledWith(17, [1]);
+
+      publishItems.mockResolvedValueOnce(null);
+      await expect(explorerGateway.publishItems(17, [1])).resolves.toBeNull();
+
+      getMemberships.mockResolvedValueOnce({ memberships: [] });
+      await expect(explorerGateway.getMemberships([1])).resolves.toEqual({ memberships: [] });
+
+      previewCollection.mockResolvedValueOnce({ count: 0, sample: [], sample_truncated: false });
+      await expect(explorerGateway.previewCollection({ seedNodeId: 5 })).resolves.toEqual({
+        count: 0,
+        sample: [],
+        sample_truncated: false,
+      });
+
+      getMergeSuggestions.mockResolvedValueOnce({ suggestions: [] });
+      await expect(explorerGateway.getMergeSuggestions()).resolves.toEqual({ suggestions: [] });
+
+      mergeCollections.mockResolvedValueOnce({ absorbed_id: 23 });
+      dismissMerge.mockResolvedValueOnce({ state: 'dismissed' });
+      rejectMerge.mockResolvedValueOnce({ state: 'rejected' });
+      await explorerGateway.mergeCollections(1, 2);
+      await explorerGateway.dismissMerge(1, 2);
+      await explorerGateway.rejectMerge(1, 2);
+      expect(mergeCollections).toHaveBeenCalledWith(1, 2);
+      expect(dismissMerge).toHaveBeenCalledWith(1, 2);
+      expect(rejectMerge).toHaveBeenCalledWith(1, 2);
+    });
+
+    it('subscribeToCollections wraps the notifier unsubscribe contract', () => {
+      const unsub = jest.fn();
+      onCollectionsChange.mockReturnValueOnce(unsub);
+
+      const result = explorerGateway.subscribeToCollections(() => {});
+      expect(result).toBe(unsub);
+      expect(typeof result).toBe('function');
+    });
+
+    // -- §2.6 search results-mode group (T0.11) --------------------------------
+
+    it('re-exports runSearch and recordSearchClick with the repository shapes', async () => {
+      const { runSearch, recordSearchClick } = require('../collectionsRepository');
+
+      const payload = {
+        name_matches: [],
+        result_ref: 'sr1.x',
+        counts: {},
+      };
+      runSearch.mockResolvedValueOnce(payload);
+      await expect(explorerGateway.runSearch({ query: 'movie' })).resolves.toBe(payload);
+
+      recordSearchClick.mockResolvedValueOnce(true);
+      await expect(explorerGateway.recordSearchClick(11)).resolves.toBe(true);
+    });
+
+    // -- §2.6 file-likes group (T0.5) -----------------------------------------
+
+    it('listDirectory merges liked=false onto rows when no node is liked (absorbed read)', async () => {
+      listFiles.mockResolvedValueOnce([
+        { nodeId: 10, display_path: '/docs/a.txt', isHidden: false },
+        { nodeId: 11, display_path: '/docs/b.txt', isHidden: false },
+      ]);
+      getLikedNodeIds.mockResolvedValueOnce({ liked: [] });
+
+      const result = await listDirectory({
+        nodeId: 5,
+        options: { user: { id: '1', is_admin: false } },
+      });
+
+      expect(result.every((r) => r.liked === false)).toBe(true);
+    });
+
+    it('listDirectory marks liked=true for nodes present in the whole-viewer read', async () => {
+      listFiles.mockResolvedValueOnce([
+        { nodeId: 10, display_path: '/docs/a.txt', isHidden: false },
+        { nodeId: 11, display_path: '/docs/b.txt', isHidden: false },
+      ]);
+      getLikedNodeIds.mockResolvedValueOnce({ liked: [11] });
+
+      const result = await listDirectory({
+        nodeId: 5,
+        options: { user: { id: '1', is_admin: false } },
+      });
+
+      const byId = Object.fromEntries(result.map((r) => [r.nodeId, r.liked]));
+      expect(byId).toEqual({ 10: false, 11: true });
+    });
+
+    it('share-token listings skip the liked merge (no like read)', async () => {
+      listFiles.mockResolvedValueOnce([{ nodeId: 20, display_path: '/shared/.hidden.txt' }]);
+
+      const result = await listDirectory({
+        nodeId: 15,
+        options: { shareToken: 'share-token', user: { id: '1' } },
+      });
+
+      expect(getLikedNodeIds).not.toHaveBeenCalled();
+      expect(result[0]).not.toHaveProperty('liked');
+    });
+
+    it('re-exports loadFileLikes / setFileLike / subscribeToFileLikes with the repository shapes', async () => {
+      getLikedNodeIds.mockResolvedValueOnce({ liked: [4, 5] });
+      await expect(explorerGateway.loadFileLikes()).resolves.toEqual({ liked: [4, 5] });
+
+      setFileLike.mockResolvedValueOnce({ node_id: 4, liked: false });
+      await expect(explorerGateway.setFileLike(4, false)).resolves.toEqual({
+        node_id: 4,
+        liked: false,
+      });
+      expect(setFileLike).toHaveBeenCalledWith(4, false, undefined);
+
+      const repo = require('../fileLikesRepository');
+      const unsub = jest.fn();
+      repo.subscribeFileLikesChange = jest.fn(() => unsub);
+      expect(explorerGateway.subscribeToFileLikes(() => {})).toBe(unsub);
+    });
+
+    it('re-exports loadLikedItems as the repository full-fetch read (P-5, Decision B)', async () => {
+      const repo = require('../fileLikesRepository');
+      const full = { items: [{ node_id: 7, state: 'normal' }] };
+      repo.getLikedItems.mockResolvedValueOnce(full);
+
+      await expect(explorerGateway.loadLikedItems()).resolves.toEqual(full);
+      expect(repo.getLikedItems).toHaveBeenCalledWith();
+    });
+  });
+
+  describe('explorerGateway narrow listing/render helpers (T0.5/T0.11)', () => {
+    it('loadNodesMetadata returns fileService metadata for raw nodeIds', async () => {
+      getFilesMetadata.mockResolvedValueOnce([{ nodeId: 11, type: 'file', size: 20 }]);
+
+      await expect(explorerGateway.loadNodesMetadata([11])).resolves.toEqual([
+        { nodeId: 11, type: 'file', size: 20 },
+      ]);
+      expect(getFilesMetadata).toHaveBeenCalledWith([11]);
+    });
+
+    it('loadNodesMetadata absorbs a metadata failure into []', async () => {
+      getFilesMetadata.mockRejectedValueOnce(new Error('boom'));
+
+      await expect(explorerGateway.loadNodesMetadata([11])).resolves.toEqual([]);
+    });
+
+    it('loadNodesMetadata chunks nodeIds at <=100 per POST and merges by nodeId', async () => {
+      const ids = Array.from({ length: 250 }, (_, i) => i + 1);
+      getFilesMetadata
+        .mockResolvedValueOnce(ids.slice(0, 100).map((nodeId) => ({ nodeId, size: 1 })))
+        .mockResolvedValueOnce(ids.slice(100, 200).map((nodeId) => ({ nodeId, size: 2 })))
+        .mockResolvedValueOnce(ids.slice(200, 250).map((nodeId) => ({ nodeId, size: 3 })));
+
+      const rows = await explorerGateway.loadNodesMetadata(ids);
+
+      expect(getFilesMetadata).toHaveBeenCalledTimes(3);
+      expect(getFilesMetadata).toHaveBeenNthCalledWith(2, ids.slice(100, 200));
+      expect(rows).toHaveLength(250);
+    });
+
+    it('loadNodesMetadata tolerates a failed chunk and rows missing from responses', async () => {
+      const ids = Array.from({ length: 150 }, (_, i) => i + 1);
+      getFilesMetadata
+        .mockResolvedValueOnce(ids.slice(0, 100).map((nodeId) => ({ nodeId })))
+        .mockRejectedValueOnce(new Error('chunk boom'));
+
+      const rows = await explorerGateway.loadNodesMetadata(ids);
+
+      expect(rows).toHaveLength(100);
+      expect(rows.map((row) => row.nodeId)).toEqual(ids.slice(0, 100));
+    });
+
+    it('loadNodesMetadata passes permission flags through untouched (search enrichment seam)', async () => {
+      getFilesMetadata.mockResolvedValueOnce([
+        {
+          nodeId: 11,
+          type: 'file',
+          size: 20,
+          lastmod: null,
+          mime: 'text/plain',
+          hasReadPermission: true,
+          hasWritePermission: false,
+        },
+      ]);
+
+      const [row] = await explorerGateway.loadNodesMetadata([11]);
+
+      expect(row.hasReadPermission).toBe(true);
+      expect(row.hasWritePermission).toBe(false);
+    });
+
+    it('loadNodeAncestors passes the ancestor chain through for reveal-original navigation', async () => {
+      getAncestors.mockResolvedValueOnce({
+        ancestors: [
+          { nodeId: 1, name: '/' },
+          { nodeId: 42, name: 'docs' },
+          { nodeId: 99, name: 'f.pdf' },
+        ],
+      });
+
+      const result = await explorerGateway.loadNodeAncestors(99);
+      expect(result.ancestors[result.ancestors.length - 2].nodeId).toBe(42);
+    });
+  });
+
+  describe('explorerGateway actions-feed + storage seams', () => {
+    it('re-exports getActions with the repository shape', async () => {
+      const repo = require('../collectionsRepository');
+
+      const feed = { actions: [{ action_id: 1 }] };
+      repo.getActions.mockResolvedValueOnce(feed);
+      await expect(explorerGateway.getActions({ domain: 'collection' })).resolves.toBe(feed);
+      expect(repo.getActions).toHaveBeenCalledWith({ domain: 'collection' });
+    });
+
+    it('re-exports the storage domain seams (hygiene/usage/suggestions) with the repository shapes', async () => {
+      const storage = require('../storageRepository');
+
+      const hygiene = { hygiene: { duplicates: { group_count: 0 } }, suggestions: [] };
+      storage.getStorageHygiene.mockResolvedValueOnce(hygiene);
+      await expect(explorerGateway.getStorageHygiene()).resolves.toBe(hygiene);
+
+      const usage = { current: { total_bytes: 10 }, series: { points: [] } };
+      storage.getStorageUsage.mockResolvedValueOnce(usage);
+      await expect(explorerGateway.getStorageUsage()).resolves.toBe(usage);
+
+      storage.acceptStorageSuggestions.mockResolvedValueOnce({ trashed: [7] });
+      await expect(
+        explorerGateway.acceptStorageSuggestions([7], { onError: jest.fn() })
+      ).resolves.toEqual({
+        trashed: [7],
+      });
+      expect(storage.acceptStorageSuggestions).toHaveBeenCalledWith([7], {
+        onError: expect.any(Function),
+      });
+
+      storage.dismissStorageSuggestion.mockResolvedValueOnce({ id: 9, state: 'dismissed' });
+      await expect(explorerGateway.dismissStorageSuggestion(9)).resolves.toEqual({
+        id: 9,
+        state: 'dismissed',
+      });
+      expect(storage.dismissStorageSuggestion).toHaveBeenCalledWith(9);
+    });
+
+    it('storage reads resolve the repository absorbed fallbacks (empty suggestions / null)', async () => {
+      const storage = require('../storageRepository');
+
+      storage.getStorageHygiene.mockResolvedValueOnce({ suggestions: [] });
+      await expect(explorerGateway.getStorageHygiene()).resolves.toEqual({ suggestions: [] });
+
+      storage.getStorageUsage.mockResolvedValueOnce(null);
+      await expect(explorerGateway.getStorageUsage()).resolves.toBeNull();
+    });
+  });
+
+  describe('explorerGateway — admin operator suppression (PLAN §14 client half)', () => {
+    beforeEach(() => {
+      getShowHiddenFiles.mockReturnValue(false);
+    });
+
+    it('listDirectory skips the liked merge for admin — no file-likes read, rows lack liked', async () => {
+      listFiles.mockResolvedValueOnce([
+        { nodeId: 10, display_path: '/a.txt', isHidden: false },
+        { nodeId: 11, display_path: '/b.txt', isHidden: false },
+      ]);
+
+      const result = await listDirectory({
+        nodeId: null,
+        options: { user: { id: '1', is_admin: true } },
+      });
+
+      expect(getLikedNodeIds).not.toHaveBeenCalled();
+      expect(result).toHaveLength(2);
+      expect(result[0]).not.toHaveProperty('liked');
+      expect(result[1]).not.toHaveProperty('liked');
+    });
+
+    it('non-admin control: the liked merge still marks rows (unchanged contract)', async () => {
+      listFiles.mockResolvedValueOnce([{ nodeId: 10, display_path: '/a.txt', isHidden: false }]);
+      getLikedNodeIds.mockResolvedValueOnce({ liked: [10] });
+
+      const result = await listDirectory({
+        nodeId: 5,
+        options: { user: { id: '1', is_admin: false } },
+      });
+
+      expect(getLikedNodeIds).toHaveBeenCalled();
+      expect(result[0].liked).toBe(true);
+    });
   });
 });

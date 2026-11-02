@@ -27,13 +27,47 @@ function getUserData(userKey: TestUserKey, suffix?: string) {
   };
 }
 
+/**
+ * Race-free anonymous reset. The previous flow (goto `/` → clear cookies +
+ * storage on the LIVE document) was structurally racy: `/` boots the
+ * authenticated home (App.js `/`→`/files` PrivateRoute), and `page.goto`
+ * resolves on `load` while the async auth bootstrap is still in flight
+ * (`GET /auth/me` from useAuthSession, the MigrationGuard status poll).
+ * Clearing sessionStorage underneath the running app turns any of those
+ * in-flight 401s into apiClient's refresh-failure path
+ * (authNavigationPolicy `handle401RefreshFailure` → hard
+ * `window.location.href = '/login'`), an app-originated navigation that
+ * intermittently aborts the caller's follow-up goto ("navigation interrupted
+ * by another navigation" / ERR_ABORTED) — hit/miss depended on server latency.
+ *
+ * New mechanism: the app never observes a token being invalidated.
+ *  1. `context.clearCookies()` — context-level, touches no document.
+ *  2. A one-shot document-start wipe via `addInitScript`: the NEXT navigation
+ *     (the caller's target) clears localStorage + sessionStorage before the
+ *     bundle runs, so the app boots anonymous — no authenticated-home
+ *     bootstrap, no `/login` redirect while a navigation is pending. Any
+ *     PrivateRoute `<Navigate to="/login">` happens after the target commit
+ *     as a same-document replace and cannot abort a navigation.
+ *  3. One-shot semantics are preserved via a marker cookie (re-armed by the
+ *     clearCookies in step 1 of every reset): later full page-loads (e.g. a
+ *     subsequent login + reload in the same test) are NOT re-wiped, exactly
+ *     like the old evaluate-based one-time clear.
+ */
+const ANONYMOUS_RESET_MARKER = 'wea-e2e-anonymous-reset';
+
 async function clearBrowserSession(page: Page) {
-  await page.goto('/');
-  await page.context().clearCookies();
-  await page.evaluate(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-  });
+  const context = page.context();
+  await context.clearCookies();
+  await context.addInitScript((marker: string) => {
+    try {
+      if (document.cookie.split(';').some((c) => c.trim() === `${marker}=1`)) return;
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+      document.cookie = `${marker}=1; path=/`;
+    } catch {
+      // about:blank / opaque-origin document: nothing to wipe or mark.
+    }
+  }, ANONYMOUS_RESET_MARKER);
 }
 
 async function loginAs(page: Page, userKey: TestUserKey, suffix?: string) {
@@ -46,11 +80,16 @@ async function loginAs(page: Page, userKey: TestUserKey, suffix?: string) {
  * (setup-wizard/admin-config/migration): goto `/login`, fill username/password,
  * submit and wait for the explorer URL.
  */
-export async function loginWithCredentials(page: Page, username: string, password: string) {
+export async function loginWithCredentials(
+  page: Page,
+  username: string,
+  password: string,
+  timeoutMs = 60_000
+) {
   await page.goto('/login');
 
   const usernameInput = page.locator('input[name="username"]');
-  await expect(usernameInput).toBeVisible();
+  await expect(usernameInput).toBeVisible({ timeout: timeoutMs });
 
   await usernameInput.fill(username);
   await page.locator('input[name="password"]').fill(password);
@@ -71,6 +110,13 @@ export async function loginAsUser(page: Page, userKey: StandardTestUserKey, suff
   await loginAs(page, userKey, suffix);
 }
 
+/**
+ * Switch the page to an anonymous session and land on `targetPath`: cookies
+ * and the app's localStorage/sessionStorage tokens are neutralized for this
+ * and all subsequent navigations (see clearBrowserSession for the race-free
+ * settlement mechanism). Protected targets settle on `/login` via the
+ * anonymous-boot PrivateRoute redirect.
+ */
 export async function gotoAsAnonymous(page: Page, targetPath = '/login') {
   await clearBrowserSession(page);
   await page.goto(targetPath);

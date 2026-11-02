@@ -8,6 +8,10 @@ const { createUploadService } = require('./uploadService');
 const { createGcService } = require('./gcService');
 const { createFailSafeService } = require('./failSafeService');
 const { createTrashService } = require('./trashService');
+const aiJobsStore = require('../store/aiJobsStore');
+const { createNodeContentHook } = require('../domains/ai/nodeContentHook');
+const { getGeneration } = require('../domains/ai/generationSettings');
+const { syncNodeDerivedTagsForNode } = require('../domains/ai/derivedTags');
 const aclService = require('../domains/permissions/services/aclService');
 const ownerNodeResolver = require('../domains/permissions/policy/ownerNodeResolver');
 const permissionStore = require('../store/permissionStore');
@@ -15,12 +19,59 @@ const { createFileService } = require('../domains/files/services/fileService');
 const { createBatchOperationService } = require('../domains/files/services/batchOperationService');
 const { createDownloadService } = require('../domains/files/services/downloadService');
 const { createVersionsService } = require('../domains/files/services/versionsService');
+const { createEnrichmentService } = require('../domains/ai/enrichmentService');
 const { createMigrationJobStore } = require('../domains/admin/stores/migrationJobStore');
 const { createMigrationService } = require('../domains/admin/services/migrationService');
 const { buildDestBlobStore } = require('../infrastructure/adapters/blobstore/config');
 const lockManager = require('../infrastructure/lockManager');
 
 let _composition = null;
+
+/**
+ * Post-commit hook composition: AI enrichment stays independent, then the
+ * local derived tags are refreshed so a tag predicate can see the fresh node,
+ * then the collections admission point-check materializes any matching
+ * membership, and the owner's upload evolution debounce is (re-)armed.
+ * Everything after the write is best-effort — failures are logged, never
+ * propagated.
+ */
+function createComposedNodeContentHook(enrichmentHook, { fileNodesStore, syncDerivedTags } = {}) {
+  const syncTags =
+    syncDerivedTags || ((nodeId) => syncNodeDerivedTagsForNode(nodeId, { fileNodesStore }));
+  return {
+    async onNodeContentCommitted(nodeId, contentHash) {
+      await enrichmentHook.onNodeContentCommitted(nodeId, contentHash);
+      try {
+        // LLM-free derived facets; tag-predicate admission below reads
+        // ai_tag_raw, so this must run before checkUploadAdmissionsForNode.
+        await syncTags(nodeId);
+      } catch (error) {
+        console.error(
+          `[derivedTags] commit sync failed for node ${nodeId}:`,
+          error && error.message
+        );
+      }
+      try {
+        await require('../domains/collections/service').checkUploadAdmissionsForNode(nodeId);
+      } catch (error) {
+        console.error(
+          `[collections] upload admission failed for node ${nodeId}:`,
+          error && error.message
+        );
+      }
+      try {
+        // Batch-end trigger only (§evolutionService §2.2): re-arms the owner's
+        // trailing-edge timer; the hint path is latency sugar, never required.
+        await require('../domains/collections/evolutionService').armUploadTriggerForNode(nodeId);
+      } catch (error) {
+        console.error(
+          `[collections] evolution trigger arm failed for node ${nodeId}:`,
+          error && error.message
+        );
+      }
+    },
+  };
+}
 
 function createComposition(overrides = {}) {
   const fileStorageMode = overrides.fileStorageMode || process.env.WEA_FILE_STORAGE || 's3';
@@ -36,6 +87,17 @@ function createComposition(overrides = {}) {
       fileStorageMode,
       fileNodeService,
     });
+  const nodeContentHook =
+    overrides.nodeContentHook ||
+    createComposedNodeContentHook(
+      createNodeContentHook({
+        aiJobsRepository: aiJobsStore,
+        fileNodesStore,
+        generationFor: getGeneration,
+      }),
+      { fileNodesStore }
+    );
+
   const uploadService =
     overrides.uploadService ||
     createUploadService({
@@ -43,6 +105,7 @@ function createComposition(overrides = {}) {
       blobStorageService,
       blobStore,
       fileNodesStore,
+      nodeContentHook,
     });
 
   const effectiveAclService = overrides.aclService || aclService;
@@ -59,6 +122,7 @@ function createComposition(overrides = {}) {
       ownerNodeResolver,
       blobStore,
       fileNodesStore,
+      nodeContentHook,
     });
 
   const batchOperationService =
@@ -84,6 +148,14 @@ function createComposition(overrides = {}) {
       fileNodeService,
       blobStore,
       fileStorageMode,
+      aclService: effectiveAclService,
+      nodeContentHook,
+    });
+
+  const enrichmentService =
+    overrides.enrichmentService ||
+    createEnrichmentService({
+      fileNodesStore,
       aclService: effectiveAclService,
     });
 
@@ -135,11 +207,13 @@ function createComposition(overrides = {}) {
     fileNodeService,
     blobStorageService,
     uploadService,
+    nodeContentHook,
     aclService: effectiveAclService,
     fileService,
     batchOperationService,
     downloadService,
     versionsService,
+    enrichmentService,
     trashService,
     gcService,
     failSafeService,

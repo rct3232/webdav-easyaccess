@@ -93,4 +93,10 @@ router.delete(
   })
 );
 
+// Admin reports (T0.8): GET /reports, GET /reports/:id and the
+// kind/action-dispatched POST /reports/:id/repair. Mounted from this module
+// so the endpoints need no server/index.js edit (that file is owned by
+// another workstream); see docs/spec/server/routes/admin.md §2.1.
+router.use('/reports', require('./reports'));
+
 module.exports = router;

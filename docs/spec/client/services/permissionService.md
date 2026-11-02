@@ -50,11 +50,11 @@
 
 ### 2.5 Removed Parameters
 
-The following parameters are removed in Phase 4:
+The following parameters are removed:
 
 - **`includeSubfolders`** — server handles permission inheritance via closure table automatically; client no longer sends this parameter
-- **`folderPath` / `filePath` / `path`** as request identifiers — all replaced by `nodeId` / `parentNodeId`
-- Permission route contracts were already nodeId-based in Phase 3 on the server side; client params must match them exactly
+- **`folderPath` / `filePath` / `path`** as request identifiers — `nodeId` / `parentNodeId` are used instead
+- Permission route contracts are nodeId-based on the server side; client params must match them exactly
 
 #### Payload Shape Changes
 

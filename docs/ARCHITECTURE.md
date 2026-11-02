@@ -43,35 +43,53 @@ Each domain encapsulates its own routes, services, stores, and policy logic unde
 
 ```
 server/domains/
+├── actions/
+│ ├── routes.js # GET /api/actions 30d feed + POST /:id/undo (undo journal, docs/features/collections-platform.md §4.11)
+│ └── service.js
 ├── admin/
-│   ├── routes/        # config.js, maintenance.js, migration.js, migrationStatus.js, settings.js, userManagement.js, users.js
-│   └── services/      # cleanupService.js, userService.js
+│ ├── routes/ # config.js, ai.js, maintenance.js, migration.js, migrationStatus.js, settings.js, userManagement.js, users.js
+│ └── services/ # aiAdminService.js, settingsJournalService.js, cleanupService.js, userService.js
+├── ai/
+│ ├── routes.js # /api/search mount (name + semantic sections, §4.6)
+│ ├── searchService.js # section assembly, dedup, per-query dynamic baseline
+│ └── vectorStore/ # vector engine seam (§4.13): native (PgVector/SqliteVec) + TextVectorJs fallback
 ├── auth/
-│   ├── routes/        # (nested test files)
-│   ├── routes.js      # login, register, refresh, logout, me
-│   ├── service.js     # auth business logic
-│   └── tokenStore.js  # token persistence
+│ ├── routes/ # (nested test files)
+│ ├── routes.js # login, register, refresh, logout, me
+│ ├── service.js # auth business logic
+│ └── tokenStore.js # token persistence
+├── collections/
+│ ├── routes.js # /api/collections: CRUD, membership, preview, merge-suggestions, grants, publish
+│ ├── service.js # throws bare string codes; route-level ERROR_MAP (recentFiles precedent)
+│ └── __tests__/ # persistence via server/store/repositories collections twins (§1.1)
+├── storage/
+│ ├── routes.js # /api/storage: hygiene read, current usage + daily series, suggestion accept/dismiss
+│ ├── service.js # dup/trash summaries + usage breakdown/series + persisted suggestions (storageService)
+│ └── suggestionUndoService.js # file-domain undo executor (cleanup-accept)
 ├── files/
-│   ├── routes/        # crud.js, batch.js, folders.js, preview.js
-│   ├── services/      # fileService.js, downloadService.js, etc.
-│   └── stores/        # operationProgress.js
+│ ├── routes/ # crud.js, batch.js, folders.js, preview.js
+│ ├── services/ # fileService.js, downloadService.js, etc.
+│ └── stores/ # operationProgress.js
 ├── permissions/
-│   ├── policy/        # permissionPolicy.js, ownerNodeResolver.js, permissionRank.js
-│   ├── routes/        # index.js, filePermissions.js, folderPermissions.js, queries.js, permissionRequests.js
-│   ├── services/      # aclService.js, permissionFacade.js
-│   └── stores/        # permissionStore.js, permissionRequestStore.js, permissionExistenceIndex.js
-│       └── repositories/  # PermissionRepository.js, PermissionRequestRepository.js (+ sqlite/ + postgres/ dialect impls)
+│ ├── policy/ # permissionPolicy.js, ownerNodeResolver.js, permissionRank.js
+│ ├── routes/ # index.js, filePermissions.js, folderPermissions.js, queries.js, permissionRequests.js
+│ ├── services/ # aclService.js, permissionFacade.js
+│ └── stores/ # permissionStore.js, permissionRequestStore.js, permissionExistenceIndex.js
+│ └── repositories/ # PermissionRepository.js, PermissionRequestRepository.js (+ sqlite/ + postgres/ dialect impls)
 ├── recentFiles/
-│   ├── routes.js
-│   └── service.js
+│ ├── routes.js
+│ └── service.js
+├── setup/
+│ ├── routes.js # /api/setup: status/test/apply + GET /llm-presets (first-run wizard)
+│ └── setupCore.js # shared apply core (wizard + CLI)
 ├── sharing/
-│   ├── routes/        # shareLinks.js, sharePublic.js
-│   └── services/      # shareLinkService.js, shareAccessService.js
+│ ├── routes/ # shareLinks.js, sharePublic.js
+│ └── services/ # shareLinkService.js, shareAccessService.js
 └── thumbnails/
-    ├── cache.js       # LRU thumbnail cache
-    ├── routes/        # thumbnailRoutes.js (public token-based)
-    ├── routes.js      # JWT-protected thumbnail endpoints
-    └── services/      # imageProcessor.js, videoProcessor.js, thumbnailService.js
+ ├── cache.js # LRU thumbnail cache
+ ├── routes/ # thumbnailRoutes.js (public token-based)
+ ├── routes.js # JWT-protected thumbnail endpoints
+ └── services/ # imageProcessor.js, videoProcessor.js, thumbnailService.js
 ```
 
 Domains are mounted in `server/index.js` under their respective API prefixes. Cross-domain dependencies are minimized; shared utilities live in `server/utils/`.
@@ -80,10 +98,11 @@ Domains are mounted in `server/index.js` under their respective API prefixes. Cr
 
 The adapter layer sits between domains and physical storage, providing interchangeable blob, file, and cache backends. Metadata persistence is not an adapter — it runs through per-domain repositories on the backend-neutral `DbExecutor` seam (see the metadata-persistence note below and §2.1):
 
-| Adapter            | Location                             | Purpose                                                                                                                                                                                                                                                                                                                |
-| ------------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| File store adapter | `infrastructure/adapters/filestore/` | Wraps file operations behind the `FileStoreAdapter` interface. In **webdav blob mode** (`WEA_FILE_STORAGE=webdav`), `WebdavFileStoreAdapter` delegates to `utils/webdav.js`; in **s3 mode** (`WEA_FILE_STORAGE=s3`, the default) blob content is served by `S3BlobStore` instead. Factory: `createFileStoreAdapter()`. |
-| Cache adapter      | `infrastructure/adapters/cache/`     | In-memory LRU cache used for client caching, thumbnail storage, etc. Factory: `createCacheAdapter()`. Extensible for Redis in future.                                                                                                                                                                                  |
+| Adapter            | Location                             | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| File store adapter | `infrastructure/adapters/filestore/` | Wraps file operations behind the `FileStoreAdapter` interface. In **webdav blob mode** (`WEA_FILE_STORAGE=webdav`), `WebdavFileStoreAdapter` delegates to `utils/webdav.js`; in **s3 mode** (`WEA_FILE_STORAGE=s3`, the default) blob content is served by `S3BlobStore` instead. Factory: `createFileStoreAdapter()`.                                                                                                                                                                                                                                                                                           |
+| Cache adapter      | `infrastructure/adapters/cache/`     | In-memory LRU cache used for client caching, thumbnail storage, etc. Factory: `createCacheAdapter()`. Extensible for Redis in future.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| LLM adapter        | `infrastructure/adapters/llm/`       | Provider clients for the AI enrichment roles (`embed`, `chat`, optional `vision`, `asr`), each `{ BASE_URL, API_KEY, MODEL }`. **T2-hot** (docs/features/collections-platform.md §4.2): factory-by-runtime-presence — no `LLM_ENABLED` flag, role presence decides candidacy; connection config is resolved per call via `configResolver` and an internal client cache keyed by the resolved-config signature rebuilds on change (re-probe, restart-free). Preset manifest `presets.js` declares EXPECTED capabilities; probes are the final authority (§4.23). Startup `probeLlm` reports into `backendHealth`. |
 
 **Metadata persistence (not an adapter):**
 
@@ -98,19 +117,34 @@ remote DB credential keys (`WEA_DB_*`) or the SQLite default. Store modules (`us
 `permissionRequestStore`) are thin facades: they obtain `storage.getExecutor()` and delegate
 every method to the matching repository — they contain no SQL and no dialect branching.
 
+**Vector index artifacts (derived, never tracked DDL):** canonical vector truth is the
+`embeddings.vector` TEXT column (+ `dim`, model version; §4.13). The engine-native indexes —
+a pgvector shadow table on PostgreSQL, a sqlite-vec `vec0` virtual table on SQLite — are
+**derived artifacts created and managed by the `domains/ai/vectorStore/` adapter, never part
+of the numbered DDL chain** (symmetric rule for both; CODING_STYLE.md Express Patterns). `chunk_pool` and
+`embeddings_chunk` rows follow the same canonical-TEXT + derived-index discipline. If a
+native engine is absent, the `TextVectorJs` fallback runs — features degrade in speed only,
+never in availability.
+
 Blob store adapters (S3 / WebDAV) and their contract are covered by `docs/spec/server/store/blobstore.md`.
 
 ### 1.2 Infrastructure Layer
 
 Cross-cutting infrastructure modules live in `server/infrastructure/`:
 
-| Module             | File                  | Responsibility                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Lock Manager       | `lockManager.js`      | Distributed locking for metadata writes. Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()`.                                                                                                                                                                                                                                                                                             |
-| DB Executor Seam   | `db/executor.js`      | Backend-neutral metadata execution seam (`query` / `run` / `transaction` / `isUniqueConflict` / `close`), implemented per dialect by `db/sqliteExecutor.js` and `db/postgresExecutor.js`. Selected by `storage.getExecutor()`; executes the per-domain repository SQL (§1.1 / §2.1).                                                                                                                                                                 |
-| Health Routes      | `healthRoutes.js`     | Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`.                                                                                                                                                                                                                                                                                                                                                                   |
-| WebDAV Test        | `webdavTest.js`       | Connection test logic extracted from webdav.js. Creates ephemeral client, probes root directory, returns structured result.                                                                                                                                                                                                                                                                                                                          |
-| SQLite Schema Init | `sqliteSchemaInit.js` | PostgreSQL→SQLite DDL transpiler (`convertPostgresToSqlite`) plus explicit-target schema init (`initSqliteSchema({connection}` / `{path}`) for caller-supplied connections and temporary DBs. App boot applies the tracked `ddl/` chain via `schemaManager.applyPendingMigrations` on BOTH backends (sqlite consumes the transpiler); `initSqliteSchema` is no longer the boot path. Spec: `docs/spec/server/infrastructure/sqliteSchemaInit.md` §1. |
+| Module                     | File                                                    | Responsibility                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lock Manager               | `lockManager.js`                                        | Distributed locking for metadata writes. Supports PostgreSQL and SQLite lock strategies with TTL expiry and stale-lock cleanup. Exports `acquireLock()`.                                                                                                                                                                                                                                                                                                                                                    |
+| DB Executor Seam           | `db/executor.js`                                        | Backend-neutral metadata execution seam (`query` / `run` / `transaction` / `isUniqueConflict` / `close`), implemented per dialect by `db/sqliteExecutor.js` and `db/postgresExecutor.js`. Selected by `storage.getExecutor()`; executes the per-domain repository SQL (§1.1 / §2.1).                                                                                                                                                                                                                        |
+| Health Routes              | `healthRoutes.js`                                       | Unauthenticated `GET /api/health` endpoint for liveness probes. Mounted at `/api`.                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| WebDAV Test                | `webdavTest.js`                                         | Connection test logic extracted from webdav.js. Creates ephemeral client, probes root directory, returns structured result.                                                                                                                                                                                                                                                                                                                                                                                 |
+| SQLite Schema Init         | `sqliteSchemaInit.js`                                   | PostgreSQL→SQLite DDL transpiler (`convertPostgresToSqlite`) plus explicit-target schema init (`initSqliteSchema({connection}` / `{path}`) for caller-supplied connections and temporary DBs. App boot applies the tracked `ddl/` chain via `schemaManager.applyPendingMigrations` on BOTH backends (sqlite consumes the transpiler); `initSqliteSchema` is no longer the boot path. Spec: `docs/spec/server/infrastructure/sqliteSchemaInit.md` §1.                                                        |
+| LLM Adapter                | `adapters/llm/index.js`                                 | Single gateway to every LLM provider: per-call `configResolver` lookup, signature-keyed client cache (hot reconfiguration), role clients (`embed`/`chat`/`vision`/`asr`), capability probes, budget chain/breaker, error taxonomy, usage counting. Presets declare EXPECTED; probes decide ACTUAL. Serves the `llm` test target of `POST /api/setup/test` and `POST /api/admin/config/test`; probe outcomes report into `backendHealth`. Dependency direction: `domains/ai/*` → adapter, never the reverse. |
+| LLM Presets + Provisioning | `adapters/llm/presets.js`, `adapters/llm/provision.js`  | Frozen provider-family manifest (expected capabilities, budgets, model profiles; embed is model-pinned to the built-in engine) and provider-triggered model provisioning for `engine='embedded'` (lockfile sha256, `WEA_MODEL_DIR`, atomic download). Consumed by the adapter budget/probe matrix and the setup/admin preset pickers (`GET /api/setup/llm-presets`, admin config). Provisioning is blocking on a configured boot, never during setup mode.                                                  |
+| Vector Store + Math        | `domains/ai/vectorStore/` (`index.js`, `vectorMath.js`) | Engine seam over pgvector / sqlite-vec / `TextVectorJs` fallback plus the pure vector math and canonical TEXT codec. Canonical truth stays the `embeddings*.vector` TEXT columns; native indexes are derived. Consumed by `domains/ai` (embedding, search, near-dup); the boot selection reports the `vector` row into `backendHealth`.                                                                                                                                                                     |
+| Maintenance Scheduler      | `maintenanceScheduler.js`                               | Startup one-shots and periodic schedules: GC cron, fail-safe orphaned-node scan, nightly usage rollup, journal/storage-suggestion expiry, daily storage-usage capture. Consumes services/stores; armed once at boot from `server/index.js`; no HTTP mount.                                                                                                                                                                                                                                                  |
+| Config Registry            | `configRegistry.js`                                     | Authoritative catalog of every `process.env` key with tier (`T0/T1/T2`), `secret`, `dbOnly` and default classification. Read by `configResolver`, the setup routes (`/api/setup/*`), the admin config routes (`/api/admin/config*`), and scheduler settings.                                                                                                                                                                                                                                                |
+| Backend Health             | `backendHealth.js`                                      | In-memory per-backend health tracker (`postgresql`/`s3`/`webdav`, `ai.embed`/`ai.chat`, `vector`) with the `preparing` readiness state. Fed by adapters/probes; read by `GET /api/health`, `GET /api/admin/health`, and the public settings AI block.                                                                                                                                                                                                                                                       |
 
 ### 1.3 Middleware Pipeline
 
@@ -122,10 +156,10 @@ Request → CORS → Body Parser → Request Logger → [Auth (JWT) → User Loa
 
 #### Core Middleware
 
-1.  **authenticateToken** (`server/utils/auth.js`): Validates `Authorization: Bearer <JWT>` header and sets `req.user.id`.
-2.  **requireUser** (`server/middleware/requireUser.js`): Loads user details from Metadata Store into `req.user.full`.
-3.  **parseNodeId** (`server/middleware/validateNodeIdParam.js`): Parses and validates opaque `nodeId` / `parentNodeId` / `fileNodeId` payload fields inside route handlers; invalid nodeIds are rejected rather than normalized.
-4.  **errorHandler** (`server/utils/errorHandler.js`): Catches all route errors and returns standardized JSON responses (status, **errorCode**, optional **params**, optional **details** in development).
+1. **authenticateToken** (`server/utils/auth.js`): Validates `Authorization: Bearer <JWT>` header and sets `req.user.id`.
+2. **requireUser** (`server/middleware/requireUser.js`): Loads user details from Metadata Store into `req.user.full`.
+3. **parseNodeId** (`server/middleware/validateNodeIdParam.js`): Parses and validates opaque `nodeId` / `parentNodeId` / `fileNodeId` payload fields inside route handlers; invalid nodeIds are rejected rather than normalized.
+4. **errorHandler** (`server/utils/errorHandler.js`): Catches all route errors and returns standardized JSON responses (status, **errorCode**, optional **params**, optional **details** in development).
 
 #### App-level request gate (maintenance/migration lock)
 
@@ -152,25 +186,26 @@ The system runs its own **ACL (Access Control List)** independent of WebDAV serv
 
 ```mermaid
 flowchart TD
-    A["Request (User, NodeId)"] --> B{"Admin?"}
-    B -->|"Yes"| C["Allow All"]
-    B -->|"No"| D{"Owner of node?<br/>isOwnerNode(userId, nodeId)"}
-    D -->|"Yes"| C
-    D -->|"No"| E{"Node type?"}
-    E -->|"Directory"| F["checkFolderPermission: closure-table ancestor walk (depth 0..N)"]
-    E -->|"File"| G["checkFilePermission: file-specific grant first, then ancestor walk"]
-    F --> H{"Effective 'read'/'write' or higher?"}
-    G --> I{"Effective 'read'/'write' or higher?"}
-    H -->|"Yes"| C
-    H -->|"No"| J["403 Forbidden"]
-    I -->|"Yes"| C
-    I -->|"No"| J
+ A["Request (User, NodeId)"] --> B{"Admin?"}
+ B -->|"Yes"| C["Allow All"]
+ B -->|"No"| D{"Owner of node?<br/>isOwnerNode(userId, nodeId)"}
+ D -->|"Yes"| C
+ D -->|"No"| E{"Node type?"}
+ E -->|"Directory"| F["checkFolderPermission: closure-table ancestor walk (depth 0..N)"]
+ E -->|"File"| G["checkFilePermission: file-specific grant first, then ancestor walk"]
+ F --> H{"Effective 'read'/'write' or higher?"}
+ G --> I{"Effective 'read'/'write' or higher?"}
+ H -->|"Yes"| C
+ H -->|"No"| J["403 Forbidden"]
+ I -->|"Yes"| C
+ I -->|"No"| J
 ```
 
 - **Closure-table inheritance**: a directory grant applies to the node itself (depth 0) and is inherited by all descendants (depth 1..N) via `node_ancestors`; grant/revoke on a folder affects the whole subtree.
 - **File grant precedence**: a file-specific grant (`permissions_user_files`) overrides any inherited directory-level permission on that file node.
 - **Owner exception**: a user owns their home root node and every descendant of it (resolved via `isOwnerNode`); the owner has full access without explicit grants.
 - **Permission enum**: `read < write < admin` (source of truth: `shared/constants.js`; DB enforcement in `server/store/postgresql/ddl/001_initial_normalized_schema.sql`).
+- **Separate sharing channel (invariant 1)**: collection sharing uses `collection_grants` (`viewer|editor`) — a **separate table domain** that is never read from or written to by `aclService`, the permission stores/caches, or `__shared__`; file access to collection members continues to be governed exclusively by the node ACL model above.
 
 ---
 
@@ -183,16 +218,17 @@ Metadata storage is SQLite by default; setting any of the remote DB credential k
 PostgreSQL backend. The store API is the same across backends.
 
 - **Backend selection**:
-  - `sqlite` (default): SQLite via the node `sqlite3` driver for development/testing.
-  - `postgresql`: Normalized relational schema for metadata and locks (recommended for production).
+- `sqlite` (default): SQLite via the built-in `node:sqlite` driver (`DatabaseSync`) for development/testing.
+- `postgresql`: Normalized relational schema for metadata and locks (recommended for production).
+- **Driver:** the sqlite driver is the built-in `node:sqlite` (`DatabaseSync`), confined to the storage seam; extension loading (`enableLoadExtension`/`loadExtension`) is required for the sqlite-vec `vec0` path (§4.13), which sets a **product Node floor of ≥24** and tolerates the driver's experimental warning. Contract: `docs/spec/server/store/executor.md` / `storage.md`.
 - **Interface parity**:
-  - Store public interfaces remain stable across backends.
-  - `userStore`, `settingsStore`, `shareLinkStore`, `recentFilesStore`, `fileNodesStore`,
-    `permissionStore`, and `permissionRequestStore` keep identical exported method contracts as
-    thin facades that delegate to per-dialect repositories behind `storage.getExecutor()`. The
-    dialect-specific SQL lives only in the repository `sqlite/` / `postgres/` implementations
-    under `server/store/repositories/` (and `server/domains/permissions/stores/repositories/`);
-    store modules contain no dialect branching.
+- Store public interfaces remain stable across backends.
+- `userStore`, `settingsStore`, `shareLinkStore`, `recentFilesStore`, `fileNodesStore`,
+  `permissionStore`, and `permissionRequestStore` keep identical exported method contracts as
+  thin facades that delegate to per-dialect repositories behind `storage.getExecutor()`. The
+  dialect-specific SQL lives only in the repository `sqlite/` / `postgres/` implementations
+  under `server/store/repositories/` (and `server/domains/permissions/stores/repositories/`);
+  store modules contain no dialect branching.
 
 #### PostgreSQL Normalized Schema
 
@@ -210,7 +246,7 @@ Metadata migration between the `sqlite` and `postgresql` backends is a **support
 (schemas are structurally identical — the sqlite DDL is generated from the same
 `server/store/postgresql/ddl/*.sql` chain via `sqliteSchemaInit.js` type-conversion). It is exposed as
 an admin API + config dialogs (no standalone CLI; the legacy
-`server/scripts/migrateMetadataToPostgresql.js` was removed in Phase 7):
+`server/scripts/migrateMetadataToPostgresql.js` was removed):
 
 - `GET /api/admin/migration/target-scan` — scan the non-active target backend
   (`schemaExists` + per-table row counts).
@@ -234,7 +270,7 @@ CLI). Command sequences and operator checks are maintained in `docs/SETUP.md`.
 
 A **distributed lock** mechanism (`server/infrastructure/lockManager.js`) prevents metadata races across all backends.
 
-- **postgresql/sqlite**: lock rows are acquired with `INSERT ... ON CONFLICT` semantics, validated by owner token, and released with TTL-aware cleanup (`expires_at < NOW()`).
+- **postgresql/sqlite**: lock rows are acquired with `INSERT... ON CONFLICT` semantics, validated by owner token, and released with TTL-aware cleanup (`expires_at < NOW()`).
 
 #### Transaction Boundaries (Executor Transaction)
 
@@ -244,10 +280,10 @@ routes through `storage.withTransaction` (pooled `BEGIN` / `COMMIT` / `ROLLBACK`
 `sqliteExecutor` through the serialized `storage.withSqliteTransaction` queue. The concrete write
 paths below are backend-independent store-layer operations:
 
-1.  **User lifecycle** (`createUser`, `updateEmail`, `deleteUser`): single transaction including index-equivalent uniqueness and related cleanup.
-2.  **Permission mutations** (`grant*`, `revoke*`, rewrite/revoke-prefix): transaction per mutation unit for atomic ACL updates.
-3.  **Permission request updates** (`createRequest`, `updateStatus`, bulk reject/delete): single transaction per call with status consistency checks.
-4.  **Share link counter update**: `incrementDownloadCount` uses atomic SQL increment (`SET download_count = download_count + 1`) and returns updated row.
+1. **User lifecycle** (`createUser`, `updateEmail`, `deleteUser`): single transaction including index-equivalent uniqueness and related cleanup.
+2. **Permission mutations** (`grant*`, `revoke*`, rewrite/revoke-prefix): transaction per mutation unit for atomic ACL updates.
+3. **Permission request updates** (`createRequest`, `updateStatus`, bulk reject/delete): single transaction per call with status consistency checks.
+4. **Share link counter update**: `incrementDownloadCount` uses atomic SQL increment (`SET download_count = download_count + 1`) and returns updated row.
 
 #### Canonical Path Rule
 
@@ -269,44 +305,45 @@ Server-side thumbnails enable fast browsing of media files.
 
 ```mermaid
 sequenceDiagram
-    participant C as Client
-    participant S as Server
-    participant Cache as Memory Cache
-    participant B as Blob Store (S3/WebDAV)
+ participant C as Client
+ participant S as Server
+ participant Cache as Memory Cache
+ participant B as Blob Store (S3/WebDAV)
 
-    C->>S: GET /api/thumbnails/:hash.:ext?token= (required)
-    S->>Cache: Check Cache
-    alt In Cache
-        Cache-->>S: Return Buffer
-        S-->>C: 200 OK (Image)
-    else Not In Cache
-        S->>B: Download Original (Partial/Full)
-        alt Image File
-            S->>S: Resize using Sharp
-        else Video File
-            S->>S: Extract frame using FFmpeg
-            S->>S: Resize frame using Sharp
-        end
-        S->>Cache: Store in Cache (LRU)
-        S-->>C: 200 OK (Image)
-    end
+ C->>S: GET /api/thumbnails/:hash.:ext?token= (required)
+ S->>Cache: Check Cache
+ alt In Cache
+ Cache-->>S: Return Buffer
+ S-->>C: 200 OK (Image)
+ else Not In Cache
+ S->>B: Download Original (Partial/Full)
+ alt Image File
+ S->>S: Resize using Sharp
+ else Video File
+ S->>S: Extract frame using FFmpeg
+ S->>S: Resize frame using Sharp
+ end
+ S->>Cache: Store in Cache (LRU)
+ S-->>C: 200 OK (Image)
+ end
 ```
 
 - **Endpoints**: `POST /api/thumbnails/batch` (body `{ nodeIds }`, returns `{ thumbnails: [{ nodeId, thumbnailUrl }] }`) for viewport batch loading; `GET /api/thumbnails/:hash.:ext` (signed token in query required) for a single thumbnail.
 - **Performance**:
-  - Thumbnails are cached in server memory (max 1000).
-  - Clients request multiple thumbnails in viewport via batch API.
-  - Video thumbnails require FFmpeg; availability is checked once at server startup.
+- Thumbnails are cached in server memory (max 1000).
+- Clients request multiple thumbnails in viewport via batch API.
+- Video thumbnails require FFmpeg; availability is checked once at server startup.
 
 ### 3.2 Recursive Operations (Batch Move/Copy/Delete)
 
 Directory move/copy/delete can be complex depending on WebDAV server behavior. Recursive operations run in the batch worker (`batchOperationService`) on top of the node graph.
 
 - **Flow**:
-  1.  Resolve the target subtree via the `node_ancestors` closure table.
-  2.  Check **current user ACL** at each node.
-  3.  Move/copy/delete only items the user is allowed to access.
-  4.  After completion, permission metadata is preserved because grants reference stable nodeIds; the `node_ancestors` closure table is rebuilt for moved subtrees.
+
+1.  Resolve the target subtree via the `node_ancestors` closure table.
+2.  Check **current user ACL** at each node.
+3.  Move/copy/delete only items the user is allowed to access.
+4.  After completion, permission metadata is preserved because grants reference stable nodeIds; the `node_ancestors` closure table is rebuilt for moved subtrees.
 
 ---
 
@@ -322,12 +359,12 @@ This document does not duplicate endpoint catalogs.
 ## 5. Security and Performance
 
 - **Security**:
-  - JWT tokens stored only in `sessionStorage` to minimize XSS exposure.
-  - Password change increments `token_version`, invalidating all existing tokens.
-  - Path normalization prevents Directory Traversal attacks.
+- JWT tokens stored only in `sessionStorage` to minimize XSS exposure.
+- Password change increments `token_version`, invalidating all existing tokens.
+- Path normalization prevents Directory Traversal attacks.
 - **Performance**:
-  - `asyncLimit` limits concurrent WebDAV requests (e.g. 5–10 per operation).
-  - Permission and user checks are cached in-memory with short TTL (e.g. 3–5s; `PERMISSION_CACHE_TTL_MS`, `USER_CACHE_TTL_MS`).
+- `asyncLimit` limits concurrent WebDAV requests (e.g. 5–10 per operation).
+- Permission and user checks are cached in-memory with short TTL (e.g. 3–5s; `PERMISSION_CACHE_TTL_MS`, `USER_CACHE_TTL_MS`).
 
 ## 6. Concept Verification Boundary
 
@@ -354,54 +391,59 @@ This section defines high-level client layering to keep responsibilities explici
 The client follows a five-layer model:
 
 1. Page shell
-   - Owns route composition and product overlays (e.g., share-link mode, virtual collections like `__recent__`, `__shared__`).
-   - Composes controller hooks and passes prepared props into views.
-   - No direct data-access logic beyond orchestration allowed here.
+
+- Owns route composition and product overlays (e.g., share-link mode, virtual collections like `__recent__`, `__shared__`).
+- Composes controller hooks and passes prepared props into views.
+- No direct data-access logic beyond orchestration allowed here.
 
 2. Controller hooks
-   - Orchestrate user flows and UI state transitions for a feature area (navigation, commands, progress, dialogs).
-   - Coordinate gateways and helpers; expose callbacks and view models to views.
-   - Must not import browser globals or services directly; all IO via gateways/adapters.
+
+- Orchestrate user flows and UI state transitions for a feature area (navigation, commands, progress, dialogs).
+- Coordinate gateways and helpers; expose callbacks and view models to views.
+- Must not import browser globals or services directly; all IO via gateways/adapters.
 
 3. Gateways / adapters
-   - Isolate IO: HTTP/API calls, storage access, and browser APIs.
-   - Provide narrow, testable interfaces consumed by controller hooks.
-   - Are the only layer allowed to depend on transport, token storage, or Web APIs.
+
+- Isolate IO: HTTP/API calls, storage access, and browser APIs.
+- Provide narrow, testable interfaces consumed by controller hooks.
+- Are the only layer allowed to depend on transport, token storage, or Web APIs.
 
 4. Pure helpers
-   - Pure functions that hold domain rules and derived state logic.
-   - No side effects, no IO, no React state.
+
+- Pure functions that hold domain rules and derived state logic.
+- No side effects, no IO, no React state.
 
 5. Pure views
-   - React components that render strictly from props.
-   - No service, storage, router, or browser API imports.
-   - May receive callbacks and prepared data from controller hooks only.
+
+- React components that render strictly from props.
+- No service, storage, router, or browser API imports.
+- May receive callbacks and prepared data from controller hooks only.
 
 High-level flow:
 
 ```mermaid
 flowchart LR
-  pageShell[PageShell] --> controller[ControllerHooks]
-  controller --> gateway[Gateways/Adapters]
-  controller --> helpers[PureHelpers]
-  pageShell --> view[PureViews]
-  controller --> view
-  gateway --> externalIo[API/Storage/Browser]
+ pageShell[PageShell] --> controller[ControllerHooks]
+ controller --> gateway[Gateways/Adapters]
+ controller --> helpers[PureHelpers]
+ pageShell --> view[PureViews]
+ controller --> view
+ gateway --> externalIo[API/Storage/Browser]
 ```
 
 ### 7.2 Feature boundaries
 
 - Explorer core vs product overlays
-  - Explorer core handles listing, selection, navigation, commands, and progress.
-  - Product overlays (e.g., share-link mode, virtual collections like `__recent__`, `__shared__`, admin-only visibility) live in page shells or dedicated controllers outside explorer core.
+- Explorer core handles listing, selection, navigation, commands, and progress.
+- Product overlays (e.g., share-link mode, virtual collections like `__recent__`, `__shared__`, admin-only visibility) live in page shells or dedicated controllers outside explorer core.
 
 - Tree and picker ecosystem
-  - Tree/picker views are pure; expansion rules, lazy loading, and target validation live in controllers and helpers.
-  - Data access (listing folders, shared folders) goes through folder gateways.
+- Tree/picker views are pure; expansion rules, lazy loading, and target validation live in controllers and helpers.
+- Data access (listing folders, shared folders) goes through folder gateways.
 
 - Auth/session
-  - Transport, token storage, and auth navigation policy are separated behind dedicated adapters.
-  - UI pages (Login/Register/MyPage) are page shells that compose controller hooks and views.
+- Transport, token storage, and auth navigation policy are separated behind dedicated adapters.
+- UI pages (Login/Register/MyPage) are page shells that compose controller hooks and views.
 
 ### 7.3 Hard constraints
 

@@ -49,6 +49,8 @@ describe('useBulkOperations', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    // CRA's Jest config resets mock implementations between tests.
+    mockGetCurrentNodeId.mockReturnValue(0);
     fileService.batchDeleteFiles.mockResolvedValue({ jobId: 'job-del' });
     fileService.batchMoveFiles.mockResolvedValue({ jobId: 'job-move' });
     fileService.batchCopyFiles.mockResolvedValue({ jobId: 'job-copy' });
@@ -409,5 +411,261 @@ describe('useBulkOperations', () => {
     });
 
     expect(fileService.cancelBulkOperation).toHaveBeenCalledWith('job-to-cancel');
+  });
+
+  // ─── Bulk undo-command seam (options.onUndoable — useBulkOperations.md §2.6) ───
+
+  describe('bulk undo-command seam (options.onUndoable)', () => {
+    const undoableMoveResult = {
+      status: 'completed',
+      progress: 2,
+      total: 2,
+      results: [
+        { sourceNodeId: 1, destinationParentNodeId: 99, status: 'succeeded' },
+        { sourceNodeId: 2, destinationParentNodeId: 99, status: 'succeeded' },
+      ],
+      undo: { action_id: 77 },
+    };
+
+    function renderWithUndoable(options = {}) {
+      const onUndoable = jest.fn();
+      const { result } = renderHook(() =>
+        useBulkOperations(
+          new Set([1, 2]),
+          defaultArgs[1],
+          mockOnOperationComplete,
+          mockSetTreeUpdateTrigger,
+          undefined,
+          mockSetSelectedFiles,
+          mockSetSelectionMode,
+          mockGetCurrentNodeId,
+          { ...options, onUndoable }
+        )
+      );
+      return { result, onUndoable };
+    }
+
+    it('routes a journaled MOVE terminal result to onUndoable exactly once with the move label', async () => {
+      fileService.getBulkOperationStatus.mockResolvedValue(undoableMoveResult);
+      const { result, onUndoable } = renderWithUndoable();
+
+      act(() => {
+        result.current.handleBulkMove();
+      });
+      await act(async () => {
+        await result.current.handleFolderPickerSelect(99);
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(onUndoable).toHaveBeenCalledTimes(1);
+      const [payload, labelKey, params, meta] = onUndoable.mock.calls[0];
+      expect(payload).toMatchObject({ undo: { action_id: 77 } });
+      expect(labelKey).toBe('fileManager.bulkMoveToast');
+      expect(params).toEqual({ count: 2 });
+      expect(meta).toEqual({ action: 'move' });
+    });
+
+    it('routes a journaled COPY terminal result with the copy label', async () => {
+      fileService.getBulkOperationStatus.mockResolvedValue(undoableMoveResult);
+      const { result, onUndoable } = renderWithUndoable();
+
+      act(() => {
+        result.current.handleBulkCopy();
+      });
+      await act(async () => {
+        await result.current.handleFolderPickerSelect(99);
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(onUndoable).toHaveBeenCalledTimes(1);
+      expect(onUndoable.mock.calls[0][1]).toBe('fileManager.bulkCopyToast');
+      expect(onUndoable.mock.calls[0][3]).toEqual({ action: 'copy' });
+    });
+
+    it('fires for a cancelled job that still carries the journal pointer', async () => {
+      fileService.getBulkOperationStatus.mockResolvedValue({
+        ...undoableMoveResult,
+        status: 'cancelled',
+      });
+      const { result, onUndoable } = renderWithUndoable();
+
+      act(() => {
+        result.current.handleBulkMove();
+      });
+      await act(async () => {
+        await result.current.handleFolderPickerSelect(99);
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(onUndoable).toHaveBeenCalledTimes(1);
+    });
+
+    it('stays silent when the terminal result carries no undo pointer (delete jobs / undo null)', async () => {
+      fileService.getBulkOperationStatus.mockResolvedValue({
+        ...undoableMoveResult,
+        undo: null,
+      });
+      const { result, onUndoable } = renderWithUndoable();
+
+      act(() => {
+        result.current.handleBulkMove();
+      });
+      await act(async () => {
+        await result.current.handleFolderPickerSelect(99);
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+      // plus the delete channel — never journaled at all
+      fileService.batchDeleteFiles.mockResolvedValue({ jobId: 'job-del' });
+      await act(async () => {
+        await result.current.handleBulkDelete();
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(onUndoable).not.toHaveBeenCalled();
+    });
+
+    it('never throws when the host passes no onUndoable and a journaled job lands', async () => {
+      fileService.getBulkOperationStatus.mockResolvedValue(undoableMoveResult);
+      const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+      act(() => {
+        result.current.handleBulkMove();
+      });
+      await act(async () => {
+        await result.current.handleFolderPickerSelect(99);
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(mockOnOperationComplete).toHaveBeenCalledWith(
+        expect.objectContaining({ opType: 'move' })
+      );
+    });
+  });
+
+  // -- §2.6.1 job-status failures (stalled / expired / cancel force-check) ------
+
+  describe('§2.6.1 (unreadable job status)', () => {
+    const advance = async (ms = 0) => {
+      await act(async () => {
+        jest.advanceTimersByTime(ms);
+      });
+    };
+
+    async function startDelete(result) {
+      await act(async () => {
+        result.current.handleBulkDelete();
+      });
+      // The first read is scheduled on a 0 ms timer.
+      await advance(0);
+    }
+
+    it('five consecutive read failures surface the stalled item and refresh the listing once', async () => {
+      fileService.getBulkOperationStatus.mockRejectedValue(new Error('network down'));
+      const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+      await startDelete(result);
+      await advance(400);
+      await advance(800);
+      await advance(1600);
+      await advance(3200);
+
+      const item = result.current.progressItems.find((entry) => entry.type === 'delete');
+      expect(item).toMatchObject({
+        status: 'error',
+        stalled: true,
+        keepOnError: true,
+        error: 'fileManager.bulkStatusUnavailable',
+      });
+      expect(mockOnOperationComplete).toHaveBeenCalledTimes(1);
+      expect(mockOnOperationComplete).toHaveBeenCalledWith(
+        expect.objectContaining({ opType: 'delete', startedNodeId: 0 })
+      );
+
+      // No auto-removal for a stalled item.
+      await advance(30_000);
+      expect(result.current.progressItems.some((entry) => entry.id === item.id)).toBe(true);
+    });
+
+    it('a 404 job-expired read lands in the same stalled state immediately (no retry)', async () => {
+      const expired = Object.assign(new Error('not found'), { response: { status: 404 } });
+      fileService.getBulkOperationStatus.mockRejectedValue(expired);
+      const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+      await startDelete(result);
+
+      expect(fileService.getBulkOperationStatus).toHaveBeenCalledTimes(1);
+      const item = result.current.progressItems.find((entry) => entry.type === 'delete');
+      expect(item).toMatchObject({ status: 'error', stalled: true });
+      expect(mockOnOperationComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it('a throwing notification cannot skip the terminal refresh', async () => {
+      notifyRecentFilesChange.mockImplementationOnce(() => {
+        throw new Error('notifier boom');
+      });
+      const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+      await act(async () => {
+        result.current.handleBulkDelete();
+      });
+      await advance(500);
+
+      expect(mockOnOperationComplete).toHaveBeenCalledTimes(1);
+      expect(notifyRecentFilesChange).toHaveBeenCalled();
+    });
+
+    it('cancel forces one status read and completes through the normal terminal path', async () => {
+      const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+      await act(async () => {
+        result.current.handleBulkDelete();
+      });
+      const progressId = result.current.progressItems[0].id;
+
+      await act(async () => {
+        await result.current.handleCancelBulkOperation(progressId);
+      });
+
+      expect(fileService.cancelBulkOperation).toHaveBeenCalledWith('job-del');
+      expect(mockOnOperationComplete).toHaveBeenCalledTimes(1);
+      expect(result.current.progressItems[0].stalled).toBeUndefined();
+    });
+
+    it('a failed forced read after the cancel surfaces the stalled state (refresh included)', async () => {
+      fileService.getBulkOperationStatus.mockRejectedValueOnce(new Error('status down'));
+      const { result } = renderHook(() => useBulkOperations(...defaultArgs));
+
+      await act(async () => {
+        result.current.handleBulkDelete();
+      });
+      const progressId = result.current.progressItems[0].id;
+
+      await act(async () => {
+        await result.current.handleCancelBulkOperation(progressId);
+      });
+
+      expect(fileService.cancelBulkOperation).toHaveBeenCalledWith('job-del');
+      expect(result.current.progressItems[0]).toMatchObject({
+        status: 'error',
+        stalled: true,
+        error: 'fileManager.bulkStatusUnavailable',
+      });
+      expect(mockOnOperationComplete).toHaveBeenCalledTimes(1);
+      expect(mockOnOperationComplete).toHaveBeenCalledWith(
+        expect.objectContaining({ opType: 'delete' })
+      );
+    });
   });
 });

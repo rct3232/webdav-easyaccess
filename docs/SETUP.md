@@ -31,13 +31,13 @@ Copy `.env.example` to create a `.env` file at the project root:
 **Windows:**
 
 ```cmd
-copy .env.example .env
+copy.env.example.env
 ```
 
 **Linux/Mac:**
 
 ```bash
-cp .env.example .env
+cp.env.example.env
 ```
 
 > **Note (first-run wizard):** When the app boots with **no** `.env` file, the web-based
@@ -62,7 +62,7 @@ cp .env.example .env
 
 ### Environment Variable Reference
 
-**Source column** — `T0` = `.env`-owned (read at boot / `.env`-only, D2/D4/D7); `DB` = may be stored in the metadata DB `settings` table (via the wizard or the admin "Advanced settings" editor); a `.env` value always wins over the DB row (D1). T0 does not imply required: `JWT_SECRET` is `.env`-owned but **optional** (unset/empty → ephemeral random secret generated at boot).
+**Source column** — `T0` = `.env`-owned (read at boot / `.env`-only); `DB` = may be stored in the metadata DB `settings` table (via the wizard or the admin "Advanced settings" editor); a `.env` value always wins over the DB row. T0 does not imply required: `JWT_SECRET` is `.env`-owned but **optional** (unset/empty → ephemeral random secret generated at boot).
 
 | Variable                         | Source |              Required               | Description                                                                                                                                                                                        | Default            |
 | :------------------------------- | :----: | :---------------------------------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------- |
@@ -113,14 +113,88 @@ cp .env.example .env
 > `THUMBNAIL_CONCURRENCY_LIMIT`, `THUMBNAIL_TOKEN_SECRET`, `THUMBNAIL_TOKEN_EXPIRY`,
 > `FFMPEG_INIT_TIMEOUT_MS`, `WEA_PREVIEW_TICKET_TTL_MS`, `HOSTNAME` (registry `dbOnly` flag).
 
+### AI Features Configuration (LLM\_\* — optional)
+
+AI features are driven by role-based LLM config keys (`LLM_*` — each configured role
+`embed` / `chat` / optional `vision` / `asr` gets a `{BASE_URL, API_KEY, MODEL}` triple,
+e.g. `LLM_EMBED_BASE_URL`). Operator-facing semantics (full contract:
+`docs/features/collections-platform.md` §4.2/§4.23, `docs/features/config-source-resolution.md`):
+
+- **Tier T2 (hot)** — recommended surface is the admin config editor ("Advanced settings"),
+  or the **optional, skippable AI step** of the first-run setup wizard
+  (`docs/spec/server/routes/setup.md` §2.4). Values are stored as **DB `settings` rows**
+  (secrets plaintext + masked in UI, like all other DB-stored secrets), applied without a
+  restart (per-call resolution; editor changes re-probe live).
+- `LLM_*` entries are registry **`dbOnly`**: `.env`-provided values are never effective
+  (the resolver reads DB → default, env ignored). The DB
+  (admin config editor / wizard AI step) is the only LLM config surface.
+- **No `LLM_ENABLED` flag**: presence of a resolved role config decides candidacy; the
+  runtime probe decides truth. Unconfigured roles simply remove their AI affordances for
+  users (the product is fully useful in the None state).
+- Presets declare EXPECTED capabilities; probe results are the final authority (a
+  declared-but-failing capability is turned off with an admin warning card). Measured
+  reference profiles from the project the pre-implementation study:
+
+| Family (preset)                                          | Verified on dev reference set                                                                                                                                                                                                                                               | Status                                                     |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **embedded** (in-process ONNX EG2, default)              | **model-pinned embeddinggemma-2**; lockfile sha256 = identity, provider-triggered provisioning — blocking on configured boots (the first boot after the wizard included), in-place (non-blocking) on override clear; zero bytes fetched during the wizard (llmPresets §2.3) | product default (embed needs no config)                    |
+| external endpoint serving embeddinggemma-2               | **multimodal shared 768-d space** (text/image/audio probe-OK via `content`-wrapper + positive controls; `video_embed` gated on server batch limit; **EG2 conformance required — model name self-declared is ignored**)                                                      | measured profile value (θ_lo unresolved — llmPresets §2.3) |
+| llama.cpp serving Hana (gemma-4-12b)                     | **vision + audio**, verified in-domain with real photos/speech                                                                                                                                                                                                              | measured profile value                                     |
+| other families (Ollama, OpenAI-compatible, TEI-class, …) | **chat/vision/asr only** (embed is model-pinned — no 768-d foreign model, no bge-m3); expected capability set declared in `infrastructure/adapters/llm/presets.js`                                                                                                          | **release-measurement-pending** (chat roles)               |
+
+> Embedding is **model-pinned to EmbeddingGemma 2**. There is no bge-m3 or
+> alternate-embed-model support and no embed fallback chain: built-in provisioning
+> failure or external conformance failure ⇒ embed OFF + admin reason; other features keep
+> working. To use an external embed server, point at any EG2-serving endpoint — the adapter
+> verifies it IS EG2 (dim + reference conformance), not what it claims to be named.
+
+**Release measurement checklist per pending row** (a release-runbook step, not a product
+feature):
+
+- [ ] free metadata GETs verified (`/api/show`, `/v1/models`, TEI `/info`) and
+      budget-chain step-2 field extraction proven (n_ctx / max_input_tokens)
+- [ ] length-class passive-limiter exercise: one deliberately overlong input halves and
+      recovers only via manual raise (`docs/spec/server/infrastructure/llmAdapter.md` §2.5)
+- [ ] embed: dim + non-degeneracy + throughput @ reference corpus; chat: JSON-schema
+      validity rate; vision: real-photo caption check (base64-as-text trap); asr: real
+      speech check
+- [ ] chPerTok measured on the mixed-text sample (1.7 is the llama.cpp-mixed reference,
+      NOT assumed portable)
+- [x] embed **conformance reference kit** calibration (§llmPresets 2.2 `conformance`):
+      τ = 0.90 measured — positives EG2 × {GGUF q4_K_XL remote, ONNX q4 (canonical), ONNX q8,
+      ONNX fp16}, negatives embeddinggemma-1 twin + one 768-d foreign model (bge-base);
+      kit + record checked in at `server/infrastructure/adapters/llm/eg2-reference-kit.json`
+- [ ] probe kwarg map (which provider honors `chat_template_kwargs` vs `think` vs
+      nothing) recorded; unsupported params confirmed ABSENT from emitted requests
+- [ ] declared-vs-probed mismatch injection: force-fail one probe ⇒ capability OFF +
+      admin warning card renders
+
+- **Node ≥ 24 is the product floor** (release prerequisite): the native sqlite vector path
+  (sqlite-vec) needs the built-in `node:sqlite` driver with loadable-extension support
+  (the corresponding docs step, `docs/spec/server/store/executor.md`).
+- **Vector engine notes (affects speed, never availability):**
+- PostgreSQL: without the `vector` extension the AI features still work on the
+  JavaScript fallback with an admin **performance warning**; install **`vector` ≥ 0.7**
+  for native HNSW ANN.
+- SQLite: the sqlite-vec loadable extension ships as a **binary bundled with the npm
+  preset package** — no manual install.
+- **Nothing about AI config is boot-frozen** — unlike the metadata backend choice (T0),
+  LLM config, budgets, thresholds, and model changes apply without restart. The one boot-path
+  step is the built-in engine's model WEIGHTS (not config): a CONFIGURED boot missing them runs
+  the blocking provisioning attempt before serving, and a failed attempt still boots with embed
+  caps OFF + admin reason (`llmPresets.md` §2.3; override-clear runs are in-place and never
+  block the server; the first boot after the wizard uses the ordinary blocking boot posture). Pre-seed `WEA_MODEL_DIR` (lockfile-pinned q4 set,
+  ~473 MB) or leave weights in the default data dir to skip the download entirely —
+  presence ⇒ zero attempts, zero network egress (air-gapped installs).
+
 ## 3. Metadata Storage Configuration
 
-The system supports a SQLite-backed (default) and a remote PostgreSQL-backed metadata store with the same store interfaces. The legacy `fs`/`webdav` metadata backends are removed (Phase 7).
+The system supports a SQLite-backed (default) and a remote PostgreSQL-backed metadata store with the same store interfaces. The legacy `fs`/`webdav` metadata backends are removed.
 
 > **The metadata (DB) connection is `.env`-owned.** The remote DB block (`WEA_DB_HOST`,
 > `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`, plus optional pool/SSL keys) and the
 > SQLite path (`WEA_SQLITE_PATH`) must be declared in `.env`/env before boot; the metadata
-> backend is **not** configurable through the admin UI or the setup wizard (D5/D6/D7).
+> backend is **not** configurable through the admin UI or the setup wizard.
 > Setting any one of `WEA_DB_HOST`/`WEA_DB_DATABASE`/`WEA_DB_USER`/`WEA_DB_PASSWORD` selects
 > the remote PostgreSQL backend; an incomplete set (at least one set but not all four) aborts
 > boot with a clear terminal error that lists the missing keys. When none of them is set, the
@@ -142,13 +216,16 @@ The system supports a SQLite-backed (default) and a remote PostgreSQL-backed met
 > # JWT_SECRET=change-me
 > ```
 
-1.  **SQLite backend (`sqlite`)** (default):
-    - Stores metadata in a local SQLite database file (development/testing).
-    - Used when no remote DB keys are set; optionally set `WEA_SQLITE_PATH=/path/to/webdav.db`.
-2.  **PostgreSQL backend (`postgresql`)**:
-    - Stores metadata in normalized relational tables (`users`, `settings`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`).
-    - Recommended for stronger consistency and high-concurrency metadata operations.
-    - Provide `WEA_DB_HOST`, `WEA_DB_PORT`, `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD` (plus optional pool/SSL settings) — all four credential keys are required together.
+1. **SQLite backend (`sqlite`)** (default):
+
+- Stores metadata in a local SQLite database file (development/testing).
+- Used when no remote DB keys are set; optionally set `WEA_SQLITE_PATH=/path/to/webdav.db`.
+
+2. **PostgreSQL backend (`postgresql`)**:
+
+- Stores metadata in normalized relational tables (`users`, `settings`, `permissions_*`, `share_links`, `recent_files`, `permission_requests`, `locks`).
+- Recommended for stronger consistency and high-concurrency metadata operations.
+- Provide `WEA_DB_HOST`, `WEA_DB_PORT`, `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD` (plus optional pool/SSL settings) — all four credential keys are required together.
 
 ### File Storage (Blob) Configuration
 
@@ -167,18 +244,22 @@ The schema is applied **automatically at startup**. On a **fresh empty database*
 
 To apply the DDL manually (equivalent to what startup does), instead:
 
-1.  Apply the initial normalized DDL:
-    ```bash
-    PGPASSWORD="$WEA_DB_PASSWORD" psql \
-      -h "$WEA_DB_HOST" \
-      -p "${WEA_DB_PORT:-5432}" \
-      -U "$WEA_DB_USER" \
-      -d "$WEA_DB_DATABASE" \
-      -f server/store/postgresql/ddl/001_initial_normalized_schema.sql
-    ```
-2.  Verify schema apply status using your DB tooling (for example `\dt` / `\d` in `psql`) and treat the DDL file as canonical:
-    - `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
-3.  Start the server and confirm `/api/health` reports healthy metadata store access.
+1. Apply the initial normalized DDL:
+
+```bash
+PGPASSWORD="$WEA_DB_PASSWORD" psql \
+-h "$WEA_DB_HOST" \
+-p "${WEA_DB_PORT:-5432}" \
+-U "$WEA_DB_USER" \
+-d "$WEA_DB_DATABASE" \
+-f server/store/postgresql/ddl/001_initial_normalized_schema.sql
+```
+
+2. Verify schema apply status using your DB tooling (for example `\dt` / `\d` in `psql`) and treat the DDL file as canonical:
+
+- `server/store/postgresql/ddl/001_initial_normalized_schema.sql`
+
+3. Start the server and confirm `/api/health` reports healthy metadata store access.
 
 Permission contract source of truth:
 
@@ -193,9 +274,9 @@ Moves physical blobs between the two supported blob backends (WebDAV and S3) in 
 
 **How it works**
 
-- The **direction** is auto-derived from the current app config (`WEA_FILE_STORAGE`): source = the env mode, destination = the other backend. The server is the single source of truth; only the **destination** config is user input (`--dest-*` flags or `DEST_*` env; e.g. `DEST_TYPE=s3`, `DEST_S3_BUCKET`, ... or `DEST_TYPE=webdav`, `DEST_WEBDAV_URL`, ...). `DEST_TYPE` must match the derived destination (`s3` for a webdav source, `webdav` for an s3 source).
+- The **direction** is auto-derived from the current app config (`WEA_FILE_STORAGE`): source = the env mode, destination = the other backend. The server is the single source of truth; only the **destination** config is user input (`--dest-*` flags or `DEST_*` env; e.g. `DEST_TYPE=s3`, `DEST_S3_BUCKET`,... or `DEST_TYPE=webdav`, `DEST_WEBDAV_URL`,...). `DEST_TYPE` must match the derived destination (`s3` for a webdav source, `webdav` for an s3 source).
 - The migration run uses a **snapshot approach**: the active file-node set is enumerated once at start; the tool reads only from source and writes only to the destination store plus the required DB updates. The app remains fully usable during the copy.
-- **Source blobs are never deleted** (a delete-mode follow-up is tracked in `docs/IMPROVEMENT_PLAN.md`).
+- **Source blobs are never deleted**.
 
 **Direction and cutover (migration mode)**
 
@@ -220,18 +301,18 @@ node server/scripts/migrateBlobs.js --check-env
 
 # 2) Dry run (mandatory before any apply) — writes nothing
 node server/scripts/migrateBlobs.js --dest-type=s3 \
-  --dest-s3-bucket=my-bucket --dest-s3-access-key=... --dest-s3-secret-key=... --dry-run
+ --dest-s3-bucket=my-bucket --dest-s3-access-key=... --dest-s3-secret-key=... --dry-run
 
 # 3) Apply — requires --yes; runs the internal dry-run pass first
 node server/scripts/migrateBlobs.js --dest-type=s3 \
-  --dest-s3-bucket=my-bucket --dest-s3-access-key=... --dest-s3-secret-key=... --apply --yes
+ --dest-s3-bucket=my-bucket --dest-s3-access-key=... --dest-s3-secret-key=... --apply --yes
 
 # 4) Re-run to resume (automatic): already-migrated nodes are skipped; a full re-run copies nothing
-node server/scripts/migrateBlobs.js --dest-type=s3 ... --apply --yes
+node server/scripts/migrateBlobs.js --dest-type=s3... --apply --yes
 
 # s3-to-webdav copy (with WEA_FILE_STORAGE=s3): the object_map flip happens inline per node during apply; then cut over (see above)
 node server/scripts/migrateBlobs.js --dest-type=webdav \
-  --dest-webdav-url=... --dest-webdav-username=... --dest-webdav-password=... --apply --yes
+ --dest-webdav-url=... --dest-webdav-username=... --dest-webdav-password=... --apply --yes
 ```
 
 **Rules**
@@ -239,7 +320,7 @@ node server/scripts/migrateBlobs.js --dest-type=webdav \
 - Dry-run is **mandatory** before every `--apply` run; `--apply` itself performs the dry-run pass first, and a failed dry-run blocks all writes (exit 1, nothing written).
 - `--apply` requires `--yes`; abort otherwise.
 - The destination `type` (`--dest-type` / `DEST_TYPE`) must match the derived destination backend; a mismatch aborts before any work (exit 1).
-- `.wea` is a normal folder — migrated like any other node. The `.wea-` NAME PREFIX is reserved (`validateFileName` rejects it on create/upload/folder/rename): the trash subsystem (DEF-16) stores trashed WebDAV subtrees under the hidden root namespace `/.wea-trash/<nodeId>`.
+- `.wea` is a normal folder — migrated like any other node. The `.wea-` NAME PREFIX is reserved (`validateFileName` rejects it on create/upload/folder/rename): the trash subsystem stores trashed WebDAV subtrees under the hidden root namespace `/.wea-trash/<nodeId>`.
 - Per-node failures are recorded and processing continues; the run only aborts on config/snapshot/destination-validation failure.
 - **Resume is automatic:** re-running an interrupted migration skips already-migrated nodes (no `--resume` flag); `--force` re-copies nodes even when an automatic resume marker is present.
 
@@ -258,8 +339,8 @@ node server/scripts/configSync.js --check
 # 2) Same report, machine-readable (single JSON document: findings + summary + exitCode)
 node server/scripts/configSync.js --check --json
 
-# 3) Reconcile: upsert DB rows for every non-T0 key set in .env (plaintext), then re-run
-#    the check in-process. Requires --yes
+# 3) Reconcile: upsert DB rows for every non-T0 key set in.env (plaintext), then re-run
+# the check in-process. Requires --yes
 node server/scripts/configSync.js --apply --yes
 ```
 
@@ -307,15 +388,18 @@ On Apple Silicon hosts, prefer a multi-architecture WebDAV image for the E2E com
 
 ### Production Mode
 
-1.  **Build frontend**:
-    ```bash
-    npm run build
-    ```
-2.  **Start server**:
-    ```bash
-    cd server
-    npm start
-    ```
+1. **Build frontend**:
+
+```bash
+npm run build
+```
+
+2. **Start server**:
+
+```bash
+cd server
+npm start
+```
 
 - Access: `http://localhost:5001` (or your configured `PORT`)
 

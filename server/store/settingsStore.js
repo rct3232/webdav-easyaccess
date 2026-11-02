@@ -31,6 +31,18 @@ async function set(key, value) {
   return getRepository().set(key, value);
 }
 
+async function getTx(tx, key) {
+  return getRepository().getTx(tx, key);
+}
+
+async function setTx(tx, key, value) {
+  return getRepository().setTx(tx, key, value);
+}
+
+async function deleteTx(tx, key) {
+  return getRepository().deleteTx(tx, key);
+}
+
 async function getAll() {
   return getRepository().getAll();
 }
@@ -47,6 +59,9 @@ async function isRegistrationEnabled() {
 module.exports = {
   get,
   set,
+  getTx,
+  setTx,
+  deleteTx,
   getAll,
   listRows,
   isRegistrationEnabled,

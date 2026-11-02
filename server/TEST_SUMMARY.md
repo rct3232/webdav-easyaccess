@@ -2,17 +2,21 @@
 
 ## Overview
 
-Summary of the test implementation for the Express.js server application. All tests follow **black-box testing**: assertions focus on observable outcomes (return values, API responses, HTTP status codes), not implementation details. WebDAV and blob stores use test doubles; data stores follow the tiered model in [docs/TESTING_STRATEGY.md](../docs/TESTING_STRATEGY.md) — L1 functional suites run against doubles or per-suite real sqlite, while L2 repository conformance suites run against real sqlite (default `test:ci` leg) and, under the adapter leg, real PostgreSQL. Test files are colocated with source under `domains/<x>/` (routes, services, stores, policy), plus shared `service/`, `store/`, `infrastructure/`, `middleware/`, `models/`, and `utils/`.
+Summary of the test implementation for the Express.js server application. All tests follow **black-box testing**: assertions focus on observable outcomes (return values, API responses, HTTP status codes), not implementation details. WebDAV and blob stores use test doubles; data stores follow the tiered model in [docs/TESTING_STRATEGY.md](../docs/TESTING_STRATEGY.md) — L1 functional suites run against doubles or per-suite real sqlite, while L2 repository conformance suites run against real sqlite (default `test` leg) and, under the adapter leg, real PostgreSQL. Test files are colocated with source under `domains/<x>/` (routes, services, stores, policy), plus shared `service/`, `store/`, `infrastructure/`, `middleware/`, `models/`, and `utils/`.
 
 ## Test Statistics
 
-- **Total Test Suites**: 99 (sqlite `test:ci`, as of 2026-09-10)
-- **Total Tests**: 1849 (1844 passed, 5 skipped)
-- **Pass Rate**: 100% (1844 passed, 0 failed) ✅
-- **Real-PostgreSQL adapter leg** (`test:ci:pg:adapters`): 207 tests (latest recorded run, 2026-09-09)
+- **Total Test Suites**: 207 (206 passed, 1 skipped; sqlite `test`, 2026-10-31 AI-matrix demotion)
+- **Total Tests**: 3528 (3500 passed, 28 skipped)
+- **Pass Rate**: 100% of executed tests (0 failed) ✅
+- **Real-PostgreSQL adapter leg** (`test:pg:adapters`): 32 suites / 492 passed, 1 skipped (493 total; recorded 2026-10-30 on a freshly recreated `webdav_test` DB)
 - **Execution Time**: Reported per run by `npm run test`
 
-> New/extended suites since the 2026-09-04 snapshot: `infrastructure/__tests__/trashSoftDeleteSchema.test.js` (new; registered on the PG adapter leg), extended `failSafeService` (pending_upload scan/repair, DEF-12/13) and `gcService` (retention categories: garbage/version/guarded/pending-live) suites. 2026-09-10: trash-schema DDL folded into `001_initial_normalized_schema.sql` (single-file chain) — removed 5 tests (4 converter table-rebuild tests in `sqliteSchemaInit`, the pre-fold sqlite in-place migration scenario in `trashSoftDeleteSchema`).
+> P4 exit-gate pin (D4): these counts come from the canonical run at the `ai-feature` P4
+> closure tip and replace the historical 3382/3386/3381 pins. See
+> `PLAN_EXECUTION.md` §33.10.
+
+> New/extended suites since the 2026-09-04 snapshot: `infrastructure/__tests__/trashSoftDeleteSchema.test.js` (new; registered on the PG adapter leg), extended `failSafeService` (pending_upload scan/repair) and `gcService` (retention categories: garbage/version/guarded/pending-live) suites. 2026-09-10: trash-schema DDL folded into `001_initial_normalized_schema.sql` (single-file chain) — removed 5 tests (4 converter table-rebuild tests in `sqliteSchemaInit`, the pre-fold sqlite in-place migration scenario in `trashSoftDeleteSchema`).
 
 ## Test Breakdown by Category
 
@@ -86,7 +90,7 @@ Schema, storage, locking, scheduling, executor seam, and blob store adapters.
 
 ### Repository Conformance Tests (L2)
 
-Repository interfaces run against the active backend via `createTestDatabase()` — real sqlite on the default `test:ci` leg, real PostgreSQL on the `test:ci:pg:adapters` leg (see `docs/spec/server/store/repository-contract.md`).
+Repository interfaces run against the active backend via `createTestDatabase()` — real sqlite on the default `test` leg, real PostgreSQL on the `test:pg:adapters` leg (see `docs/spec/server/store/repository-contract.md`).
 
 | Test File                                                                                           | Notes                                     |
 | --------------------------------------------------------------------------------------------------- | ----------------------------------------- |
@@ -129,17 +133,38 @@ API route tests with Supertest. Full request/response cycle; backing services us
 
 ### Key Modules & Overall Project Coverage
 
-Overall project coverage (sqlite `test:ci` with `--coverage`, measured 2026-09-09):
+Overall project coverage (sqlite `test` with `--coverage`, measured 2026-09-09):
 
 | Scope     | Statements | Branches | Functions | Lines  |
 | --------- | ---------- | -------- | --------- | ------ |
 | All files | 72.35%     | 63.17%   | 76.65%    | 73.46% |
 
-Per-module figures are intentionally not reproduced here (they move per run). Measure the current layout with `cd server && npm run test:coverage`; core modules (models, middleware, auth, errorHandler) historically maintain the highest coverage.
+Per-module figures are intentionally not reproduced here (they move per run). Measure the current layout with `cd server && npm run test`; core modules (models, middleware, auth, errorHandler) historically maintain the highest coverage.
+
+## E2E (Playwright) — cross-reference
+
+Playwright ownership, case IDs, scratch slots, port bands and the enforced skip
+budgets are canonical in [docs/E2E_COVERAGE_PLAN.md](../docs/E2E_COVERAGE_PLAN.md);
+run procedures live in
+[docs/TEST_GIT_GUIDE.md](../docs/TEST_GIT_GUIDE.md). This file tracks the Jest
+tiers only.
+
+- P3 exit-gate runs (2026-10-27, port band 40, workers=1):
+  `s3-collections-desktop` 22 passed / 3 skipped / 0 failed,
+  `s3-collections-mobile` 24 passed / 1 skipped / 0 failed (serial, ~2 min each),
+  `s3-retrieval-desktop` 11 / 0 / 0, `s3-retrieval-mobile` 11 / 0 / 0 (the mobile
+  slot needed the documented per-port override `E2E_SCRATCH_RETRIEVAL_MOBILE_PORT=5062`
+  — WebKit refuses the band-40 default 5060, see `docs/RCA_LOG.md` 2026-10-27),
+  `s3-ai-desktop` 1 / 0 / 0 (pre-seeded `WEA_MODEL_DIR` weights resolved from the
+  provisioner default `data/modelos`).
+- The jest tiers above are the orchestrator's exit-gate ownership: server sqlite
+  207 suites / 3528 tests (3500 passed + 28 skipped); client 198 suites / 2401
+  tests (see `client/TEST_SUMMARY.md`); real-PostgreSQL adapter leg 32 suites /
+  492 passed + 1 skipped (`test:pg:adapters`, fresh DB).
 
 ## Conclusion
 
-- 1844 tests across 99 suites, 100% pass rate (5 skipped, as of 2026-09-10, sqlite `test:ci`); real-PostgreSQL adapter leg `test:ci:pg:adapters`: 207 tests (latest recorded run, 2026-09-09)
+- Server `test` passed with 207 suites (206 passed + 1 skipped) and 3500 passed + 28 skipped tests as of the 2026-10-31 AI-matrix demotion. The real-PostgreSQL adapter leg `test:pg:adapters` passed 32 suites / 492 passed + 1 skipped on a fresh DB.
 - Tests are colocated with source: domain routes/services/stores/policy under `domains/<x>/`, shared layer under `service/` and `store/`, plus `infrastructure/`, `middleware/`, `models/`, `utils/`
 - Route integration tests cover main API endpoints via Supertest
 - L2 repository conformance suites (store + permission repositories, executor) run against real sqlite and, on the adapter leg, real PostgreSQL

@@ -77,13 +77,13 @@ All subcomponents live under `client/src/components/dialogs/FilePreviewDialog/pr
 
 - **imports:** getFileBlob, **getVideoPreviewStreamUrl**, react-pdf, getFileType, PreviewThumbnailBar, useResponsive, plyr; fileService for download (same policy as list/grid download).
 - **Reference implementation:** `client/src/components/dialogs/FilePreviewDialog/index.js`
-- **Download:** The preview dialog’s download action uses the same single-file download path as the file manager (fileService.downloadFile with file metadata). On iOS + image, this yields the share sheet or inline fallback; no duplicate logic. No “Save Image” hint is shown (decided 2026-09-02); the share sheet itself presents native save options.
+- **Download:** The preview dialog’s download action uses the same single-file download path as the file manager (fileService.downloadFile with file metadata). On iOS + image, this yields the share sheet or inline fallback; no duplicate logic. No “Save Image” hint is shown; the share sheet itself presents native save options.
 
 ### 2.5 i18n Keys
 
 - preview._, common._
 - Video playback failure overlay uses: `preview.videoNotPlayable`
-- iOS image download may route through the Web Share sheet. No “Save Image” hint is shown (decided 2026-09-02); no dedicated i18n key exists for it.
+- iOS image download may route through the Web Share sheet. No “Save Image” hint is shown; no dedicated i18n key exists for it.
 
 ### 2.6 Conditional Rendering
 

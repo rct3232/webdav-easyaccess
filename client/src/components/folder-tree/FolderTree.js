@@ -6,6 +6,7 @@ import BaseFolderTreeItem from './BaseFolderTreeItem';
 import SharedFoldersSection from './SharedFoldersSection';
 import RecentFilesSection from './RecentFilesSection';
 import ShareLinkSection from './ShareLinkSection';
+import CollectionsSection from './CollectionsSection';
 import TrashSidebarItem from './TrashSidebarItem';
 import useFolderTreeController from './hooks/useFolderTreeController';
 
@@ -47,6 +48,14 @@ const FolderTree = ({
     handleRecentToggle,
     handleRecentClick,
     recentFilesList,
+    collectionsExpanded,
+    handleCollectionsToggle,
+    handleCollectionsClick,
+    handleCollectionClick,
+    handleArchiveClick,
+    handleLikedClick,
+    collectionsTreeRows,
+    newCollectionIds,
   } = useFolderTreeController({
     currentNodeId,
     currentPath,
@@ -136,6 +145,24 @@ const FolderTree = ({
                 onNodeClick={nonShareOnNodeClick}
                 onFileClick={onFileClick}
               />
+
+              {/* AI-platform §3: collections section — hidden entirely in
+                  share-link mode (product overlay rule, CollectionsSection §2.4)
+                  and for admins (operator rule, PLAN §14 client half — admin is
+                  a pure operator, never a collections participant). */}
+              {!shareLinkSection && !user?.is_admin && (
+                <CollectionsSection
+                  collectionsExpanded={collectionsExpanded}
+                  onCollectionsToggle={handleCollectionsToggle}
+                  onCollectionsClick={handleCollectionsClick}
+                  collections={collectionsTreeRows}
+                  currentPath={currentPath}
+                  onCollectionClick={handleCollectionClick}
+                  onArchiveClick={handleArchiveClick}
+                  onLikesClick={handleLikedClick}
+                  newCollectionIds={newCollectionIds}
+                />
+              )}
             </>
           )}
         </List>

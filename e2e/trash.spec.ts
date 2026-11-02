@@ -23,11 +23,25 @@ import {
   resolveNodeId,
 } from './helpers/resolvePath';
 
+/**
+ * E2E-TRASH-001, -003, -006, -011, -012 — the trash lifecycle on the shared
+ * stack: a deleted item leaves its folder and shows in the trash view, restore
+ * round-trips its bytes, permanent delete purges it, an unreadable bulk-job
+ * status surfaces the stalled entry, and the sidebar Home item leaves the trash
+ * view (DEF-16 P9 regression).
+ *
+ * Owning projects: `s3-desktop` and `s3-mobile` (shared API `:5002` + client
+ * `:3000`) plus the WebDAV smoke project, whose `TRASH-00[136]` grep selects
+ * only 001/003/006. The suite runs as the admin operator
+ * (`storageState: ADMIN_STATE`); the Home case switches to the regular user1
+ * session because the number-valued `rootNodeId` is what reproduces the bug.
+ */
+
 test.use({ storageState: ADMIN_STATE });
 
 // Case-owned trashed names; purged in afterEach so trash residue never
 // accumulates across a run (assertion-context containment). The global
-// empty-trash case (E2E-TRASH-007) lives in trash-admin.spec.ts — it purges
+// empty-trash case (E2E-S3-TRASHADMIN-001) lives in trash-admin.spec.ts — it purges
 // EVERY project's trash, so it must not run in two projects concurrently.
 const pendingTrashPurges: Array<{ token: string; name: string }> = [];
 
@@ -147,7 +161,7 @@ test('E2E-TRASH-006: Permanent delete removes the item from the trash listing', 
   await expect(await resolvePathOrNull(request, token, folderPath)).toBeNull();
 });
 
-test('E2E-TRASH-012: Sidebar Home from the trash view returns to the main list', async ({
+test('E2E-TRASH-011: Sidebar Home from the trash view returns to the main list', async ({
   page,
   request,
 }, testInfo) => {
@@ -197,4 +211,37 @@ test('E2E-TRASH-012: Sidebar Home from the trash view returns to the main list',
 
   // Returns to the main list — NOT the trash view (topmost or folder view).
   await expect(page).not.toHaveURL(/__trash__/);
+});
+
+test('E2E-TRASH-012: Unreadable job status surfaces the stalled item and refreshes the listing automatically', async ({
+  page,
+  request,
+}, testInfo) => {
+  const base = await openPrivateWorkspace(page, request, testInfo);
+  const isMobile = isMobileProject(testInfo);
+  const token = await getSessionToken(page);
+  const fileName = buildName(testInfo, 'trash-status-unavailable', '.txt');
+  const filePath = `/${base}/${fileName}`;
+
+  const folderNodeId = await resolveNodeId(request, token, `/${base}`);
+  await uploadFileAt(request, token, folderNodeId, fileName, 'text/plain', textFixtureBuffer);
+  await gotoFilesPath(page, request, `/${base}`);
+  await expect(fileItem(page, filePath)).toBeVisible({ timeout: 60_000 });
+
+  // Fault injection: the delete itself succeeds, only the job-status polling is
+  // cut (useBulkOperations.md §2.6.1). Five failed reads (~6 s) end the poll.
+  await page.route('**/api/files/bulk-operation/**', (route) => route.abort());
+  await deleteItemViaUi(page, isMobile, filePath);
+  pendingTrashPurges.push({ token, name: fileName });
+
+  // No user action: the stalled entry refreshes the listing once by itself.
+  await expect(fileItem(page, filePath)).toHaveCount(0, { timeout: 60_000 });
+
+  // The progress surface keeps the single stalled message until dismissed.
+  await page.locator('#file-progress-slot button').first().click();
+  await expect(
+    page.getByText(/could not verify the operation status|작업 상태를 확인할 수 없습니다/i)
+  ).toBeVisible({ timeout: 30_000 });
+
+  await page.unroute('**/api/files/bulk-operation/**');
 });

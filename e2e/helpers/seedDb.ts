@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
+import { e2ePorts, webdavBase } from './ports';
+
 const rootDir = process.cwd();
 
 // Base users pre-seeded for E2E. These mirror `e2e/fixtures/test-data.ts`
@@ -33,7 +35,7 @@ export function runSeedDb(envOverrides: NodeJS.ProcessEnv = {}) {
     ...process.env,
     WEA_FILE_STORAGE: backendMode === 'webdav' ? 'webdav' : 's3',
     WEA_DB_HOST: '127.0.0.1',
-    WEA_DB_PORT: process.env.WEA_DB_PORT || '5433',
+    WEA_DB_PORT: process.env.WEA_DB_PORT || String(e2ePorts.pg),
     WEA_DB_DATABASE: process.env.WEA_DB_DATABASE || 'webdav_e2e',
     WEA_DB_USER: process.env.WEA_DB_USER || 'e2etest',
     WEA_DB_PASSWORD: process.env.WEA_DB_PASSWORD || 'e2etest',
@@ -43,8 +45,8 @@ export function runSeedDb(envOverrides: NodeJS.ProcessEnv = {}) {
   if (backendMode === 'webdav') {
     // Mirror .env.e2e.webdav so the seed's WebDAV MKCOL (home dir materialization)
     // can reach the bytemark container on its host port.
-    seedEnv.WEBDAV_URL = process.env.WEBDAV_URL || 'http://127.0.0.1:8090';
-    seedEnv.WEBDAV_UPSTREAM_URL = process.env.WEBDAV_UPSTREAM_URL || 'http://127.0.0.1:8090';
+    seedEnv.WEBDAV_URL = process.env.WEBDAV_URL || webdavBase;
+    seedEnv.WEBDAV_UPSTREAM_URL = process.env.WEBDAV_UPSTREAM_URL || webdavBase;
     seedEnv.WEBDAV_USERNAME = process.env.WEBDAV_USERNAME || 'e2etest';
     seedEnv.WEBDAV_PASSWORD = process.env.WEBDAV_PASSWORD || 'e2etest123';
   }

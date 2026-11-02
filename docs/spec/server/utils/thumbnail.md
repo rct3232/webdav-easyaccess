@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-| Item   | Description                                                                                                                                                                                                                                                                                                            |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role   | Thumbnail generation for images (sharp) and videos (ffmpeg). Token-based URL, cache. All APIs keyed by `fileNodeId`.                                                                                                                                                                                                   |
-| Status | **Phase 2 relocated** — Logic moved to `domains/thumbnails/services/` (`server/utils/thumbnail.js` and `server/routes/thumbnails.js` deleted). **Phase 4 nodeId migration** — **implemented**: cache/hash/token/batch are keyed by `fileNodeId`; blob bytes are fetched via `blobStorageService.downloadBlob(nodeId)`. |
+| Item   | Description                                                                                                                                                                                                                                         |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role   | Thumbnail generation for images (sharp) and videos (ffmpeg). Token-based URL, cache. All APIs keyed by `fileNodeId`.                                                                                                                                |
+| Status | Logic lives in `domains/thumbnails/services/` (`server/utils/thumbnail.js` and `server/routes/thumbnails.js` do not exist). Cache/hash/token/batch are keyed by `fileNodeId`; blob bytes are fetched via `blobStorageService.downloadBlob(nodeId)`. |
 
 ---
 
@@ -13,7 +13,7 @@
 
 ### 2.1 File Path
 
-- **Original source:** `server/utils/thumbnail.js` (457 lines — relocated in Phase 2)
+- **Original source:** `server/utils/thumbnail.js`
 - **Relocated to:** `server/domains/thumbnails/services/thumbnailService.js`
 - **Test file:** `server/domains/thumbnails/routes/__tests__/thumbnails.test.js`
 

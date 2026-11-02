@@ -240,3 +240,96 @@ describe('useThumbnailLazyLoad', () => {
     });
   });
 });
+
+describe('useThumbnailLazyLoad — member-row eligibility (P-4 revoked proof)', () => {
+  let mockObserve;
+  let mockCallback;
+  let observedElements;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    observedElements = [];
+    global.IntersectionObserver = class MockIntersectionObserver {
+      constructor(callback) {
+        mockCallback = callback;
+      }
+      observe(el) {
+        observedElements.push(el);
+        mockObserve = () => {
+          if (el && mockCallback) mockCallback([{ isIntersecting: true, target: el }]);
+        };
+      }
+      disconnect() {}
+      unobserve() {}
+    };
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    document.body.innerHTML = '';
+  });
+
+  const revokedMember = {
+    nodeId: 555,
+    path: '',
+    name: null,
+    basename: 'Unavailable',
+    type: null,
+    mime: null,
+    isCollectionMember: true,
+    state: 'revoked',
+  };
+
+  it('a revoked member row (null mime/type) never triggers a thumbnail request', async () => {
+    const div = document.createElement('div');
+    div.setAttribute('data-file-node-id', '555');
+    document.body.appendChild(div);
+
+    renderHook(() => useThumbnailLazyLoad([revokedMember], jest.fn()));
+
+    act(() => {
+      jest.advanceTimersByTime(150);
+    });
+    act(() => {
+      if (mockObserve) mockObserve();
+    });
+    act(() => {
+      jest.advanceTimersByTime(250);
+    });
+
+    expect(fileService.requestThumbnailsBatch).not.toHaveBeenCalled();
+  });
+
+  it('a non-revoked image member row IS eligible (mime present)', async () => {
+    fileService.requestThumbnailsBatch.mockResolvedValue({ thumbnails: [] });
+    const imageMember = {
+      nodeId: 556,
+      path: '',
+      basename: 'beach.jpg',
+      type: 'file',
+      mime: 'image/jpeg',
+      isCollectionMember: true,
+      state: 'normal',
+    };
+    const div = document.createElement('div');
+    div.setAttribute('data-file-node-id', '556');
+    document.body.appendChild(div);
+
+    renderHook(() => useThumbnailLazyLoad([imageMember], jest.fn()));
+
+    act(() => {
+      jest.advanceTimersByTime(150);
+    });
+    act(() => {
+      if (mockObserve) mockObserve();
+    });
+    act(() => {
+      jest.advanceTimersByTime(250);
+    });
+
+    await waitFor(() => {
+      expect(fileService.requestThumbnailsBatch).toHaveBeenCalledWith([556], expect.any(Object));
+    });
+  });
+});

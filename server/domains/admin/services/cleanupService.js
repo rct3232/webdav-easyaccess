@@ -3,7 +3,32 @@ const { PERMISSIONS } = require('@webdav-easyaccess/shared/constants');
 const User = require('../../../models/User');
 const permissionStore = require('../../../store/permissionStore');
 
-async function cleanupOrphanedData() {
+/**
+ * Persist the cleanup run result as an admin_reports row (§4.14 Tier A —
+ * `kind='cleanup'`, status ok/partial with the full result payload). The
+ * `adminReportsWriter` parameter is a DI seam for tests; production uses the
+ * shared writer from adminReportsService (wired to the admin_reports store
+ * since T0.8). Best-effort: reporting never fails the cleanup itself.
+ */
+async function persistCleanupReport(results, adminReportsWriter) {
+  try {
+    const {
+      ADMIN_REPORT_KINDS,
+      getAdminReportsWriter,
+      resolveAdminReportStatus,
+    } = require('./adminReportsService');
+    const writer = adminReportsWriter || getAdminReportsWriter();
+    await writer.writeReport({
+      kind: ADMIN_REPORT_KINDS.cleanup,
+      status: resolveAdminReportStatus(results),
+      payload: results,
+    });
+  } catch (error) {
+    // Swallowed by contract: a reporting failure must not fail the cleanup.
+  }
+}
+
+async function cleanupOrphanedData({ adminReportsWriter } = {}) {
   const results = {
     errors: [],
     gc: null,
@@ -43,6 +68,10 @@ async function cleanupOrphanedData() {
       results.errors.push(`Failed to scan pending_upload nodes: ${error.message}`);
     }
   }
+
+  // 4. Persist the full result as an admin_reports row (§4.14 Tier A) before
+  // returning — the response body the route sends is exactly what is stored.
+  await persistCleanupReport(results, adminReportsWriter);
 
   return results;
 }

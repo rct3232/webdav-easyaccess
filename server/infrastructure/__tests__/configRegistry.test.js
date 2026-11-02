@@ -176,6 +176,219 @@ describe('configRegistry', () => {
     expect(isT0('registration_enabled')).toBe(false);
   });
 
+  describe('AI / LLM keys (T0.7b — T2 dbOnly, fully hot; PLAN §6)', () => {
+    const LLM_KEYS = [
+      'LLM_EMBED_BASE_URL',
+      'LLM_EMBED_API_KEY',
+      'LLM_EMBED_MODEL',
+      'LLM_CHAT_BASE_URL',
+      'LLM_CHAT_API_KEY',
+      'LLM_CHAT_MODEL',
+      'LLM_VISION_BASE_URL',
+      'LLM_VISION_API_KEY',
+      'LLM_VISION_MODEL',
+      'LLM_ASR_BASE_URL',
+      'LLM_ASR_API_KEY',
+      'LLM_ASR_MODEL',
+      'LLM_MAX_INPUT_CHARS',
+      'LLM_CHUNK_BUDGET',
+      'LLM_OVERLENGTH_POLICY',
+      'LLM_DAILY_CALL_CAP',
+      'LLM_DAILY_TOKEN_CAP',
+      'LLM_REPROBE_DEBOUNCE_S',
+      'LLM_BREAKER_THRESHOLD',
+      'LLM_BREAKER_COOLDOWN_S',
+      'AI_SEMANTIC_SEARCH_ENABLED',
+    ];
+
+    it('registers every LLM_* key as T2 dbOnly', () => {
+      for (const key of LLM_KEYS) {
+        const entry = getEntry(key);
+        expect(entry).toBeDefined();
+        expect(entry.tier).toBe(TIER.T2);
+        expect(entry.dbOnly).toBe(true);
+      }
+    });
+
+    it('marks the four role API keys secret (masking only)', () => {
+      for (const key of [
+        'LLM_EMBED_API_KEY',
+        'LLM_CHAT_API_KEY',
+        'LLM_VISION_API_KEY',
+        'LLM_ASR_API_KEY',
+      ]) {
+        expect(isSecret(key)).toBe(true);
+      }
+      for (const key of LLM_KEYS.filter((k) => !k.endsWith('API_KEY'))) {
+        expect(isSecret(key)).toBe(false);
+      }
+    });
+
+    it('exposes the llmAdapter §3 defaults', () => {
+      expect(getDefault('LLM_CHUNK_BUDGET')).toBe(4);
+      expect(getDefault('LLM_OVERLENGTH_POLICY')).toBe('chunk-pool');
+      expect(getDefault('LLM_DAILY_CALL_CAP')).toBe(0);
+      expect(getDefault('LLM_DAILY_TOKEN_CAP')).toBe(0);
+      expect(getDefault('LLM_REPROBE_DEBOUNCE_S')).toBe(60);
+      expect(getDefault('LLM_BREAKER_THRESHOLD')).toBe(5);
+      expect(getDefault('LLM_BREAKER_COOLDOWN_S')).toBe(300);
+      expect(getDefault('AI_SEMANTIC_SEARCH_ENABLED')).toBe(true);
+      expect(getDefault('LLM_MAX_INPUT_CHARS')).toBeUndefined();
+      expect(getDefault('LLM_EMBED_BASE_URL')).toBeUndefined();
+    });
+
+    it('registers the WEA_SKIP_AI_WORKER test seam as T2, env-allowed (not dbOnly)', () => {
+      const entry = getEntry('WEA_SKIP_AI_WORKER');
+      expect(entry).toBeDefined();
+      expect(entry.tier).toBe(TIER.T2);
+      expect(entry.secret).toBe(false);
+      expect(entry.dbOnly).toBeUndefined();
+    });
+
+    it('orders the AI/LLM group after the runtime group', () => {
+      const keys = CONFIG_ENTRIES.map((entry) => entry.key);
+      expect(keys.indexOf('WEA_SKIP_GC_SCHEDULER')).toBeLessThan(
+        keys.indexOf('LLM_EMBED_BASE_URL')
+      );
+      expect(keys.indexOf('LLM_EMBED_BASE_URL')).toBeLessThan(keys.length - 1);
+    });
+  });
+
+  describe('activity constants (T0.6 — §3.4 product constants, T2 dbOnly)', () => {
+    const ACTIVITY_KEYS = [
+      'AI_USAGE_W_OPEN',
+      'AI_USAGE_W_PREVIEW',
+      'AI_USAGE_W_DOWNLOAD',
+      'AI_USAGE_W_SEARCH_HIT',
+      'AI_USAGE_W_LIKE',
+      'AI_ACTIVITY_HALF_LIFE_DAYS',
+      'AI_USAGE_EVENT_RETENTION_DAYS',
+      'AI_NIGHTLY_ANCHOR_HOUR_UTC',
+      'ARCHIVE_RETENTION_DAYS',
+    ];
+
+    it('registers every activity constant as T2 dbOnly with the shipped default', () => {
+      const defaults = {
+        AI_USAGE_W_OPEN: 1,
+        AI_USAGE_W_PREVIEW: 2,
+        AI_USAGE_W_DOWNLOAD: 3,
+        AI_USAGE_W_SEARCH_HIT: 1,
+        AI_USAGE_W_LIKE: 5,
+        AI_ACTIVITY_HALF_LIFE_DAYS: 30,
+        AI_USAGE_EVENT_RETENTION_DAYS: 90,
+        AI_NIGHTLY_ANCHOR_HOUR_UTC: 3,
+        ARCHIVE_RETENTION_DAYS: 30,
+      };
+      for (const key of ACTIVITY_KEYS) {
+        const entry = getEntry(key);
+        expect(entry).toBeDefined();
+        expect(entry.tier).toBe(TIER.T2);
+        expect(entry.dbOnly).toBe(true);
+        expect(entry.secret).toBe(false);
+        expect(entry.default).toBe(defaults[key]);
+      }
+    });
+
+    it('registers the WEA_SKIP_ROLLUP_SCHEDULER test seam as T2, env-allowed (not dbOnly)', () => {
+      const entry = getEntry('WEA_SKIP_ROLLUP_SCHEDULER');
+      expect(entry).toBeDefined();
+      expect(entry.tier).toBe(TIER.T2);
+      expect(entry.secret).toBe(false);
+      expect(entry.dbOnly).toBeUndefined();
+    });
+
+    it('keeps the activity group inside the AI/LLM group (after runtime)', () => {
+      const keys = CONFIG_ENTRIES.map((entry) => entry.key);
+      expect(keys.indexOf('AI_SEMANTIC_SEARCH_ENABLED')).toBeLessThan(
+        keys.indexOf('AI_USAGE_W_OPEN')
+      );
+      expect(keys.indexOf('WEA_SKIP_GC_SCHEDULER')).toBeLessThan(keys.indexOf('AI_USAGE_W_OPEN'));
+    });
+  });
+
+  describe('admin_reports housekeeping constant (admin.md §2.2.6)', () => {
+    it('registers ADMIN_REPORTS_RETENTION_DAYS as T2 dbOnly, non-secret, default 30', () => {
+      const entry = getEntry('ADMIN_REPORTS_RETENTION_DAYS');
+      expect(entry).toBeDefined();
+      expect(entry.tier).toBe(TIER.T2);
+      expect(entry.dbOnly).toBe(true);
+      expect(entry.secret).toBe(false);
+      expect(entry.default).toBe(30);
+    });
+
+    it('registers the retention interval and batch knobs as T2 dbOnly defaults', () => {
+      expect(getEntry('ADMIN_REPORTS_RETENTION_INTERVAL_MS')).toMatchObject({
+        tier: TIER.T2,
+        dbOnly: true,
+        default: 86400000,
+      });
+      expect(getEntry('ADMIN_REPORTS_RETENTION_BATCH')).toMatchObject({
+        tier: TIER.T2,
+        dbOnly: true,
+        default: 1000,
+      });
+      expect(getEntry('WEA_SKIP_ADMIN_REPORTS_RETENTION')).toMatchObject({
+        tier: TIER.T2,
+        secret: false,
+      });
+    });
+  });
+
+  describe('storage-suggestions expiry constants (storageService §2.2, maintenanceScheduler §3.6)', () => {
+    it('registers STORAGE_SUGGESTION_RETENTION_DAYS as T2 dbOnly, non-secret, default 30', () => {
+      const entry = getEntry('STORAGE_SUGGESTION_RETENTION_DAYS');
+      expect(entry).toBeDefined();
+      expect(entry.tier).toBe(TIER.T2);
+      expect(entry.dbOnly).toBe(true);
+      expect(entry.secret).toBe(false);
+      expect(entry.default).toBe(30);
+    });
+
+    it('registers the expiry interval and batch knobs as T2 dbOnly defaults', () => {
+      expect(getEntry('STORAGE_SUGGESTION_EXPIRY_INTERVAL_MS')).toMatchObject({
+        tier: TIER.T2,
+        dbOnly: true,
+        default: 86400000,
+      });
+      expect(getEntry('STORAGE_SUGGESTION_EXPIRY_BATCH')).toMatchObject({
+        tier: TIER.T2,
+        dbOnly: true,
+        default: 1000,
+      });
+      expect(getEntry('WEA_SKIP_STORAGE_SUGGESTION_EXPIRY')).toMatchObject({
+        tier: TIER.T2,
+        secret: false,
+      });
+    });
+  });
+
+  describe('storage-usage snapshots constants (storageService §2.2, maintenanceScheduler §3.7)', () => {
+    it('registers STORAGE_USAGE_RETENTION_DAYS as T2 dbOnly, non-secret, default 30', () => {
+      const entry = getEntry('STORAGE_USAGE_RETENTION_DAYS');
+      expect(entry).toBeDefined();
+      expect(entry.tier).toBe(TIER.T2);
+      expect(entry.dbOnly).toBe(true);
+      expect(entry.secret).toBe(false);
+      expect(entry.default).toBe(30);
+    });
+
+    it('registers the snapshot interval as a T2 dbOnly 24h default', () => {
+      expect(getEntry('STORAGE_USAGE_SNAPSHOT_INTERVAL_MS')).toMatchObject({
+        tier: TIER.T2,
+        dbOnly: true,
+        default: 86400000,
+      });
+    });
+
+    it('registers WEA_SKIP_STORAGE_USAGE_SNAPSHOT as the env-allowed test seam', () => {
+      expect(getEntry('WEA_SKIP_STORAGE_USAGE_SNAPSHOT')).toMatchObject({
+        tier: TIER.T2,
+        secret: false,
+      });
+      expect(getEntry('WEA_SKIP_STORAGE_USAGE_SNAPSHOT').dbOnly).toBeUndefined();
+    });
+  });
+
   it('contains every env var read under server/ (inventory check)', () => {
     const keys = CONFIG_ENTRIES.map((entry) => entry.key);
     for (const key of [

@@ -138,6 +138,7 @@ describe('SystemConfigEditor', () => {
       config: makeConfig({
         EMAIL_SECURE: { value: false, source: 'db', tier: 'T2', secret: false },
         WEA_SKIP_GC_SCHEDULER: { value: false, source: 'db', tier: 'T2', secret: false },
+        GC_VERSION_TTL_DAYS: { value: '1', source: 'default', tier: 'T2', secret: false },
       }),
     });
 
@@ -149,6 +150,9 @@ describe('SystemConfigEditor', () => {
 
     const skipGcSwitch = screen.getByTestId('config-input-WEA_SKIP_GC_SCHEDULER');
     expect(skipGcSwitch).not.toBeDisabled();
+
+    expect(screen.getByTestId('config-input-GC_VERSION_TTL_DAYS')).toHaveValue(1);
+    expect(screen.getByTestId('config-input-GC_VERSION_TTL_DAYS')).not.toBeDisabled();
   });
 
   it('masks secrets and reveals a set-new-value field on toggle', async () => {
@@ -367,6 +371,66 @@ describe('SystemConfigEditor', () => {
     await userEvent.click(saveButton);
     await waitFor(() => {
       expect(putBody).toEqual({ values: { MAX_THUMBNAIL_SIZE: '200' } });
+    });
+  });
+
+  describe('registry-driven rendering (T0.7b — no silent whitelist skip)', () => {
+    it('renders a registry key without a display entry as a Section B row with the raw-key label', async () => {
+      renderEditor({
+        config: makeConfig({
+          BRAND_NEW_REGISTRY_KEY: {
+            value: 'future-value',
+            source: 'db',
+            tier: 'T2',
+            secret: false,
+          },
+        }),
+      });
+
+      const row = await screen.findByTestId('platform-config-row-BRAND_NEW_REGISTRY_KEY');
+      expect(within(row).getByText('BRAND_NEW_REGISTRY_KEY')).toBeInTheDocument();
+      expect(within(row).getByText('future-value')).toBeInTheDocument();
+      // Conservative read-only fallback: no invented Section A input.
+      expect(screen.queryByTestId('config-input-BRAND_NEW_REGISTRY_KEY')).not.toBeInTheDocument();
+      // Tier-only caption: the "set in env" note is shown only for env-sourced rows.
+      expect(within(row).getByText(/T2/)).toBeInTheDocument();
+      expect(within(row).queryByText(/set in/i)).not.toBeInTheDocument();
+    });
+
+    it('keeps registration_enabled out of both sections (explicit omission)', async () => {
+      renderEditor({
+        config: makeConfig({
+          registration_enabled: { value: 'true', source: 'db', tier: 'T2', secret: false },
+        }),
+      });
+
+      await screen.findByText(/runtime settings/i);
+      expect(screen.queryByTestId('config-input-registration_enabled')).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId('platform-config-row-registration_enabled')
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders the AI subgroup with editable LLM keys (T2 dbOnly, fully hot)', async () => {
+      renderEditor({
+        config: makeConfig({
+          LLM_EMBED_BASE_URL: { value: '', source: 'default', tier: 'T2', secret: false },
+          LLM_EMBED_API_KEY: { value: '****', source: 'db', tier: 'T2', secret: true },
+          LLM_CHAT_MODEL: { value: 'gemma', source: 'db', tier: 'T2', secret: false },
+          AI_SEMANTIC_SEARCH_ENABLED: { value: true, source: 'default', tier: 'T2', secret: false },
+        }),
+      });
+
+      expect(await screen.findByText(/ai \/ llm/i)).toBeInTheDocument();
+      expect(screen.getByTestId('config-input-LLM_EMBED_BASE_URL')).not.toBeDisabled();
+      expect(screen.getByTestId('config-input-LLM_CHAT_MODEL')).not.toBeDisabled();
+      expect(screen.getByTestId('config-input-AI_SEMANTIC_SEARCH_ENABLED')).not.toBeDisabled();
+      // LLM secrets render as masked Section A secrets with the set-new-value flow.
+      expect(screen.getByTestId('config-input-LLM_EMBED_API_KEY')).toHaveValue('****');
+      // T2 keys carry the "applies immediately" tier badge.
+      expect(screen.getByTestId('config-tier-LLM_EMBED_BASE_URL')).toHaveTextContent(
+        /applies immediately/i
+      );
     });
   });
 });

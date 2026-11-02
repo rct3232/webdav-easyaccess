@@ -19,22 +19,22 @@
 
 ### 2.2 Props
 
-| Name               | Type                       | Required | Default | Description                                                   |
-| ------------------ | -------------------------- | -------- | ------- | ------------------------------------------------------------- |
-| contextMenu        | { mouseX, mouseY } \| null | Y        | -       | Position or null when closed                                  |
-| onClose            | function                   | Y        | -       | Close handler                                                 |
-| file               | object                     | Y        | -       | File object                                                   |
-| user               | object                     | N        | -       | User                                                          |
-| hasWritePermission | boolean                    | Y        | -       | Default write permission                                      |
-| onDownload         | function                   | N        | -       | Download handler                                              |
-| onRename           | function                   | N        | -       | Rename handler                                                |
-| onMove             | function                   | N        | -       | Move handler                                                  |
-| onCopy             | function                   | N        | -       | Copy handler                                                  |
-| onShare            | function                   | N        | -       | Share handler                                                 |
-| onProperties       | function                   | N        | -       | Properties handler                                            |
-| onDelete           | function                   | N        | -       | Delete handler                                                |
-| onRestore          | function                   | N        | -       | Trash restore handler (DEF-16 P9; rendered for trashed items) |
-| onPurge            | function                   | N        | -       | Trash permanent-delete handler (DEF-16 P9)                    |
+| Name               | Type                       | Required | Default | Description                                        |
+| ------------------ | -------------------------- | -------- | ------- | -------------------------------------------------- |
+| contextMenu        | { mouseX, mouseY } \| null | Y        | -       | Position or null when closed                       |
+| onClose            | function                   | Y        | -       | Close handler                                      |
+| file               | object                     | Y        | -       | File object                                        |
+| user               | object                     | N        | -       | User                                               |
+| hasWritePermission | boolean                    | Y        | -       | Default write permission                           |
+| onDownload         | function                   | N        | -       | Download handler                                   |
+| onRename           | function                   | N        | -       | Rename handler                                     |
+| onMove             | function                   | N        | -       | Move handler                                       |
+| onCopy             | function                   | N        | -       | Copy handler                                       |
+| onShare            | function                   | N        | -       | Share handler                                      |
+| onProperties       | function                   | N        | -       | Properties handler                                 |
+| onDelete           | function                   | N        | -       | Delete handler                                     |
+| onRestore          | function                   | N        | -       | Trash restore handler (rendered for trashed items) |
+| onPurge            | function                   | N        | -       | Trash permanent-delete handler                     |
 
 ### 2.3 Callback Signatures
 
@@ -51,17 +51,17 @@
 ### 2.5 i18n Keys
 
 - `actions.download`, `actions.rename`, `actions.move`, `actions.copy`, `actions.share`, `actions.properties`, `actions.delete`
-- `actions.restore`, `actions.purge` – trash-view menu rows (DEF-16 P9)
+- `actions.restore`, `actions.purge` – trash-view menu rows
 
 ### 2.6 Conditional Rendering
 
 - Menu items only when corresponding callback provided
 - Rename, move, delete disabled when !fileWritePermission (file.hasWritePermission ?? hasWritePermission)
 - Returns null when !file
-- **Trash rows (DEF-16 P9):** when the host passes `onRestore`/`onPurge` (trash view only), the menu shows Restore (`data-testid="trash-action-restore"`, gate `fileWritePermission` = row `hasWritePermission`) and Permanent delete (`data-testid="trash-action-purge"`, error accent, same gate) above Properties; the host withholds the live-item callbacks (download/rename/move/copy/share/delete) in the trash view, so only Restore / Permanent delete / Properties render.
+- **Trash rows:** when the host passes `onRestore`/`onPurge` (trash view only), the menu shows Restore (`data-testid="trash-action-restore"`, gate `fileWritePermission` = row `hasWritePermission`) and Permanent delete (`data-testid="trash-action-purge"`, error accent, same gate) above Properties; the host withholds the live-item callbacks (download/rename/move/copy/share/delete) in the trash view, so only Restore / Permanent delete / Properties render.
 - E2E selector contract:
-  - action entries used by flow tests expose the same stable `data-testid` values as the mobile `FileActionSheet` counterparts (for example rename/delete)
-  - this allows the same Playwright helper to trigger rename/delete on both desktop and mobile without text matching
+- action entries used by flow tests expose the same stable `data-testid` values as the mobile `FileActionSheet` counterparts (for example rename/delete)
+- this allows the same Playwright helper to trigger rename/delete on both desktop and mobile without text matching
 
 ### 2.7 Verification Scenarios
 
@@ -78,3 +78,22 @@ Checklist for unit test writing:
 
 - file null – returns null
 - anchorReference="anchorPosition", anchorPosition from contextMenu
+
+---
+
+## 3. AI-platform entries (AI platform)
+
+Addendum to §2.2/§2.5/§2.6 per docs/features/collections-platform.md §3.2/§3.3 (`AddToCollectionMenu.md`, `MemberRowControls.md`).
+
+- **New entries (main listing), rendered via the existing "callback provided ⇒ item renders" idiom (§2.6):**
+- `Add to collection ▸` — new optional callback `onAddToCollection(file)`; the submenu itself is the host-mounted `AddToCollectionMenu` component (this menu only anchors/launches it).
+- `Like` toggle — new optional callback `onToggleLike(file)`; pressed/label state comes from the **row data `file.liked`** verbatim (current viewer's own like only — no counts, no other-user state). The liked-state heart uses the dedicated theme palette token `like` (`#FF3E55`, `App.js`) — `color="like"`, NOT `color="error"`; `error` stays reserved for delete/danger semantics repo-wide.
+- **Member-list context variant:** when the host opens this menu on a collection MEMBER row, the rendered set is exactly the `MemberRowControls.md` §2.3 set (exclude / publish / download / `Reveal original location` / properties / like) — the host passes only those callbacks. **No move/copy/rename/delete of the file node in member context, ever** (collection is a view, not a workspace — a grep-able invariant).
+- i18n (appends §2.5): `fileManager.addToCollection`, `fileManager.memberLike`/`fileManager.memberUnlike`.
+- E2E selector contract: `data-testid="collection-add"` / `data-testid="like-toggle"`, shared with the mobile sheet (§2.6 cross-surface rule).
+
+Verification (appends §2.7):
+
+- [ ] (target) Items render only when their callbacks are supplied; `liked:true` row renders the unlike-state label.
+- [ ] (target) Member-context rendered-items snapshot contains no move/copy/rename/delete entries.
+- Operator rule (admin is a pure operator): `collection-add` / `like-toggle` rows are hidden for admin via callback-withhold (shell passes `onAddToCollection`/`onToggleLike` as `undefined` — absent, never disabled).

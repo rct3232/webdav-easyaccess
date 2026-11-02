@@ -10,7 +10,7 @@
 
 ---
 
-### 2.0 Trash-view empty state (DEF-16 P9)
+### 2.0 Trash-view empty state
 
 - `emptyText` (string, optional): overrides the default `fileManager.noFiles` empty message (`fileManager.trashEmpty` in the trash view).
 
@@ -63,6 +63,8 @@
 - **Filename:** Use `pixelMiddleTruncate` for middle ellipsis (...) with `Tooltip` showing the full name when truncated. Uses `ResizeObserver` to track container width.
 - Long-press (onLongPressSelect) on mobile when !selectionMode — enters selection mode and selects file. More IconButton at right end of row (last TableCell); visible when !selectionMode. Uses `onTouchStart`/`onTouchEnd` with `stopPropagation` so parent long-press does not capture touch; touch fires onMoreClick immediately (avoids click delay/loss on mobile).
 - Detail view hidden on mobile (via parent)
+- **Member-row reuse (`CollectionsListView.md` §2.5):** the collection MEMBERS surface detail mode feeds file-shape member rows through this component + `FileDetailRow` (hosted by `CollectionsListView`). Optional row slots only — file rows (fields absent) render byte-identical: `file.rowTestId` → `TableRow` `data-testid` (`member-row-<nodeId>`), `file.moreButtonTestId` → the More button `data-testid` (`member-menu-button`); the size cell renders `'-'` for size-less member rows (`file.isCollectionMember === true && file.size == null` — the wire carries no size and `formatFileSize(null)` would lie `'0 B'`; directories keep their existing `'-'`); the type cell stays `file.mime || '-'` (revoked member rows carry `mime:null` → `'-'`); `state:'revoked'` rows arrive disabled via `getFileItemState` (`fileViewUtils.md`), so no click/menu (FileDetailRow already gates `onFileClick`/`onContextMenu` on `isDisabled`). **Member-state badges:** the table renders `<MemberStateBadges file={file} variant="detail" />` INLINE in the name cell — plain 16px icon badges between the leading `getFileIcon` glyph and the truncated name (the cell's existing `gap: 0.75` flex spaces them); same gating/testids/tooltips as the other views (`MemberStateBadges.md` §2.3 — the badges appear in all three member views). `FileDetailRow` keeps the DEFAULT `React.memo` shallow compare: the adapter re-maps rows on every load/publish flip, so fresh object identity re-renders the row — a field-only custom comparator would risk stale `dragHandlers`/`dropHandlers` closures and is NOT added.
+- **Search-server-row reuse (`useSearchResults.md` §2.3):** Zone B rows render through this component + `FileDetailRow` in results-mode detail view. Optional slots only — file rows render byte-identical: `file.isSearchServerRow === true` → `TableRow` exposes `data-file-node-id` (dedup anchor) and `file.rowTestId` (`server-search-row-<id>`) as the `data-testid`; `file.highlights` → the name cell renders the two-color ranges inside the truncated name exactly like `FileListItem.md` (`search-highlight-range` / `filter-highlight-range` testids, Tooltip intact); `file.hasWritePermission === false` → the `EditOff` badge renders at the leading icon cell corner (`search-readonly-badge-<nodeId>` — icon-cell parity with the list view) and drag is inert; the size cell renders `'-'` for search server rows while un-enriched (`file.size == null` — same no-lie rule as the member row), real value after enrichment; date sorting uses the enriched `lastmod`. The adapter re-maps rows on every highlight/enrichment change, so the default shallow memo stays sufficient.
 
 ### 2.7 Verification Scenarios
 
@@ -74,6 +76,7 @@ Checklist for unit test writing:
 - [x] Long-press invokes onLongPressSelect on mobile — enters selection mode
 - [x] Drag-and-drop
 - [x] More IconButton visible when !selectionMode; hidden when selectionMode; onMoreClick called with file
+- [ ] Search server row: `rowTestId` + `data-file-node-id` on the `TableRow`, size cell `'-'` until enriched, name highlight ranges with the `search-highlight-range`/`filter-highlight-range` testids, `search-readonly-badge-<nodeId>` when `hasWritePermission:false`; regular rows render byte-identical.
 
 ### 2.8 Edge Cases
 

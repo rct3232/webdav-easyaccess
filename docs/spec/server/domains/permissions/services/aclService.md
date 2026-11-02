@@ -69,7 +69,7 @@ Unified entry point that delegates to the appropriate checker based on the `isDi
 
 ### 2.3 Write Convenience Methods — REMOVED
 
-`canWriteFolder` / `canWriteFile` had no production callers and were retired in the 2026-09 dead-code cleanup; callers use `checkFolderPermission` / `checkFilePermission` with `PERMISSIONS.WRITE` directly (the admin bypass is applied by the callers' own gate or by `checkPermission`).
+`canWriteFolder` / `canWriteFile` do not exist (no production callers remained); callers use `checkFolderPermission` / `checkFilePermission` with `PERMISSIONS.WRITE` directly (the admin bypass is applied by the callers' own gate or by `checkPermission`).
 
 ### 2.4 Identity Helpers
 
@@ -89,7 +89,7 @@ Internal helper that fetches users from the database with TTL-based caching (def
 
 - `__clearUserCacheForTests()` — clears the internal user cache map; intended only for test setup/teardown.
 
-### 2.6 Batch Permission Checks (W4.0 Decision)
+### 2.6 Batch Permission Checks
 
 The service does **not** expose a `checkPermissionsBatch` method. Callers needing concurrent checks across multiple nodes use per-item `Promise.all` or `Promise.allSettled`:
 
@@ -100,7 +100,7 @@ const results = await Promise.allSettled(
 );
 ```
 
-This decision was made in Wave 4 (Task W4.0) — a dedicated batch method provides no meaningful performance benefit over `Promise.allSettled` for the current use cases and adds unnecessary surface area.
+A dedicated batch method provides no meaningful performance benefit over `Promise.allSettled` for the current use cases and adds unnecessary surface area.
 
 ### 2.7 Dependencies
 

@@ -7,83 +7,24 @@
  * apply body carries no `metadata` block.
  * @see docs/spec/client/pages/Setup.md 2.6
  */
-import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { Outlet, RouterProvider, createMemoryRouter } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
 import { server } from '../../../setupTests';
-import { AuthProvider } from '../../../contexts/AuthContext';
-import Setup from '../Setup';
-import '../../../i18n';
+import {
+  clickButton,
+  clickNext,
+  fillS3Fields,
+  passTest,
+  renderSetup,
+  setFieldValue,
+  waitForReady,
+} from '../setupTestUtils';
 
-const theme = createTheme({ palette: { primary: { main: '#4167ba' } } });
-
-function renderSetup(initialEntries = ['/setup']) {
-  const rootEl = (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <AuthProvider>
-        <Outlet />
-      </AuthProvider>
-    </ThemeProvider>
-  );
-
-  const router = createMemoryRouter(
-    [
-      {
-        path: '/',
-        element: rootEl,
-        children: [
-          { path: 'setup', element: <Setup /> },
-          { path: 'login', element: <div data-testid="login-page">Login page</div> },
-        ],
-      },
-    ],
-    {
-      initialEntries,
-      future: { v7_relativeSplatPath: true },
-    }
-  );
-
-  return (
-    <RouterProvider
-      router={router}
-      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-    />
-  );
-}
-
-const waitForReady = async () => {
-  await waitFor(() => {
-    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-  });
-};
-
-const clickNext = async (user) => {
-  await user.click(screen.getByRole('button', { name: /^next$/i }));
-};
-
-// Click "Test connection" and wait for the success feedback; required before
-// Next is enabled on steps that offer a connection test (UI UX change).
-async function passTest(user) {
-  await user.click(screen.getByRole('button', { name: /test connection/i }));
-  await waitFor(() => {
-    expect(screen.getByText('Connection successful.')).toBeInTheDocument();
-  });
-}
-
-async function fillS3Fields(user) {
-  await user.type(screen.getByLabelText(/bucket/i), 'test-bucket');
-  await user.type(screen.getByLabelText(/region/i), 'us-east-1');
-  await user.type(screen.getByLabelText(/access key id/i), 'AKIAIOSFODNN7EXAMPLE');
-  await user.type(
-    screen.getByLabelText(/secret access key/i),
-    'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
-  );
-}
+// Safety net for the wizard's multi-step apply/restart integration flow. The
+// root fix is the reduced event/render cost above; this per-suite budget only
+// prevents host contention from turning a normally sub-second case into the
+// global 5 s default failure. Do not raise this globally.
+jest.setTimeout(10000);
 
 describe('Setup wizard', () => {
   beforeEach(() => {
@@ -91,7 +32,7 @@ describe('Setup wizard', () => {
   });
 
   it('renders the first step (file storage) after loading setup status', async () => {
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
     expect(screen.getByText('Server setup')).toBeInTheDocument();
@@ -101,36 +42,37 @@ describe('Setup wizard', () => {
   });
 
   it('navigates through all four steps in order', async () => {
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
     expect(screen.getByLabelText(/bucket/i)).toBeInTheDocument();
-    await fillS3Fields(user);
-    await passTest(user);
+    fillS3Fields();
+    await passTest();
 
-    await clickNext(user);
+    clickNext();
     expect(screen.getByLabelText(/admin password/i)).toBeInTheDocument();
-    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
+    setFieldValue(/admin password/i, 'admin123');
 
-    await clickNext(user);
+    clickNext();
     expect(screen.getByLabelText(/server port/i)).toBeInTheDocument();
 
-    await clickNext(user);
+    clickNext();
+    expect(screen.getByText('AI configuration (optional)')).toBeInTheDocument();
+
+    clickNext();
     expect(screen.getByRole('button', { name: /apply & finish/i })).toBeInTheDocument();
   });
 
   it('blocks advancing when required fields are missing (admin password)', async () => {
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await fillS3Fields(user);
-    await passTest(user);
-    await clickNext(user);
+    fillS3Fields();
+    await passTest();
+    clickNext();
 
     expect(screen.getByLabelText(/admin password/i)).toBeInTheDocument();
-    await clickNext(user);
+    clickNext();
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument();
@@ -139,12 +81,11 @@ describe('Setup wizard', () => {
   });
 
   it('shows connection-test success for s3', async () => {
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await fillS3Fields(user);
-    await user.click(screen.getByRole('button', { name: /test connection/i }));
+    fillS3Fields();
+    clickButton(/test connection/i);
 
     await waitFor(() => {
       expect(screen.getByText('Connection successful.')).toBeInTheDocument();
@@ -157,12 +98,11 @@ describe('Setup wizard', () => {
         HttpResponse.json({ ok: false, errorCode: 'serverErrors.setup.complete' }, { status: 403 })
       )
     );
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await fillS3Fields(user);
-    await user.click(screen.getByRole('button', { name: /test connection/i }));
+    fillS3Fields();
+    clickButton(/test connection/i);
 
     await waitFor(() => {
       expect(screen.getByText(/already configured/i)).toBeInTheDocument();
@@ -183,12 +123,11 @@ describe('Setup wizard', () => {
         )
       )
     );
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await fillS3Fields(user);
-    await user.click(screen.getByRole('button', { name: /test connection/i }));
+    fillS3Fields();
+    clickButton(/test connection/i);
 
     await waitFor(() => {
       expect(screen.getByText(/cannot reach the s3 endpoint/i)).toBeInTheDocument();
@@ -210,15 +149,14 @@ describe('Setup wizard', () => {
         )
       )
     );
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await user.click(screen.getByLabelText(/WebDAV/i));
-    await user.type(screen.getByLabelText(/url/i), 'https://example.com/webdav');
-    await user.type(screen.getByLabelText(/username/i), 'admin');
-    await user.type(screen.getByLabelText(/password/i), 'secret');
-    await user.click(screen.getByRole('button', { name: /test connection/i }));
+    fireEvent.click(screen.getByLabelText(/WebDAV/i));
+    setFieldValue(/url/i, 'https://example.com/webdav');
+    setFieldValue(/username/i, 'admin');
+    setFieldValue(/password/i, 'secret');
+    clickButton(/test connection/i);
 
     await waitFor(() => {
       expect(screen.getByText(/WebDAV test failed: ECONNREFUSED/i)).toBeInTheDocument();
@@ -226,17 +164,17 @@ describe('Setup wizard', () => {
   });
 
   it('shows the restart-required screen after a successful apply', async () => {
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await fillS3Fields(user);
-    await passTest(user);
-    await clickNext(user);
-    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
-    await clickNext(user);
-    await clickNext(user);
-    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
+    fillS3Fields();
+    await passTest();
+    clickNext();
+    setFieldValue(/admin password/i, 'admin123');
+    clickNext();
+    clickNext(); // optional
+    clickNext(); // AI step (skipped)
+    clickButton(/apply & finish/i);
 
     await waitFor(() => {
       expect(screen.getByText('Restart required')).toBeInTheDocument();
@@ -252,7 +190,7 @@ describe('Setup wizard', () => {
       )
     );
 
-    render(renderSetup());
+    renderSetup();
     await waitFor(() => {
       expect(screen.getByTestId('login-page')).toBeInTheDocument();
     });
@@ -277,15 +215,14 @@ describe('Setup wizard', () => {
         })
       )
     );
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
     expect(screen.getByLabelText(/secret access key/i)).toHaveValue('****');
     expect(screen.getByLabelText(/bucket/i)).toHaveValue('prefilled-bucket');
-    await passTest(user);
+    await passTest();
 
-    await clickNext(user);
+    clickNext();
     expect(screen.getByLabelText(/jwt secret/i)).toHaveValue('****');
   });
 
@@ -315,17 +252,17 @@ describe('Setup wizard', () => {
       })
     );
 
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
     expect(screen.getByLabelText(/secret access key/i)).toHaveValue('****');
-    await passTest(user); // file storage connection test required
-    await clickNext(user);
-    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
-    await clickNext(user);
-    await clickNext(user); // optional
-    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
+    await passTest(); // file storage connection test required
+    clickNext();
+    setFieldValue(/admin password/i, 'admin123');
+    clickNext();
+    clickNext(); // optional
+    clickNext(); // AI step (skipped — no llm block in the payload)
+    clickButton(/apply & finish/i);
 
     await waitFor(() => {
       expect(applyBody).not.toBeNull();
@@ -335,17 +272,16 @@ describe('Setup wizard', () => {
   });
 
   it('leaves the JWT secret blank on a fresh setup and advances with a blank secret', async () => {
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await fillS3Fields(user);
-    await passTest(user);
-    await clickNext(user);
+    fillS3Fields();
+    await passTest();
+    clickNext();
 
     expect(screen.getByLabelText(/jwt secret/i)).toHaveValue('');
-    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
-    await clickNext(user);
+    setFieldValue(/admin password/i, 'admin123');
+    clickNext();
     expect(screen.getByLabelText(/server port/i)).toBeInTheDocument();
   });
 
@@ -358,17 +294,17 @@ describe('Setup wizard', () => {
       })
     );
 
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await fillS3Fields(user);
-    await passTest(user);
-    await clickNext(user);
-    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
-    await clickNext(user);
-    await clickNext(user); // optional
-    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
+    fillS3Fields();
+    await passTest();
+    clickNext();
+    setFieldValue(/admin password/i, 'admin123');
+    clickNext();
+    clickNext(); // optional
+    clickNext(); // AI step (skipped — no llm block in the payload)
+    clickButton(/apply & finish/i);
 
     await waitFor(() => {
       expect(applyBody).not.toBeNull();
@@ -386,18 +322,18 @@ describe('Setup wizard', () => {
       })
     );
 
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await fillS3Fields(user);
-    await passTest(user);
-    await clickNext(user);
-    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
-    await user.type(screen.getByLabelText(/jwt secret/i), 'an-operator-secret');
-    await clickNext(user);
-    await clickNext(user); // optional
-    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
+    fillS3Fields();
+    await passTest();
+    clickNext();
+    setFieldValue(/admin password/i, 'admin123');
+    setFieldValue(/jwt secret/i, 'an-operator-secret');
+    clickNext();
+    clickNext(); // optional
+    clickNext(); // AI step (skipped — no llm block in the payload)
+    clickButton(/apply & finish/i);
 
     await waitFor(() => {
       expect(applyBody).not.toBeNull();
@@ -433,18 +369,18 @@ describe('Setup wizard', () => {
       })
     );
 
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
     expect(screen.getByLabelText(/secret access key/i)).toHaveValue('****');
-    await passTest(user);
-    await clickNext(user);
+    await passTest();
+    clickNext();
     expect(screen.getByLabelText(/jwt secret/i)).toHaveValue('****');
-    await user.type(screen.getByLabelText(/admin password/i), 'admin123');
-    await clickNext(user);
-    await clickNext(user); // optional
-    await user.click(screen.getByRole('button', { name: /apply & finish/i }));
+    setFieldValue(/admin password/i, 'admin123');
+    clickNext();
+    clickNext(); // optional
+    clickNext(); // AI step (skipped — no llm block in the payload)
+    clickButton(/apply & finish/i);
 
     await waitFor(() => {
       expect(applyBody).not.toBeNull();
@@ -454,30 +390,28 @@ describe('Setup wizard', () => {
   });
 
   it('disables Next until the connection test passes (s3 step)', async () => {
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await fillS3Fields(user);
+    fillS3Fields();
     expect(screen.getByRole('button', { name: /^next$/i })).toBeDisabled();
 
-    await passTest(user);
+    await passTest();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /^next$/i })).toBeEnabled();
     });
   });
 
   it('resets the connection-test result when a value changes', async () => {
-    const user = userEvent.setup();
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
-    await fillS3Fields(user);
-    await passTest(user);
+    fillS3Fields();
+    await passTest();
 
     // Editing a field invalidates the passed test: success message disappears
     // and Next is disabled again until re-testing.
-    await user.type(screen.getByLabelText(/bucket/i), 'X');
+    setFieldValue(/bucket/i, 'test-bucketX');
     await waitFor(() => {
       expect(screen.queryByText('Connection successful.')).not.toBeInTheDocument();
     });
@@ -485,7 +419,7 @@ describe('Setup wizard', () => {
   });
 
   it('renders the wizard i18n strings', async () => {
-    render(renderSetup());
+    renderSetup();
     await waitForReady();
 
     expect(screen.getByText('Server setup')).toBeInTheDocument();

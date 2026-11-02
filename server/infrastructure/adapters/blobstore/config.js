@@ -132,6 +132,15 @@ async function ensureDirectoryExists(client, baseUrl, directoryPath) {
   for (const segment of segments) {
     currentPath = currentPath ? `${currentPath}/${segment}` : `/${segment}`;
     const requestPath = getRequestPath(currentPath, baseUrl);
+    // Existence-first: duplicate MKCOL on a recently created deep collection
+    // can drop the connection on bytemark/Apache.
+    let alreadyThere = false;
+    try {
+      alreadyThere = await client.exists(requestPath);
+    } catch {
+      alreadyThere = false;
+    }
+    if (alreadyThere) continue;
     try {
       await client.createDirectory(requestPath);
     } catch (error) {

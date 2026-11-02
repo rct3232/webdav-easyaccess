@@ -43,9 +43,20 @@ const ADMIN_KEYS = ['password'];
 const JWT_KEYS = ['secret', 'expiresIn'];
 const SERVER_KEYS = ['port', 'corsOrigins'];
 const EMAIL_KEYS = ['host', 'port', 'user', 'password', 'secure', 'fromName'];
+// Wizard AI step (T1.1c, setup.md §2.4a): the llm block carries one sub-object
+// per configured role — embed is NOT a wizard surface (built-in engine).
+const LLM_ROLE_KEYS = ['baseUrl', 'apiKey', 'model'];
+// Intentional wizard SUBSET of `LLM_ROLE` (embed is excluded — the built-in
+// engine owns it), so this stays local and must never be mapped to `LLM_ROLE`.
+const LLM_ROLES = ['chat', 'vision', 'asr'];
+const LLM_ROLE_ENTRY_KEYS = {
+  chat: ['LLM_CHAT_BASE_URL', 'LLM_CHAT_API_KEY', 'LLM_CHAT_MODEL'],
+  vision: ['LLM_VISION_BASE_URL', 'LLM_VISION_API_KEY', 'LLM_VISION_MODEL'],
+  asr: ['LLM_ASR_BASE_URL', 'LLM_ASR_API_KEY', 'LLM_ASR_MODEL'],
+};
 
 const FILE_KEYS_UNION = [...new Set([...S3_KEYS, ...WEBDAV_KEYS])];
-const TOP_LEVEL_KEYS = ['metadata', 'file', 'admin', 'jwt', 'server', 'email'];
+const TOP_LEVEL_KEYS = ['metadata', 'file', 'admin', 'jwt', 'server', 'email', 'llm'];
 
 // The .env-owned metadata-backend T0 keys. The remote-DB block decides the
 // metadata backend by presence (see store/storage.getBackend); apply never
@@ -193,6 +204,27 @@ function validateEmail(block, fields) {
 }
 
 /**
+ * The llm block is OPTIONAL (setup.md §2.4a): an absent/omitted block is a
+ * no-op (skip = None-state product). Each present role must be a wizard-surface
+ * role (embed is rejected — never wizard-configurable) whose sub-object carries
+ * only the {baseUrl, apiKey, model} triple keys.
+ */
+function validateLlm(block, fields) {
+  if (block == null) return;
+  if (!validateBlockObject(block, LLM_ROLES, 'llm', fields)) return;
+  for (const role of Object.keys(block)) {
+    const triple = block[role];
+    if (triple == null || typeof triple !== 'object' || Array.isArray(triple)) {
+      fields[`llm.${role}`] = 'invalid';
+      continue;
+    }
+    for (const key of Object.keys(triple)) {
+      if (!LLM_ROLE_KEYS.includes(key)) fields[`llm.${role}.${key}`] = 'unknown';
+    }
+  }
+}
+
+/**
  * Validate a full wizard/CLI apply payload. Mirror of the shared payload shape
  * both entry points accept.
  * @param {*} body raw apply payload
@@ -223,6 +255,7 @@ function validateApplyPayload(body) {
   validateJwt(body.jwt, fields);
   validateServer(body.server, fields);
   validateEmail(body.email, fields);
+  validateLlm(body.llm, fields);
 
   if (Object.keys(fields).length === 0) return null;
   return {
@@ -278,6 +311,20 @@ function buildEnvEntries(body) {
     if (!isMissing(email.password)) entries.EMAIL_PASSWORD = String(email.password);
     if (email.secure !== undefined) entries.EMAIL_SECURE = booleanToString(email.secure);
     if (!isMissing(email.fromName)) entries.EMAIL_FROM_NAME = String(email.fromName);
+  }
+
+  // Optional llm block (T1.1c): each present role upserts its LLM_* triple as
+  // DB settings rows only (the LLM_* family is T2 dbOnly — never .env). A
+  // masked ('****') apiKey is dropped later by the keep-existing rule.
+  if (body.llm != null) {
+    for (const role of LLM_ROLES) {
+      const triple = body.llm[role];
+      if (triple == null) continue;
+      const [baseKey, apiKeyKey, modelKey] = LLM_ROLE_ENTRY_KEYS[role];
+      if (!isMissing(triple.baseUrl)) entries[baseKey] = String(triple.baseUrl);
+      if (!isMissing(triple.apiKey)) entries[apiKeyKey] = String(triple.apiKey);
+      if (!isMissing(triple.model)) entries[modelKey] = String(triple.model);
+    }
   }
 
   return entries;

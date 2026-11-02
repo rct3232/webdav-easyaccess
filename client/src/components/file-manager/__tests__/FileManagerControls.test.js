@@ -282,6 +282,61 @@ describe('FileManagerControls', () => {
   });
 });
 
+describe('FileManagerControls collections sort surface (P-2)', () => {
+  const collectionsProps = (overrides = {}) => ({
+    ...defaultProps,
+    sortSurface: 'collections',
+    collectionSort: 'activity',
+    onCollectionSortChange: jest.fn(),
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('keeps the same toolbar sort trigger on the collections surface', () => {
+    renderWithProviders(<FileManagerControls {...collectionsProps()} />);
+    expect(screen.getByTestId('file-manager-sort')).toBeInTheDocument();
+  });
+
+  it('renders the five server sort options with the current sort selected and no radio groups', () => {
+    renderWithProviders(<FileManagerControls {...collectionsProps()} collectionSort="updated" />);
+    fireEvent.click(screen.getByTestId('file-manager-sort'));
+
+    expect(screen.getAllByRole('menuitem')).toHaveLength(5);
+    ['Activity', 'Name', 'Created', 'Updated', 'Similar'].forEach((label) => {
+      expect(screen.getByRole('menuitem', { name: label })).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('collections-sort-option-updated')).toHaveClass('Mui-selected');
+    expect(screen.getByTestId('collections-sort-option-activity')).not.toHaveClass('Mui-selected');
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+  });
+
+  it('dispatches onCollectionSortChange with the option value and closes the menu', () => {
+    const props = collectionsProps();
+    renderWithProviders(<FileManagerControls {...props} />);
+    fireEvent.click(screen.getByTestId('file-manager-sort'));
+    fireEvent.click(screen.getByTestId('collections-sort-option-similar'));
+
+    expect(props.onCollectionSortChange).toHaveBeenCalledWith('similar');
+    expect(props.setSortMode).not.toHaveBeenCalled();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('files surface keeps the four radio options and dispatches setSortMode only', () => {
+    renderWithProviders(<FileManagerControls {...defaultProps} />);
+    fireEvent.click(screen.getByTestId('file-manager-sort'));
+
+    expect(screen.getAllByRole('radio')).toHaveLength(4);
+    expect(screen.queryByTestId('collections-sort-option-name')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('radio')[1]);
+    expect(defaultProps.setSortMode).toHaveBeenCalledWith(SORT_MODES.NAME_DESC);
+    expect(defaultProps.onCollectionSortChange).toBeUndefined;
+  });
+});
+
 describe('trash mode (DEF-16 P9)', () => {
   const trashBulkProps = {
     handleBulkRestore: jest.fn(),
@@ -353,5 +408,173 @@ describe('trash mode (DEF-16 P9)', () => {
   it('omits the empty-trash icon when onEmptyTrash is not provided', () => {
     renderWithProviders(<FileManagerControls {...defaultProps} trashMode />);
     expect(screen.queryByTestId('trash-empty')).not.toBeInTheDocument();
+  });
+});
+
+describe('FileManagerControls AI-platform bulk entries (BulkActionToolbar §3)', () => {
+  const selection = { selectionMode: true, selectedFiles: new Set(['/a.txt', '/b.txt']) };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('renders bulk-collection-add when onBulkAddToCollection is provided and passes the selection', () => {
+    const onBulkAddToCollection = jest.fn();
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        {...selection}
+        onBulkAddToCollection={onBulkAddToCollection}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('bulk-collection-add'));
+    expect(onBulkAddToCollection).toHaveBeenCalledWith(['/a.txt', '/b.txt']);
+  });
+
+  it('hides the new entry in share-link (downloadOnly) and trash modes; absent without callback', () => {
+    const onBulkAddToCollection = jest.fn();
+    const { unmount } = renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        {...selection}
+        downloadOnly
+        onBulkAddToCollection={onBulkAddToCollection}
+      />
+    );
+    expect(screen.queryByTestId('bulk-collection-add')).not.toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        {...selection}
+        trashMode
+        onBulkAddToCollection={onBulkAddToCollection}
+      />
+    );
+    expect(screen.queryByTestId('bulk-collection-add')).not.toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(<FileManagerControls {...defaultProps} {...selection} />);
+    expect(screen.queryByTestId('bulk-collection-add')).not.toBeInTheDocument();
+  });
+
+  it('memberMode swaps the file actions: no move/copy/download/delete buttons render', () => {
+    renderWithProviders(
+      <FileManagerControls {...defaultProps} {...selection} {...bulkActionProps} memberMode />
+    );
+
+    expect(screen.queryByTestId('bulk-action-move')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-copy')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-download')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-delete')).not.toBeInTheDocument();
+    expect(screen.queryByText(/delete/i)).not.toBeInTheDocument();
+  });
+
+  it('memberMode offers batch exclude + Add to another collection launchers', () => {
+    const onBulkMemberExclude = jest.fn();
+    const onBulkAddToCollection = jest.fn();
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        {...selection}
+        memberMode
+        onBulkMemberExclude={onBulkMemberExclude}
+        onBulkAddToCollection={onBulkAddToCollection}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('bulk-member-exclude'));
+    expect(onBulkMemberExclude).toHaveBeenCalledWith(['/a.txt', '/b.txt']);
+    fireEvent.click(screen.getByTestId('bulk-collection-add'));
+    expect(onBulkAddToCollection).toHaveBeenCalledWith(['/a.txt', '/b.txt']);
+  });
+});
+
+describe('FileManagerControls collections selection bar + toggle hiding (P-3)', () => {
+  const selection = {
+    selectionMode: true,
+    selectedFiles: new Set(['/__collections__/collection/1']),
+  };
+
+  it('active view shows the FIXED Pin/Unpin/Archive set — no file bulk buttons', () => {
+    const onCollectionsBulkAction = jest.fn();
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        {...selection}
+        collectionsMode
+        onCollectionsBulkAction={onCollectionsBulkAction}
+        {...bulkActionProps}
+      />
+    );
+    expect(screen.getByTestId('bulk-collections-pin')).toBeInTheDocument();
+    expect(screen.getByTestId('bulk-collections-unpin')).toBeInTheDocument();
+    expect(screen.getByTestId('bulk-collections-archive')).toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-move')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-copy')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-download')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-action-delete')).not.toBeInTheDocument();
+    // select-all/deselect/count reuse the files affordances
+    expect(screen.getAllByText(/select all/i).length).toBeGreaterThan(0);
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('bulk-collections-archive'));
+    expect(onCollectionsBulkAction).toHaveBeenCalledWith('archive');
+  });
+
+  it('archive view shows Restore/Delete permanently instead of the Pin set', () => {
+    const onCollectionsBulkAction = jest.fn();
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        {...selection}
+        collectionsMode
+        collectionsArchiveView
+        onCollectionsBulkAction={onCollectionsBulkAction}
+      />
+    );
+    expect(screen.getByTestId('bulk-collections-restore')).toBeInTheDocument();
+    expect(screen.getByTestId('bulk-collections-delete-permanent')).toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-collections-pin')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-collections-archive')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('bulk-collections-delete-permanent'));
+    expect(onCollectionsBulkAction).toHaveBeenCalledWith('delete-permanent');
+  });
+
+  it('the fixed set stays visible count-independently (disabled at zero selection)', () => {
+    renderWithProviders(
+      <FileManagerControls
+        {...defaultProps}
+        selectionMode
+        selectedFiles={new Set()}
+        collectionsMode
+      />
+    );
+    const pin = screen.getByTestId('bulk-collections-pin');
+    expect(pin).toBeInTheDocument();
+    expect(pin).toBeDisabled();
+  });
+
+  it('viewModeHidden removes the view-mode buttons but keeps the sort button', () => {
+    renderWithProviders(<FileManagerControls {...defaultProps} viewModeHidden />);
+    expect(screen.queryByTestId('view-mode-list')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('view-mode-grid')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('view-mode-detail')).not.toBeInTheDocument();
+    expect(screen.getByTestId('file-manager-sort')).toBeInTheDocument();
+  });
+
+  it('sortHidden removes the sort button AND its menu (members surface)', () => {
+    renderWithProviders(<FileManagerControls {...defaultProps} sortHidden viewModeHidden />);
+    expect(screen.queryByTestId('file-manager-sort')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('view-mode-list')).not.toBeInTheDocument();
+  });
+
+  it('files surface regression: sort + view-mode render with the radio menu untouched', () => {
+    renderWithProviders(<FileManagerControls {...defaultProps} />);
+    expect(screen.getByTestId('file-manager-sort')).toBeInTheDocument();
+    expect(screen.getByTestId('view-mode-list')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('file-manager-sort'));
+    expect(screen.getAllByRole('radio').length).toBeGreaterThan(0);
   });
 });

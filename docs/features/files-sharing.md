@@ -180,7 +180,7 @@ flowchart TD
 
 When implementing or reviewing tests for files and sharing, cover at least:
 
-For the full browser-flow inventory, rollout order, and Playwright ownership map, see [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md). Keep this feature doc focused on product behavior and representative verification anchors rather than the exhaustive E2E checklist.
+Keep this feature doc focused on product behavior and representative verification anchors rather than the exhaustive E2E checklist.
 
 ### E2E selector policy
 
@@ -224,7 +224,6 @@ For the full browser-flow inventory, rollout order, and Playwright ownership map
 
 ### Browser coverage boundary for sharing-related flows
 
-- Keep the canonical inventory, priorities, and spec ownership in [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md).
 - Playwright should cover representative user-visible journeys:
   - public share-link error/success states
   - add-to-my-permissions and leave-share outcomes for directory shares
@@ -238,7 +237,7 @@ For the full browser-flow inventory, rollout order, and Playwright ownership map
 
 ### Representative verification anchors
 
-- **Explorer CRUD happy paths:** Desktop and mobile both keep create folder, upload, rename, and delete in browser-visible coverage. The detailed scenario inventory and spec ownership live in [../E2E_COVERAGE_PLAN.md](../E2E_COVERAGE_PLAN.md).
+- **Explorer CRUD happy paths:** Desktop and mobile both keep create folder, upload, rename, and delete in browser-visible coverage.
 - **Explorer navigation anchors:** Browser coverage should keep direct `/files/<path>` entry and breadcrumb chip navigation focused on visible folder changes, using route results and `data-file-path` item visibility rather than internal router state.
 - **Preview flows:** For previewable files, browser coverage should assert the platform-owned preview entry seam and the visible full-screen preview dialog, without coupling to preview-loader internals.
 - **Batch operations and conflicts:** Move/copy/delete, conflict resolution, bulk progress remain important coverage targets. The exhaustive browser-vs-integration split is tracked in the canonical E2E plan. For browser coverage of bulk move/copy, treat folder selection as the start of a job-backed flow and wait for a visible completion signal before asserting destination contents.

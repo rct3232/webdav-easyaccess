@@ -46,7 +46,7 @@ Business logic is delegated to `shareLinkService`, which exports:
 ### 2.4 Request/Response Spec
 
 - Create: body `{ fileNodeId, expiresInDays }`; 200: `{ token, nodeId, fileName, fileType, isDirectory, displayPath, createdAt, expiresAt, downloadCount }`
-- Create: fileNodeId 필수; 없거나 invalid → 400; node 존재하지 않으면 → 404; creator(사용자)가 node에 대한 READ 권한이 없으면 → 403
+- Create: fileNodeId required; missing or invalid → 400; node does not exist → 404; creator lacks READ permission → 403
 - List: 200 array of nodeId-based link objects
 - Get: 200 nodeId-based link object
 - Update: body expiresInDays; 200
@@ -63,4 +63,4 @@ Business logic is delegated to `shareLinkService`, which exports:
 - [ ] List returns only own links; entries include nodeId, fileName, fileType, isDirectory, displayPath
 - [ ] Get/Update/Delete require ownership
 - [ ] Response objects never contain `filePath`
-- [ ] 만료된 링크 Update/Delete (소유자) 동작
+- [ ] expired-link Update/Delete (owner) behavior

@@ -2,14 +2,18 @@ import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { cleanDir } from './helpers/seedDb';
+import { composeProject, s3Endpoint } from './helpers/ports';
 
 const rootDir = process.cwd();
 const composeFile = path.join(rootDir, 'docker-compose.e2e.yml');
 const backendMode = process.env.E2E_BACKEND_MODE || 's3';
 
 const require = createRequire(path.join(rootDir, 'e2e', 'global-teardown.ts'));
+const { releaseBandLock } = require('../scripts/lib/e2e-band.cjs') as {
+  releaseBandLock: (rootDir: string) => void;
+};
 
-const E2E_S3_ENDPOINT = 'http://127.0.0.1:9010';
+const E2E_S3_ENDPOINT = s3Endpoint;
 const E2E_S3_REGION = process.env.AWS_REGION || 'us-east-1';
 const E2E_S3_ACCESS_KEY = process.env.AWS_ACCESS_KEY_ID || 'minioadmin';
 const E2E_S3_SECRET_KEY = process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin';
@@ -33,10 +37,14 @@ function resolveComposeCommand() {
 
 function runCompose(args: string[]) {
   const compose = resolveComposeCommand();
-  execFileSync(compose.command, [...compose.args, '-f', composeFile, ...args], {
-    cwd: rootDir,
-    stdio: 'inherit',
-  });
+  execFileSync(
+    compose.command,
+    [...compose.args, '-p', composeProject, '-f', composeFile, ...args],
+    {
+      cwd: rootDir,
+      stdio: 'inherit',
+    }
+  );
 }
 
 export default async function globalTeardown() {
@@ -66,6 +74,11 @@ export default async function globalTeardown() {
   } catch (error) {
     console.error('Failed to stop E2E Docker services:', error);
   }
+
+  // Release this checkout's global port-band lock claim (the persisted band
+  // in data/e2e-runtime.json stays — another allocator may now claim the
+  // offset; a later conflict triggers transparent re-allocation).
+  releaseBandLock(rootDir);
 
   cleanDir('e2e-data');
   cleanDir('data/e2e-metadata');

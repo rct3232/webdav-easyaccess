@@ -18,8 +18,8 @@ It intentionally documents _who owns what_, not file-by-file implementation deta
 
 - `/files/*` is the **single route-level owner** of the explorer location expressed in the URL.
 - The splat param (`*`) represents the explorer path under `/files/` and is interpreted as an absolute explorer path string:
-  - empty/undefined splat → `/`
-  - `a/b` splat → `/a/b`
+- empty/undefined splat → `/`
+- `a/b` splat → `/a/b`
 - The page shell must wire this contract through the listing/navigation seams (for example `useFileManager` for path/listing) and must not duplicate splat parsing logic in multiple places.
 
 ---
@@ -50,16 +50,16 @@ The page shell does **not** own:
 Explorer core is the reusable “file explorer” core for browsing and acting on a directory. It is composed of:
 
 - **Controller hooks** (implemented):
-  - `docs/spec/client/hooks/useExplorerSession.md` (local explorer session state: view/sort/search/listing derivation plus session-boundary tokens)
-  - `docs/spec/client/hooks/useExplorerNavigation.md` (path navigation orchestration and transitions)
-  - `docs/spec/client/hooks/useExplorerCommands.md` (file operation orchestration)
-  - `docs/spec/client/hooks/useExplorerProgress.md` (progress list + retry/cancel coordination)
-  - `docs/spec/client/hooks/useExplorerInteraction.md` (item click/open/context interaction orchestration for explorer content)
-  - `docs/spec/client/hooks/useExplorerRefreshIndicator.md` (mobile pull-to-refresh indicator presentation)
+- `docs/spec/client/hooks/useExplorerSession.md` (local explorer session state: view/sort/search/listing derivation plus session-boundary tokens)
+- `docs/spec/client/hooks/useExplorerNavigation.md` (path navigation orchestration and transitions)
+- `docs/spec/client/hooks/useExplorerCommands.md` (file operation orchestration)
+- `docs/spec/client/hooks/useExplorerProgress.md` (progress list + retry/cancel coordination)
+- `docs/spec/client/hooks/useExplorerInteraction.md` (item click/open/context interaction orchestration for explorer content)
+- `docs/spec/client/hooks/useExplorerRefreshIndicator.md` (mobile pull-to-refresh indicator presentation)
 - **Pure view(s)** (implemented):
-  - `docs/spec/client/components/file-manager/FileManagerView.md` (renders from props only)
+- `docs/spec/client/components/file-manager/FileManagerView.md` (renders from props only)
 - **Gateways/adapters** (implemented):
-  - `docs/spec/client/services/explorerGateway.md` (IO boundary for listing, operations, and related IO concerns)
+- `docs/spec/client/services/explorerGateway.md` (IO boundary for listing, operations, and related IO concerns)
 
 Explorer core explicitly does **not** own product overlays such as share-link policy, “virtual collections”, or feature-specific modal flows. That includes `useShareLinkOverlay`, which is a page/product overlay controller, not part of reusable explorer core.
 
@@ -68,19 +68,19 @@ Explorer core explicitly does **not** own product overlays such as share-link po
 The FileManager page shell must continue to own these overlays and policies (until separately specified and extracted):
 
 - **Share-link mode policy**:
-  - Limited operations (e.g. no upload/create; download-only bulk operations).
-  - Optional login prompt / “add to my permissions” flows when applicable.
-  - Composition of product overlay controllers such as `useShareLinkOverlay`.
-  - **Leave-share confirmation**: when an authenticated user attempts to leave the shared directory scope (e.g. by clicking the home / shared / recent entries of the folder tree in share-link mode), the shell must route the click through `useShareLinkOverlay.handleLeaveSharePathClick`, which opens the leave-share confirmation dialog. The actual navigation out of share mode (`/files/node/<nodeId>` for node id targets, `toFilesPath` route for path-string targets) happens only after the user confirms (`handleLeaveShareConfirm`).
+- Limited operations (e.g. no upload/create; download-only bulk operations).
+- Optional login prompt / “add to my permissions” flows when applicable.
+- Composition of product overlay controllers such as `useShareLinkOverlay`.
+- **Leave-share confirmation**: when an authenticated user attempts to leave the shared directory scope (e.g. by clicking the home / shared / recent entries of the folder tree in share-link mode), the shell must route the click through `useShareLinkOverlay.handleLeaveSharePathClick`, which opens the leave-share confirmation dialog. The actual navigation out of share mode (`/files/node/<nodeId>` for node id targets, `toFilesPath` route for path-string targets) happens only after the user confirms (`handleLeaveShareConfirm`).
 - **Virtual collections and product routing state**:
-  - Special paths/collections such as `__recent__`, `__shared__`, and `__trash__` (product-defined).
-  - Rules for deciding _when_ those collections are active and which explorer flow they should invoke.
-  - The shell may choose a collection-specific flow, but any listing/metadata/recent-file IO required by that flow must still go through explorer controllers plus `explorerGateway`.
-  - **Trash view (DEF-16 P9):** `/files/__trash__` and `/files/__trash__/node/<nodeId>` are shell-owned product routes. The shell wires `useFileManager`'s trash branch (listing via `explorerGateway.loadTrashEntries({ parentId })`, breadcrumb trail via `trashTrail`/`openTrashFolder`), routes trash-view clicks through trash-specific navigation (never `resolve-path`/`canNavigateToNode` — trashed nodes are not-found), and supplies the trash action controllers (`useTrashOperations`) plus the trash confirm dialogs. The trash view is read-only at the folder level (no FAB, no drag-drop, no upload/create), renders the `fileManager.trashEmpty` empty state, and shows the trash chip + trashed-folder trail in the breadcrumb.
+- Special paths/collections such as `__recent__`, `__shared__`, and `__trash__` (product-defined).
+- Rules for deciding _when_ those collections are active and which explorer flow they should invoke.
+- The shell may choose a collection-specific flow, but any listing/metadata/recent-file IO required by that flow must still go through explorer controllers plus `explorerGateway`.
+- **Trash view:** `/files/__trash__` and `/files/__trash__/node/<nodeId>` are shell-owned product routes. The shell wires `useFileManager`'s trash branch (listing via `explorerGateway.loadTrashEntries({ parentId })`, breadcrumb trail via `trashTrail`/`openTrashFolder`), routes trash-view clicks through trash-specific navigation (never `resolve-path`/`canNavigateToNode` — trashed nodes are not-found), and supplies the trash action controllers (`useTrashOperations`) plus the trash confirm dialogs. The trash view is read-only at the folder level (no FAB, no drag-drop, no upload/create), renders the `fileManager.trashEmpty` empty state, and shows the trash chip + trashed-folder trail in the breadcrumb.
 - **Product dialogs / feature flows** not part of generic explorer:
-  - Share dialogs and permission-request flows.
-  - Any “add-to-shared” / permission-denied UX that is product-defined.
-  - Trash confirm dialogs (bulk restore / purge / empty trash, DEF-16 P9) via `useTrashOperations`.
+- Share dialogs and permission-request flows.
+- Any “add-to-shared” / permission-denied UX that is product-defined.
+- Trash confirm dialogs (bulk restore / purge / empty trash) via `useTrashOperations`.
 
 ---
 
@@ -104,9 +104,9 @@ Conceptually:
 
 ```
 FileManager (page shell)
-  -> explorer controllers (session/navigation/commands/progress)
-  -> FileManagerView (pure view)
-  -> product overlays (share-link mode, virtual collections, share dialogs, etc.)
+ -> explorer controllers (session/navigation/commands/progress)
+ -> FileManagerView (pure view)
+ -> product overlays (share-link mode, virtual collections, share dialogs, etc.)
 ```
 
 ### 3.3 Direct service imports in the page module (re-home candidates)
@@ -126,46 +126,46 @@ These are the only remaining re-home candidates. The page shell should retain _c
 ### 4.1 Shell-owned responsibilities
 
 - **Route context**:
-  - Rendering as `/files/*` (auth-required route composition).
-  - Rendering inside share-link flows (no auth required; limited operations policy).
+- Rendering as `/files/*` (auth-required route composition).
+- Rendering inside share-link flows (no auth required; limited operations policy).
 - **Product overlays** (see 2.3).
 - **Feature wiring**:
-  - Pass view-ready state + callbacks into the view.
-  - Decide which dialogs/overlays render for this page context.
-  - Inject product policy into explorer interaction/navigation controllers instead of keeping large inline flow handlers in the page body.
-  - Reset or re-key selection state when the explorer session boundary changes. `useExplorerSession` may expose a boundary token such as `sessionKey`, but the page shell / selection seam owns the actual selection reset behavior.
-  - Delegate explorer-specific permission checks, recent-file persistence/listener wiring, metadata enrichment, and operation-refresh decisions to explorer hooks/gateways instead of importing storage/service/notifier helpers directly in the page shell.
-  - Compose `useFileManager` as the path/listing seam only. Search/sort/view-mode session state and preference persistence come from `useExplorerSession`, not from `useFileManager`.
-  - Avoid keeping explorer-control chrome state in the page shell when a lower view/controller seam can own it locally. For example, sort-menu open/close state belongs in the control/view seam rather than `FileManager`.
-  - Prefer grouped sub-view models when passing data into `FileManagerView` rather than flattening dozens of shell/controller outputs into one wide prop surface.
-  - Prefer grouped handler bundles as well: item interaction, command flows, progress affordances, and refresh-indicator presentation should not be merged into one flat callback object.
-  - Apply the same grouping rule to dialog state: action/context targets, picker state, modal visibility, and dialog file payloads should be separated instead of merged into one flat object.
-  - Apply the same grouping rule to explorer session state: control inputs (search/sort/view/menu state) should be distinct from listing/render state (displayed files, thumbnails, infinite scroll, loading).
-  - Apply the same grouping rule to selection and action state: selection-model data, bulk capability flags, explorer capabilities, tree refresh state, and transfer/drag state should not be merged into one flat bag.
-  - When the shell memoizes grouped handler bundles for the view, callback identities should remain stable unless the observable behavior actually changes. Avoid recreating command callbacks on every render when they are passed through memoized grouped props.
+- Pass view-ready state + callbacks into the view.
+- Decide which dialogs/overlays render for this page context.
+- Inject product policy into explorer interaction/navigation controllers instead of keeping large inline flow handlers in the page body.
+- Reset or re-key selection state when the explorer session boundary changes. `useExplorerSession` may expose a boundary token such as `sessionKey`, but the page shell / selection seam owns the actual selection reset behavior.
+- Delegate explorer-specific permission checks, recent-file persistence/listener wiring, metadata enrichment, and operation-refresh decisions to explorer hooks/gateways instead of importing storage/service/notifier helpers directly in the page shell.
+- Compose `useFileManager` as the path/listing seam only. Search/sort/view-mode session state and preference persistence come from `useExplorerSession`, not from `useFileManager`.
+- Avoid keeping explorer-control chrome state in the page shell when a lower view/controller seam can own it locally. For example, sort-menu open/close state belongs in the control/view seam rather than `FileManager`.
+- Prefer grouped sub-view models when passing data into `FileManagerView` rather than flattening dozens of shell/controller outputs into one wide prop surface.
+- Prefer grouped handler bundles as well: item interaction, command flows, progress affordances, and refresh-indicator presentation should not be merged into one flat callback object.
+- Apply the same grouping rule to dialog state: action/context targets, picker state, modal visibility, and dialog file payloads should be separated instead of merged into one flat object.
+- Apply the same grouping rule to explorer session state: control inputs (search/sort/view/menu state) should be distinct from listing/render state (displayed files, thumbnails, infinite scroll, loading).
+- Apply the same grouping rule to selection and action state: selection-model data, bulk capability flags, explorer capabilities, tree refresh state, and transfer/drag state should not be merged into one flat bag.
+- When the shell memoizes grouped handler bundles for the view, callback identities should remain stable unless the observable behavior actually changes. Avoid recreating command callbacks on every render when they are passed through memoized grouped props.
 
 ### 4.2 Explorer core responsibilities (owned by extracted modules)
 
 - **Navigation**:
-  - Browse folders via path click, breadcrumb navigation, and back navigation.
-  - Transition rules when opening folders from list/grid/detail.
-  - Permission-check IO for explorer navigation through `useExplorerNavigation` + `explorerGateway`, rather than shell-owned `fileService` imports.
+- Browse folders via path click, breadcrumb navigation, and back navigation.
+- Transition rules when opening folders from list/grid/detail.
+- Permission-check IO for explorer navigation through `useExplorerNavigation` + `explorerGateway`, rather than shell-owned `fileService` imports.
 - **Session**:
-  - Search (client-side filter by name).
-  - Sort (name, date, size, type).
-  - View mode toggle (list, grid, detail) using the existing preference-storage policy rather than shell-owned browser storage access.
-  - Session boundary tokens and local derived listing state that downstream selection/view layers consume.
-  - Preference-backed explorer session state ownership for search/sort/view so that page and listing seams do not duplicate or externally inject those responsibilities.
+- Search (client-side filter by name).
+- Sort (name, date, size, type).
+- View mode toggle (list, grid, detail) using the existing preference-storage policy rather than shell-owned browser storage access.
+- Session boundary tokens and local derived listing state that downstream selection/view layers consume.
+- Preference-backed explorer session state ownership for search/sort/view so that page and listing seams do not duplicate or externally inject those responsibilities.
 - **Commands**:
-  - Upload, rename, move, copy, delete, download.
-  - Conflict resolution entry points for uploads/operations.
-  - Operation-completion refresh decisions and tree refresh coordination for explorer operations so the page shell does not keep inline refresh-policy logic.
+- Upload, rename, move, copy, delete, download.
+- Conflict resolution entry points for uploads/operations.
+- Operation-completion refresh decisions and tree refresh coordination for explorer operations so the page shell does not keep inline refresh-policy logic.
 - **Listing / recent-file integration**:
-  - Directory listing, shared-entry loading, metadata enrichment, current-path access checks, and recent-files repository/notifier access through `useFileManager`, `useRecentFile`, and `explorerGateway`.
-  - Recent-file recovery flows that preserve the current UX without the page shell or recent-file controller importing repositories or low-level file services directly.
+- Directory listing, shared-entry loading, metadata enrichment, current-path access checks, and recent-files repository/notifier access through `useFileManager`, `useRecentFile`, and `explorerGateway`.
+- Recent-file recovery flows that preserve the current UX without the page shell or recent-file controller importing repositories or low-level file services directly.
 - **Progress**:
-  - Progress list/drawer state.
-  - Retry/cancel entry points and user-visible notifications.
+- Progress list/drawer state.
+- Retry/cancel entry points and user-visible notifications.
 
 ---
 
@@ -176,15 +176,15 @@ This section captures observable behavior that must remain unchanged as responsi
 ### 5.1 Selection behavior
 
 - **Entry/exit**
-  - Desktop: single click enters selection mode + selects.
-  - Mobile: long-press enters selection mode + selects.
-  - Auto-exit when `selectedFiles.size === 0`.
-  - Desktop exit can occur when clicking empty space (as implemented today).
+- Desktop: single click enters selection mode + selects.
+- Mobile: long-press enters selection mode + selects.
+- Auto-exit when `selectedFiles.size === 0`.
+- Desktop exit can occur when clicking empty space (as implemented today).
 - **No checkbox UX requirement**
-  - File rows/cards do not require dedicated checkboxes. Selection is interaction-driven and indicated visually.
+- File rows/cards do not require dedicated checkboxes. Selection is interaction-driven and indicated visually.
 - **Click semantics**
-  - Desktop: single click selects; double click opens folder/preview; Ctrl(or Meta)+click toggles; Shift+click range-selects.
-  - Mobile: tap opens folder/preview when not in selection; tap toggles selection when in selection; long-press enters selection.
+- Desktop: single click selects; double click opens folder/preview; Ctrl(or Meta)+click toggles; Shift+click range-selects.
+- Mobile: tap opens folder/preview when not in selection; tap toggles selection when in selection; long-press enters selection.
 
 ### 5.2 Context actions
 
@@ -194,25 +194,25 @@ This section captures observable behavior that must remain unchanged as responsi
 ### 5.3 Drag and drop
 
 - Supports:
-  - File-to-folder move (internal DnD).
-  - External file upload (drop to upload).
+- File-to-folder move (internal DnD).
+- External file upload (drop to upload).
 - **DnD overlay scope**
-  - When dragging over for upload, the dotted overlay is scoped to the file-view area (list/grid/detail region), not the entire page (header/breadcrumb/controls must remain uncovered).
+- When dragging over for upload, the dotted overlay is scoped to the file-view area (list/grid/detail region), not the entire page (header/breadcrumb/controls must remain uncovered).
 
 ### 5.4 Share-link mode policy (overlay)
 
 - When in share-link mode:
-  - Header and available actions are simplified per current behavior.
-  - Upload/create flows are not available.
-  - Bulk actions are restricted (download-only).
-  - Optional login modal for “add to my permissions” flows remains available as today.
-  - Attempting to leave the shared directory scope (folder-tree home / shared / recent clicks) opens the leave-share confirmation dialog; navigation out of share mode occurs only on confirmation.
+- Header and available actions are simplified per current behavior.
+- Upload/create flows are not available.
+- Bulk actions are restricted (download-only).
+- Optional login modal for “add to my permissions” flows remains available as today.
+- Attempting to leave the shared directory scope (folder-tree home / shared / recent clicks) opens the leave-share confirmation dialog; navigation out of share mode occurs only on confirmation.
 
 ### 5.5 Scroll/overscroll behavior (mobile)
 
 - **Scroll area padding** includes space for fixed-bottom UI (FloatingSearchBar + FAB) plus safe-area inset so the last list item can scroll above fixed UI.
 - **Overscroll containment** prevents mobile bounce from shifting header/controls:
-  - global `overscroll-behavior: none` and scroll container `overscrollBehaviorY: 'contain'` (as currently implemented).
+- global `overscroll-behavior: none` and scroll container `overscrollBehaviorY: 'contain'` (as currently implemented).
 
 ---
 
@@ -233,15 +233,71 @@ These scenarios should stay true throughout extraction steps (verify “what”,
 - [ ] Search filters by file name as before (same matching behavior).
 - [ ] Sort order matches current behavior for each sort mode.
 - [ ] Selection interactions:
-  - [ ] Desktop: click / Ctrl(or Meta)+click / Shift+click / double click
-  - [ ] Mobile: tap / long-press with correct toggling behavior
-  - [ ] Auto-exit on empty selection
-  - [ ] Tests do not assume checkboxes for file-row selection UI
+- [ ] Desktop: click / Ctrl(or Meta)+click / Shift+click / double click
+- [ ] Mobile: tap / long-press with correct toggling behavior
+- [ ] Auto-exit on empty selection
+- [ ] Tests do not assume checkboxes for file-row selection UI
 - [ ] Context menu/action sheet opens and actions produce the same user-visible outcomes.
 - [ ] Upload flow:
-  - [ ] Conflict prompt appears when expected
-  - [ ] Progress items render and complete/cancel/retry behave the same
+- [ ] Conflict prompt appears when expected
+- [ ] Progress items render and complete/cancel/retry behave the same
 - [ ] Share-link mode:
-  - [ ] Unauthenticated vs authenticated behaviors match current UX
-  - [ ] Restricted operations remain restricted
-  - [ ] Leaving the shared directory scope (e.g. folder-tree home click) opens the leave-share confirmation; confirming navigates to the authenticated files route (`/files/node/<nodeId>`), canceling keeps the user in share mode
+- [ ] Unauthenticated vs authenticated behaviors match current UX
+- [ ] Restricted operations remain restricted
+- [ ] Leaving the shared directory scope (e.g. folder-tree home click) opens the leave-share confirmation; confirming navigates to the authenticated files route (`/files/node/<nodeId>`), canceling keeps the user in share mode
+
+---
+
+## 7. AI-platform shell wiring (AI platform)
+
+Addendum to §2.3/§3.2. The shell composes the new controllers; all contracts live in the referenced specs.
+
+- **Controller mounting:** the shell mounts `useSearchResults` and `useUndoToast` alongside the explorer core, and `useCollections` for the overlay. Wiring: `useExplorerSession.onSubmitQuery` → `useSearchResults.submitSearch`; results view-model and `collectionsModel` pass into `FileManagerView` per its §3 addendum; every mutation seam in the shell forwards `undo.action_id` payloads to `useUndoToast` (one toast per command — dialogs/controllers never toast undo themselves). The bulk job terminal result is one of these seams: the shell threads its `handleUndoable` down through `useExplorerCommands` into `useBulkOperations`' `options.onUndoable` (`hooks/useBulkOperations.md` §2.6), passing a per-call `refresh` override so a batch undo re-reads the file listing + tree the batch moved — the surface the batch touched, not the collection cards — and fires the trash notification for copy undos (delete batches carry no journal pointer).
+- **Search-results shell wiring:** the shell mounts `useSearchResults({ showError, gateway: searchApi, files, sortMode, liveText, ... })` where `searchApi` is the `explorerGateway` search/metadata seam (`runSearch`, `loadNodesMetadata`, `recordSearchClick`), and passes the prepared `searchResults` model into `FileManagerView` per its §3. `useExplorerSession.onSubmitQuery` delegates to `submitSearch`; the session receives `searchResultsActive` from the mode so its listing stays un-suppressed while results render (`useExplorerSession.md` §3).
+  - **Zone thumbnails:** the `searchResults` model carries `onZoneThumbnailsLoaded` (the hook's `handleZoneThumbnailsLoaded` zone-local merge, `useSearchResults.md` §2.3); the view threads it into the Zone B/C renderers while Zone A keeps the session `handleThumbnailsLoaded` (`FileManagerView.md` §3).
+  - **Exit on navigation:** every shell-handled folder navigation while `mode === 'results'` (sidebar/tree click, breadcrumb chip, opening a DIRECTORY result row) routes through the shell exit seam (`exitResults` + clear the shared input); the field is empty after every exit. A successful commit clears the input via `onCommit` (the term lives on in the chip strip). The chip-strip `Exit` and the FloatingSearchBar ✕ press use the same seam.
+  - **Add-to-collection target:** the chip bar's `LibraryAdd` opens `AddToCollectionMenu` in its caller-provided nodeIds-set target mode (`AddToCollectionMenu.md` §2.2) with `searchResults.libraryAddTarget` — the FULL current snapshot (Zone A ∪ Zone B ∪ Zone C unique ids), independent of the live filter and paging.
+  - **Selection union:** the shell builds one selection source as the union array (Zone A rows ++ Zone B displayed rows ++ Zone C displayed rows), deduped by `getEntryKey` with the first occurrence kept, and feeds it to `useSelection`; select-all, shift-range and the selection key index therefore span all three zones (a node present in more than one zone counts once). Bulk operations stay nodeId-based and act on server rows.
+  - **Bulk read-only gating:** the existing `hasReadOnlyInSelection` gate disables move/copy/delete and shows the read-only notice when any selected row lacks write permission — Zone B AND Zone C server rows participate through `hasWritePermission` from the metadata enrichment (`POST /api/files/metadata` permission flags — `routes/files.md` §2.2).
+  - **Row open:** FILE row → `recordEntryClick(node_id)` (absorbed list-entry-click usage signal) + the preview dialog while the zones stay mounted; DIRECTORY row → `recordEntryClick` + navigate + exit results (browse rule).
+  - **Enrichment + highlights:** batch metadata enrichment and committed/live highlight ranges are hook-owned (`useSearchResults.md` §2.3); rows arrive ready for the shared list/grid/detail renderers.
+  - Share-link mode: no `searchApi` submit — `onSubmitQuery` is not passed and no results surface mounts (authenticated-explorer feature).
+- **Like wiring:** listing rows carry `file.liked` (server-sourced through the `file-likes` gateway seam, never derived client-side); `FileContextMenu` / `FileActionSheet` / `FilePropertiesDialog` receive `onToggleLike` from the shell. The handler flips the session-local rows optimistically, calls `setFileLike(nodeId, next)` (failure ⇒ revert + mapped error — a like carries no undo toast), and the repository's change notification lets the collections member route refresh member rows (notifier pattern, `fileLikesRepository.md` §2.5). Trash view and share-link mode withhold the callback (hidden, not disabled).
+- **Likes wiring:** the same `subscribeToFileLikes` → `loadFiles` re-read refreshes the
+  `/files/__collections__/liked` listing (`useFileManager` `collections-liked` branch,
+  `useFileManager.md` §2.3.3); an unlike started on that surface additionally drops the row
+  optimistically via `applyLikedRemoval(nodeId)` before the write settles (a failed unlike is
+  restored by the re-read — the row stays because the server still lists it). The menu host extends
+  to the liked route with `collection:null` (`MemberRowControls.md` §2.3).
+- **Member-row menu host (member + liked routes):** the shell owns the single `MemberRowControls` instance for the collections member route **and the liked route** (`collection:null` ⇒ membership mutations unmounted) — `CollectionsListView`'s `onMemberAction('menu', row, anchorEl)` dispatch opens it (same single-instance idiom as `FileContextMenu`). Callbacks ride the already-owned seams: exclude → `removeCollectionItems` (undo toast + member refresh), publish → `publishItems` (same seam as the publish-pending batch banner), like → shared `onToggleLike`, download → `handleFileDownloadOp`, `Reveal original location` → `getAncestors(nodeId)` → navigate to the real parent, properties → `openPropertiesDialog(row)`; `onAddToOther` hosts the `AddToCollectionMenu` submenu (`addCollectionItems` / create-then-add, seed row absent pre-embed).
+- **Card-grid shell wiring:** the page-level selection Set is shared by files and collection cards — a card's key is the synthetic
+  `getCollectionEntryKey(id)` = `'/__collections__/collection/<id>'` path (`fileViewUtils.js`), which can never collide with numeric node ids.
+  `collectionsModel` (list mode) additionally carries `onCardClick` (single-click selection: plain = single-select replacing the set,
+  ctrl/⌘ = toggle; the 350ms double-open window is resolved card-locally in the view and dispatches the existing `open` action — which
+  also exits selection, mirroring the file-grid navigation reset), `onCardLongPressSelect` (mobile long-press enter+single-select),
+  `previewThumbnails` + `onPreviewThumbnailsLoaded` (a shell-side `Map<nodeId,url>` fed by the batched `useThumbnailLazyLoad` instance in
+  the view — the session's file-row merge stays untouched; ids present in both simply no-op), `onBulkAction` + the bulk-confirm state
+  (`{ step, ids, names }` — archive ONE confirm, permanent delete the trash-parity TWO-step covering the whole batch with names listed;
+  the confirms are hosted in `CollectionsListView`), and `handleSelectAll` swaps its source to the card keys while a collections
+  list/archive surface is active. Bulk execution loops the selected ids through the EXISTING per-collection calls (`setPinned` /
+  `archiveCollection` / `restoreCollection` / `deleteCollectionPermanent`) — per-item failures are tolerated (each absorbed error maps
+  to its own toast), journal/undo stays per collection (no bulk journal), each success refreshes + queues its undo toast as usual;
+  permanent delete adds one batch success report (`collections.permanentDeleteReport`).
+- **`uploadComplete` hint emission:** on upload-queue drain (last queued item terminal — success, failure, or abandon), the shell fires the one-shot hint exactly once; detection and emission belong to the operations seam, so the shell only delegates to `useFileOperations` (see its §3 addendum; docs/features/collections-platform.md §4.9 — server-side debounce is authoritative, the hint is latency sugar).
+- **Virtual-node routing table (extends §2.3):**
+
+| Route                                          | Virtual node        | Shell flow                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/files/__collections__` (+ `/collection/:id`) | collections overlay | `useCollections` + `CollectionsListView` replaces the FileList region (list / members mode per its §2.2); member listing through the explorer listing seam — **full fetch in one response, display sliced 50+50 client-side** (`useFileManager.collectionMembers.items` is the complete set).                                                                                    |
+| `/files/__collections__/__archive__`           | archive child       | Same overlay, `include=mine,archived`; restore + archived-only permanent delete (trash-parity, report-only toasts — no undo).                                                                                                                                                                                                                                                    |
+| `/files/__collections__/liked`                 | Likes child row     | Members-parity surface: rows from `GET /api/file-likes/items` via `useFileManager.likedItems` (`toMemberRow`) — full fetch in one response, 50+50 client-side slice, sidebar `Likes` node target, view mode per `likedViewMode` key, `MemberRowControls` with `collection:null` (no Exclude/publish — Download/Reveal/Properties/unlike only). NOT a top-level `__liked__` root. |
+
+- Share-link embedding (`ShareLinkLoader`) does **not** mount the search-results/collections overlays (authenticated-explorer-only surfaces). `useCollections` stays mounted per the rules of hooks but is wired to an inert gateway seam while `isShareLinkMode`, so it performs no IO; the view receives no `collectionsModel` and the sidebar hides its section.
+- **Undo-toast host:** the shell forwards `useCollections` mutation payloads to `useUndoToast` (`undo.action_id` + caller-supplied `collections.undo*` label), renders the cascade confirm from `undo.cascadeConfirm` as a product overlay, and re-reads the card list after a successful undo; the toast itself renders through the view's `messaging` action slot (`UndoToast.md`). Batch move/copy payloads ride the same host with caller-supplied `fileManager.bulkMoveToast`/`fileManager.bulkCopyToast` labels and the per-call listing-refresh override (Controller mounting bullet above).
+- **Merge slot (`collectionsModel` list mode):** the shell builds `mergeSlot` from `useCollections.suggestions` — NON-EMPTY pending set ⇒ ONE `MergeProposalCard` (never stacked) receiving the FULL score-desc `suggestions` array. There is NO shell cursor and NO `key` remount: `suggestions[0]` is the card body and the card's footer expands the remaining rows; resolving an action dispatches `onAction(suggestion_id, action)` and the hook's success refresh promotes the next row. `merge` resolves the row's pair and calls `mergePair(a_id, b_id)` (undo toast rides the existing `onUndoable` seam, `collections.undoMerged` label); `keep-separate`/`later` resolve the row and call `rejectMergeSuggestion`/`dismissMergeSuggestion`. EMPTY pending set ⇒ `mergeSlot: null` — zero layout footprint (`MergeProposalCard.md` §2.6). Detail-panel thumbnails ride the shell's existing preview-thumbnail cache: `thumbnailMap` = `previewThumbnails`, `onRequestThumbnails` batches the detail-visible sample node ids through the shared thumbnail service and merges results into the same cache (`CollectionsListView.md` second-instance precedent). No dialog is ever opened by the shell for merges — the card IS the confirmation.
+- **Collection-properties host (card menu `sharing`):** the shell owns the single `CollectionPropertiesDialog` instance — the `sharing` dispatch opens it with `initialTab='sharing'` on the LIVE fetch row (resolved by `collection_id` from `useCollections.collections`). Host IO on open (owner rows only — the card menu never offers `sharing` to received rows): grants via `collectionsApi.loadGrants`, shareable candidates via the `users/approved` read (product-overlay service import, `getPublicSettings` precedent — the dialog itself stays service-free), member preview via `previewCollection`-style gateway seam, seed-reference name via the batched `loadNodesMetadata` seam when `definition.seed_ref` is present. The dialog stages every edit locally; the host's single `onSave(plan)` seam calls `collectionsApi.saveCollectionProperties(id, plan)` (`PUT /:id/properties`) and returns `true` only on a real payload. On success the shell emits ONE summary toast (`collections.propertiesSaved`) and the hook refresh keeps the card list in sync; on failure the hook's mapped error is the only error surface. The host performs NO property/grant mutation before Save (no `onPatch`/`onGrant`/`onRevoke` seams, no per-grant undo toasts).
+- **Collection-membership read host:** the shell mounts `useCollectionMemberships` over the union of the session listing nodeIds, the current search-zone snapshot ids, and the opened properties target, with `collectionsApi.collections` as the name source. The resulting `membershipsByNodeId` map feeds the properties `Member of` chips and the add-menu all-target checkmarks (`useCollectionMemberships.md`, `AddToCollectionMenu.md` §2.2); it is not rendered on file rows. Admin and share-link sessions pass the same `INERT_COLLECTIONS_GATEWAY` (extended with `getMemberships`) — the membership read is IO-silent there like every other collections seam.
+- **Properties `Member of` host (`FilePropertiesDialog.md` §3.2):** the SAME node-id union also includes the currently opened properties target (`propertiesFile?.nodeId`), so a file opened from a non-listing surface (member row, row menu target that left the listing, stale target after navigation) still gets its membership fetched. The shell slices `membershipsByNodeId[propertiesFile.nodeId] ?? []` into `dialogState.fileTargets.propertiesCollections` and passes `commands.handleOpenCollectionFromProperties` into the view; that handler closes the properties dialog and sets the member route via the same string-path setter the collection cards/tree rows use (`setCurrentPath('/__collections__/collection/<id>')`). No collections IO happens in the dialog and no membership mutation affordance is added there.
+- **Files-surface bulk add:** `membershipModel.onBulkAddToCollection` resolves the selection KEYS (`getEntryKey` values, union of session + zone snapshot rows) back to node rows and opens the shell's single `AddToCollectionMenu` instance in multi-target mode (`{ nodeId, name }` targets) — membership is a collection write: readable rows are addable, read-only grants included (the file-write gate does not apply); the callback is withheld for admin/share-link (absent-not-disabled) and never rendered in trash/share-link mode (`FileManagerControls.md` gate). `AddToCollectionMenu.membershipIds` is host-prepared from the same map: collections containing ALL targets ⇒ checkmark rows; any target outside the map ⇒ no checkmarks.
+- Verification (appends §6): [ ] (target) entering `/files/__collections__` swaps regions without touching route-param ownership (§1.1); [ ] a drained upload queue emits exactly one hint, an in-flight upload none.
+- Operator rule (admin is a pure operator): for `user.is_admin` the shell (1) withholds the like/add/bulk callbacks through the established callback-withhold pattern (§7 — `undefined` ⇒ rows/buttons hidden, never disabled), (2) the `urlView` guard resolves every `__collections__` deep link (`__archive__`, `/collection/:id`, `/liked`) to the home view without an error toast, and (3) `useCollections` is wired to the inert gateway seam (share-link precedent) so no `/api/collections` IO fires.

@@ -2,14 +2,14 @@
 
 ## 1. Overview
 
-| Item       | Description                                                                                                                                                                                                                                                                                                                    |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role       | The supported metadata DB migration path (`sqlite` ↔ `postgresql`), exposed as an **admin API + config dialogs** (D14). Replaces the removed standalone CLI `server/scripts/migrateMetadataToPostgresql.js` (Phase 7; `server/scripts/migrate/` is empty). Drives `server/domains/admin/services/metadataMigrationService.js`. |
-| Depends on | `metadataMigrationService` (`server/domains/admin/services/metadataMigrationService.js`), the migration gate (`server/infrastructure/migrationGate.js`), the migration router (`server/domains/admin/routes/migration.js`)                                                                                                     |
-| Files      | routes added to `server/domains/admin/routes/migration.js` (mounted at `/api/admin`, behind `authenticateToken` + `isAdmin`)                                                                                                                                                                                                   |
-| Test files | `server/domains/admin/routes/__tests__/migration.test.js` (extended); `test:ci:pg:adapters` for the sqlite↔PG roundtrip                                                                                                                                                                                                        |
+| Item       | Description                                                                                                                                                                                                                                                                                                     |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role       | The supported metadata DB migration path (`sqlite` ↔ `postgresql`), exposed as an **admin API + config dialogs**. Replaces the removed standalone CLI `server/scripts/migrateMetadataToPostgresql.js` (`server/scripts/migrate/` is empty). Drives `server/domains/admin/services/metadataMigrationService.js`. |
+| Depends on | `metadataMigrationService` (`server/domains/admin/services/metadataMigrationService.js`), the migration gate (`server/infrastructure/migrationGate.js`), the migration router (`server/domains/admin/routes/migration.js`)                                                                                      |
+| Files      | routes added to `server/domains/admin/routes/migration.js` (mounted at `/api/admin`, behind `authenticateToken` + `isAdmin`)                                                                                                                                                                                    |
+| Test files | `server/domains/admin/routes/__tests__/migration.test.js` (extended); `test:pg:adapters` for the sqlite↔PG roundtrip                                                                                                                                                                                            |
 
-Source of truth: `docs/features/migration-mode.md` (decisions D4–D6, D11, D14),
+Source of truth: `docs/features/migration-mode.md`,
 `docs/spec/server/services/metadataMigrationService.md`.
 
 There is **no CLI** for metadata migration. The in-app dialog (System Settings → metadata
@@ -49,7 +49,7 @@ Response `200`:
 
 ### 2.2 `POST /api/admin/migration/metadata`
 
-Admin-gated (Token + Admin). Start a metadata DB migration. Sets the migration gate (D2/D3) and
+Admin-gated (Token + Admin). Start a metadata DB migration. Sets the migration gate and
 dispatches the worker; the client auto-redirects to `/migration`.
 
 Body:
@@ -82,7 +82,7 @@ Responses:
 - `409` — a migration is already running (gate active or blob job in flight).
 - `403` — non-admin.
 
-### 2.3 Wipe-confirm flow (D5)
+### 2.3 Wipe-confirm flow
 
 1. The dialog calls `GET /api/admin/migration/target-scan`.
 2. If the target already holds data, the dialog shows a **wipe alert** listing the affected
@@ -90,7 +90,7 @@ Responses:
 3. The operator must explicitly confirm (e.g. a checkbox or typed confirmation); the start call
    is sent with `wipeTarget: true`.
 4. The wipe runs inside the same target transaction as the copy — a mid-way cancel rolls back
-   the wipe too (D4).
+   the wipe too.
 
 ### 2.4 Progress and cancellation
 
@@ -121,7 +121,7 @@ type-specific. The metadata job carries the **extended** shape:
   progress: { percent: number, currentLabel: string | null },   // extended progress — NOT the blob scalar
   results: { status?: string, tablesCopied?: [{ name, rows }], totalRows?, schemaApplied?, wiped? },
   errorMessage: string | null,      // failure reason (error is also set on the store row)
-  configPersist: null,              // metadata never persists destination config (blob apply only, D10)
+  configPersist: null,              // metadata never persists destination config (blob apply only)
   createdAt: string,                // ISO (the store records createdAt; no startedAt on the job)
   completedAt: string | null,
 }
@@ -139,7 +139,7 @@ totalRows, schemaApplied, wiped }`, or `{ status: 'cancelled' }`).
 
 ---
 
-## 4. T0 ".env setup needed" manual cutover (D11, D13)
+## 4. T0 ".env setup needed" manual cutover
 
 The DB connection is `.env`-owned (T0: the `WEA_DB_*` credential block — presence-selected
 backend — and `WEA_SQLITE_PATH`). `JWT_SECRET` is also T0 but **optional** (unset/empty →
@@ -150,13 +150,13 @@ copies data; it **never edits `.env`**. The final step stays manual:
    ("set the `WEA_DB_*` credentials in `.env` and restart to boot on the migrated PostgreSQL DB" — or remove them to return to sqlite).
 2. The operator edits `.env` and restarts the server.
 3. **".env setup needed" banner:** while the non-active backend still holds metadata
-   (`metadataPresence`, D13), System Settings shows a persistent banner with a link to the
+   (`metadataPresence`), System Settings shows a persistent banner with a link to the
    migration flow. After cutover + restart the old backend becomes the non-active one; the banner
    flips to point the other way, and clears once the old data is gone.
 4. Boot verification: a partial `WEA_DB_*` set (some but not all of the four credentials) is a
    boot-time configuration error listing the missing keys; a complete-but-unreachable remote still
    boots and reports via `/api/health`. The new backend's health is verified via the boot probe
-   (WebDAV or the new S3 probe, D12) and the health card.
+   (WebDAV or the new S3 probe) and the health card.
 
 The same banner logic means the operator can also cut over **before** migrating: the banner
 points to the migration dialog, they migrate, then restart.

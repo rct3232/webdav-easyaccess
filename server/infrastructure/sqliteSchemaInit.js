@@ -47,58 +47,37 @@ function splitStatements(sql) {
   return statements.filter((s) => s.length > 0);
 }
 
-// Run every DDL statement serially on the supplied connection. Using
-// db.serialize() guarantees the run() calls are queued in order, which
-// prevents coverage instrumentation from interleaving a later statement
-// with a close from another suite.
+// Run every DDL statement serially on the supplied node:sqlite connection.
+// DatabaseSync executes synchronously, so the sqlite3-npm-era db.serialize()
+// guard against statement/close interleaving is no longer needed.
 function runStatementsOn(db, statements) {
-  return new Promise((resolve, reject) => {
-    db.serialize(() => {
-      let settled = false;
-      const finish = (err) => {
-        if (settled) return;
-        settled = true;
-        if (err) reject(err);
-        else resolve();
-      };
-
-      let index = 0;
-      const next = () => {
-        if (index >= statements.length) {
-          finish();
-          return;
-        }
-        const statement = statements[index];
-        index += 1;
-        db.run(statement, (err) => {
-          if (err) {
-            // eslint-disable-next-line no-console
-            console.error(
-              `[init-sqlite-schema] Failed to execute: ${statement.slice(0, 80)}...`,
-              err.message
-            );
-            finish(err);
-            return;
-          }
-          next();
-        });
-      };
-      next();
-    });
-  });
+  for (const statement of statements) {
+    try {
+      db.exec(statement);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[init-sqlite-schema] Failed to execute: ${statement.slice(0, 80)}...`,
+        err.message
+      );
+      throw err;
+    }
+  }
+  return Promise.resolve();
 }
 
 function openDatabaseAt(dbPath) {
-  const sqlite3 = require('sqlite3');
-  return new Promise((resolve, reject) => {
-    const db = new sqlite3.Database(dbPath, (err) => (err ? reject(err) : resolve(db)));
-  });
+  const { DatabaseSync } = require('node:sqlite');
+  return new DatabaseSync(dbPath);
 }
 
 function closeDatabase(db) {
-  return new Promise((resolve, reject) => {
-    db.close((err) => (err ? reject(err) : resolve()));
-  });
+  try {
+    db.close();
+    return Promise.resolve();
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 /**
@@ -107,8 +86,8 @@ function closeDatabase(db) {
  * - `initSqliteSchema()` — unchanged behavior: applies to the active backend
  *   connection (storage.getSqliteConnection()).
  * - `initSqliteSchema({ connection })` — applies to a caller-supplied
- *   sqlite3.Database (e.g. a migration-target connection). The caller owns the
- *   connection lifecycle.
+ *   node:sqlite DatabaseSync connection (e.g. a migration-target connection).
+ *   The caller owns the connection lifecycle.
  * - `initSqliteSchema({ path })` — opens a temporary database at `path`,
  *   applies the DDL, then closes it.
  *
@@ -129,9 +108,7 @@ async function initSqliteSchema(options = {}) {
   if (!db) {
     if (dbPath) {
       db = await openDatabaseAt(dbPath);
-      await new Promise((resolve, reject) => {
-        db.run('PRAGMA foreign_keys = ON', (err) => (err ? reject(err) : resolve()));
-      });
+      db.exec('PRAGMA foreign_keys = ON');
       owned = true;
     } else {
       db = storage.getSqliteConnection();

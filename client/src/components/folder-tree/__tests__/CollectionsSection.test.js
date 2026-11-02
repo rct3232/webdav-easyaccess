@@ -1,0 +1,254 @@
+/**
+ * CollectionsSection tests.
+ * @see docs/spec/client/components/folder-tree/CollectionsSection.md (§2.7)
+ */
+import React from 'react';
+import { screen, fireEvent } from '@testing-library/react';
+import { renderWithProviders } from '../../../test-utils';
+import CollectionsSection from '../CollectionsSection';
+
+const collectionRow = (overrides = {}) => ({
+  collection_id: 1,
+  name: 'Roadtrip',
+  item_count: 12,
+  origin: 'user',
+  status: 'active',
+  granted_role: null,
+  pinned: false,
+  pinned_by: null,
+  created_at: '2026-09-01T00:00:00Z',
+  ...overrides,
+});
+
+const defaultProps = () => ({
+  collectionsExpanded: true,
+  onCollectionsToggle: jest.fn(),
+  onCollectionsClick: jest.fn(),
+  collections: [collectionRow()],
+  currentPath: '/',
+  onCollectionClick: jest.fn(),
+  onArchiveClick: jest.fn(),
+  onLikesClick: jest.fn(),
+  newCollectionIds: [],
+});
+
+describe('CollectionsSection', () => {
+  it('header row renders the localized section title', () => {
+    renderWithProviders(<CollectionsSection {...defaultProps()} />);
+    expect(screen.getByText('Collections')).toBeInTheDocument();
+  });
+
+  it('header click invokes onCollectionsClick and chevron click invokes onCollectionsToggle', () => {
+    const props = defaultProps();
+    renderWithProviders(<CollectionsSection {...props} />);
+    fireEvent.click(screen.getByText('Collections'));
+    expect(props.onCollectionsClick).toHaveBeenCalledTimes(1);
+    expect(props.onCollectionsToggle).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('collections-toggle'));
+    expect(props.onCollectionsToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders collection rows in the GIVEN order without re-sorting (depth-1, §3.1)', () => {
+    const props = defaultProps();
+    props.collections = [
+      collectionRow({ collection_id: 3, name: 'Zebra' }),
+      collectionRow({ collection_id: 1, name: 'Alpha' }),
+      collectionRow({ collection_id: 2, name: 'Mango', pinned: true, pinned_by: 'user' }),
+    ];
+    const { container } = renderWithProviders(<CollectionsSection {...props} />);
+    const names = Array.from(container.querySelectorAll('[data-testid^="collection-row-"]')).map(
+      (el) => el.getAttribute('data-testid')
+    );
+    expect(names).toEqual([
+      'collection-row-3',
+      'collection-row-1',
+      'collection-row-2', // pinned rows keep server order (gravity, not hoisting)
+    ]);
+    expect(screen.getByText('Zebra')).toBeInTheDocument();
+    expect(screen.getByText('Mango')).toBeInTheDocument();
+  });
+
+  it('renders NO member count on rows (M-1 — secondary is the new dot only)', () => {
+    renderWithProviders(<CollectionsSection {...defaultProps()} />);
+    expect(screen.queryByText('12')).not.toBeInTheDocument();
+  });
+
+  it('granted_role rows render the PLAIN collections icon (received swap retired 2026-10-01) and are never hoisted', () => {
+    const props = defaultProps();
+    props.collections = [
+      collectionRow({ collection_id: 1, name: 'Mine' }),
+      collectionRow({ collection_id: 2, name: 'Received', granted_role: 'viewer' }),
+    ];
+    renderWithProviders(<CollectionsSection {...props} />);
+    expect(screen.queryByTestId(/collection-shared-chip-/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('collection-shared-chip-2')).not.toBeInTheDocument();
+    const rows = document.querySelectorAll('[data-testid^="collection-row-"]');
+    expect(rows[0].getAttribute('data-testid')).toBe('collection-row-1');
+    expect(rows[1].getAttribute('data-testid')).toBe('collection-row-2');
+  });
+
+  it('child rows render via TreeRow at the level-1 tree indent — parity with shared-folder rows (F5 rewrite, 2026-10-01)', () => {
+    renderWithProviders(<CollectionsSection {...defaultProps()} />);
+    ['collections-liked-node', 'collection-row-1', 'collections-archive-node'].forEach((testid) => {
+      const el = screen.getByTestId(testid);
+      expect(el.getAttribute('data-tree-row')).toBe('true');
+      expect(window.getComputedStyle(el).paddingLeft).toBe('16px');
+    });
+  });
+
+  it('row click invokes onCollectionClick with the collection id', () => {
+    const props = defaultProps();
+    renderWithProviders(<CollectionsSection {...props} />);
+    fireEvent.click(screen.getByTestId('collection-row-1'));
+    expect(props.onCollectionClick).toHaveBeenCalledWith(1);
+  });
+
+  it('row is selected when currentPath equals its collection route', () => {
+    const props = defaultProps();
+    props.currentPath = '/__collections__/collection/1';
+    const { container } = renderWithProviders(<CollectionsSection {...props} />);
+    expect(container.querySelector('[data-testid="collection-row-1"].Mui-selected')).toBeTruthy();
+  });
+
+  it('header is selected when currentPath equals /__collections__', () => {
+    const props = defaultProps();
+    props.currentPath = '/__collections__';
+    const { container } = renderWithProviders(<CollectionsSection {...props} />);
+    const section = container.querySelector('[data-testid="collections-section"]');
+    expect(section.querySelector('.MuiListItemButton-root.Mui-selected')).toBeTruthy();
+  });
+
+  it('ArchiveNode always renders while expanded — even at archiveCount 0 (§2.3 T0.4 decision)', () => {
+    const props = defaultProps();
+    props.archiveCount = 0;
+    renderWithProviders(<CollectionsSection {...props} />);
+    expect(screen.getByTestId('collections-archive-node')).toBeInTheDocument();
+    expect(screen.getByText('Archive')).toBeInTheDocument();
+  });
+
+  it('ArchiveNode shows the badge only above zero and is last in the section', () => {
+    const props = defaultProps();
+    props.collections = [
+      collectionRow({ collection_id: 1 }),
+      collectionRow({ collection_id: 2, name: 'Second' }),
+    ];
+    const { container } = renderWithProviders(<CollectionsSection {...props} />);
+    const rows = container.querySelectorAll('.MuiListItem-root');
+    expect(
+      rows[rows.length - 1].querySelector('[data-testid="collections-archive-node"]')
+    ).toBeTruthy();
+  });
+
+  it('ArchiveNode click invokes onArchiveClick and selects on its route', () => {
+    const props = defaultProps();
+    renderWithProviders(<CollectionsSection {...props} />);
+    fireEvent.click(screen.getByTestId('collections-archive-node'));
+    expect(props.onArchiveClick).toHaveBeenCalledTimes(1);
+
+    const selected = defaultProps();
+    selected.currentPath = '/__collections__/__archive__';
+    const { container } = renderWithProviders(<CollectionsSection {...selected} />);
+    expect(
+      container.querySelector('[data-testid="collections-archive-node"].Mui-selected')
+    ).toBeTruthy();
+  });
+
+  it('new dots render exactly for newCollectionIds and follow prop changes only', () => {
+    const props = defaultProps();
+    props.collections = [collectionRow({ collection_id: 1 }), collectionRow({ collection_id: 2 })];
+    const { rerender } = renderWithProviders(
+      <CollectionsSection {...props} newCollectionIds={[2]} />
+    );
+    expect(screen.getByTestId('collection-new-dot-2')).toBeInTheDocument();
+    expect(screen.queryByTestId('collection-new-dot-1')).not.toBeInTheDocument();
+
+    rerender(<CollectionsSection {...props} newCollectionIds={[]} />);
+    expect(screen.queryByTestId('collection-new-dot-2')).not.toBeInTheDocument();
+  });
+
+  it('empty list renders header + empty hint + always-present ArchiveNode', () => {
+    const props = defaultProps();
+    props.collections = [];
+    renderWithProviders(<CollectionsSection {...props} />);
+    expect(screen.getByText('No collections yet')).toBeInTheDocument();
+    expect(screen.getByTestId('collections-archive-node')).toBeInTheDocument();
+  });
+
+  it('collapses rows when collectionsExpanded is false', () => {
+    const props = defaultProps();
+    props.collectionsExpanded = false;
+    renderWithProviders(<CollectionsSection {...props} />);
+    expect(screen.queryByTestId('collection-row-1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('collections-archive-node')).not.toBeInTheDocument();
+  });
+
+  it('exposes aria-expanded on a focusable toggle and associates the collapsible content', () => {
+    const props = defaultProps();
+    const { unmount } = renderWithProviders(<CollectionsSection {...props} />);
+    const toggle = screen.getByTestId('collections-toggle');
+    expect(toggle).toHaveAttribute('role', 'button');
+    expect(toggle).toHaveAttribute('tabindex', '0');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const contentId = toggle.getAttribute('aria-controls');
+    expect(contentId).toBeTruthy();
+    expect(document.getElementById(contentId)).toBeInTheDocument();
+    expect(screen.getByTestId('collection-row-1')).toBeVisible();
+
+    unmount();
+    renderWithProviders(<CollectionsSection {...props} collectionsExpanded={false} />);
+    expect(screen.getByTestId('collections-toggle')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('collection-row-1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Roadtrip')).not.toBeInTheDocument();
+  });
+
+  it('activates the toggle from the keyboard (Enter/Space)', () => {
+    const props = defaultProps();
+    renderWithProviders(<CollectionsSection {...props} />);
+    const toggle = screen.getByTestId('collections-toggle');
+    fireEvent.keyDown(toggle, { key: 'Enter' });
+    expect(props.onCollectionsToggle).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(toggle, { key: ' ' });
+    expect(props.onCollectionsToggle).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('CollectionsSection — Likes child row (P-5)', () => {
+  it('renders the static Likes row FIRST — above the collection rows (M-2), Archive stays last', () => {
+    const props = defaultProps();
+    props.collections = [collectionRow({ collection_id: 7, name: 'Road' })];
+    const { container } = renderWithProviders(<CollectionsSection {...props} />);
+    const order = Array.from(container.querySelectorAll('.MuiListItem-root')).flatMap((li) => {
+      const liked = li.querySelector('[data-testid="collections-liked-node"]');
+      const archive = li.querySelector('[data-testid="collections-archive-node"]');
+      const row = li.querySelector('[data-testid^="collection-row-"]');
+      if (liked) return ['liked'];
+      if (archive) return ['archive'];
+      if (row) return [row.getAttribute('data-testid')];
+      return [];
+    });
+    expect(order).toEqual(['liked', 'collection-row-7', 'archive']);
+    expect(screen.getByTestId('collections-liked-node')).toHaveTextContent('Liked');
+  });
+
+  it('click invokes onLikesClick and selection keys off /__collections__/liked', () => {
+    const props = defaultProps();
+    renderWithProviders(<CollectionsSection {...props} />);
+    fireEvent.click(screen.getByTestId('collections-liked-node'));
+    expect(props.onLikesClick).toHaveBeenCalledTimes(1);
+
+    const selected = defaultProps();
+    selected.currentPath = '/__collections__/liked';
+    const sel = renderWithProviders(<CollectionsSection {...selected} />);
+    expect(
+      sel.container.querySelector('[data-testid="collections-liked-node"].Mui-selected')
+    ).toBeTruthy();
+  });
+
+  it('renders with an EMPTY collections list (static row, zero-state reachable)', () => {
+    const props = defaultProps();
+    props.collections = [];
+    renderWithProviders(<CollectionsSection {...props} />);
+    expect(screen.getByTestId('collections-liked-node')).toBeInTheDocument();
+  });
+});

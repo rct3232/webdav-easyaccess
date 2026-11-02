@@ -34,8 +34,8 @@ Rules:
 1. **Docs**: Identify the affected spec/feature docs and core reference docs (§1.1), review them, and update them (`docs/spec/`, `docs/features/`) before any code change.
 2. **Tests**: Write tests from the updated docs before implementation (TDD); they are expected to fail initially.
 3. **Code**: Implement following `docs/ARCHITECTURE.md` and `docs/CODING_STYLE.md` until the tests pass.
-4. **Verify**: Run the relevant suites (`npm run test:ci`, plus E2E/PG legs per §2.2 when applicable) and confirm all pass before committing.
-5. **Track unresolved work** only in `docs/IMPROVEMENT_PLAN.md`; spec/feature docs describe the current implemented/decided state only.
+4. **Verify**: Run the relevant suites (`npm run test`, plus E2E/PG legs per §2.2 when applicable) and confirm all pass before committing.
+5. **Track work where it belongs**: deferrals on their `PLAN.md` task row; new non-blocking requirements in `docs/IMPROVEMENT_PLAN.md` only after owner approval (note the date); spec/feature docs link spec docs only and describe implemented/decided state only.
 
 ### 2.2 Branching Convention
 
@@ -49,8 +49,8 @@ Rules:
 3. **Switch to the branch**: Work on the created branch, not directly on `main` or `dev`.
 4. **Exception (no branch needed)**: Trivial single-commit work — documentation cleanup, simple hotfixes (≤ 1 file, ≤ 10 lines) — may be committed directly without creating a new branch.
 5. **Merge to dev after completion**: When work is done on a feature branch:
-   - Run all unit and integration tests (`npm run test:ci` in both `client/` and `server/`), plus the E2E specs related to the change. Only proceed if all pass.
-   - When the change touches server storage (executor, repositories, schema, migrations), also run the real-PostgreSQL adapter leg: `cd server && npm run test:ci:pg:adapters` (requires the e2e PostgreSQL container: `docker compose -f docker-compose.e2e.yml up -d postgresql-e2e`).
+   - Run all unit and integration tests (`npm run test` in both `client/` and `server/`), plus the E2E specs related to the change. Only proceed if all pass.
+   - When the change touches server storage (executor, repositories, schema, migrations), also run the real-PostgreSQL adapter leg: `cd server && npm run test:pg:adapters` (requires the e2e PostgreSQL container: `docker compose -f docker-compose.e2e.yml up -d postgresql-e2e`).
    - Switch to `dev`, merge the feature branch, then delete the feature branch.
    - **Never merge directly to `main`**. The `main` branch is protected by CI/CD pipelines that automatically create PRs; management and review of those PRs is handled by the user.
 
@@ -85,4 +85,5 @@ Rules:
    - **Case A (Source Error)**: Implementation violates spec → **STOP** and ask user.
    - **Case B (Test Error)**: Test misinterprets spec/asserts on internals → **Proceed** to fix test.
    - **Case C (Spec Error)**: Spec is undefined or ambiguous → **STOP** and ask user.
+   - **Verdict discipline**: a 'legitimate/correct' verdict must cite the spec clause that makes it so; with no citable clause the incident is Case C (stop and ask), never Case B.
 3. **Recording**: Log the incident in `docs/RCA_LOG.md`.

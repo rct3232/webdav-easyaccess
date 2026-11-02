@@ -3,8 +3,8 @@
 /**
  * Metadata DB migration engine (sqlite <-> postgresql).
  *
- * Operates on direct connections (pg.Client for PostgreSQL, sqlite3.Database
- * for SQLite) following the probePostgresql pattern in
+ * Operates on direct connections (pg.Client for PostgreSQL, node:sqlite
+ * DatabaseSync for SQLite) following the probePostgresql pattern in
  * server/infrastructure/backendProbe.js — it never touches the app's own
  * metadata adapter/store layer, which is bound to the active backend. The
  * active backend is only ever read (the source); the target is only ever
@@ -92,6 +92,7 @@ const BOOLEAN_COLUMNS = { users: ['is_admin'] };
 
 const BATCH_SIZE = 500;
 const VALID_DIRECTIONS = ['sqliteToPostgresql', 'postgresqlToSqlite'];
+const DEFAULT_PG_CONNECTION_TIMEOUT_MS = 10_000;
 
 class MigrationCancelledError extends Error {
   constructor() {
@@ -108,6 +109,11 @@ function defaultSqlitePath() {
 
 // Resolve PG connection config from an explicit payload or the WEA_DB_* env
 // (mirrors storage.resolvePgConfig, which is not exported).
+function parsePgConnectionTimeoutMs(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_PG_CONNECTION_TIMEOUT_MS;
+}
+
 function resolvePgConfig(pg) {
   if (!pg) {
     const required = ['WEA_DB_HOST', 'WEA_DB_DATABASE', 'WEA_DB_USER', 'WEA_DB_PASSWORD'];
@@ -121,7 +127,7 @@ function resolvePgConfig(pg) {
       database: process.env.WEA_DB_DATABASE,
       user: process.env.WEA_DB_USER,
       password: process.env.WEA_DB_PASSWORD,
-      connectionTimeoutMillis: Number(process.env.WEA_DB_CONNECTION_TIMEOUT_MS) || 5000,
+      connectionTimeoutMillis: parsePgConnectionTimeoutMs(process.env.WEA_DB_CONNECTION_TIMEOUT_MS),
       ssl: ['1', 'true', 'yes', 'on'].includes((process.env.WEA_DB_SSL || '').trim().toLowerCase())
         ? { rejectUnauthorized: false }
         : false,
@@ -140,7 +146,7 @@ function resolvePgConfig(pg) {
     database: String(pg.database),
     user: String(pg.user),
     password: String(pg.password),
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: parsePgConnectionTimeoutMs(process.env.WEA_DB_CONNECTION_TIMEOUT_MS),
     ssl: pg.ssl ? { rejectUnauthorized: false } : false,
   };
 }
@@ -178,19 +184,35 @@ function pgExec(client) {
   };
 }
 
+// node:sqlite DatabaseSync is synchronous; the promise shapes are kept for
+// the pg/sqlite exec parity used throughout the migration steps. Bind values
+// are normalized like the storage seam (docs/spec/server/store/storage.md):
+// booleans → 1/0, undefined → NULL (sqlite3-npm coercion the copy path relies
+// on for partial rows, e.g. a live file_nodes row without deleted_at).
+function normalizeSqliteBindValue(value) {
+  if (value === undefined) return null;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  return value;
+}
+
 function sqliteExec(db) {
   return {
-    query: (sql, params = []) =>
-      new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => (err ? reject(err) : resolve({ rows: rows || [] })));
-      }),
-    run: (sql, params = []) =>
-      new Promise((resolve, reject) => {
-        db.run(sql, params, function (err) {
-          if (err) reject(err);
-          else resolve({ changes: this.changes, lastID: this.lastID });
-        });
-      }),
+    query: (sql, params = []) => {
+      try {
+        const rows = db.prepare(sql).all(...(params || []).map(normalizeSqliteBindValue));
+        return Promise.resolve({ rows: rows || [] });
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
+    run: (sql, params = []) => {
+      try {
+        const info = db.prepare(sql).run(...(params || []).map(normalizeSqliteBindValue));
+        return Promise.resolve({ changes: info.changes, lastID: info.lastInsertRowid });
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    },
   };
 }
 
@@ -207,18 +229,17 @@ async function openPgClient(config) {
 }
 
 async function openSqliteDatabase(dbPath, { readonly = false } = {}) {
-  const sqlite3 = require('sqlite3');
-  return new Promise((resolve, reject) => {
-    const db = readonly
-      ? new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) =>
-          err ? reject(err) : resolve(db)
-        )
-      : new sqlite3.Database(dbPath, (err) => (err ? reject(err) : resolve(db)));
-  });
+  const { DatabaseSync } = require('node:sqlite');
+  return new DatabaseSync(dbPath, { readOnly: readonly });
 }
 
 function closeSqliteDatabase(db) {
-  return new Promise((resolve, reject) => db.close((err) => (err ? reject(err) : resolve())));
+  try {
+    db.close();
+    return Promise.resolve();
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 async function pgTableExists(exec, name) {

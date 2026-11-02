@@ -351,10 +351,4 @@ Representative observable behaviors to cover:
   verifies the new backend on the health card.
 - Terminal always surfaces an auto modal with summary + "Go to settings" — including a job that
   completed before `/migration` mounted (recovered via the `lastJob` completion notice + ack).
-- No schema change beyond the existing DDL; `client`/`server` `test:ci` + E2E stay green.
-
----
-
-## Future work
-
-Future admin/operator app split — tracked in `docs/IMPROVEMENT_PLAN.md`.
+- No schema change beyond the existing DDL; `client`/`server` `test` + E2E stay green.

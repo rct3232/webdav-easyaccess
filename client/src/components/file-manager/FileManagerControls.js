@@ -5,6 +5,7 @@ import {
   IconButton,
   Button,
   Menu,
+  MenuItem,
   Radio,
   RadioGroup,
   FormControlLabel,
@@ -25,8 +26,15 @@ import {
   Restore as RestoreIcon,
   DeleteForever as DeleteForeverIcon,
   DeleteSweep as DeleteSweepIcon,
+  PlaylistAdd as PlaylistAddIcon,
+  HighlightOff as HighlightOffIcon,
+  PushPin as PushPinIcon,
+  Archive as ArchiveIcon,
 } from '@mui/icons-material';
-import { VIEW_MODES, SORT_MODES } from '../../constants/fileManager';
+import { VIEW_MODES, SORT_MODES, COLLECTION_SORT_OPTIONS } from '../../constants/fileManager';
+
+const collectionSortLabelKey = (option) =>
+  `fileManager.collectionsSort${option.charAt(0).toUpperCase()}${option.slice(1)}`;
 
 const FileManagerControls = ({
   isMobile,
@@ -36,6 +44,9 @@ const FileManagerControls = ({
   selectedFiles,
   sortMode,
   setSortMode,
+  sortSurface = 'files',
+  collectionSort,
+  onCollectionSortChange,
   viewMode,
   setViewMode,
   selectionActionsDisabled = false,
@@ -51,6 +62,14 @@ const FileManagerControls = ({
   handleBulkRestore,
   handleBulkPurge,
   onEmptyTrash,
+  onBulkAddToCollection,
+  onBulkMemberExclude,
+  memberMode = false,
+  sortHidden = false,
+  viewModeHidden = false,
+  collectionsMode = false,
+  collectionsArchiveView = false,
+  onCollectionsBulkAction,
 }) => {
   const { t } = useTranslation();
   const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
@@ -121,148 +140,255 @@ const FileManagerControls = ({
 
             <Box sx={{ flexGrow: 1 }} />
 
-            {trashMode && handleBulkRestore && (
-              <IconButton
-                size="small"
-                color="primary"
-                onClick={() => handleBulkRestore(Array.from(selectedFiles))}
-                disabled={moveDeleteDisabled}
-                title={t('actions.restore')}
-                data-testid="trash-bulk-restore"
-              >
-                <RestoreIcon fontSize="small" />
-              </IconButton>
-            )}
-            {trashMode && handleBulkPurge && (
-              <IconButton
-                size="small"
-                color="error"
-                onClick={() => handleBulkPurge(Array.from(selectedFiles))}
-                disabled={moveDeleteDisabled}
-                title={t('actions.purge')}
-                data-testid="trash-bulk-purge"
-              >
-                <DeleteForeverIcon fontSize="small" />
-              </IconButton>
-            )}
+            {/* P-3 collections selection cluster: count-INDEPENDENT fixed set by
+                surface (files philosophy). Active view: Pin · Unpin · Archive;
+                archive view: Restore · Delete permanently. Bulk execution is
+                shell-owned (loop of the single-collection calls); archive and
+                permanent-delete route through the confirms hosted by
+                CollectionsListView. */}
+            {collectionsMode ? (
+              <>
+                {!collectionsArchiveView ? (
+                  <>
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      onClick={() => onCollectionsBulkAction?.('pin')}
+                      disabled={noSelection}
+                      title={t('fileManager.cardMenuPin')}
+                      data-testid="bulk-collections-pin"
+                    >
+                      <PushPinIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      onClick={() => onCollectionsBulkAction?.('unpin')}
+                      disabled={noSelection}
+                      title={t('fileManager.cardMenuUnpin')}
+                      data-testid="bulk-collections-unpin"
+                    >
+                      <PushPinIcon fontSize="small" sx={{ transform: 'rotate(45deg)' }} />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      onClick={() => onCollectionsBulkAction?.('archive')}
+                      disabled={noSelection}
+                      title={t('fileManager.cardMenuArchive')}
+                      data-testid="bulk-collections-archive"
+                    >
+                      <ArchiveIcon fontSize="small" />
+                    </IconButton>
+                  </>
+                ) : (
+                  <>
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      onClick={() => onCollectionsBulkAction?.('restore')}
+                      disabled={noSelection}
+                      title={t('fileManager.cardMenuRestore')}
+                      data-testid="bulk-collections-restore"
+                    >
+                      <RestoreIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => onCollectionsBulkAction?.('delete-permanent')}
+                      disabled={noSelection}
+                      title={t('fileManager.cardMenuDelete')}
+                      data-testid="bulk-collections-delete-permanent"
+                    >
+                      <DeleteForeverIcon fontSize="small" />
+                    </IconButton>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                {trashMode && handleBulkRestore && (
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={() => handleBulkRestore(Array.from(selectedFiles))}
+                    disabled={moveDeleteDisabled}
+                    title={t('actions.restore')}
+                    data-testid="trash-bulk-restore"
+                  >
+                    <RestoreIcon fontSize="small" />
+                  </IconButton>
+                )}
+                {trashMode && handleBulkPurge && (
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => handleBulkPurge(Array.from(selectedFiles))}
+                    disabled={moveDeleteDisabled}
+                    title={t('actions.purge')}
+                    data-testid="trash-bulk-purge"
+                  >
+                    <DeleteForeverIcon fontSize="small" />
+                  </IconButton>
+                )}
 
-            {!trashMode && !downloadOnly && handleBulkMove && (
-              <IconButton
-                size="small"
-                color="primary"
-                onClick={handleBulkMove}
-                disabled={moveDeleteDisabled}
-                title={t('actions.move')}
-                data-testid="bulk-action-move"
-              >
-                <MoveIcon fontSize="small" />
-              </IconButton>
-            )}
-            {!trashMode && !downloadOnly && handleBulkCopy && (
-              <IconButton
-                size="small"
-                color="primary"
-                onClick={handleBulkCopy}
-                disabled={copyDisabled}
-                title={t('actions.copy')}
-                data-testid="bulk-action-copy"
-              >
-                <CopyIcon fontSize="small" />
-              </IconButton>
-            )}
-            {!trashMode && handleBulkDownload && (
-              <IconButton
-                size="small"
-                color="primary"
-                onClick={handleBulkDownload}
-                disabled={downloadDisabled}
-                title={t('actions.download')}
-                data-testid="bulk-action-download"
-              >
-                <DownloadIcon fontSize="small" />
-              </IconButton>
-            )}
-            {!trashMode && !downloadOnly && openBulkDeleteDialog && (
-              <IconButton
-                size="small"
-                color="error"
-                onClick={() => {
-                  const filePaths = Array.from(selectedFiles);
-                  if (filePaths.length > 0) {
-                    openBulkDeleteDialog(filePaths);
-                  }
-                }}
-                disabled={moveDeleteDisabled}
-                title={t('actions.delete')}
-                data-testid="bulk-action-delete"
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
+                {memberMode && onBulkMemberExclude && (
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={() => onBulkMemberExclude(Array.from(selectedFiles))}
+                    disabled={bulkActionsDisabled || noSelection}
+                    title={t('fileManager.memberBatchExclude')}
+                    data-testid="bulk-member-exclude"
+                  >
+                    <HighlightOffIcon fontSize="small" />
+                  </IconButton>
+                )}
+                {!trashMode && !downloadOnly && onBulkAddToCollection && (
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={() => onBulkAddToCollection(Array.from(selectedFiles))}
+                    disabled={bulkActionsDisabled || noSelection}
+                    title={t(
+                      memberMode ? 'fileManager.memberAddToOther' : 'fileManager.addToCollection'
+                    )}
+                    data-testid="bulk-collection-add"
+                  >
+                    <PlaylistAddIcon fontSize="small" />
+                  </IconButton>
+                )}
+
+                {!memberMode && !trashMode && !downloadOnly && handleBulkMove && (
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={handleBulkMove}
+                    disabled={moveDeleteDisabled}
+                    title={t('actions.move')}
+                    data-testid="bulk-action-move"
+                  >
+                    <MoveIcon fontSize="small" />
+                  </IconButton>
+                )}
+                {!memberMode && !trashMode && !downloadOnly && handleBulkCopy && (
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={handleBulkCopy}
+                    disabled={copyDisabled}
+                    title={t('actions.copy')}
+                    data-testid="bulk-action-copy"
+                  >
+                    <CopyIcon fontSize="small" />
+                  </IconButton>
+                )}
+                {!memberMode && !trashMode && handleBulkDownload && (
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={handleBulkDownload}
+                    disabled={downloadDisabled}
+                    title={t('actions.download')}
+                    data-testid="bulk-action-download"
+                  >
+                    <DownloadIcon fontSize="small" />
+                  </IconButton>
+                )}
+                {!memberMode && !trashMode && !downloadOnly && openBulkDeleteDialog && (
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => {
+                      const filePaths = Array.from(selectedFiles);
+                      if (filePaths.length > 0) {
+                        openBulkDeleteDialog(filePaths);
+                      }
+                    }}
+                    disabled={moveDeleteDisabled}
+                    title={t('actions.delete')}
+                    data-testid="bulk-action-delete"
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </>
             )}
           </>
         ) : (
           <>
-            <IconButton
-              onClick={(e) => setSortMenuAnchor(e.currentTarget)}
-              title={t('fileManager.sort')}
-              data-testid="file-manager-sort"
-            >
-              <SortIcon />
-            </IconButton>
+            {!sortHidden && (
+              <IconButton
+                onClick={(e) => setSortMenuAnchor(e.currentTarget)}
+                title={t('fileManager.sort')}
+                data-testid="file-manager-sort"
+              >
+                <SortIcon />
+              </IconButton>
+            )}
 
             <Box sx={{ flexGrow: 1 }} />
 
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <IconButton
-                color={viewMode === VIEW_MODES.LIST ? 'primary' : 'default'}
-                onClick={() => {
-                  setViewMode(VIEW_MODES.LIST);
-                }}
-                title={t('fileManager.listViewTitle')}
-                data-testid="view-mode-list"
-              >
-                <ViewStreamIcon />
-              </IconButton>
-              <IconButton
-                color={viewMode === VIEW_MODES.GRID ? 'primary' : 'default'}
-                onClick={() => {
-                  setViewMode(VIEW_MODES.GRID);
-                }}
-                title={t('fileManager.gridViewTitle')}
-                data-testid="view-mode-grid"
-              >
-                <ViewModuleIcon />
-              </IconButton>
-              {!isMobile && (
+            {/* P-3 toggle hiding: view-mode buttons are surface-inert for the
+                collections list (grid-parity cards) and members (P-4 owns member
+                view modes); the members surface also hides the sort button. */}
+            {!viewModeHidden && (
+              <Box sx={{ display: 'flex', gap: 1 }}>
                 <IconButton
-                  color={viewMode === VIEW_MODES.DETAIL ? 'primary' : 'default'}
+                  color={viewMode === VIEW_MODES.LIST ? 'primary' : 'default'}
                   onClick={() => {
-                    setViewMode(VIEW_MODES.DETAIL);
+                    setViewMode(VIEW_MODES.LIST);
                   }}
-                  title={t('fileManager.detailViewTitle')}
-                  data-testid="view-mode-detail"
+                  title={t('fileManager.listViewTitle')}
+                  data-testid="view-mode-list"
                 >
-                  <ViewListIcon />
+                  <ViewStreamIcon />
                 </IconButton>
-              )}
-              {onEmptyTrash && (
                 <IconButton
-                  color="error"
-                  onClick={onEmptyTrash}
-                  title={t('actions.emptyTrash')}
-                  aria-label={t('actions.emptyTrash')}
-                  data-testid="trash-empty"
-                  sx={{ minWidth: 44, minHeight: 44 }}
+                  color={viewMode === VIEW_MODES.GRID ? 'primary' : 'default'}
+                  onClick={() => {
+                    setViewMode(VIEW_MODES.GRID);
+                  }}
+                  title={t('fileManager.gridViewTitle')}
+                  data-testid="view-mode-grid"
                 >
-                  <DeleteSweepIcon />
+                  <ViewModuleIcon />
                 </IconButton>
-              )}
-            </Box>
+                {!isMobile && (
+                  <IconButton
+                    color={viewMode === VIEW_MODES.DETAIL ? 'primary' : 'default'}
+                    onClick={() => {
+                      setViewMode(VIEW_MODES.DETAIL);
+                    }}
+                    title={t('fileManager.detailViewTitle')}
+                    data-testid="view-mode-detail"
+                  >
+                    <ViewListIcon />
+                  </IconButton>
+                )}
+                {onEmptyTrash && (
+                  <IconButton
+                    color="error"
+                    onClick={onEmptyTrash}
+                    title={t('actions.emptyTrash')}
+                    aria-label={t('actions.emptyTrash')}
+                    data-testid="trash-empty"
+                    sx={{ minWidth: 44, minHeight: 44 }}
+                  >
+                    <DeleteSweepIcon />
+                  </IconButton>
+                )}
+              </Box>
+            )}
           </>
         )}
 
-        {/* Sort Menu - only when !selectionMode */}
-        {!selectionMode && (
+        {/* Sort Menu - only when !selectionMode; content swaps by surface (P-2):
+            files → 4 radios (persisted client sortMode), collections → flat 5
+            server options (no direction radios; ephemeral; server bakes ASC/DESC).
+            P-3: never mounted while the sort button itself is hidden (members). */}
+        {!selectionMode && !sortHidden && (
           <Menu
             anchorEl={sortMenuAnchor}
             open={Boolean(sortMenuAnchor)}
@@ -276,55 +402,73 @@ const FileManagerControls = ({
               horizontal: 'left',
             }}
           >
-            <Box sx={{ px: 2, py: 1 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                {t('fileManager.sortByName')}
-              </Typography>
-              <RadioGroup
-                value={sortMode}
-                onChange={(e) => {
-                  const newMode = e.target.value;
-                  setSortMode(newMode);
-                  setSortMenuAnchor(null);
-                }}
-              >
-                <FormControlLabel
-                  value={SORT_MODES.NAME_ASC}
-                  control={<Radio size="small" />}
-                  label={t('fileManager.asc')}
-                />
-                <FormControlLabel
-                  value={SORT_MODES.NAME_DESC}
-                  control={<Radio size="small" />}
-                  label={t('fileManager.desc')}
-                />
-              </RadioGroup>
-            </Box>
-            <Divider />
-            <Box sx={{ px: 2, py: 1 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                {t('fileManager.sortByDate')}
-              </Typography>
-              <RadioGroup
-                value={sortMode}
-                onChange={(e) => {
-                  const newMode = e.target.value;
-                  setSortMode(newMode);
-                  setSortMenuAnchor(null);
-                }}
-              >
-                <FormControlLabel
-                  value={SORT_MODES.DATE_ASC}
-                  control={<Radio size="small" />}
-                  label={t('fileManager.asc')}
-                />
-                <FormControlLabel
-                  value={SORT_MODES.DATE_DESC}
-                  control={<Radio size="small" />}
-                  label={t('fileManager.desc')}
-                />
-              </RadioGroup>
-            </Box>
+            {sortSurface === 'collections' ? (
+              COLLECTION_SORT_OPTIONS.map((option) => (
+                <MenuItem
+                  key={option}
+                  data-testid={`collections-sort-option-${option}`}
+                  selected={option === collectionSort}
+                  onClick={() => {
+                    setSortMenuAnchor(null);
+                    if (onCollectionSortChange) onCollectionSortChange(option);
+                  }}
+                >
+                  {t(collectionSortLabelKey(option))}
+                </MenuItem>
+              ))
+            ) : (
+              <>
+                <Box sx={{ px: 2, py: 1 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                    {t('fileManager.sortByName')}
+                  </Typography>
+                  <RadioGroup
+                    value={sortMode}
+                    onChange={(e) => {
+                      const newMode = e.target.value;
+                      setSortMode(newMode);
+                      setSortMenuAnchor(null);
+                    }}
+                  >
+                    <FormControlLabel
+                      value={SORT_MODES.NAME_ASC}
+                      control={<Radio size="small" />}
+                      label={t('fileManager.asc')}
+                    />
+                    <FormControlLabel
+                      value={SORT_MODES.NAME_DESC}
+                      control={<Radio size="small" />}
+                      label={t('fileManager.desc')}
+                    />
+                  </RadioGroup>
+                </Box>
+                <Divider />
+                <Box sx={{ px: 2, py: 1 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                    {t('fileManager.sortByDate')}
+                  </Typography>
+                  <RadioGroup
+                    value={sortMode}
+                    onChange={(e) => {
+                      const newMode = e.target.value;
+                      setSortMode(newMode);
+                      setSortMenuAnchor(null);
+                    }}
+                  >
+                    <FormControlLabel
+                      value={SORT_MODES.DATE_ASC}
+                      control={<Radio size="small" />}
+                      label={t('fileManager.asc')}
+                    />
+                    <FormControlLabel
+                      value={SORT_MODES.DATE_DESC}
+                      control={<Radio size="small" />}
+                      label={t('fileManager.desc')}
+                    />
+                  </RadioGroup>
+                </Box>
+              </>
+            )}
           </Menu>
         )}
       </Box>

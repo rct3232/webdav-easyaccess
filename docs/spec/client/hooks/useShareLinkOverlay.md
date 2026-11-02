@@ -21,16 +21,16 @@
 
 `useShareLinkOverlay(params)`
 
-| Name            | Type                      | Required | Description                                                                                                                                                                      |
-| --------------- | ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| isShareLinkMode | boolean                   | Y        | Whether FileManager is currently rendering in share-link mode.                                                                                                                   |
-| shareToken      | string                    | N        | Public share token used for add/check flows.                                                                                                                                     |
-| linkInfo        | object                    | N        | Share metadata from `ShareLinkLoader` (used for directory routing after success). When it carries `nodeId`, post-success routing is nodeId-first (`/files/node/<nodeId>`, C2.5). |
-| user            | object                    | N        | Current authenticated user; enables "add to my permissions" bootstrap when present.                                                                                              |
-| navigate        | (path: string) => void    | Y        | Shell-owned navigation function.                                                                                                                                                 |
-| showError       | (message: string) => void | Y        | Shell-owned message surface.                                                                                                                                                     |
-| setDrawerOpen   | (open: boolean) => void   | N        | Optional shell setter used when leaving share mode from mobile tree interactions.                                                                                                |
-| t               | function                  | Y        | Translation function.                                                                                                                                                            |
+| Name            | Type                      | Required | Description                                                                                                                                                                |
+| --------------- | ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| isShareLinkMode | boolean                   | Y        | Whether FileManager is currently rendering in share-link mode.                                                                                                             |
+| shareToken      | string                    | N        | Public share token used for add/check flows.                                                                                                                               |
+| linkInfo        | object                    | N        | Share metadata from `ShareLinkLoader` (used for directory routing after success). When it carries `nodeId`, post-success routing is nodeId-first (`/files/node/<nodeId>`). |
+| user            | object                    | N        | Current authenticated user; enables "add to my permissions" bootstrap when present.                                                                                        |
+| navigate        | (path: string) => void    | Y        | Shell-owned navigation function.                                                                                                                                           |
+| showError       | (message: string) => void | Y        | Shell-owned message surface.                                                                                                                                               |
+| setDrawerOpen   | (open: boolean) => void   | N        | Optional shell setter used when leaving share mode from mobile tree interactions.                                                                                          |
+| t               | function                  | Y        | Translation function.                                                                                                                                                      |
 
 ### 2.3 Return Value / State
 

@@ -7,6 +7,9 @@ import {
 import { Person as PersonIcon } from '@mui/icons-material';
 import AccountContent from '../../components/mypage/content/AccountContent';
 import SharingContent from '../../components/mypage/content/SharingContent';
+import CollectionsOverview from '../../components/mypage/content/CollectionsOverview';
+import StorageDashboard from '../../components/mypage/content/StorageDashboard';
+import AiAdminContent from '../../components/mypage/content/AiAdminContent';
 
 describe('myPageRegistry', () => {
   describe('resolveMyPageCategory', () => {
@@ -22,11 +25,20 @@ describe('myPageRegistry', () => {
     it('normalizes admin-only categories for non-admin users', () => {
       expect(resolveMyPageCategory('admin-users', false)).toBe(DEFAULT_MY_PAGE_CATEGORY);
       expect(resolveMyPageCategory('admin-settings', false)).toBe(DEFAULT_MY_PAGE_CATEGORY);
+      expect(resolveMyPageCategory('admin-ai', false)).toBe(DEFAULT_MY_PAGE_CATEGORY);
+      expect(resolveMyPageCategory('admin-ai', true)).toBe('admin-ai');
     });
 
     it('normalizes sharing for admins', () => {
       expect(resolveMyPageCategory('sharing', true)).toBe(DEFAULT_MY_PAGE_CATEGORY);
       expect(resolveMyPageCategory('sharing', false)).toBe('sharing');
+    });
+
+    it('normalizes personal surfaces for admins (operator rule — PLAN §14 client half)', () => {
+      expect(resolveMyPageCategory('storage', true)).toBe(DEFAULT_MY_PAGE_CATEGORY);
+      expect(resolveMyPageCategory('storage', false)).toBe('storage');
+      expect(resolveMyPageCategory('collections', true)).toBe(DEFAULT_MY_PAGE_CATEGORY);
+      expect(resolveMyPageCategory('collections', false)).toBe('collections');
     });
 
     it('preserves unknown categories', () => {
@@ -38,14 +50,26 @@ describe('myPageRegistry', () => {
     it('includes admin-only categories only for admins', () => {
       const idsAdmin = getMyPageSidebarCategories(true).map((c) => c.id);
       expect(idsAdmin).toEqual(
-        expect.arrayContaining(['account', 'admin-users', 'admin-settings', 'preferences'])
+        expect.arrayContaining([
+          'account',
+          'admin-users',
+          'admin-settings',
+          'admin-ai',
+          'preferences',
+        ])
       );
       expect(idsAdmin).not.toEqual(expect.arrayContaining(['sharing']));
+      // operator rule (PLAN §14 client half): personal surfaces are hidden for
+      // admins — admin never participates in collections/storage.
+      expect(idsAdmin).not.toEqual(expect.arrayContaining(['storage']));
+      expect(idsAdmin).not.toEqual(expect.arrayContaining(['collections']));
     });
 
     it('includes sharing only for non-admins', () => {
       const idsNonAdmin = getMyPageSidebarCategories(false).map((c) => c.id);
-      expect(idsNonAdmin).toEqual(expect.arrayContaining(['account', 'sharing', 'preferences']));
+      expect(idsNonAdmin).toEqual(
+        expect.arrayContaining(['account', 'sharing', 'collections', 'storage', 'preferences'])
+      );
       expect(idsNonAdmin).not.toEqual(expect.arrayContaining(['admin-users', 'admin-settings']));
     });
   });
@@ -64,6 +88,44 @@ describe('myPageRegistry', () => {
       expect(descriptor.contentProps.user).toEqual({ username: 'testuser' });
       expect(descriptor.categoryIcon).toBe(PersonIcon);
       expect(descriptor.onBack).toBeUndefined();
+    });
+
+    it('returns the AI operations content descriptor for admin-ai', () => {
+      const descriptor = getMyPageContentDescriptor({
+        selectedCategory: 'admin-ai',
+        selectedContentItem: null,
+        onSelectContentItem: jest.fn(),
+        user: { username: 'admin', is_admin: true },
+        onMessage: jest.fn(),
+      });
+      expect(descriptor.ContentComponent).toBe(AiAdminContent);
+      expect(descriptor.contentProps).toEqual({});
+    });
+
+    it('returns the storage and collections content descriptors (direct, no onBack)', () => {
+      const storage = getMyPageContentDescriptor({
+        selectedCategory: 'storage',
+        selectedContentItem: null,
+        onSelectContentItem: jest.fn(),
+        user: { username: 'testuser' },
+        onMessage: jest.fn(),
+        onNavigate: jest.fn(),
+      });
+      expect(storage.ContentComponent).toBe(StorageDashboard);
+      expect(storage.contentProps.user).toEqual({ username: 'testuser' });
+      expect(typeof storage.contentProps.onNavigate).toBe('function');
+      expect(storage.onBack).toBeUndefined();
+
+      const collections = getMyPageContentDescriptor({
+        selectedCategory: 'collections',
+        selectedContentItem: null,
+        onSelectContentItem: jest.fn(),
+        user: { username: 'testuser' },
+        onMessage: jest.fn(),
+      });
+      expect(collections.ContentComponent).toBe(CollectionsOverview);
+      expect(collections.contentProps.user).toEqual({ username: 'testuser' });
+      expect(collections.onBack).toBeUndefined();
     });
 
     it('returns a detail descriptor with onBack for sharing detail view', () => {

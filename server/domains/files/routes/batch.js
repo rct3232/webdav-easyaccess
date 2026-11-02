@@ -101,12 +101,18 @@ router.get(
     if (String(job.userId) !== String(req.user.id)) {
       throw forbiddenError(SERVER_ERROR_CODES.files.accessDenied);
     }
+    // Mutable polling endpoint: never let the browser cache or revalidate a
+    // snapshot (a stale 304 body would freeze the client's progress item).
+    res.set('Cache-Control', 'no-store');
     res.json({
       status: job.status,
       progress: job.progress,
       total: job.total,
       results: job.results,
       errorMessage: job.errorMessage,
+      // Undo-toast pointer (batchOperationService.md §5.4): { action_id } on the
+      // terminal result of a journaled move/copy batch, null otherwise.
+      undo: job.undo ? { action_id: job.undo.actionId } : null,
     });
   })
 );

@@ -17,7 +17,7 @@
 
 ### 2.2 Function Signatures
 
-> **Phase 7 note (nodeId end-state):** `buildShareManageSuccessMessage` no longer accepts `targetPath`; it uses `displayName`/`isDirectory` only.
+> `buildShareManageSuccessMessage` does not accept `targetPath`; it uses `displayName`/`isDirectory` only.
 
 | Function                         | (input) => return                                                             |
 | -------------------------------- | ----------------------------------------------------------------------------- |

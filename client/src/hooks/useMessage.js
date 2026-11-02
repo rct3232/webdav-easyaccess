@@ -22,6 +22,8 @@ export const useMessage = (options = {}) => {
     show: false,
     text: '',
     type: 'success', // 'success' | 'error' | 'warning' | 'info'
+    action: null, // { labelKey, onClick, disabled? } | null (useMessage.md §3)
+    icon: null,
   });
 
   /**
@@ -29,22 +31,25 @@ export const useMessage = (options = {}) => {
    * @param {string} text - Message text
    * @param {string} type - Message type
    * @param {number} duration - Duration in milliseconds
+   * @param {Object|null} action - Action slot `{ labelKey, onClick, disabled? }`
+   *   (undo toasts). With an action present the §2.2 default durations do NOT
+   *   apply: the toast persists until dismissed/replaced unless an explicit
+   *   duration ≥ 6000 ms is supplied (useUndoToast passes 8000).
+   * @param {string|null} icon - Optional kind icon riding the message
    */
   const showMessage = useCallback(
-    (text, type = 'success', duration = null) => {
-      const messageDuration =
-        duration !== null
-          ? duration
-          : type === 'error'
-            ? errorDuration
-            : type === 'success'
-              ? successDuration
-              : defaultDuration;
+    (text, type = 'success', duration = null, action = null, icon = null) => {
+      const hasAction = action != null;
+      const fallbackDuration =
+        type === 'error' ? errorDuration : type === 'success' ? successDuration : defaultDuration;
+      const messageDuration = duration !== null ? duration : hasAction ? 0 : fallbackDuration;
 
       setMessage({
         show: true,
         text,
         type,
+        action,
+        icon,
       });
 
       if (messageDuration > 0) {
@@ -112,6 +117,8 @@ export const useMessage = (options = {}) => {
       show: false,
       text: '',
       type: 'success',
+      action: null,
+      icon: null,
     });
   }, []);
 

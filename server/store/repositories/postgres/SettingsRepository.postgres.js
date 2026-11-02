@@ -58,6 +58,44 @@ module.exports = function createPostgresSettingsRepository(executor) {
       }
     },
 
+    async getTx(tx, key) {
+      try {
+        const { rows } = await tx.query(`SELECT value FROM settings WHERE key = $1 LIMIT 1`, [
+          String(key),
+        ]);
+        if (rows.length === 0) return null;
+        return rows[0].value;
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async setTx(tx, key, value) {
+      try {
+        await tx.run(
+          `INSERT INTO settings (key, value, updated_at)
+           VALUES ($1, $2::jsonb, NOW())
+           ON CONFLICT (key)
+           DO UPDATE
+             SET value = EXCLUDED.value,
+                 updated_at = NOW()`,
+          [String(key), JSON.stringify(String(value))]
+        );
+        return { success: true };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
+    async deleteTx(tx, key) {
+      try {
+        const result = await tx.run('DELETE FROM settings WHERE key = $1', [String(key)]);
+        return { changes: result.changes };
+      } catch (error) {
+        throw mapDatabaseError(error);
+      }
+    },
+
     async listRows() {
       try {
         const { rows } = await executor.query(`SELECT key, value, updated_at FROM settings`);

@@ -12,11 +12,11 @@ Detailed implementation contracts live in:
 - `docs/spec/client/components/SystemConfigEditor.md` — the Advanced settings accordion editor.
 - `docs/spec/server/infrastructure/configRegistry.md` — tier/secret/default catalog.
 - `docs/spec/server/infrastructure/configResolver.md` — effective-config resolver + T2 cache.
-- `docs/spec/server/routes/setup.md` (updated) — wizard apply now targets DB storage for non-T0.
+- `docs/spec/server/routes/setup.md` — wizard apply targets DB storage for non-T0 keys.
 - `docs/features/config-sync.md` + `docs/spec/server/tools/config-sync.md` — env↔DB
   sync CLI/web action (`configSync`): drift detection and `--apply`/web reconcile over
   plaintext DB rows.
-- `docs/SETUP.md` — operator environment-variable reference (updated classification).
+- `docs/SETUP.md` — operator environment-variable reference.
 
 ---
 
@@ -35,7 +35,7 @@ persists values across both layers. This feature describes the two-layer model i
    yields a new secret and invalidates all sessions); multi-instance deployments must set one
    unified value.
 2. **Everything else — DB `settings` table with `.env` fallback:** a value present in `.env`
-   always wins (D1); otherwise the DB row is used; otherwise the built-in default. **Exception:
+   always wins; otherwise the DB row is used; otherwise the built-in default. **Exception:
    DB-only keys** (registry `dbOnly: true` — internal tuning knobs such as `JWT_EXPIRES_IN`,
    `GC_ORPHAN_TTL_DAYS`, `LOGIN_RATE_LIMIT_*`, thumbnail/cache settings). Their value comes
    **only** from the DB settings row or the built-in default; an env value is intentionally
@@ -48,7 +48,7 @@ connection before the metadata DB exists.
 
 ---
 
-## Source precedence (D1)
+## Source precedence
 
 ```
 .env (when set) → DB settings row (when set) → built-in default
@@ -76,50 +76,70 @@ connection before the metadata DB exists.
 
 ### Variable classification
 
-**T0 — `.env` only** (D2, D4, D7): `WEA_SQLITE_PATH`, `WEA_DB_HOST`, `WEA_DB_PORT`,
+**T0 — `.env` only:** `WEA_SQLITE_PATH`, `WEA_DB_HOST`, `WEA_DB_PORT`,
 `WEA_DB_DATABASE`, `WEA_DB_USER`, `WEA_DB_PASSWORD`, `WEA_DB_SSL`, `WEA_DB_MAX`,
 `WEA_DB_IDLE_TIMEOUT_MS`, `WEA_DB_CONNECTION_TIMEOUT_MS`, `NODE_ENV`,
-`DOTENV_CONFIG_PATH`, `JWT_SECRET`.
+`DOTENV_CONFIG_PATH`, `JWT_SECRET`, `WEA_MODEL_DIR`.
 Rationale: the metadata DB cannot be reached before its own connection info exists.
-`JWT_SECRET` is the boot auth key (D4): it stays `.env`-only and frozen at require time, but it
+`JWT_SECRET` is the boot auth key: it stays `.env`-only and frozen at require time, but it
 is **optional** — when unset or empty the server generates an ephemeral random secret at boot
 for that process (a restart yields a new secret and invalidates all sessions). Multi-instance
 deployments must set one unified `JWT_SECRET` so every instance signs with the same secret.
+`WEA_MODEL_DIR` is an optional T0 **operator pre-seed path**: it selects the directory the
+built-in embed engine loads its weights from (provisioning per `llmPresets.md` §2.3). It is
+not an application setting (no admin/wizard surface, never stored in DB, no resolver read
+site) — a filesystem location like `WEA_SQLITE_PATH`. Present weights there make every
+provisioning trigger a no-op with zero network egress; unset selects the default data dir.
 
 **T1 — env → DB fallback, restart required (boot-frozen):** `PORT`, `WEA_FILE_STORAGE`,
-`S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (secret, D8),
-`S3_ENDPOINT`, `WEBDAV_URL`, `WEBDAV_USERNAME`, `WEBDAV_PASSWORD` (secret, D8),
+`S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (secret),
+`S3_ENDPOINT`, `WEBDAV_URL`, `WEBDAV_USERNAME`, `WEBDAV_PASSWORD` (secret),
 `WEBDAV_AUTH_TYPE`, `THUMBNAIL_CONCURRENCY_LIMIT`, `FFMPEG_PATH`, `GC_INTERVAL_MS`,
-`ADMIN_DEFAULT_PASSWORD`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`, `EMAIL_PASSWORD` (secret,
-D8), `EMAIL_SECURE`, `EMAIL_FROM_NAME`.
+`ADMIN_DEFAULT_PASSWORD`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`, `EMAIL_PASSWORD` (secret),
+`EMAIL_SECURE`, `EMAIL_FROM_NAME`.
 Rationale: consumed to construct boot-time singletons (blob store, listen port, scheduler,
 module consts, the nodemailer transporter). The **source** can be DB; the **effect** requires a
-restart. EMAIL\_\* were formerly T2, but the transporter is built once per process — edits only
-take effect after a restart, so they are honestly classified T1 (F3).
+restart. EMAIL\_\* are T1 because the transporter is built once per process — edits only
+take effect after a restart.
 
 **T2 — env → DB fallback, immediate (hot):** `registration_enabled` (already DB),
 `CORS_ORIGINS`, `GC_ORPHAN_TTL_DAYS`, `GC_VERSION_TTL_DAYS`, `GC_PENDING_STALE_DAYS`,
-`WEBDAV_UPSTREAM_URL`, `JWT_EXPIRES_IN` (D5),
+`WEBDAV_UPSTREAM_URL`, `JWT_EXPIRES_IN`,
 `LOGIN_RATE_LIMIT_MAX`, `LOGIN_RATE_LIMIT_WINDOW_MS`, `MAX_THUMBNAIL_SIZE`,
-`THUMBNAIL_TOKEN_SECRET` (secret, D8), `THUMBNAIL_TOKEN_EXPIRY`, `FFMPEG_INIT_TIMEOUT_MS`,
+`THUMBNAIL_TOKEN_SECRET` (secret), `THUMBNAIL_TOKEN_EXPIRY`, `FFMPEG_INIT_TIMEOUT_MS`,
 `WEA_PREVIEW_TICKET_TTL_MS`, `PERMISSION_CACHE_TTL_MS`, `USER_CACHE_TTL_MS`,
 `PERMISSIONS_EXISTENCE_INDEX_TTL_MS`, `PERMISSIONS_EXISTENCE_RECONCILE_BATCH_SIZE`,
 `PERMISSIONS_EXISTENCE_RECONCILE_CONCURRENCY`.
-Rationale: read per-request/per-operation via the lazy resolver (F3 fix — these keys were
-mislabeled T1 but never boot-frozen in practice); changing them has no boot-time singleton
-impact.
+Rationale: read per-request/per-operation via the lazy resolver; changing them has no boot-time
+singleton impact.
+
+**LLM\_\* — T2 hot-apply family (AI platform, docs/features/collections-platform.md §4.2):** every `LLM_*` key is
+T2 and **fully hot** — the LLM adapter resolves its role configs per call through this
+resolver (5 s TTL + `invalidateCache` on settings PUT), and an internal provider-client
+cache **keyed by the resolved-config signature** rebuilds clients on change. A signature
+change triggers a debounced re-probe of the affected role, so `backendHealth` and
+`settings/public` `ai` flags update live; workers pick the new config at the next job and
+budget counters reset. **No restart, ever.** Contrast with the other config families: the
+metadata DB connection (T0) is boot-frozen by definition and the blob store (T1) needs a
+restart — the LLM is an enrichment dependency, so it is the only subsystem whose entire
+connection layer is hot. `LLM_*` keys are **dbOnly**: `.env`-provided values are never
+effective, the DB `settings` row is the single config surface; no `LLM_ENABLED` flag exists — role presence decides candidacy,
+probes decide truth. The preset manifest (`infrastructure/adapters/llm/presets.js`) is a
+**release artifact declaring EXPECTED capabilities** (text_embed/chat/vision_chat/asr +
+recommended budgets) per provider family — the runtime **probe remains the final authority**
+(declared-but-failing ⇒ capability off + admin warning card).
 
 ---
 
-## DB storage design (D11)
+## DB storage design
 
 Reuse the existing `settings` table (already present in both backends):
 
 ```sql
 CREATE TABLE IF NOT EXISTS settings (
-  key        TEXT PRIMARY KEY,
-  value      JSONB NOT NULL,          -- sqlite conversion: TEXT
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+ key TEXT PRIMARY KEY,
+ value JSONB NOT NULL, -- sqlite conversion: TEXT
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
@@ -159,7 +179,7 @@ masking only**:
 
 ---
 
-## Wizard apply changes (D3)
+## Wizard apply changes
 
 Apply (`POST /api/setup/apply`, shared by the wizard and the CLI via
 `server/domains/setup/setupCore.js` `applySetup`) stores operator-entered values in the
@@ -183,8 +203,17 @@ metadata DB by default; only T0 keys are written to `.env`.
   user (`updateAdminPassword`, `setupCore.js`) — there is no `ADMIN_DEFAULT_PASSWORD` path.
 - **Setup-phase prefill comes from `GET /status` only:** the wizard prefills from the
   `current` block of `GET /api/setup/status` (effective env → DB → default, secret rows
-  masked as `'****'`, never plaintext). The former wizard-only direct-PG-read endpoint
-  `POST /api/setup/prefill` was retired as dead code (no client caller).
+  masked as `'****'`, never plaintext). There is no wizard-only direct-PG-read endpoint.
+- **Optional AI step (AI platform):** the wizard gains one OPTIONAL, skippable
+  "AI" step (preset picker → chat/vision/asr role checkboxes → base-url/key/model inputs → per-role test
+  via the new `llm` target of `POST /api/setup/test`). Its values are written as **DB
+  `settings` rows through the same `writeSettings` path as every other non-T0 key — never
+  `.env`/`envFileWriter`** (the hot-apply rule: a mid-install config must be
+  restart-free). A skipped step costs nothing (chat/vision/asr stay the None column; embed
+  ships via the built-in engine regardless — its weights provisioning fires only when setup
+  completes, never during the wizard — `llmPresets.md` §2.3); the
+  full LLM config surface stays in admin (`/api/admin/config` + test), to which the wizard
+  step is only a shortcut to the same rows.
 
 ---
 
@@ -192,13 +221,16 @@ metadata DB by default; only T0 keys are written to `.env`.
 
 1. Load `.env` → T0 (metadata connection + `NODE_ENV`; plus `JWT_SECRET`, which is optional —
    an ephemeral random fallback is generated at boot when it is unset).
-2. Connect to the metadata DB using T0 only (D10: failure = boot failure). For sqlite this is
+2. Connect to the metadata DB using T0 only (failure = boot failure). For sqlite this is
    the local store; for the remote backend the `WEA_DB_*` connection.
 3. Compute the **effective config** = env-first over the plaintext DB `settings` rows and
    derive `setup_complete` from it.
-   - `setup_complete=false` → run in **setup mode** (wizard serves; reads/applies against the
-     target DB directly).
-   - `setup_complete=true` → load the T1 snapshot and boot normally.
+
+- `setup_complete=false` → run in **setup mode** (wizard serves; reads/applies against the
+  target DB directly).
+- `setup_complete=true` → load the T1 snapshot, run the embed provider decision + built-in
+  weights provisioning (`bootSequence.md` §2 step 8b; `llmPresets.md` §2.3), then boot normally.
+
 4. Mount app; T1 consumers read from the snapshot; T2 consumers use the lazy resolver
    (env → DB → default, TTL + invalidate-on-write).
 
@@ -217,7 +249,7 @@ Consequently, when `.env` has the PG connection info, boot still branches on wha
 
 ---
 
-## Admin "Advanced settings" UI (Q3)
+## Admin "Advanced settings" UI
 
 **Placement: no sidebar category.** The config editor lives inside the existing System Settings
 page as an "Advanced settings" accordion (`MUI Accordion`) within
@@ -244,36 +276,35 @@ map; the server registry is authoritative for tier/secret/source.
 
 - The "Advanced settings" accordion sits below the main settings rows; config is fetched
   lazily on first expand.
-- **Two top-level sections (config UI section split, 2026-09):**
-  - **Section A — "Runtime settings" (editable).** The four existing subgroups (File storage,
-    Server & security, Email, Runtime) render only keys whose effective state is editable:
-    registry tier T1/T2 AND `source !== 'env'` (db/default). All type-aware inputs, the
-    masked-secret "set new value" flow, the per-field tier badges and the connection-test
-    gating live here, unchanged.
-  - **Section B — "Deploy-time / platform configuration" (read-only).** Rendered below
-    Section A as a flat read-only list in registry order (the order keys arrive in the GET
-    payload). A key is platform-managed — listed here, never editable — when `tier === 'T0'`
-    **or** `source === 'env'`. Section B therefore shows **all T0 keys** (the metadata DB/boot
-    set — `WEA_SQLITE_PATH`, the `WEA_DB_*` remote-DB block incl. `WEA_DB_PASSWORD`, `NODE_ENV`,
-    `DOTENV_CONFIG_PATH`, `JWT_SECRET` — previously hidden from the editor) **plus any T1/T2 key
-    whose effective `source === 'env'`**. Each row shows the translated label, the value
-    (masked `'****'` for secrets; "(unset)"-style text when undefined) and a caption with the
-    tier + a "set in env" note. An intro note explains that these values are provided at deploy
-    time (env / `.env`), cannot be edited here, and require a deployment change + restart.
-  - This **supersedes the earlier "Metadata (T0) group removed (D5)" behavior**: T0 keys are no
-    longer hidden — they are shown read-only — and the per-row env/T0 "locked field" styling
-    inside the editable list is gone: an env-sourced or T0 key is never rendered as a disabled
-    editable field, it is relocated to Section B. The metadata DB connection / boot secrets stay
-    non-editable (health-card verification for the DB is unchanged).
-  - **Classification is state-driven** from the GET payload (`source` / `tier`); there is no
-    static key list and **no server change** — `PUT` still rejects (400) T0 keys
-    (`configT0Protected`) and keys whose current source is `env` (`configEnvSourcedProtected`),
-    so Section A membership cannot be bypassed via the API (F4).
-- **Connection-key save gating (D1):** editing an S3/WebDAV connection key (see
+- **Two top-level sections:**
+- **Section A — "Runtime settings" (editable).** The four existing subgroups (File storage,
+  Server & security, Email, Runtime) render only keys whose effective state is editable:
+  registry tier T1/T2 AND `source !== 'env'` (db/default). All type-aware inputs, the
+  masked-secret "set new value" flow, the per-field tier badges and the connection-test
+  gating live here, unchanged.
+- **Section B — "Deploy-time / platform configuration" (read-only).** Rendered below
+  Section A as a flat read-only list in registry order (the order keys arrive in the GET
+  payload). A key is platform-managed — listed here, never editable — when `tier === 'T0'`
+  **or** `source === 'env'`. Section B therefore shows **all T0 keys** (the metadata DB/boot
+  set — `WEA_SQLITE_PATH`, the `WEA_DB_*` remote-DB block incl. `WEA_DB_PASSWORD`, `NODE_ENV`,
+  `DOTENV_CONFIG_PATH`, `JWT_SECRET`) **plus any T1/T2 key
+  whose effective `source === 'env'`**. Each row shows the translated label, the value
+  (masked `'****'` for secrets; "(unset)"-style text when undefined) and a caption with the
+  tier + a "set in env" note. An intro note explains that these values are provided at deploy
+  time (env / `.env`), cannot be edited here, and require a deployment change + restart.
+- T0 keys are **shown read-only, never hidden**, and the editable list renders no per-row env/T0
+  "locked field" styling: an env-sourced or T0 key is never rendered as a disabled editable
+  field, it is relocated to Section B. The metadata DB connection / boot secrets stay
+  non-editable (verified through the health card).
+- **Classification is state-driven** from the GET payload (`source` / `tier`); there is no
+  static key list and **no server change** — `PUT` still rejects (400) T0 keys
+  (`configT0Protected`) and keys whose current source is `env` (`configEnvSourcedProtected`),
+  so Section A membership cannot be bypassed via the API.
+- **Connection-key save gating:** editing an S3/WebDAV connection key (see
   `docs/features/backend-health.md`) blocks Save until `POST /api/admin/config/test` with the
   pending values passes; changing a connection key invalidates the result; non-connection keys
   save without a test. Connection keys are editable only when db/default-sourced (Section A);
-  an env-sourced connection key appears read-only in Section B (D9 rationale unchanged: a DB
+  an env-sourced connection key appears read-only in Section B (a DB
   edit would be silently shadowed while the env var is present).
 - **Secrets:** Section A secrets are always masked as `'****'`; a "set new value" toggle
   reveals the field; submitting `'****'` or blank on save = keep the existing stored value
@@ -288,7 +319,7 @@ map; the server registry is authoritative for tier/secret/source.
   (applied immediately for T2). Each editable field shows a **tier badge** ("restart required"
   for T1 / "applies immediately" for T2) while editing, and after a save the T2 `applied` list
   is surfaced in its own banner — the operator sees exactly what took effect now vs what awaits
-  a restart (F5). Editor feedback reuses the page-level Snackbar. There is no key-loss banner:
+  a restart. Editor feedback reuses the page-level Snackbar. There is no key-loss banner:
   with no encryption there is no master key to lose.
 - `registration_enabled` stays in the main settings rows (above the accordion); no
   duplication.
@@ -311,16 +342,16 @@ The setup-mode guard (503 `setup.incomplete`) continues to block admin-write rou
 
 - Secret values are stored in the DB `settings` table as **plaintext strings**; masking is
   presentation-level only. A DB backup leak therefore exposes stored secret values in
-  plaintext — treat DB backups with the same care as the `.env` file (a plaintext-backup leak
-  replaces the former "ciphertext only" property). Residual: ciphertext rows written by older
+  plaintext — treat DB backups with the same care as the `.env` file. Residual: ciphertext
+  rows written by older
   versions are not auto-migrated; the operator may need to clean them up manually if any exist.
 - Secrets are never returned in plaintext over the API (`"****"`); in Section A the only write
   path for a secret is the set-new-value toggle, and Section B secrets are read-only masked rows.
 - T0 keys (`WEA_DB_*`, `WEA_SQLITE_PATH`, `JWT_SECRET`, …) are rejected by `PUT` — they
-  can only live in `.env` (D2/D4/D7).
+  can only live in `.env`.
 - `source=env` keys are read-only in the UI (Section B summary, never an editable field), and
   `PUT` rejects (400) an env-sourced write server-side — a DB copy would be silently shadowed by
-  the env value (D1/F4).
+  the env value.
 - Without encryption there is no master-key lifecycle: no key to keep, lose, or rotate, and no
   key-loss warning on any surface.
 

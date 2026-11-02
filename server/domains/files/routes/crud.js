@@ -14,7 +14,7 @@ const { getConflictsByNodeIds } = require('../services/conflictResolver');
 
 const { isSharePrincipal } = require('../../permissions/services/aclService');
 
-const { PERMISSIONS, HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
+const { HTTP_STATUS } = require('@webdav-easyaccess/shared/constants');
 const {
   SERVER_ERROR_CODES,
   SERVER_MESSAGE_CODES,
@@ -102,31 +102,42 @@ router.post(
     }
 
     const principalId = req.principalId;
-    const { fileNodeService, aclService } = getComposition();
-    const results = [];
+    const user = req.user?.full;
+    const { fileNodeService, fileService } = getComposition();
 
+    const nodes = [];
     for (const nodeId of nodeIds) {
       const parsedId = parseNodeId(nodeId, 'nodeId');
-      const hasRead = await aclService.checkFilePermission(principalId, parsedId, PERMISSIONS.READ);
-      if (!hasRead) continue;
-
       try {
         const node = await fileNodeService.getNode(parsedId);
-        if (node) {
-          results.push({
-            nodeId: node.id,
-            name: node.name,
-            type: node.type,
-            size: node.size ?? null,
-            lastmod: node.updatedAt,
-            mime: node.mimeType ?? null,
-          });
-        }
+        if (node) nodes.push(node);
       } catch (err) {
         if (err.status !== HTTP_STATUS.NOT_FOUND) {
           console.error(`[files/metadata] getNode failed for nodeId ${parsedId}:`, err.message);
         }
       }
+    }
+
+    // Flags are resolved by the directory-listing permission engine
+    // (fileService.resolvePermissionsForNodes — admin bypass, per-type
+    // READ/WRITE checks). Unreadable rows keep being dropped, unchanged.
+    const permissions = await fileService.resolvePermissionsForNodes(principalId, nodes, user);
+
+    const results = [];
+    for (const node of nodes) {
+      const flags = permissions.get(Number(node.id));
+      if (!flags || !flags.hasReadPermission) continue;
+
+      results.push({
+        nodeId: node.id,
+        name: node.name,
+        type: node.type,
+        size: node.size ?? null,
+        lastmod: node.updatedAt,
+        mime: node.mimeType ?? null,
+        hasReadPermission: flags.hasReadPermission,
+        hasWritePermission: flags.hasWritePermission,
+      });
     }
 
     res.json(results);
@@ -210,6 +221,22 @@ router.get(
     const buffer = await fileService.downloadFile(fileNodeId, principalId, user);
     if (!buffer) {
       throw notFoundError(SERVER_ERROR_CODES.files.notFound);
+    }
+
+    // §3.4 usage signal (register (a)): inline serve = preview, attachment =
+    // download. Fire-and-forget — a recording failure never breaks the stream.
+    if (!isSharePrincipal(principalId)) {
+      const { getUsageService } = require('../../../infrastructure/usageService');
+      getUsageService()
+        .recordEvent({
+          userId: Number(principalId),
+          nodeId: fileNodeId,
+          action: inline ? 'preview' : 'download',
+        })
+        .catch((error) => {
+          // eslint-disable-next-line no-console
+          console.error('usage recordEvent failed:', error);
+        });
     }
 
     const { fileNodeService } = getComposition();

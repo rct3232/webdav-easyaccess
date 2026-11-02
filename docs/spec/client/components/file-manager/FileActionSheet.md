@@ -19,23 +19,23 @@
 
 ### 2.2 Props
 
-| Name               | Type     | Required | Default | Description                                |
-| ------------------ | -------- | -------- | ------- | ------------------------------------------ |
-| open               | boolean  | Y        | -       | Drawer open                                |
-| onClose            | function | Y        | -       | Close handler                              |
-| file               | object   | Y        | -       | File object                                |
-| onDownload         | function | N        | -       | Download handler                           |
-| onRename           | function | N        | -       | Rename handler                             |
-| onMove             | function | N        | -       | Move handler                               |
-| onCopy             | function | N        | -       | Copy handler                               |
-| onDelete           | function | N        | -       | Delete handler                             |
-| onShare            | function | N        | -       | Share handler                              |
-| onPreview          | function | N        | -       | Preview handler                            |
-| onProperties       | function | N        | -       | Properties handler                         |
-| onRestore          | function | N        | -       | Trash restore handler (DEF-16 P9)          |
-| onPurge            | function | N        | -       | Trash permanent-delete handler (DEF-16 P9) |
-| hasWritePermission | boolean  | N        | true    | Default write permission                   |
-| user               | object   | N        | -       | User                                       |
+| Name               | Type     | Required | Default | Description                    |
+| ------------------ | -------- | -------- | ------- | ------------------------------ |
+| open               | boolean  | Y        | -       | Drawer open                    |
+| onClose            | function | Y        | -       | Close handler                  |
+| file               | object   | Y        | -       | File object                    |
+| onDownload         | function | N        | -       | Download handler               |
+| onRename           | function | N        | -       | Rename handler                 |
+| onMove             | function | N        | -       | Move handler                   |
+| onCopy             | function | N        | -       | Copy handler                   |
+| onDelete           | function | N        | -       | Delete handler                 |
+| onShare            | function | N        | -       | Share handler                  |
+| onPreview          | function | N        | -       | Preview handler                |
+| onProperties       | function | N        | -       | Properties handler             |
+| onRestore          | function | N        | -       | Trash restore handler          |
+| onPurge            | function | N        | -       | Trash permanent-delete handler |
+| hasWritePermission | boolean  | N        | true    | Default write permission       |
+| user               | object   | N        | -       | User                           |
 
 ### 2.3 Callback Signatures
 
@@ -52,7 +52,7 @@
 ### 2.5 i18n Keys
 
 - `actions.preview`, `actions.properties`, `actions.download`, `actions.rename`, `actions.move`, `actions.copy`, `actions.share`, `actions.delete`, `actions.folder`, `actions.file`
-- `actions.restore`, `actions.purge` – trash-view action rows (DEF-16 P9)
+- `actions.restore`, `actions.purge` – trash-view action rows
 
 ### 2.6 Conditional Rendering
 
@@ -61,11 +61,12 @@
 - Rename, move, delete only when fileWritePermission
 - file.hasWritePermission overrides hasWritePermission
 - Delete with divider above, error color
-- **Trash rows (DEF-16 P9):** when the host passes `onRestore`/`onPurge`, Restore (`data-testid="trash-action-restore"`) and Permanent delete (`data-testid="trash-action-purge"`, error accent, divider) render gated by `fileWritePermission`; the host withholds the live-item callbacks in the trash view so only Restore / Permanent delete / Properties remain.
+- **Like row:** liked-state heart = theme palette token `like` (`#FF3E55`) — never `error` (delete/danger semantics stay distinct).
+- **Trash rows:** when the host passes `onRestore`/`onPurge`, Restore (`data-testid="trash-action-restore"`) and Permanent delete (`data-testid="trash-action-purge"`, error accent, divider) render gated by `fileWritePermission`; the host withholds the live-item callbacks in the trash view so only Restore / Permanent delete / Properties remain.
 - E2E selector contract:
-  - action rows that must be shared with the desktop context-menu flow expose stable `data-testid` values (for example rename/delete)
-  - this keeps mobile and desktop action selection aligned even though the rendered component differs
-  - mobile CRUD flow tests may rely on these stable action rows to verify rename/delete through the action sheet without depending on localized list text
+- action rows that must be shared with the desktop context-menu flow expose stable `data-testid` values (for example rename/delete)
+- this keeps mobile and desktop action selection aligned even though the rendered component differs
+- mobile CRUD flow tests may rely on these stable action rows to verify rename/delete through the action sheet without depending on localized list text
 
 ### 2.7 Verification Scenarios
 
@@ -81,3 +82,20 @@ Checklist for unit test writing:
 
 - Safe area inset padding
 - file.basename \|\| file.name for display
+
+---
+
+## 3. AI-platform entries (AI platform)
+
+Mobile mirror of `FileContextMenu.md` §3 — same entry set, same phase, long-press/More-sheet surface (docs/features/collections-platform.md §3.2/§3.3; `AddToCollectionMenu.md`, `MemberRowControls.md`).
+
+- **New rows:** `Add to collection` (optional callback `onAddToCollection(file)` — the sheet closes and the SHELL-OWNED `AddToCollectionMenu` opens viewport-centered, the mobile analogue of the context-menu-anchored desktop flow) and `Like` toggle (optional callback `onToggleLike(file)`, state from row data `file.liked` — viewer-scoped only). Rows follow the existing "callback provided ⇒ row renders" gating (§2.6); like does not sit above the delete divider.
+- **Member-list variant:** opened on a collection MEMBER row, the sheet renders exactly the `MemberRowControls.md` §2.3 set (exclude / publish / download / `Reveal original location` / properties / like); **move/copy/rename/delete rows are absent by rule** (collection is a view, not a workspace), enforced by the host withholding the callbacks — same snapshot invariant as desktop.
+- i18n (appends §2.5): `fileManager.addToCollection`, `fileManager.memberLike`/`fileManager.memberUnlike`.
+- E2E selector contract: `data-testid="collection-add"` / `data-testid="like-toggle"` identical to the desktop context menu.
+
+Verification (appends §2.7):
+
+- [ ] (target) Each new row invokes its callback then closes (handleAction idiom).
+- [ ] (target) Member-context snapshot offers no file-mutating rows.
+- Operator rule (admin is a pure operator): `collection-add` / `like-toggle` rows are hidden for admin via callback-withhold (shell passes `onAddToCollection`/`onToggleLike` as `undefined` — absent, never disabled).

@@ -6,21 +6,27 @@ import { createRequire } from 'node:module';
 
 import { expect, type Page } from '@playwright/test';
 
+import { composeProject, e2ePorts, s3Endpoint, webdavBase } from './ports';
+import { emptyS3Bucket, ensureS3BucketExists } from './minio';
+
 /**
- * Hermetic scratch-instance helpers for the first-run setup-wizard
- * (`setup-wizard.spec.ts`), admin-config (`admin-config.spec.ts`) and migration
- * (`migration.spec.ts`) E2E specs. The shared E2E
- * infrastructure (`:5002` server, `:3000` client, `webdav_e2e` PG database) is
- * unusable for these specs because they spawn and supervise their own scratch
- * instance — in the wizard case restart is the behavior under test.
+ * Hermetic scratch-instance helpers shared by every scratch-backed E2E suite
+ * (S3, WebDAV, and the browser-backed reconciliation specs). These suites
+ * cannot use the shared E2E infrastructure (the band's API/client servers and
+ * the shared `webdav_e2e` PG database) because each one spawns and supervises
+ * its own scratch instance with its own metadata store and file backend; in
+ * the wizard case restart is the behavior under test.
  *
  * Every helper here is scratch-owned: own `.env` via `DOTENV_CONFIG_PATH`, own
  * sqlite path, own scratch PG database (`webdav_e2e_setup`, separate from the
  * read-only `webdav_e2e` used by the shared E2E infrastructure).
  *
- * Port contract (Option A Phase 1): each hermetic suite owns ONE distinct
- * scratch port so the suites can run concurrently — setup-wizard :5003
- * (the exported `scratchPort`), admin-config :5010, migration :5011, trash-admin :5012. The port
+ * Port contract (Option A Phase 1 + band isolation 2026-09-30): each hermetic
+ * suite owns ONE distinct scratch port slot so the suites can run
+ * concurrently — setup-wizard (base :5003, the exported `scratchPort`),
+ * admin-config (:5010), migration (:5011), trash-admin (:5012), collections
+ * (:5013, dual-platform chained); every slot shifts with this checkout's port band
+ * (`e2e/helpers/ports.ts`). The port
  * is passed explicitly to `spawnScratchServer`/`waitForScratchHealth` and must
  * match the suite's playwright.config.ts baseURL. `pg` is required via
  * `createRequire` (ships no types; the local structural type keeps the surface
@@ -31,7 +37,7 @@ const require = createRequire(__filename);
 
 const rootDir = process.cwd();
 const SCRATCH_ROOT = path.join(rootDir, 'e2e-data', 'setup-wizard');
-const SCRATCH_PORT = 5003;
+const SCRATCH_PORT = e2ePorts.scratchWizard;
 
 /** The setup-wizard suite's scratch server port (mirrors playwright.config.ts setup-wizard baseURL). */
 export const scratchPort = SCRATCH_PORT;
@@ -62,6 +68,11 @@ const CONFIG_ENV_KEYS = [
   'WEBDAV_USERNAME',
   'WEBDAV_PASSWORD',
   'WEBDAV_AUTH_TYPE',
+  'WEA_MODEL_DIR',
+  'WEA_SKIP_EMBED_MODEL',
+  // Ambient truthy values would silently disable the worker. The seam is a
+  // truthy check, so never set it to '0'; absence is the enabled state.
+  'WEA_SKIP_AI_WORKER',
   'JWT_SECRET',
   'JWT_EXPIRES_IN',
   'PORT',
@@ -78,14 +89,14 @@ const CONFIG_ENV_KEYS = [
 ];
 
 // Docker-compose defaults (mirror e2e/global-setup.ts). The scratch PG helpers
-// connect to the e2e Postgres superuser on the host-exposed :5433.
+// connect to the e2e Postgres superuser on this band's host-exposed port.
 const PG_HOST = '127.0.0.1';
-const PG_PORT = 5433;
+const PG_PORT = e2ePorts.pg;
 const PG_USER = process.env.WEA_DB_USER || 'e2etest';
 const PG_PASSWORD = process.env.WEA_DB_PASSWORD || 'e2etest';
 
 // bytemark/webdav container defaults (mirror e2e/global-setup.ts).
-const WEBDAV_BASE = 'http://127.0.0.1:8090';
+const WEBDAV_BASE = webdavBase;
 const WEBDAV_AUTH = Buffer.from('e2etest:e2etest123').toString('base64');
 
 type PgPool = {
@@ -106,26 +117,48 @@ function getPg() {
   return Pool;
 }
 
-/** Absolute path to a case's scratch directory (`e2e-data/setup-wizard/<case>/`). */
-export function scratchDirFor(caseId: string): string {
-  return path.join(SCRATCH_ROOT, caseId);
+/** Project slug used by every project-scoped scratch resource. */
+export function scratchProjectSlug(projectName: string): string {
+  return projectName.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
 }
 
-/**
- * Ensure `client/build` exists (the scratch server serves the SPA
- * statically, same-origin `/api`). No-op when the build is already present.
- */
+/** Absolute path to a case's scratch directory, scoped by project when supplied. */
+export function scratchDirFor(caseId: string, projectName?: string): string {
+  const scopedCase = projectName ? `${caseId}-${scratchProjectSlug(projectName)}` : caseId;
+  return path.join(SCRATCH_ROOT, scopedCase);
+}
+
+/** S3 bucket owned by one E2E project. */
+export function scratchS3Bucket(projectName: string, prefix = 'e2e-scratch'): string {
+  return `${prefix}-${scratchProjectSlug(projectName)}`;
+}
+
+/** Environment required by a scratch server that uses the S3 file backend. */
+export function s3ScratchEnv(bucket: string): Record<string, string> {
+  return {
+    WEA_FILE_STORAGE: 's3',
+    S3_BUCKET: bucket,
+    S3_ENDPOINT: process.env.S3_ENDPOINT || s3Endpoint,
+    AWS_REGION: process.env.AWS_REGION || 'us-east-1',
+    AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID || 'minioadmin',
+    AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin',
+  };
+}
+
+/** Non-AI scratch servers must not load the embedding worker/model. */
+export function scratchRuntimeEnv(extra: Record<string, string> = {}): Record<string, string> {
+  return {
+    WEA_SKIP_AI_WORKER: '1',
+    WEA_SKIP_EMBED_MODEL: '1',
+    ...extra,
+  };
+}
+
+// Build bootstrap delegated to the shared scripts/lib module (single freshness
+// + eslint-disabled build path for ALL E2E entry points — see that file's
+// header for the rationale).
 export function ensureClientBuild(): void {
-  const buildIndex = path.join(rootDir, 'client', 'build', 'index.html');
-  if (fs.existsSync(buildIndex)) return;
-  console.log('[setup-scratch] client/build missing — building client...');
-  const result = spawnSync('npm', ['run', 'build', '--workspace', 'client'], {
-    cwd: rootDir,
-    stdio: 'inherit',
-  });
-  if (result.status !== 0 || !fs.existsSync(buildIndex)) {
-    throw new Error('client build did not produce client/build/index.html');
-  }
+  require('../../scripts/lib/ensureClientBuild.js').ensureClientBuild(rootDir, '[setup-scratch]');
 }
 
 /**
@@ -155,8 +188,21 @@ export function spawnScratchServer(
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
+  const stderrTail: string[] = [];
   child.stdout?.on('data', (d: Buffer) => process.stdout.write(`[setup-scratch:${port}] ${d}`));
-  child.stderr?.on('data', (d: Buffer) => process.stderr.write(`[setup-scratch:${port}] ${d}`));
+  child.stderr?.on('data', (d: Buffer) => {
+    const text = String(d);
+    stderrTail.push(text);
+    if (stderrTail.length > 40) stderrTail.shift();
+    process.stderr.write(`[setup-scratch:${port}] ${text}`);
+  });
+  child.on('exit', (code, signal) => {
+    // Normal teardown is SIGKILL; only surface abnormal exits with the tail.
+    if (code === 0 || signal === 'SIGKILL') return;
+    console.error(
+      `[setup-scratch:${port}] exited code=${code} signal=${signal}\n${stderrTail.join('')}`
+    );
+  });
 
   return child;
 }
@@ -317,13 +363,17 @@ export function queryScratchSqlite<T = Record<string, unknown>>(
   sql: string
 ): Promise<T[]> {
   return new Promise((resolve, reject) => {
-    const { Database } = require('sqlite3') as {
-      Database: new (path: string) => {
+    const { Database, OPEN_READONLY } = require('sqlite3') as {
+      Database: new (
+        path: string,
+        mode?: number
+      ) => {
         all: (sql: string, cb: (err: Error | null, rows: T[]) => void) => void;
         close: (cb?: (err: Error | null) => void) => void;
       };
+      OPEN_READONLY: number;
     };
-    const db = new Database(dbPath);
+    const db = new Database(dbPath, OPEN_READONLY);
     db.all(sql, (err, rows) => {
       db.close(() => {});
       if (err) reject(err);
@@ -365,7 +415,8 @@ export function execScratchSqlite(dbPath: string, sql: string): Promise<void> {
  * stored as plaintext and read back directly by the server. Defaults `url` to
  * the shared WEBDAV_BASE.
  */
-export async function seedWebdavSettings(scratchDir: string, url = WEBDAV_BASE): Promise<void> {
+export async function seedWebdavSettings(scratchDir: string, url: string): Promise<void> {
+  if (!url) throw new Error('seedWebdavSettings requires the case-scoped WebDAV URL');
   const dbPath = path.join(scratchDir, 'webdav.db');
   await execScratchSqlite(
     dbPath,
@@ -387,6 +438,54 @@ export async function seedWebdavSettings(scratchDir: string, url = WEBDAV_BASE):
       `INSERT OR REPLACE INTO settings (key, value) VALUES ('${key}', '${value}')`
     );
   }
+}
+
+/** THE scratch WebDAV root contract: every case owns `/setup-e2e/<project>/<caseId>`. */
+export function scratchWebdavUrl(caseId: string, projectName?: string): string {
+  const scopedCase = projectName ? `${scratchProjectSlug(projectName)}/${caseId}` : caseId;
+  return `${WEBDAV_BASE}/setup-e2e/${scopedCase}`;
+}
+
+/**
+ * Prepare the case-scoped WebDAV root BEFORE the scratch server boots and seed
+ * the SAME URL into the scratch DB. Server URL, upstream URL, subtree creation
+ * and the physical user homes all derive from this one value.
+ */
+export async function prepareScratchWebdav(
+  scratchDir: string,
+  caseId: string,
+  projectName?: string
+): Promise<string> {
+  const url = scratchWebdavUrl(caseId, projectName);
+  await ensureWebdavSubtree(projectName ? `${scratchProjectSlug(projectName)}/${caseId}` : caseId);
+  await seedWebdavSettings(scratchDir, url);
+  return url;
+}
+
+/** Prepare the S3 bucket owned by one scratch project; empty it for a deterministic run. */
+export async function prepareScratchS3(
+  projectName: string,
+  bucketPrefix = 'e2e-scratch'
+): Promise<string> {
+  const bucket = scratchS3Bucket(projectName, bucketPrefix);
+  await ensureS3BucketExists(bucket);
+  await emptyS3Bucket(bucket);
+  return bucket;
+}
+
+/** Unified scratch storage setup for S3 and WebDAV hermetic suites. */
+export async function prepareScratchStorage(
+  scratchDir: string,
+  caseId: string,
+  backend: 's3' | 'webdav',
+  projectName: string
+): Promise<{ backend: 's3' | 'webdav'; bucket?: string; webdavUrl?: string }> {
+  if (backend === 'webdav') {
+    const webdavUrl = await prepareScratchWebdav(scratchDir, caseId, projectName);
+    return { backend, webdavUrl };
+  }
+  const bucket = await prepareScratchS3(projectName);
+  return { backend, bucket };
 }
 
 /**
@@ -413,20 +512,62 @@ export async function ensureWebdavSubtree(caseId: string): Promise<void> {
     current += `/${segment}`;
     await mkcol(`${WEBDAV_BASE}${current}`);
   }
+  // MKCOL 409/405 is tolerated as "already exists" by mkcol(); verify the
+  // final collection is actually reachable so a bad parent surfaces HERE, not
+  // as a 500 in the first folders/create request.
+  await assertCollection(`${WEBDAV_BASE}${current}/`);
 }
 
-/** Restore the webdav dav root (restart the container when PROPFIND / is not 200/207). */
+/** PROPFIND Depth:0 assertion for a prepared scratch collection. */
+function assertCollection(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      url,
+      {
+        method: 'PROPFIND',
+        headers: { Authorization: `Basic ${WEBDAV_AUTH}`, Depth: '0' },
+        timeout: 5000,
+      },
+      (res) => {
+        res.resume();
+        const status = res.statusCode || 0;
+        if (status === 200 || status === 207) resolve();
+        else reject(new Error(`scratch WebDAV collection ${url} is not reachable (${status})`));
+      }
+    );
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`scratch WebDAV collection ${url} PROPFIND timed out`));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+/** Restore the webdav dav root (compose-restart the webdav-test service when PROPFIND / is not 200/207). */
 async function ensureWebdavRootReady(): Promise<void> {
   if (await propfindRootOk(2)) return;
 
-  console.log('[setup-scratch] webdav dav root missing — restarting webdav-e2e-test...');
-  execFileSync('docker', ['restart', 'webdav-e2e-test'], { cwd: rootDir, stdio: 'inherit' });
+  console.log('[setup-scratch] webdav dav root missing — compose restart webdav-test...');
+  execFileSync(
+    'docker',
+    [
+      'compose',
+      '-p',
+      composeProject,
+      '-f',
+      path.join(rootDir, 'docker-compose.e2e.yml'),
+      'restart',
+      'webdav-test',
+    ],
+    { cwd: rootDir, stdio: 'inherit' }
+  );
 
   const startedAt = Date.now();
   // eslint-disable-next-line no-await-in-loop
   while (!(await propfindRootOk(1))) {
     if (Date.now() - startedAt > 60_000) {
-      throw new Error('webdav dav root did not become reachable after restarting webdav-e2e-test');
+      throw new Error('webdav dav root did not become reachable after restarting webdav-test');
     }
   }
 }

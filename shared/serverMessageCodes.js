@@ -69,6 +69,11 @@ const SERVER_ERROR_CODES = {
     configT0Protected: P('serverErrors.admin', 'configT0Protected'),
     configInvalidPayload: P('serverErrors.admin', 'configInvalidPayload'),
     configEnvSourcedProtected: P('serverErrors.admin', 'configEnvSourcedProtected'),
+    reportNotFound: P('serverErrors.admin', 'reportNotFound'),
+    repairNotAvailable: P('serverErrors.admin', 'repairNotAvailable'),
+    reembedRateLimited: P('serverErrors.admin', 'reembedRateLimited'),
+    reembedAlreadyActive: P('serverErrors.admin', 'reembedAlreadyActive'),
+    reembedModelUnavailable: P('serverErrors.admin', 'reembedModelUnavailable'),
   },
   share: {
     shareLinkNotFound: P('serverErrors.share', 'shareLinkNotFound'),
@@ -197,9 +202,55 @@ const SERVER_ERROR_CODES = {
   storage: {
     invalidPathMapping: P('serverErrors.storage', 'invalidPathMapping'),
     postgresqlNotConfigured: P('serverErrors.storage', 'postgresqlNotConfigured'),
+    emptyNodeIds: P('serverErrors.storage', 'emptyNodeIds'),
+    invalidSuggestionId: P('serverErrors.storage', 'invalidSuggestionId'),
+    suggestionNotFound: P('serverErrors.storage', 'suggestionNotFound'),
+    forbidden: P('serverErrors.storage', 'forbidden'),
   },
   users: {
     emailRequired: P('serverErrors.users', 'emailRequired'),
+  },
+  // AI-platform domain keys (docs/shared-contracts.md §Error-code domains
+  // introduced by the AI platform). Client en.json/ko.json mirror is mandatory.
+  collections: {
+    nameRequired: P('serverErrors.collections', 'nameRequired'),
+    invalidName: P('serverErrors.collections', 'invalidName'),
+    invalidSort: P('serverErrors.collections', 'invalidSort'),
+    invalidInclude: P('serverErrors.collections', 'invalidInclude'),
+    invalidPublishMode: P('serverErrors.collections', 'invalidPublishMode'),
+    invalidRole: P('serverErrors.collections', 'invalidRole'),
+    emptyNodeIds: P('serverErrors.collections', 'emptyNodeIds'),
+    previewTargetRequired: P('serverErrors.collections', 'previewTargetRequired'),
+    mergeSameCollection: P('serverErrors.collections', 'mergeSameCollection'),
+
+    invalidDefinition: P('serverErrors.collections', 'invalidDefinition'),
+    forbidden: P('serverErrors.collections', 'forbidden'),
+    notFound: P('serverErrors.collections', 'notFound'),
+    granteeNotFound: P('serverErrors.collections', 'granteeNotFound'),
+    grantNotFound: P('serverErrors.collections', 'grantNotFound'),
+    suggestionNotFound: P('serverErrors.collections', 'suggestionNotFound'),
+    alreadyArchived: P('serverErrors.collections', 'alreadyArchived'),
+    notArchived: P('serverErrors.collections', 'notArchived'),
+  },
+  ai: {
+    notConfigured: P('serverErrors.ai', 'notConfigured'),
+    budgetExceeded: P('serverErrors.ai', 'budgetExceeded'),
+    providerProbeFailed: P('serverErrors.ai', 'providerProbeFailed'),
+    nonConformingEndpoint: P('serverErrors.ai', 'nonConformingEndpoint'),
+  },
+  search: {
+    queryRequired: P('serverErrors.search', 'queryRequired'),
+    queryTooLong: P('serverErrors.search', 'queryTooLong'),
+    clickTargetRequired: P('serverErrors.search', 'clickTargetRequired'),
+    fail: P('serverErrors.search', 'fail'),
+  },
+  actions: {
+    invalidDomain: P('serverErrors.actions', 'invalidDomain'),
+    notFound: P('serverErrors.actions', 'notFound'),
+    cascadeConfirmRequired: P('serverErrors.actions', 'cascadeConfirmRequired'),
+    fingerprintMismatch: P('serverErrors.actions', 'fingerprintMismatch'),
+    expired: P('serverErrors.actions', 'expired'),
+    alreadyUndone: P('serverErrors.actions', 'alreadyUndone'),
   },
   utilsAuth: {
     accessTokenRequired: P('serverErrors.utilsAuth', 'accessTokenRequired'),
@@ -234,6 +285,7 @@ const SERVER_MESSAGE_CODES = {
     migrationCancelled: P('serverMessages.admin', 'migrationCancelled'),
     configSaved: P('serverMessages.admin', 'configSaved'),
     configSyncDone: P('serverMessages.admin', 'configSyncDone'),
+    reportRepaired: P('serverMessages.admin', 'reportRepaired'),
   },
   folders: {
     createSuccess: P('serverMessages.folders', 'createSuccess'),

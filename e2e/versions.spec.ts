@@ -19,6 +19,9 @@ test.use({ storageState: ADMIN_STATE });
  * rendered only when the active file storage is s3; the webdav-mode smoke
  * intentionally excludes this spec).
  *
+ * Owning projects: `s3-desktop` / `s3-mobile` (shared stack: API `:5002`,
+ * client `:3000`; admin `storageState` via `ADMIN_STATE`).
+ *
  * Cleanup uses the admin permanent-delete maintenance route so case files
  * never accumulate (assertion-context containment).
  */

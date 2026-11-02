@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                                                       |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role | Singleton service factory that wires all Phase 2-4 services once at startup. Routes call `getComposition()` to obtain pre-configured, cached service instances rather than constructing dependencies per-request. |
+| Item | Description                                                                                                                                                                                             |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role | Singleton service factory that wires all services once at startup. Routes call `getComposition()` to obtain pre-configured, cached service instances rather than constructing dependencies per-request. |
 
 ---
 
@@ -67,11 +67,11 @@ Internal factory function (also exported). Builds the full dependency graph from
     blobStorageService, // blob lifecycle service
     uploadService, // multipart/single-part upload coordinator
     aclService, // permission/ACL evaluation service
-    fileService, // high-level file operations (Phase 3)
-    batchOperationService, // bulk move/copy/delete operations (Phase 4)
-    downloadService, // streaming download service (Phase 4)
-    gcService, // two-tier orphaned-blob garbage collection (Phase 6)
-    failSafeService); // stuck-node scan + repair: orphaned_node + pending_upload (Phase 6, DEF-12/13)
+    fileService, // high-level file operations
+    batchOperationService, // bulk move/copy/delete operations
+    downloadService, // streaming download service
+    gcService, // two-tier orphaned-blob garbage collection
+    failSafeService); // stuck-node scan + repair: orphaned_node + pending_upload
 }
 ```
 

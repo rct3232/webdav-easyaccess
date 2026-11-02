@@ -163,10 +163,11 @@ describe('createBlobStorageService', () => {
       await service.completeUpload(s3Key, 1024, 'text/plain');
 
       const afterActive = await dbQuery(
-        `SELECT status FROM object_map WHERE file_node_id = ? AND s3_key = ?`,
+        `SELECT status, size FROM object_map WHERE file_node_id = ? AND s3_key = ?`,
         [node.id, s3Key]
       );
       expect(afterActive.rows[0].status).toBe('active');
+      expect(Number(afterActive.rows[0].size)).toBe(1024);
 
       await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
     });
@@ -245,6 +246,7 @@ describe('createBlobStorageService', () => {
       const activeBefore = await fileNodesStore.getActiveObject(node.id);
       expect(activeBefore.s3_key).toBe(oldS3Key);
       expect(activeBefore.version_number).toBe(1);
+      expect(Number(activeBefore.size)).toBe(11);
 
       const newBuffer = Buffer.from('new content here');
       const newS3Key = await service.overwriteBlob(node.id, newBuffer);
@@ -255,6 +257,7 @@ describe('createBlobStorageService', () => {
       const activeAfter = await fileNodesStore.getActiveObject(node.id);
       expect(activeAfter.s3_key).toBe(newS3Key);
       expect(activeAfter.version_number).toBe(2);
+      expect(Number(activeAfter.size)).toBe(newBuffer.length);
       expect(typeof newS3Key).toBe('string');
       expect(newS3Key.length).toBe(36);
 
@@ -589,11 +592,12 @@ describe('createBlobStorageService', () => {
       const node = await fileNodesStore.createNode(null, 'cow-link-test', 'file');
       const s3Key = crypto.randomUUID();
 
-      await service.linkObject(node.id, s3Key);
+      await service.linkObject(node.id, s3Key, 1234);
 
       const obj = await fileNodesStore.getActiveObject(node.id);
       expect(obj).not.toBeNull();
       expect(obj.s3_key).toBe(s3Key);
+      expect(Number(obj.size)).toBe(1234);
 
       await dbRun(`DELETE FROM object_map WHERE file_node_id = ?`, [node.id]);
       await dbRun(`DELETE FROM file_nodes WHERE id = ?`, [node.id]);
@@ -611,9 +615,9 @@ describe('createBlobStorageService', () => {
       // Both nodes reference the same blob at version 1 (production copy flow:
       // copyFile → linkObject inserts the shared key at v1 for the copy node).
       await dbRun(
-        `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
-         VALUES (?, ?, 's3', 1, ?)`,
-        [nodeA.id, sharedKey, 'active']
+        `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status, size)
+         VALUES (?, ?, 's3', 1, ?, ?)`,
+        [nodeA.id, sharedKey, 'active', 321]
       );
       await dbRun(
         `INSERT INTO object_map (file_node_id, s3_key, storage_backend, version_number, status)
@@ -630,6 +634,7 @@ describe('createBlobStorageService', () => {
       // orphaned, new version inserted), while nodeB keeps the shared blob.
       const activeA = await fileNodesStore.getActiveObject(nodeA.id);
       expect(activeA.s3_key).toBe(newKey);
+      expect(Number(activeA.size)).toBe(321);
 
       const activeB = await fileNodesStore.getActiveObject(nodeB.id);
       expect(activeB).not.toBeNull();

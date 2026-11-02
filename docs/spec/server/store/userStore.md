@@ -2,9 +2,9 @@
 
 ## 1. Overview
 
-| Item | Description                                                                                                                                                                                |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role | User persistence: CRUD users and identity lookups by id/username/email. Uses the normalized `users` table in `postgresql`/`sqlite` backends. FsJSON file/index storage removed in Phase 7. |
+| Item | Description                                                                                                                                                                        |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role | User persistence: CRUD users and identity lookups by id/username/email. Uses the normalized `users` table in `postgresql`/`sqlite` backends. FsJSON file/index storage is removed. |
 
 ---
 
@@ -14,7 +14,7 @@
 
 - **Source:** `server/store/userStore.js`
 - **Test file:** `server/store/__tests__/userStore.test.js`
-- **L2 conformance:** `server/store/repositories/__tests__/UserRepository.conformance.test.js` (sqlite default leg; real PostgreSQL under the `test:ci:pg:adapters` leg)
+- **L2 conformance:** `server/store/repositories/__tests__/UserRepository.conformance.test.js` (sqlite default leg; real PostgreSQL under the `test:pg:adapters` leg)
 
 ### 2.2 Main Methods
 
@@ -33,7 +33,7 @@
 
 ### 2.3 Storage Paths
 
-- None — users are DB rows (`users` table) only. FsJSON `/.wea/users/*` and `/.wea/index/email/*` removed in Phase 7.
+- None — users are DB rows (`users` table) only. FsJSON `/.wea/users/*` and `/.wea/index/email/*` are removed.
 
 ### 2.4 PostgreSQL v2 Table Mapping
 

@@ -3,11 +3,12 @@
  * @see docs/spec/client/hooks/useFolderTreeController.md
  */
 import { renderHook, act, waitFor } from '@testing-library/react';
-import useFolderTreeController from '../useFolderTreeController';
+import useFolderTreeController, { isCollectionsRoute } from '../useFolderTreeController';
 
 import { getRecentFiles } from '../../../../services/recentFilesRepository';
 import { onRecentFilesChange } from '../../../../services/recentFilesNotifier';
 import folderTreeGateway from '../../../../services/folderTreeGateway';
+import explorerGateway from '../../../../services/explorerGateway';
 
 jest.mock('../../../../services/recentFilesRepository', () => {
   const { createRecentFilesRepositoryMock } = require('../../../../testing/mocks/serviceMocks');
@@ -24,6 +25,11 @@ jest.mock('../../../../services/folderTreeGateway', () => {
   return createFolderTreeGatewayMock();
 });
 
+jest.mock('../../../../services/explorerGateway', () => {
+  const { createExplorerGatewayMock } = require('../../../../testing/mocks/serviceMocks');
+  return { __esModule: true, default: createExplorerGatewayMock() };
+});
+
 const renderControllerHook = (initialProps) =>
   renderHook((props) => useFolderTreeController(props), { initialProps });
 
@@ -37,6 +43,10 @@ describe('useFolderTreeController', () => {
     getRecentFiles.mockResolvedValue([]);
     onRecentFilesChange.mockImplementation(() => jest.fn());
     folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
+    // CRA resetMocks strips the serviceMocks factory implementations — re-supply
+    // the §3 collections seams so the new effect can mount/unmount everywhere.
+    explorerGateway.loadCollections.mockResolvedValue({ collections: [] });
+    explorerGateway.subscribeToCollections.mockImplementation(() => jest.fn());
   });
 
   it('loads recent files for a non-null user and clears them when user becomes falsy', async () => {
@@ -320,5 +330,305 @@ describe('useFolderTreeController', () => {
     expect(onNodeClick).toHaveBeenCalledWith('/__recent__');
     expect(onNodeClick).toHaveBeenCalledWith(10);
     expect(result.current.recentExpanded).toBe(true);
+  });
+});
+
+/**
+ * AI-platform virtual-node registration (§3 addendum + CollectionsSection §2.5/§2.6).
+ * @see docs/spec/client/hooks/useFolderTreeController.md §3
+ */
+describe('useFolderTreeController — collections section (§3)', () => {
+  const rowA = {
+    collection_id: 7,
+    name: 'Alpha',
+    item_count: 3,
+    granted_role: null,
+    status: 'active',
+    origin: 'user',
+    created_at: '2026-01-01T00:00:00Z',
+  };
+  const rowShared = {
+    collection_id: 8,
+    name: 'Received',
+    item_count: 1,
+    granted_role: 'viewer',
+    status: 'active',
+    origin: 'seed',
+    created_at: '2026-01-02T00:00:00Z',
+  };
+
+  const renderCollections = (props = {}) =>
+    renderControllerHook({
+      currentNodeId: null,
+      currentPath: '/',
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
+      ...props,
+    });
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    // Base seams must stay array/cleanup-safe for this hook's other effects too.
+    getRecentFiles.mockResolvedValue([]);
+    onRecentFilesChange.mockImplementation(() => jest.fn());
+    folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
+    explorerGateway.loadCollections.mockReset();
+    explorerGateway.loadCollections.mockImplementation(async () => ({
+      collections: [rowA, rowShared],
+    }));
+    explorerGateway.subscribeToCollections.mockReset();
+    explorerGateway.subscribeToCollections.mockImplementation(() => jest.fn());
+  });
+
+  it('loads flat tree rows via the gateway activity+include seams (depth-1: collection rows only)', async () => {
+    const { result } = renderCollections();
+    await waitFor(() => {
+      expect(result.current.collectionsTreeRows).toHaveLength(2);
+    });
+    expect(explorerGateway.loadCollections).toHaveBeenCalledWith({
+      sort: 'activity',
+      include: 'mine,shared',
+    });
+    expect(explorerGateway.loadCollections).toHaveBeenCalledTimes(1);
+    // depth-1: the tree state exposes collection rows only — never member items
+    expect(result.current.collectionsTreeRows.map((r) => r.collection_id)).toEqual([7, 8]);
+    expect(explorerGateway.loadCollectionItems).not.toHaveBeenCalled();
+  });
+
+  it('notifier events refresh the flat rows; unmount unsubscribes', async () => {
+    let notify;
+    const unsubscribe = jest.fn();
+    explorerGateway.subscribeToCollections.mockImplementation((cb) => {
+      notify = cb;
+      return unsubscribe;
+    });
+    const { result, unmount } = renderCollections();
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(2));
+    expect(explorerGateway.subscribeToCollections).toHaveBeenCalled();
+
+    explorerGateway.loadCollections.mockImplementation(async () => ({ collections: [rowA] }));
+    await act(async () => {
+      notify();
+    });
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(1));
+
+    unmount();
+    expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it('starts expanded on a collections route and remounts expanded', async () => {
+    const first = renderCollections({ currentPath: '/__collections__' });
+    expect(first.result.current.collectionsExpanded).toBe(true);
+    await waitFor(() => expect(first.result.current.collectionsTreeRows).toHaveLength(2));
+    first.unmount();
+
+    const second = renderCollections({ currentPath: '/__collections__' });
+    expect(second.result.current.collectionsExpanded).toBe(true);
+    await waitFor(() => expect(second.result.current.collectionsTreeRows).toHaveLength(2));
+  });
+
+  it('notifier refresh updates rows without resetting an expanded section', async () => {
+    let notify;
+    explorerGateway.subscribeToCollections.mockImplementation((cb) => {
+      notify = cb;
+      return jest.fn();
+    });
+    const { result } = renderCollections({ currentPath: '/__collections__' });
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(2));
+    expect(result.current.collectionsExpanded).toBe(true);
+
+    explorerGateway.loadCollections.mockImplementation(async () => ({ collections: [rowA] }));
+    await act(async () => {
+      notify();
+    });
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(1));
+    expect(result.current.collectionsExpanded).toBe(true);
+  });
+
+  it('preserves an explicit manual collapse on the unchanged route across notifier refresh', async () => {
+    let notify;
+    explorerGateway.subscribeToCollections.mockImplementation((cb) => {
+      notify = cb;
+      return jest.fn();
+    });
+    const { result, rerender } = renderCollections({ currentPath: '/__collections__' });
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(2));
+    expect(result.current.collectionsExpanded).toBe(true);
+
+    act(() => result.current.handleCollectionsToggle({ stopPropagation: jest.fn() }));
+    expect(result.current.collectionsExpanded).toBe(false);
+
+    explorerGateway.loadCollections.mockImplementation(async () => ({
+      collections: [rowShared],
+    }));
+    await act(async () => {
+      notify();
+    });
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(1));
+    expect(result.current.collectionsExpanded).toBe(false);
+
+    rerender({
+      currentNodeId: null,
+      currentPath: '/__collections__',
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
+    });
+    expect(result.current.collectionsExpanded).toBe(false);
+  });
+
+  it('classifies only the collections virtual root and its children as collections routes', () => {
+    expect(isCollectionsRoute('/__collections__')).toBe(true);
+    expect(isCollectionsRoute('/__collections__/__archive__')).toBe(true);
+    expect(isCollectionsRoute('/__collections__/liked')).toBe(true);
+    expect(isCollectionsRoute('/__collections__/collection/7')).toBe(true);
+    expect(isCollectionsRoute('/')).toBe(false);
+    expect(isCollectionsRoute('/__collection__')).toBe(false);
+    expect(isCollectionsRoute(undefined)).toBe(false);
+  });
+
+  it('load failure keeps rows array-safe', async () => {
+    explorerGateway.loadCollections.mockRejectedValue(new Error('boom'));
+    const { result } = renderCollections();
+    await waitFor(() => {
+      expect(explorerGateway.loadCollections).toHaveBeenCalled();
+    });
+    expect(Array.isArray(result.current.collectionsTreeRows)).toBe(true);
+    expect(result.current.collectionsTreeRows).toEqual([]);
+  });
+
+  it('handleCollectionsClick / handleArchiveClick / handleLikedClick / handleCollectionClick route via the host', async () => {
+    const onNodeClick = jest.fn();
+    const { result } = renderCollections({ onNodeClick });
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(2));
+
+    act(() => result.current.handleCollectionsClick());
+    act(() => result.current.handleArchiveClick());
+    act(() => result.current.handleLikedClick());
+    act(() => result.current.handleCollectionClick(7));
+
+    expect(onNodeClick).toHaveBeenCalledWith('/__collections__');
+    expect(onNodeClick).toHaveBeenCalledWith('/__collections__/__archive__');
+    expect(onNodeClick).toHaveBeenCalledWith('/__collections__/liked'); // P-5
+    expect(onNodeClick).toHaveBeenCalledWith('/__collections__/collection/7');
+  });
+
+  it('handleCollectionsToggle expands and navigates the __collections__ route on expand', async () => {
+    const onNodeClick = jest.fn();
+    const { result } = renderCollections({ onNodeClick });
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(2));
+    expect(result.current.collectionsExpanded).toBe(false);
+
+    act(() => result.current.handleCollectionsToggle({ stopPropagation: jest.fn() }));
+    expect(result.current.collectionsExpanded).toBe(true);
+    expect(onNodeClick).toHaveBeenCalledWith('/__collections__');
+
+    act(() => result.current.handleCollectionsToggle({ stopPropagation: jest.fn() }));
+    expect(result.current.collectionsExpanded).toBe(false);
+  });
+
+  it('locations inside a collections route auto-expand the section', async () => {
+    const { result, rerender } = renderCollections();
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(2));
+    expect(result.current.collectionsExpanded).toBe(false);
+
+    rerender({
+      currentNodeId: null,
+      currentPath: '/__collections__/collection/7',
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
+    });
+    await waitFor(() => {
+      expect(result.current.collectionsExpanded).toBe(true);
+    });
+  });
+
+  it('new dots come from NULL last_visited_at rows — the controller never touches localStorage (2026-10-01 ruling)', async () => {
+    // jsdom keeps getItem/setItem on Storage.prototype (not own props) —
+    // shadow them with jest.fn() and restore after the assertion.
+    const originalGetItem = window.localStorage.getItem.bind(window.localStorage);
+    const originalSetItem = window.localStorage.setItem.bind(window.localStorage);
+    const getItem = jest.fn(originalGetItem);
+    const setItem = jest.fn(originalSetItem);
+    window.localStorage.getItem = getItem;
+    window.localStorage.setItem = setItem;
+    const restoreLocalStorageSpies = () => {
+      window.localStorage.getItem = originalGetItem;
+      window.localStorage.setItem = originalSetItem;
+    };
+    explorerGateway.loadCollections.mockImplementation(async () => ({
+      collections: [
+        { ...rowA, last_visited_at: null },
+        { ...rowShared, last_visited_at: '2026-09-30T08:00:00.000Z' },
+        { collection_id: 9, name: 'No key at all' },
+      ],
+    }));
+
+    const { result } = renderCollections();
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(3));
+    // dot ⇔ never opened: null AND absent keys dot, an ISO cursor does not.
+    expect(result.current.newCollectionIds).toEqual([7, 9]);
+    expect(getItem).not.toHaveBeenCalled();
+    expect(setItem).not.toHaveBeenCalled();
+    restoreLocalStorageSpies();
+  });
+
+  it('returning to /__collections__ re-fetches the rows so cleared dots refresh', async () => {
+    const { result, rerender } = renderCollections();
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(2));
+    expect(explorerGateway.loadCollections).toHaveBeenCalledTimes(1);
+
+    // deep inside a collection: no spurious refetch
+    rerender({
+      currentNodeId: null,
+      currentPath: '/__collections__/collection/7',
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
+    });
+    await waitFor(() => expect(result.current.collectionsTreeRows).toHaveLength(2));
+    expect(explorerGateway.loadCollections).toHaveBeenCalledTimes(1);
+
+    // back to the list view: rows re-fetch (server-cursor stamping becomes visible)
+    rerender({
+      currentNodeId: null,
+      currentPath: '/__collections__',
+      user: baseUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
+    });
+    await waitFor(() => expect(explorerGateway.loadCollections).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('useFolderTreeController — admin operator suppression (PLAN §14 client half)', () => {
+  const adminUser = { id: '1', username: 'admin', is_admin: true, rootNodeId: null };
+
+  beforeEach(() => {
+    getRecentFiles.mockResolvedValue([]);
+    onRecentFilesChange.mockImplementation(() => jest.fn());
+    folderTreeGateway.getUserSharedFolderPermissions.mockResolvedValue([]);
+    explorerGateway.loadCollections.mockResolvedValue({ collections: [] });
+    explorerGateway.subscribeToCollections.mockImplementation(() => jest.fn());
+  });
+
+  it('admin: never loads collections rows and never subscribes (no /api/collections call)', async () => {
+    const { result } = renderControllerHook({
+      currentNodeId: null,
+      currentPath: '/',
+      user: adminUser,
+      onNodeClick: jest.fn(),
+      ancestors: [],
+    });
+
+    // Home row still resolves (admin home is the filesystem root) while the
+    // collections seams stay silent.
+    await waitFor(() => {
+      expect(result.current.collectionsTreeRows).toEqual([]);
+    });
+    expect(explorerGateway.loadCollections).not.toHaveBeenCalled();
+    expect(explorerGateway.subscribeToCollections).not.toHaveBeenCalled();
   });
 });

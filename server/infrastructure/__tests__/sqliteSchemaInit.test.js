@@ -1,34 +1,34 @@
-const sqlite3 = require('sqlite3').verbose();
+const { DatabaseSync } = require('node:sqlite');
 const fs = require('fs');
 const path = require('path');
 
-const { convertPostgresToSqlite } = require('../sqliteSchemaInit');
+const { convertPostgresToSqlite, initSqliteSchema } = require('../sqliteSchemaInit');
+const os = require('os');
 
 function openMemoryDb() {
-  return new Promise((resolve, reject) => {
-    const db = new sqlite3.Database(':memory:', (err) => {
-      if (err) reject(err);
-      else resolve(db);
-    });
-  });
+  return new DatabaseSync(':memory:');
 }
 
 function runSql(db, sql) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, (err) => (err ? reject(err) : resolve()));
-  });
+  try {
+    db.exec(sql);
+    return Promise.resolve();
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 function queryDb(db, sql) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, (err, rows) => (err ? reject(err) : resolve(rows || [])));
-  });
+  return Promise.resolve(db.prepare(sql).all() || []);
 }
 
 function closeDb(db) {
-  return new Promise((resolve, reject) => {
-    db.close((err) => (err ? reject(err) : resolve()));
-  });
+  try {
+    db.close();
+    return Promise.resolve();
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -183,14 +183,15 @@ describe('initSqliteSchema integration', () => {
     }
   });
 
-  it('creates exactly 13 tables', async () => {
+  it('creates exactly 37 tables (core + full §5 platform schema)', async () => {
     const rows = await queryDb(
       db,
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
     );
-    expect(rows.length).toBe(13);
+    expect(rows.length).toBe(37);
 
     const expectedTables = [
+      // Core (pre-platform)
       'file_nodes',
       'filecache',
       'locks',
@@ -204,10 +205,41 @@ describe('initSqliteSchema integration', () => {
       'settings',
       'share_links',
       'users',
+      // §5 collections platform
+      'collections',
+      'collection_items',
+      'collection_exclusions',
+      'collection_grants',
+      'collection_visibility',
+      'collection_tombstones',
+      'collection_digest_cursors',
+      'collection_merge_suggestions',
+      'file_likes',
+      // §5 usage signals + undo journal
+      'usage_events',
+      'node_activity',
+      'action_journal',
+      // §5 suggestions + admin reports
+      'storage_suggestions',
+      'admin_reports',
+      'storage_usage_snapshots',
+      // §5 AI foundation
+      'llm_models',
+      'collection_centroids',
+      'ai_tag_raw',
+      'embeddings',
+      'embeddings_chunk',
+      'ai_enrichments',
+      'ai_jobs',
+      'ai_usage_daily',
+      'query_parses',
     ];
 
     const actualNames = rows.map((r) => r.name).sort();
-    expect(actualNames).toEqual(expectedTables);
+    expect(actualNames).toEqual([...expectedTables].sort());
+    // §4.18 dissolution: the retired tag tables are gone from 001 entirely.
+    expect(actualNames).not.toContain('tag_embeddings');
+    expect(actualNames).not.toContain('tag_parents');
   });
 
   it('file_nodes.id is INTEGER PRIMARY KEY AUTOINCREMENT', async () => {
@@ -238,6 +270,32 @@ describe('initSqliteSchema integration', () => {
     const info = await queryDb(db, 'PRAGMA table_info(filecache)');
     const col = info.find((c) => c.name === 'size');
     expect(col.type).toBe('INTEGER');
+  });
+
+  it('object_map.size is a nullable INTEGER (per-version blob size)', async () => {
+    const info = await queryDb(db, 'PRAGMA table_info(object_map)');
+    const col = info.find((c) => c.name === 'size');
+    expect(col).toBeDefined();
+    expect(col.type).toBe('INTEGER');
+    expect(col.notnull).toBe(0);
+    expect([null, 'NULL']).toContain(col.dflt_value);
+  });
+
+  it('storage_usage_snapshots carries the user/day PK, bytes, created_at and day index', async () => {
+    const info = await queryDb(db, 'PRAGMA table_info(storage_usage_snapshots)');
+    expect(info.map((c) => c.name)).toEqual(
+      expect.arrayContaining(['user_id', 'day', 'bytes', 'created_at'])
+    );
+    expect(info.find((c) => c.name === 'bytes').type).toBe('INTEGER');
+    expect(info.find((c) => c.name === 'bytes').notnull).toBe(1);
+    expect(
+      info
+        .filter((c) => c.pk > 0)
+        .map((c) => c.name)
+        .sort()
+    ).toEqual(['day', 'user_id']);
+    const indexes = await queryDb(db, 'PRAGMA index_list(storage_usage_snapshots)');
+    expect(indexes.some((index) => index.name === 'storage_usage_snapshots_day_idx')).toBe(true);
   });
 
   it('foreign keys are preserved on file_nodes.parent_id', async () => {
@@ -275,5 +333,37 @@ describe('initSqliteSchema integration', () => {
 
     const rows = await queryDb(db, "SELECT is_admin FROM users WHERE username='def_test'");
     expect(rows[0].is_admin).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// initSqliteSchema({ path }) — the caller-supplied file-database leg
+// ---------------------------------------------------------------------------
+describe('initSqliteSchema({ path }) file-database leg', () => {
+  it('creates the full platform schema on a real file database', async () => {
+    const dbPath = path.join(os.tmpdir(), `sqlite-init-path-${Date.now()}-${process.pid}.db`);
+
+    try {
+      await initSqliteSchema({ path: dbPath });
+
+      const db = new DatabaseSync(dbPath);
+      try {
+        const rows = db
+          .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+          .all();
+        const names = rows.map((r) => r.name).sort();
+
+        expect(names.length).toBe(37);
+        expect(names).toContain('locks');
+        expect(names).toContain('collections');
+        expect(names).toContain('admin_reports');
+        expect(names).not.toContain('tag_embeddings');
+        expect(names).not.toContain('tag_parents');
+      } finally {
+        db.close();
+      }
+    } finally {
+      fs.rmSync(dbPath, { force: true });
+    }
   });
 });

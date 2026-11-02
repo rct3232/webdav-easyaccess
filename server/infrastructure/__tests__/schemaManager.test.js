@@ -1,4 +1,4 @@
-const sqlite3 = require('sqlite3').verbose();
+const { DatabaseSync } = require('node:sqlite');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -6,22 +6,25 @@ const crypto = require('crypto');
 const DDL_DIR = path.join(__dirname, '../../store/postgresql/ddl');
 
 // ---------------------------------------------------------------------------
-// Helpers for raw sqlite3 operations (bypass storage module entirely)
+// Helpers for raw node:sqlite operations (bypass storage module entirely)
 // ---------------------------------------------------------------------------
 
 function openMemoryDb() {
-  return new Promise((resolve, reject) => {
-    const db = new sqlite3.Database(':memory:', (err) => {
-      if (err) reject(err);
-      else resolve(db);
-    });
-  });
+  return new DatabaseSync(':memory:');
 }
 
 function closeDb(db) {
-  return new Promise((resolve, reject) => {
-    db.close((err) => (err ? reject(err) : resolve()));
-  });
+  try {
+    db.close();
+    return Promise.resolve();
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+function runOn(db, sql, params = []) {
+  const info = db.prepare(sql).run(...(params || []));
+  return Promise.resolve({ changes: info.changes, lastID: info.lastInsertRowid });
 }
 
 // ---------------------------------------------------------------------------
@@ -39,46 +42,32 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
 
     beforeAll(async () => {
       db = await openMemoryDb();
-      db.run('PRAGMA foreign_keys = ON');
-      db.run('PRAGMA defer_foreign_keys = ON');
+      db.exec('PRAGMA foreign_keys = ON');
+      db.exec('PRAGMA defer_foreign_keys = ON');
 
       jest.doMock('../../store/storage', () => {
         const { createStorageMock } = require('@testing/mocks/storeMocks');
         return createStorageMock({
           getSqliteConnection: () => db,
           sqliteQuery: (sql, params = []) =>
-            new Promise((resolve, reject) => {
-              db.all(sql, params || [], (err, rows) =>
-                err ? reject(err) : resolve({ rows: rows || [] })
-              );
-            }),
-          sqliteRun: (sql, params = []) =>
-            new Promise((resolve, reject) => {
-              db.run(sql, params || [], function (err) {
-                if (err) reject(err);
-                else resolve({ changes: this.changes, lastID: this.lastID });
-              });
-            }),
+            Promise.resolve({ rows: db.prepare(sql).all(...(params || [])) || [] }),
+          sqliteRun: (sql, params = []) => runOn(db, sql, params),
           withSqliteTransaction: async (callback) => {
-            await new Promise((resolve, reject) =>
-              db.run('BEGIN', (err) => (err ? reject(err) : resolve()))
-            );
+            db.exec('BEGIN');
             try {
               const client = {
                 query: (sql, params) =>
-                  new Promise((resolve, reject) => {
-                    db.all(sql, params || [], (err, rows) =>
-                      err ? reject(err) : resolve({ rows: rows || [] })
-                    );
-                  }),
+                  Promise.resolve({ rows: db.prepare(sql).all(...(params || [])) || [] }),
               };
               const result = await callback(client);
-              await new Promise((resolve, reject) =>
-                db.run('COMMIT', (err) => (err ? reject(err) : resolve()))
-              );
+              db.exec('COMMIT');
               return result;
             } catch (e) {
-              await new Promise((resolve) => db.run('ROLLBACK', resolve));
+              try {
+                db.exec('ROLLBACK');
+              } catch {
+                /* ignore rollback failures on an already-broken transaction */
+              }
               throw e;
             }
           },
@@ -95,9 +84,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
     });
 
     function query(sql, params = []) {
-      return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
-      });
+      return Promise.resolve(db.prepare(sql).all(...params) || []);
     }
 
     it('creates _schema_migrations on a completely empty database', async () => {
@@ -146,46 +133,32 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
 
     beforeAll(async () => {
       db = await openMemoryDb();
-      db.run('PRAGMA foreign_keys = ON');
-      db.run('PRAGMA defer_foreign_keys = ON');
+      db.exec('PRAGMA foreign_keys = ON');
+      db.exec('PRAGMA defer_foreign_keys = ON');
 
       jest.doMock('../../store/storage', () => {
         const { createStorageMock } = require('@testing/mocks/storeMocks');
         return createStorageMock({
           getSqliteConnection: () => db,
           sqliteQuery: (sql, params = []) =>
-            new Promise((resolve, reject) => {
-              db.all(sql, params || [], (err, rows) =>
-                err ? reject(err) : resolve({ rows: rows || [] })
-              );
-            }),
-          sqliteRun: (sql, params = []) =>
-            new Promise((resolve, reject) => {
-              db.run(sql, params || [], function (err) {
-                if (err) reject(err);
-                else resolve({ changes: this.changes, lastID: this.lastID });
-              });
-            }),
+            Promise.resolve({ rows: db.prepare(sql).all(...(params || [])) || [] }),
+          sqliteRun: (sql, params = []) => runOn(db, sql, params),
           withSqliteTransaction: async (callback) => {
-            await new Promise((resolve, reject) =>
-              db.run('BEGIN', (err) => (err ? reject(err) : resolve()))
-            );
+            db.exec('BEGIN');
             try {
               const client = {
                 query: (sql, params) =>
-                  new Promise((resolve, reject) => {
-                    db.all(sql, params || [], (err, rows) =>
-                      err ? reject(err) : resolve({ rows: rows || [] })
-                    );
-                  }),
+                  Promise.resolve({ rows: db.prepare(sql).all(...(params || [])) || [] }),
               };
               const result = await callback(client);
-              await new Promise((resolve, reject) =>
-                db.run('COMMIT', (err) => (err ? reject(err) : resolve()))
-              );
+              db.exec('COMMIT');
               return result;
             } catch (e) {
-              await new Promise((resolve) => db.run('ROLLBACK', resolve));
+              try {
+                db.exec('ROLLBACK');
+              } catch {
+                /* ignore rollback failures on an already-broken transaction */
+              }
               throw e;
             }
           },
@@ -202,9 +175,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
     });
 
     function query(sql, params = []) {
-      return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
-      });
+      return Promise.resolve(db.prepare(sql).all(...params) || []);
     }
 
     async function getUserTables() {
@@ -275,46 +246,32 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
 
     beforeAll(async () => {
       db = await openMemoryDb();
-      db.run('PRAGMA foreign_keys = ON');
-      db.run('PRAGMA defer_foreign_keys = ON');
+      db.exec('PRAGMA foreign_keys = ON');
+      db.exec('PRAGMA defer_foreign_keys = ON');
 
       jest.doMock('../../store/storage', () => {
         const { createStorageMock } = require('@testing/mocks/storeMocks');
         return createStorageMock({
           getSqliteConnection: () => db,
           sqliteQuery: (sql, params = []) =>
-            new Promise((resolve, reject) => {
-              db.all(sql, params || [], (err, rows) =>
-                err ? reject(err) : resolve({ rows: rows || [] })
-              );
-            }),
-          sqliteRun: (sql, params = []) =>
-            new Promise((resolve, reject) => {
-              db.run(sql, params || [], function (err) {
-                if (err) reject(err);
-                else resolve({ changes: this.changes, lastID: this.lastID });
-              });
-            }),
+            Promise.resolve({ rows: db.prepare(sql).all(...(params || [])) || [] }),
+          sqliteRun: (sql, params = []) => runOn(db, sql, params),
           withSqliteTransaction: async (callback) => {
-            await new Promise((resolve, reject) =>
-              db.run('BEGIN', (err) => (err ? reject(err) : resolve()))
-            );
+            db.exec('BEGIN');
             try {
               const client = {
                 query: (sql, params) =>
-                  new Promise((resolve, reject) => {
-                    db.all(sql, params || [], (err, rows) =>
-                      err ? reject(err) : resolve({ rows: rows || [] })
-                    );
-                  }),
+                  Promise.resolve({ rows: db.prepare(sql).all(...(params || [])) || [] }),
               };
               const result = await callback(client);
-              await new Promise((resolve, reject) =>
-                db.run('COMMIT', (err) => (err ? reject(err) : resolve()))
-              );
+              db.exec('COMMIT');
               return result;
             } catch (e) {
-              await new Promise((resolve) => db.run('ROLLBACK', resolve));
+              try {
+                db.exec('ROLLBACK');
+              } catch {
+                /* ignore rollback failures on an already-broken transaction */
+              }
               throw e;
             }
           },
@@ -331,9 +288,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
     });
 
     function query(sql, params = []) {
-      return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
-      });
+      return Promise.resolve(db.prepare(sql).all(...params) || []);
     }
 
     async function getUserTables() {
@@ -383,46 +338,32 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
 
     beforeAll(async () => {
       db = await openMemoryDb();
-      db.run('PRAGMA foreign_keys = ON');
-      db.run('PRAGMA defer_foreign_keys = ON');
+      db.exec('PRAGMA foreign_keys = ON');
+      db.exec('PRAGMA defer_foreign_keys = ON');
 
       jest.doMock('../../store/storage', () => {
         const { createStorageMock } = require('@testing/mocks/storeMocks');
         return createStorageMock({
           getSqliteConnection: () => db,
           sqliteQuery: (sql, params = []) =>
-            new Promise((resolve, reject) => {
-              db.all(sql, params || [], (err, rows) =>
-                err ? reject(err) : resolve({ rows: rows || [] })
-              );
-            }),
-          sqliteRun: (sql, params = []) =>
-            new Promise((resolve, reject) => {
-              db.run(sql, params || [], function (err) {
-                if (err) reject(err);
-                else resolve({ changes: this.changes, lastID: this.lastID });
-              });
-            }),
+            Promise.resolve({ rows: db.prepare(sql).all(...(params || [])) || [] }),
+          sqliteRun: (sql, params = []) => runOn(db, sql, params),
           withSqliteTransaction: async (callback) => {
-            await new Promise((resolve, reject) =>
-              db.run('BEGIN', (err) => (err ? reject(err) : resolve()))
-            );
+            db.exec('BEGIN');
             try {
               const client = {
                 query: (sql, params) =>
-                  new Promise((resolve, reject) => {
-                    db.all(sql, params || [], (err, rows) =>
-                      err ? reject(err) : resolve({ rows: rows || [] })
-                    );
-                  }),
+                  Promise.resolve({ rows: db.prepare(sql).all(...(params || [])) || [] }),
               };
               const result = await callback(client);
-              await new Promise((resolve, reject) =>
-                db.run('COMMIT', (err) => (err ? reject(err) : resolve()))
-              );
+              db.exec('COMMIT');
               return result;
             } catch (e) {
-              await new Promise((resolve) => db.run('ROLLBACK', resolve));
+              try {
+                db.exec('ROLLBACK');
+              } catch {
+                /* ignore rollback failures on an already-broken transaction */
+              }
               throw e;
             }
           },
@@ -439,9 +380,7 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
     });
 
     function query(sql, params = []) {
-      return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
-      });
+      return Promise.resolve(db.prepare(sql).all(...params) || []);
     }
 
     it('stores correct SHA-256 checksum for each applied migration', async () => {
@@ -494,46 +433,32 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
 
     beforeAll(async () => {
       db = await openMemoryDb();
-      db.run('PRAGMA foreign_keys = ON');
-      db.run('PRAGMA defer_foreign_keys = ON');
+      db.exec('PRAGMA foreign_keys = ON');
+      db.exec('PRAGMA defer_foreign_keys = ON');
 
       jest.doMock('../../store/storage', () => {
         const { createStorageMock } = require('@testing/mocks/storeMocks');
         return createStorageMock({
           getSqliteConnection: () => db,
           sqliteQuery: (sql, params = []) =>
-            new Promise((resolve, reject) => {
-              db.all(sql, params || [], (err, rows) =>
-                err ? reject(err) : resolve({ rows: rows || [] })
-              );
-            }),
-          sqliteRun: (sql, params = []) =>
-            new Promise((resolve, reject) => {
-              db.run(sql, params || [], function (err) {
-                if (err) reject(err);
-                else resolve({ changes: this.changes, lastID: this.lastID });
-              });
-            }),
+            Promise.resolve({ rows: db.prepare(sql).all(...(params || [])) || [] }),
+          sqliteRun: (sql, params = []) => runOn(db, sql, params),
           withSqliteTransaction: async (callback) => {
-            await new Promise((resolve, reject) =>
-              db.run('BEGIN', (err) => (err ? reject(err) : resolve()))
-            );
+            db.exec('BEGIN');
             try {
               const client = {
                 query: (sql, params) =>
-                  new Promise((resolve, reject) => {
-                    db.all(sql, params || [], (err, rows) =>
-                      err ? reject(err) : resolve({ rows: rows || [] })
-                    );
-                  }),
+                  Promise.resolve({ rows: db.prepare(sql).all(...(params || [])) || [] }),
               };
               const result = await callback(client);
-              await new Promise((resolve, reject) =>
-                db.run('COMMIT', (err) => (err ? reject(err) : resolve()))
-              );
+              db.exec('COMMIT');
               return result;
             } catch (e) {
-              await new Promise((resolve) => db.run('ROLLBACK', resolve));
+              try {
+                db.exec('ROLLBACK');
+              } catch {
+                /* ignore rollback failures on an already-broken transaction */
+              }
               throw e;
             }
           },
@@ -550,18 +475,11 @@ describe('schemaManager — applyPendingMigrations (sqlite)', () => {
     });
 
     function query(sql, params = []) {
-      return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
-      });
+      return Promise.resolve(db.prepare(sql).all(...params) || []);
     }
 
     function run(sql, params = []) {
-      return new Promise((resolve, reject) => {
-        db.run(sql, params || [], function (err) {
-          if (err) reject(err);
-          else resolve({ changes: this.changes, lastID: this.lastID });
-        });
-      });
+      return runOn(db, sql, params);
     }
 
     async function getUserTables() {

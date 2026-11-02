@@ -1,15 +1,25 @@
+# E2E Docker stack. Containers are intentionally NOT pinned via
+# `container_name:` — names stay project-scoped (compose derives the project
+# from the checkout directory), so parallel E2E runs from multiple git
+# worktrees never collide on global container names. Reach containers through
+# the compose service names (`docker compose -f docker-compose.e2e.yml restart
+# webdav-test`), never through a hard-coded container name.
+# Host ports are parameterized with the historical defaults as fallback:
+# `scripts/e2e/wait-healthy.mjs` allocates a per-checkout port band
+# (scripts/lib/e2e-band.cjs) and exports E2E_{WEBDAV,PG,S3,S3_CONSOLE}_PORT
+# when spawning compose, so concurrent worktree stacks bind distinct ports.
+# See docs/TEST_GIT_GUIDE.md.
 services:
   webdav-test:
     image: bytemark/webdav
-    container_name: webdav-e2e-test
     environment:
       AUTH_TYPE: Basic
       USERNAME: e2etest
       PASSWORD: e2etest123
     ports:
-      - '8090:80'
+      - '${E2E_WEBDAV_PORT:-8090}:80'
     volumes:
-      - ./data/webdav:/var/lib/dav
+      - webdav_data:/var/lib/dav
     healthcheck:
       test: ['CMD', 'nc', '-z', 'localhost', '80']
       interval: 5s
@@ -17,14 +27,17 @@ services:
       retries: 5
 
   postgresql-e2e:
-    image: postgres:16
-    container_name: webdav-pg-e2e
+    # pgvector/pgvector:pg16 = postgres:16 + the `vector` extension preloaded
+    # (pgvector 0.8.x). Capability-additive swap: plain-PG consumers see the
+    # same server; the vectorStore ANN leg (npm run test:pg:vector) needs
+    # `CREATE EXTENSION vector`, which plain postgres:16 cannot provide.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: webdav_e2e
       POSTGRES_USER: e2etest
       POSTGRES_PASSWORD: e2etest
     ports:
-      - '5433:5432'
+      - '${E2E_PG_PORT:-5433}:5432'
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U e2etest']
       interval: 3s
@@ -33,16 +46,18 @@ services:
 
   minio-e2e:
     image: minio/minio:latest
-    container_name: webdav-minio-e2e
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     command: server /data --console-address ":9001"
     ports:
-      - '9010:9000'
-      - '9011:9001'
+      - '${E2E_S3_PORT:-9010}:9000'
+      - '${E2E_S3_CONSOLE_PORT:-9011}:9001'
     healthcheck:
       test: ['CMD', 'mc', 'ready', 'local']
       interval: 3s
       timeout: 2s
       retries: 10
+
+volumes:
+  webdav_data:

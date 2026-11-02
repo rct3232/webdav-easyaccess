@@ -189,8 +189,8 @@ proxy uses `PORT` during development.
 
 - **What to test and how:** [docs/TESTING_STRATEGY.md](docs/TESTING_STRATEGY.md) (unit vs integration, mocking, checklist for new code).
 - **Running tests, Git, and CI:** [docs/TEST_GIT_GUIDE.md](docs/TEST_GIT_GUIDE.md).
-- **Client:** `cd client && npm run test:unit` | `npm run test:integration` | `npm run test:ci` — Summary: [client/TEST_SUMMARY.md](client/TEST_SUMMARY.md).
-- **Server:** `cd server && npm run test:unit` | `npm run test:integration` | `npm run test:ci` — Summary: [server/TEST_SUMMARY.md](server/TEST_SUMMARY.md).
+- **Client:** `cd client && npm run test:unit` | `npm run test:integration` | `npm run test` — Summary: [client/TEST_SUMMARY.md](client/TEST_SUMMARY.md).
+- **Server:** `cd server && npm run test:unit` | `npm run test:integration` | `npm run test` — Summary: [server/TEST_SUMMARY.md](server/TEST_SUMMARY.md).
 
 ## Troubleshooting
 

@@ -21,32 +21,32 @@
 
 ### 2.2 Input Parameters
 
-| Name                  | Type     | Required | Description                                                                                         |
-| --------------------- | -------- | -------- | --------------------------------------------------------------------------------------------------- | --------- | ---------------- |
-| path                  | string   | N        | Folder path fallback (used when `node` is not provided; transitional — superseded by `node.nodeId`) |
-| name                  | string   | N        | Folder display name (used when `node` is not provided)                                              |
-| node                  | object   | N        | Node `{ nodeId, name, isHidden, hasReadPermission, hasWritePermission, children }`                  |
-| level                 | number   | N        | Indent level (kept for API completeness; controller may not use)                                    |
-| currentNodeId         | number   | Y        | Current explorer node id for auto-expansion/highlighting                                            |
-| expandedNodeIds       | Set      | Y        | Expanded node id set                                                                                |
-| onToggleExpand        | function | Y        | Toggle expanded state for a node id: `(nodeId) => void`                                             |
-| onNodeClick           | function | Y        | Folder click callback: `(nodeId) => void` (called when enabled)                                     |
-| hasReadPermission     | boolean  | N        | Defaults to true                                                                                    |
-| hasWritePermission    | boolean  | N        | Defaults to true                                                                                    |
-| onExplorerDrop        | function | N        | OS-file drop handler (folder-tree mode)                                                             |
-| onInternalFileDrop    | function | N        | Internal drag/drop: `(draggedNodeId, targetNodeId)`                                                 |
-| onInternalDragStart   | function | N        | Called when drag starts: `(nodeId) => void`                                                         |
-| onInternalDragEnd     | function | N        | Called when drag ends: `() => void`                                                                 |
-| internalDraggedNodeId | number   | N        | Last internal drag source node id for drop no-op logic                                              |
-| isMobile              | boolean  | N        | Defaults to false                                                                                   |
-| children              | array    | N        | Initial children (used when `node?.children` is not provided)                                       |
-| treeUpdateTrigger     | any      | N        | Reload trigger: { type: 'created'                                                                   | 'deleted' | 'refresh', ... } |
-| isHome                | boolean  | N        | If true, allows refresh reload even when not currently expanded                                     |
-| user                  | object   | N        | Included for compatibility with existing item props; not used directly in Phase 4 controller logic  |
-| sharedFoldersMap      | Map      | N        | Shared-folder permission map keyed by nodeId that can override permissions                          |
-| useHiddenFilesFilter  | boolean  | N        | Defaults to true                                                                                    |
-| listFilesOptions      | object   | N        | Options forwarded to `folderTreeGateway.listFolderChildren`                                         |
-| filterChildNames      | string[] | N        | Optional child-name denylist forwarded to `folderTreeGateway.listFolderChildren`                    |
+| Name                  | Type     | Required | Description                                                                                    |
+| --------------------- | -------- | -------- | ---------------------------------------------------------------------------------------------- | --------- | ---------------- |
+| path                  | string   | N        | Folder path fallback (used when `node` is not provided)                                        |
+| name                  | string   | N        | Folder display name (used when `node` is not provided)                                         |
+| node                  | object   | N        | Node `{ nodeId, name, isHidden, hasReadPermission, hasWritePermission, children }`             |
+| level                 | number   | N        | Indent level (kept for API completeness; controller may not use)                               |
+| currentNodeId         | number   | Y        | Current explorer node id for auto-expansion/highlighting                                       |
+| expandedNodeIds       | Set      | Y        | Expanded node id set                                                                           |
+| onToggleExpand        | function | Y        | Toggle expanded state for a node id: `(nodeId) => void`                                        |
+| onNodeClick           | function | Y        | Folder click callback: `(nodeId) => void` (called when enabled)                                |
+| hasReadPermission     | boolean  | N        | Defaults to true                                                                               |
+| hasWritePermission    | boolean  | N        | Defaults to true                                                                               |
+| onExplorerDrop        | function | N        | OS-file drop handler (folder-tree mode)                                                        |
+| onInternalFileDrop    | function | N        | Internal drag/drop: `(draggedNodeId, targetNodeId)`                                            |
+| onInternalDragStart   | function | N        | Called when drag starts: `(nodeId) => void`                                                    |
+| onInternalDragEnd     | function | N        | Called when drag ends: `() => void`                                                            |
+| internalDraggedNodeId | number   | N        | Last internal drag source node id for drop no-op logic                                         |
+| isMobile              | boolean  | N        | Defaults to false                                                                              |
+| children              | array    | N        | Initial children (used when `node?.children` is not provided)                                  |
+| treeUpdateTrigger     | any      | N        | Reload trigger: { type: 'created'                                                              | 'deleted' | 'refresh', ... } |
+| isHome                | boolean  | N        | If true, allows refresh reload even when not currently expanded                                |
+| user                  | object   | N        | Included for compatibility with existing item props; not used directly in the controller logic |
+| sharedFoldersMap      | Map      | N        | Shared-folder permission map keyed by nodeId that can override permissions                     |
+| useHiddenFilesFilter  | boolean  | N        | Defaults to true                                                                               |
+| listFilesOptions      | object   | N        | Options forwarded to `folderTreeGateway.listFolderChildren`                                    |
+| filterChildNames      | string[] | N        | Optional child-name denylist forwarded to `folderTreeGateway.listFolderChildren`               |
 
 ### 2.3 Return Value / State
 

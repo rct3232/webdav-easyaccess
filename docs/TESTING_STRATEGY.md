@@ -27,12 +27,12 @@ The server's DB access flows through the executor seam and per-domain
 repositories (`docs/spec/server/store/executor.md`,
 `docs/spec/server/store/repository-contract.md`). Tests are tiered accordingly:
 
-| Tier                       | What                                                                                                                  | Backend                                                     | Where                                                                                                                                                                                                                                                                    |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **L0 unit**                | Pure logic; storage mocked at the executor/store boundary                                                             | none                                                        | `**/__tests__` (no DB)                                                                                                                                                                                                                                                   |
-| **L1 functional**          | Routes/services/models — observable behavior through APIs                                                             | **sqlite only** (per-suite temp DB)                         | `**/__tests__` DB suites; default `test:ci` leg                                                                                                                                                                                                                          |
-| **L2 adapter conformance** | Repository interfaces against real storage: CRUD/upsert/RETURNING/type mapping/transactions/locking/schema/migrations | real sqlite + **real PostgreSQL** (`WEA_TEST_PG_*`, serial) | `server/store/repositories/__tests__/*.conformance.test.js` + `server/domains/permissions/stores/repositories/__tests__/*.conformance.test.js` + executor suite (`server/infrastructure/db/__tests__/executor.test.js`) + schema/migration suites; `test:ci:pg:adapters` |
-| **L3 cross-DB smoke**      | Representative store roundtrip + migration apply-once per supported RDB                                               | each RDB                                                    | subset inside the adapter leg                                                                                                                                                                                                                                            |
+| Tier                       | What                                                                                                                  | Backend                                                     | Where                                                                                                                                                                                                                                                                 |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **L0 unit**                | Pure logic; storage mocked at the executor/store boundary                                                             | none                                                        | `**/__tests__` (no DB)                                                                                                                                                                                                                                                |
+| **L1 functional**          | Routes/services/models — observable behavior through APIs                                                             | **sqlite only** (per-suite temp DB)                         | `**/__tests__` DB suites; default `test` leg                                                                                                                                                                                                                          |
+| **L2 adapter conformance** | Repository interfaces against real storage: CRUD/upsert/RETURNING/type mapping/transactions/locking/schema/migrations | real sqlite + **real PostgreSQL** (`WEA_TEST_PG_*`, serial) | `server/store/repositories/__tests__/*.conformance.test.js` + `server/domains/permissions/stores/repositories/__tests__/*.conformance.test.js` + executor suite (`server/infrastructure/db/__tests__/executor.test.js`) + schema/migration suites; `test:pg:adapters` |
+| **L3 cross-DB smoke**      | Representative store roundtrip + migration apply-once per supported RDB                                               | each RDB                                                    | subset inside the adapter leg                                                                                                                                                                                                                                         |
 
 Rules:
 
@@ -44,7 +44,134 @@ Rules:
   `createTestDatabase()` and assert behavior on whichever backend is active,
   so the same file covers sqlite (default leg) and PostgreSQL (adapter leg).
 - The former full-suite real-PostgreSQL jest leg is retired; the adapter
-  leg (`test:ci:pg:adapters`) is the only real-PG jest entry point.
+  leg (`test:pg:adapters`) is the only real-PG jest entry point.
+
+---
+
+## AI-platform test tiers
+
+Additive policy for the collections/AI platform (docs/features/collections-platform.md §4.x, CODING_STYLE.md Express Patterns–§8). The
+L0–L3 definitions above are **unchanged**; this section only adds rules and IDs.
+
+- **Fake-LLM hermeticism:** every server-side suite that exercises AI enrichment or query
+  embed runs against an **in-process fake LLM server injected via the adapter's role config**
+  (`{BASE_URL, API_KEY, MODEL}` pointing at a local test listener) — never a real provider,
+  never a module-level mock that bypasses the adapter contract. The same network-guard
+  precedent as blob-migration testing (stubbed sockets) applies: an accidental real request
+  fails the test.
+- **Admin AI surface tests:** the governance summary/launcher suites use real
+  `ai_jobs`/`settings`/`action_journal` stores and fake only provider-adjacent reads
+  (model registry/usage/reports/probe state). They never call `budgetStatus()` or a
+  provider: the panel exposes readiness tokens instead of poll-triggered breaker probes.
+  Launcher tests pin the journal/generation/enqueue atomicity and the cancel-pending race;
+  client tests pin preview → one confirm → POST and the polled queue as the only progress
+  surface. Contract parity is anchored by `shared/aiAdminContract.js` (field manifest +
+  reasons/limits) and `shared/fixtures/aiAdminPanel.fixture.js` (sentinel payload): server
+  shape/route tests, the client sentinel render matrix, the i18n mirror test and MSW all
+  consume the same fixture, so a field added on one side fails the other side's test.
+- **Admin AI E2E (`E2E-ADMINAI-001..008`):** two hermetic scratch projects own the panel
+  surface — `s3-admin-ai-model-desktop` (`:5007`) boots a fake media-capable embed through
+  pre-boot `LLM_EMBED_*` settings with `WEA_SKIP_AI_WORKER=1` and
+  `WEA_SKIP_EVOLUTION_SCHEDULER=1`, so capability/model/coverage data is real while the
+  launcher leaves queued jobs for the queue/cooldown/cancel cases; the states project
+  (`:5008`) boots without an embed model for visibility, cross-link/polling-cleanup, empty
+  and error/retry cases. Each case resets `ai_jobs`, `action_journal`, `AI_GEN_*`,
+  `ai_usage_daily` and `admin_reports` in the scratch sqlite, and seeds queue/usage/report
+  rows directly for the render matrix. The former optional mobile summary project was
+  dropped on 2026-10-30 (mobile admin AI is not required); `:5009` now belongs to the
+  browser AI degradation-matrix UI project.
+- **Hermetic scratch projects:** each destructive AI E2E suite (evolution passes, merge
+  execution, archive/purge lifecycles) gets its **own scratch server project** following the
+  destructive-suite precedent. Scratch slots are project-scoped with separate desktop and
+  mobile slots resolved through the shared port-band helper (each checkout's whole port set
+  shifts together; see the runner guide's parallel-worktree section), own env file, own
+  sqlite/PG scratch DB, and per-case cleanup. This extends the destructive-case policy:
+  **auto-evolution mutates user data, so AI suites are scratch-only, never run against the
+  shared E2E server/database.** Scratch servers are process isolation for boot config,
+  global settings, DB, and restart; the project-scoped cwd, bucket, and WebDAV subtree only
+  isolate blobs. Every scratch suite owns a dedicated slot: the storage projects use
+  `:5022`/`:5023` and the collections projects keep `:5013`/`:5014`, so no suite shares a
+  port with (or depends on) another project.
+- **E2E case identity:** case families use backend-qualified IDs where the backend is part
+  of the contract, third-person declarative titles per the naming convention above, and the
+  minimum lifecycle chain create→digest→archive→undo→restore→purge (CODING_STYLE.md Express
+  Patterns gate). Concrete IDs, case ownership, and project/slot mapping are canonical in
+  [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
+- **Degradation-matrix suite:** the matrix is defined by the §4.12 capability columns — `None`
+  (no adapter configured at all; the built-in embed engine suppressed by
+  `WEA_SKIP_EMBED_MODEL=1` or by an absent lock/weights fixture ⇒ `roleConfigured('embed')`
+  false), `embed` (fake embed only), `embed+media` (fake media-capable embed),
+  `embed+chat+vision` (fake embed+chat+vision). The **None and media columns must pass green
+  with no real adapter present** (the "never-a-render-dependency" invariant, verified by
+  construction). The API system matrix (`E2E-S3-AI-003/006`) keeps exactly those two
+  composition cases: None (public flags false, job parks at attempt 0, no embeddings row) and
+  media (probe → upload → worker → `media_direct` + chunks → caption search hit). The parser,
+  text-embed, V0 and V2 legs are `non-e2e`: search route/service suites, the media join suite
+  (`mediaSearchJoin.test.js`), and the pipeline/drain suites. The browser project
+  (`E2E-S3-AI-008..009`) keeps only the real-client↔real-server smoke (FAB glyph, Zone
+  C/save-chip presence); the admin health-card copy is pinned by `SystemSettingsContent.test.js`.
+- **Fake-LLM E2E harness contract (T4.3 Wave 1):** `e2e/helpers/fakeLlm.ts` starts a
+  `node:http` listener inside the Playwright process on an ephemeral `127.0.0.1` port
+  (`listen(0)`) and serves root + `/v1` aliases for `POST /embeddings`,
+  `POST /chat/completions`, `GET /props`, and `GET /models`. It never receives a real
+  provider call and exposes counters (`embedCalls`/`kitCalls`/`mediaCalls`/`chatCalls`/
+  `visionCalls`) so a suite can prove the fake handled the traffic. `text-only` mode
+  silently drops media parts to a deterministic empty-basis vector (the known llama.cpp
+  failure mode); `media-capable` mode returns image/audio/video vectors that satisfy the
+  media positive controls; chat parse modes `parse-ok`/`parse-invalid`/`parse-delta` and a
+  vision caption fixture cover the parser/V2 legs (the delta mode adds a deterministic size
+  floor for the `$ref:"latest"` replay leg). Conformance returns the checked-in
+  `eg2-reference-kit.json` vectors for the 24 kit strings (document prefix tolerated with
+  or without its trailing space), while ordinary text vectors are deterministic
+  bag-of-words unit vectors at dim 768 (non-constant, so the non-degeneracy probe and the
+  semantic scorer work).
+- **Harness injection + scratch slot:** the fake endpoint is injected through the scratch
+  sqlite `settings` table BEFORE the child server boots (`e2e/helpers/scratchSettings.ts`,
+  following `seedWebdavSettings`). `LLM_{EMBED,CHAT,VISION,ASR}_*` are `dbOnly`, so ambient
+  env can never select a provider; the scratch child env strips `WEA_SKIP_AI_WORKER` (the
+  worker is enabled by absence, never set to `'0'` — the seam is a truthy check) and sets
+  `WEA_SKIP_EMBED_MODEL=1` so the built-in engine never provisions, while a remote role
+  override still takes precedence. The matrix has two projects that share the column boot
+  (`e2e/helpers/aiMatrixColumn.ts`): `s3-ai-matrix-api` (`:5021`, API-only —
+  `RequestContext` + direct sqlite reads, never a `page`, so a pinned band mapping the slot
+  to the browser-restricted `5061` cannot break it) and `s3-ai-matrix-ui-desktop`
+  (`:5009`, browser-safe — the page-driving cases `E2E-S3-AI-008..009`; this slot must never
+  be moved onto `5021`/`5061`). Each column gets its own scratch directory, S3 bucket, and
+  server lifecycle.
+- **Parser legs (`parse.nl`):** verified hermetically by unit/integration suites with an
+  adapter-injected fake chat (the same seam the fake-embed adapter uses) — RED targets: parse
+  cache hit ⇒ zero chat calls, schema-checked grammar-constrained output, chat-off ⇒
+  byte-identical parser-free response. The `$ref` delta replay and the hot admin-config
+  invalidation leg live in `domains/ai/__tests__/search.test.js` (+ `searchService.test.js`);
+  there is no dedicated parser scratch project.
+- **Model-free test mode:** `WEA_SKIP_EMBED_MODEL` truthy (`1/true/yes/on`) suppresses
+  the built-in embed weights check, provisioning, ONNX import, and boot probe; the embed
+  role resolves `not_configured` with no `ai.embed` failure row. Non-AI E2E suites set it
+  by default. Cases that require the model opt out (`WEA_SKIP_EMBED_MODEL=0`, pre-seeded
+  `WEA_MODEL_DIR`) and call `skipWhenEmbedModelDisabled()`; an intentional model-free run
+  skips them in CI, while a missing required resource still throws through
+  `skipWhenUnavailable()`.
+- **Provisioning-trigger fixtures (`llmPresets.md` §4):** hermetic legs assert the
+  provider-triggered postures — a setup-mode boot fetches ZERO model bytes (network stub);
+  every configured boot missing weights — the first one after the wizard included, no
+  special event — uses the boot-blocking posture (failure warn-only, caps OFF + reason); an
+  override-clear trigger runs IN PLACE (`preparing(phase='provisioning', progress)` readiness
+  row; embed jobs park and drain in order on caps-ON); an enabled remote override defers with
+  no caps-off signal; switching to remote never deletes existing weights.
+- **Repository conformance additions:** the new repository twins (collections, fileLikes,
+  actionJournal, aiJobs, llmModels, aiUsageDaily, embeddings, embeddingsChunk, aiTag, queryParses) join the existing
+  `*.conformance.test.js` L2 leg (sqlite default + `test:pg:adapters` PG twin). Notable
+  contract cases: `ai_jobs` **claim race** (one runner wins per `(node_id, kind,
+generation)`, backoff/retry parity), embeddings/chunks upsert + FK-cascade parity,
+  actionJournal `chain_seq` monotonicity and `UNIQUE(domain,subject,chain_seq)`.
+- **§4.13c vectorStore contract tests:** a per-engine conformance suite asserting — exact
+  engines (JS fallback, vec0) return results **identical to the JS oracle**; ANN engines
+  (pgvector HNSW, `ef_search=400` fixed) achieve **recall@50 ≥ 0.99 graded with HELD-OUT
+  external queries only** (self-queries flatter the index and must not be the grade
+  basis). Cross-engine result-identity is not asserted (ANN is approximate) — the promise
+  is the recall floor.
+- **CI grep-gate:** `domains/(collections|ai)/**` and new stores contain zero
+  `CacheAdapter`/`operationProgress` imports (invariant 8).
 
 ---
 
@@ -82,14 +209,16 @@ Rules:
 - **Blob `.stream()` polyfill:** jsdom's `Blob` does not implement `.stream()`, but undici's `Response` (used by MSW) requires it. In `client/src/jest-polyfills.js`, polyfill `Blob.prototype.stream` (FileReader-based). Note: a slow retry backoff once masked a `TypeError: object.stream is not a function` in bulk-download tests — making failures fast exposes latent environment gaps, so keep polyfills complete even when tests appear to pass.
 - **Unhandled MSW request policy:** `onUnhandledRequest: 'warn'` leaves unhandled requests to fail as network errors, which then feed the client retry logic and can cost ~7s of real backoff time per test. Keep MSW handlers in sync with the contract (`api.md`, `shared-contracts.md`) so no request falls through, and prefer explicit fallback handlers over silent network errors.
 - **Avoid real-time waits in tests:** Do not rely on real retry backoff or sleep delays inside tests. Provide an injectable delay seam (e.g. `httpClient.js` exports `__setRetryConfigForTests({ retryDelay: 0 })`, wired in `setupTests.js`) that keeps the attempt/retry count but eliminates the 1s→2s→4s wait. This reduced the `apiClient` suite from ~45s to ~1.3s.
+- **Bulk form input:** When keystroke behavior itself is not under test, set long values with `fireEvent.change` instead of `userEvent.type`. Each typed character dispatches several act-wrapped events and re-renders the tree; a single change event preserves the observable form contract without paying that cost. Keep `userEvent` for tests that specifically verify typing, masking, composition, or keyboard handling.
+- **Setup wizard layering:** Keep 1–2 end-to-end navigation/apply cases in `Setup.test.js`, assert step-specific presentation against the pure `SetupWizardView`, and keep hook/MSW behavior (probe, preset fetch, apply payload) in `SetupAiStep.test.js`. Do not re-drive the full four-step wizard for a label or conditional-render assertion.
 - **React 18 act environment:** The shared Jest setup should declare `globalThis.IS_REACT_ACT_ENVIRONMENT = true` so React can treat RTL/jsdom runs as act-aware. If warnings remain after that, fix the specific test seam or missing async flush rather than suppressing console output.
 - **React 18 async update guardrail:** When a hook or page triggers async effects immediately after render, do not rely on instantly resolved mocks plus ad-hoc microtask flushing. Prefer controlling completion explicitly with deferred promises or equivalent test-owned async seams, then wait for the user-visible completion state (`findBy*`, `waitFor`, `waitForElementToBeRemoved`) before asserting. This keeps React updates inside act-aware boundaries.
 - **Avoid unrelated async noise in page tests:** If a page scenario is not verifying sidebar/tree/FAB chrome, replace those shell-only async seams with lighter doubles so page tests do not inherit extra `act(...)` warnings from unrelated subscriptions or background loads.
 - **Auth-gated page guardrail:** For pages that return `null` until auth context resolves (for example `MyPage`), do not perform immediate `getBy*` queries after `render`. First wait for a stable post-auth UI anchor (`findByRole` or `waitFor`), then interact/assert.
 - **Decision rule:**
-  - Component/page user flow tests -> prefer MSW
-  - Service/hook/util unit tests -> prefer module mocks
-  - Mixed tests -> use hybrid approach (UI/router/i18n module mocks + API via MSW only where stable)
+- Component/page user flow tests -> prefer MSW
+- Service/hook/util unit tests -> prefer module mocks
+- Mixed tests -> use hybrid approach (UI/router/i18n module mocks + API via MSW only where stable)
 
 ### Server
 
@@ -224,54 +353,223 @@ Anchors for the pattern — not an exhaustive matrix.
 
 ## E2E flow policy
 
-- Keep platform-owned interaction coverage split when the UI surface differs, but allow a shared spec file for platform-agnostic core flows that exercise the same user-visible path on both desktop and mobile projects.
-- Shared E2E helpers and shared flow specs may contain only platform-agnostic preparation, selectors, and assertions:
-  - authentication/login setup
-  - deterministic test naming
-  - fixture loading
-  - stable file-item locators such as `data-file-path`
-- Playwright hook signatures that use fixtures must use object destructuring for the first argument (even when unused), e.g. `test.beforeEach(async ({}, testInfo) => ...)`.
-- Do not force desktop and mobile flows to share interaction helpers when the UI surface differs. Shared FAB-based create/upload helpers are fine when the user path is the same, but desktop item-action/context-menu interactions and mobile action-sheet interactions should live in their own platform spec or helper.
-- Express platform ownership in Playwright project/spec assignment, naming, `testMatch`, or `grep` configuration rather than inline `test.skip()` branches keyed off the current project. Exception: mobile-only cases that live inside a both-platform spec (e.g. `E2E-MYPAGE-011/012`) may keep a reason-carrying `test.skip(isMobile ? false : true, 'reason')`.
-- Follow the selector policy from [features/files-sharing.md](features/files-sharing.md): semantic selectors first, `data-file-path` for explorer items, and `data-testid` only for documented unstable or icon-only seams. For SpeedDial-style action menus, prefer the visible `menuitem` names after opening the trigger when that accessibility surface is stable.
+Concrete suite names, project names, case IDs, scratch slots, skip counts, and
+per-case ownership are canonical in [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
+This section defines only the invariants every E2E suite must follow.
 
-### Naming convention (suites and cases)
+### Backend and group ownership
 
-Apply uniformly to every spec in `e2e/`:
+- S3 is the default backend. The default and core groups must not start a WebDAV
+  container; only the WebDAV job starts exactly one shared bytemark.
+- Keep platform-owned interaction coverage split when the UI surface differs,
+  but allow a shared spec for platform-agnostic core flows that exercise the
+  same user-visible path on desktop and mobile.
+- Shared E2E helpers and shared flow specs may contain only platform-agnostic
+  preparation, selectors, and assertions: authentication/login setup,
+  deterministic test naming, fixture loading, and stable item locators such as
+  `data-file-path`.
+- Playwright hook signatures that use fixtures must use object destructuring for
+  the first argument, even when unused.
+- Do not force desktop and mobile flows to share interaction helpers when the UI
+  surface differs. Shared create/upload helpers are fine when the user path is
+  the same, but desktop item actions/context menus and mobile action sheets stay
+  in their own platform spec or helper.
+- Express platform ownership in project/spec assignment, naming, `testMatch`,
+  or `grep` configuration rather than inline `test.skip()` branches keyed off
+  the current project. Mobile-only cases embedded in a both-platform spec may
+  keep a reason-carrying skip.
+- Follow the selector policy in
+  [features/files-sharing.md](features/files-sharing.md): semantic selectors
+  first, `data-file-path` for explorer items, and `data-testid` only for
+  documented unstable or icon-only seams.
 
-- **Case title format**: `E2E-<DOMAIN>-NNN: <third-person present declarative description>`.
-  - Sentence case; declarative statement form (no imperative commands like `Approve pending signup`, no `[Px]` priority prefixes, no literal backticks, no emojis, no `snake_case` identifiers in the title).
-  - Scenario labels for hermetic suites stay as a parenthetical between the ID and the colon, normalized: setup wizard `(Case N, both modes|s3 mode only)`, migration `(Flow <label>)`.
-  - IDs should be declared in numeric order within each file. Exception: a serial suite whose execution order is load-bearing (e.g. migration job-state sequences) keeps its execution order.
-  - Every `test()` carries an ID. Setup-only infrastructure tests use a documented `E2E-SETUP-NNN` slot.
-- **Suite title format**: lowercase sentence case. Platform-owned suites append `(desktop)` or `(mobile)`. Hermetic families append their ID range, e.g. `first-run setup wizard (E2E-SETUP-001..004)`.
-- **Serialization**: use `test.describe.configure({ mode: 'serial' })` (never the anonymous `test.describe.serial`). Suites that mutate shared per-project DB state are serial. Prefer parallel-safe cases (assertion-context containment); serial is required only when a suite mutates shared per-project DB state or depends on prior cases.
-- **Skips**: every `test.skip`/`test.fixme` carries a reason string. Platform ownership goes in `testMatch`/project assignment, not inline project skips (exception above).
-- **Filename style**: `<name>.<platform>.spec.ts` dot suffix for platform files (`core-flow.shared`, `core-flow.desktop`, `core-flow.mobile`). No hyphen-prefix platform files.
-- For E2E setup phases (creating test folders/files as prerequisites), avoid timing-sensitive UI seams like SpeedDial open/transition states; prefer stable API endpoints (e.g. folder create + multipart upload) to make prerequisites deterministic.
-- When using Playwright `APIRequestContext` for setup or cleanup, pass URL query strings with `params`, not `query`, so contract-required request parameters actually reach the server.
-- **Hermetic scratch projects (setup wizard):** the first-run setup spec runs in dedicated `setup-wizard-desktop` / `setup-wizard-mobile` Playwright projects that never reuse the shared `.env.e2e` boot state. Each test spawns its own scratch server instance on `:5003` (own env file via `DOTENV_CONFIG_PATH`, own sqlite path, own scratch PG DB) and supervises its own process lifecycle, because restart is the behavior under test. The spec is serial within the describe and cleans up per case in `afterEach` (kill the scratch child, remove the scratch dir, drop the scratch PG database). Keep these projects additive — do not fold them into the mode-prefixed project matrix.
-- **Per-run seed + hermetic cases (no inter-project chains):** the shared E2E database is seeded ONCE per invocation by `global-setup.ts`. Projects (`desktop`, `mobile`, `admin-*`, hermetic) are INDEPENDENT siblings and may run concurrently — Playwright `dependencies` must NOT be used to order suite projects, because dependency projects run in full regardless of the test filter, so any partial run cascades the whole chain (measured 2026-09-11: selecting one spec pulled 88 tests/10 files vs 10/1 de-chained).
-  - Isolation therefore comes from CASE HERMETICITY, not from ordering: every case creates/asserts only its own data (assertion-context containment) and cleans up in `afterEach`; nothing may leave root-level or global residue.
-  - **Global-state mutations are restored in-test**: a case that flips a shared setting (e.g. `registration_enabled`) must restore the prior value at the end (save → mutate → assert → restore) so concurrent suites never observe the flipped window.
-  - **Globally destructive cases run SCRATCH-HERMETIC, not merely project-owned**: file-level `testMatch` ownership is NOT sufficient because the worker pool is shared and `fullyParallel` interleaves tests across spec files — a global purge on the shared server races any other project's in-flight cases (this was the DEF-20 webdav-smoke flake, TRASH-007 vs TRASH-001/003). Such cases get their own scratch server project (e.g. `trash-admin-desktop` on :5012); they are excluded from the shared-mode smokes.
-  - Case-scoped names must be unique per RUN and per PROJECT (include the project slug and a timestamp — `buildName`/`getTestSuffix`/explicit `Date.now()`), because the same spec now executes in sibling projects concurrently.
-  - **Retries must be self-healing: derived user identity is unique per ATTEMPT.** A deterministic `getTestSuffix` makes retries structurally incapable of passing for any case that permanently mutates the derived user's state (e.g. `E2E-MYPAGE-005` changes the password): the retry's `ensureApprovedUser` finds the user already exists (`400 usernameTaken`) and then logs in with the pre-mutation password (`401`) — measured 2026-09-13, CI build #47, where one transient render blip + `--max-failures=1` hard-stopped 55 cases because retries could not recover. `getTestSuffix` therefore appends `_r<retry>` when `testInfo.retry > 0` (first-attempt identities are unchanged; `testInfo.retry` is constant within an attempt, so every helper call in one attempt resolves to the same user). Consequence rule: failed attempts leave residue (their users/requests persist), so no case may assert an exact count on a listing that other attempts can also write to — filter by the case's own identifiers instead.
-  - The 50-item root-render cap cannot bite: root-level accumulation was eliminated by containment (the historical `00-project-setup` re-truncate between projects is retired — do NOT reintroduce suite→suite dependencies to mask a hermeticity bug; fix the case).
+### Backend direction and release-gate composition
+
+- The default group is the full generic S3 release gate and includes the core
+  subset. The core group is a fast optional pre-merge subset. The WebDAV group
+  is required release coverage for real WebDAV-specific behavior.
+- Cross-backend migration ownership follows the source and destination backend,
+  not a single global rule. A generic gate/role check can run in the default S3 group
+  with an S3 source and a WebDAV destination tarpit (a local raw TCP listener,
+  not a WebDAV container). An S3 destination may legitimately require a WebDAV
+  source. Real WebDAV source/destination behavior remains in the WebDAV job.
+- The default S3 gate must not depend solely on the WebDAV job for generic
+  gate/role behavior, and the WebDAV job must not be treated as optional in a
+  release. Concrete cases and backend directions are listed in the coverage
+  plan.
+
+### CI and release profile axes
+
+Two independent switches govern E2E strictness:
+
+- `CI` is the environment signal. Any CI run is strict: `forbidOnly` is on,
+  servers are never reused, `skipWhenUnavailable()` throws instead of skipping,
+  and a non-release CI run retries failed tests twice.
+- `E2E_PROFILE=release` is the release policy: zero retries and the strict skip
+  budget.
+- `CI=0` and `CI=false` are not treated as CI; a local run means `CI` is unset.
+  The axes are independent, so a CI run may use the local profile and a local run
+  may use the release profile.
+- `e2e` is the layer (group and backend selection); `e2e:release:*` is the strict
+  profile of the same suite, not a separate suite.
+
+### Interaction contract
+
+- The first Enter/click on a submit control must produce exactly one request.
+  Count requests, not responses, and wait for an observable ready or completed
+  state instead of pressing again.
+- Do not retry non-idempotent writes blindly. An exactly-once job means one
+  server-side job or gate, not one transport attempt. Prove it with a deliberate
+  second write returning `409` and with the server-side job count/state; if a
+  transport retry is ever needed, use an idempotency key and assert the server
+  job count rather than only classifying the thrown error.
+
+### Test data realism
+
+- Seed actual application settings with multiple keys and distinct values, and
+  assert the copied key/value pairs. A marker-only row or a row count is not
+  evidence that settings migration works.
+- Settings that are `dbOnly` must be written through the database/config
+  surface; setting an ignored environment variable is not a valid test setup.
+
+### Timeouts, latency, and flakiness
+
+- Keep infrastructure waits (scratch boot, container health, job polling)
+  separate from product latency assertions. Do not raise a global timeout as the
+  only response to weak CI; use a per-case budget only when boot/restart is the
+  behavior under test.
+- The release gate runs with retries disabled and fails on flaky tests. Retries
+  are a development diagnostic, not release evidence.
+- A stress run at four or more workers is capacity validation only. It is not a
+  fixed worker gate and must not become a per-project worker cap.
+
+### Skip policy
+
+- In CI, a missing required resource (WebDAV, PostgreSQL, or AI weights) must
+  fail the gate, not skip the case. Every skip carries a reason.
+- Expected skip counts are release invariants, not reporting noise. The
+  canonical expected count per group lives in the coverage plan, and the
+  skip-count reporter compares every run against it.
+- Any unexpected skip fails release. Any mismatch against the documented count
+  is a gate failure, including a missing expected skip; update the count only
+  when the product/coverage decision is explicit.
+- Do not convert a skip into a pass through a retry, a broader timeout, or a
+  conditional guard. Fix the missing resource or the contract.
+
+### State preservation
+
+- Route-driven expansion is initial state, not a per-refresh reset. When the
+  current route is a collections route, the collections section is expanded on
+  first render and on remount.
+- An undo or notifier refresh must preserve the user's current expansion. It
+  must not silently collapse an expanded section.
+- A manual collapse is user intent and takes precedence while the route is
+  unchanged. Only a later route entry or remount may auto-expand the section
+  again.
+- Do not reload the page to bypass a same-session fetch queue or resume
+  workflow. Wait for the observable dialog/request state; reload only when boot
+  or restart is the behavior under test.
+- Do not reload, re-open, or re-expand a tree merely to make an undo-state
+  assertion pass. Assert the product's observable expansion state directly.
+- Collapsed, empty, and load-failure states must be distinguishable through
+  explicit accessible state (for example `aria-expanded` plus an empty or error
+  message), never inferred from row absence alone.
+
+### Concurrency and isolation
+
+- Playwright project dependencies are not used: every suite owns its scratch
+  slot, so projects are independent siblings and the worker count is the main
+  concurrency throttle. Do not add a fixed per-project `workers: 1`; use
+  `serial` mode or `fullyParallel` as the suite requires.
+- Per-run seeding happens once. Isolation comes from case hermeticity and
+  assertion-context containment, not from ordering.
+- Scratch servers are process isolation for boot configuration, global
+  settings, the metadata DB, and restart. The project-scoped working directory,
+  S3 bucket, PG database, and WebDAV subtree isolate blobs only.
+- Globally destructive cases run scratch-hermetic. File-level `testMatch`
+  ownership is not sufficient because `fullyParallel` interleaves tests across
+  spec files; a global purge must have its own scratch world and stay out of
+  shared-mode smoke sets.
+- Global-state mutations are restored in-test. A case that flips a shared
+  setting saves, mutates, asserts, and restores it before finishing.
+- Case-scoped names are unique per run and per project, including the project
+  slug and a timestamp or retry suffix where the helper provides one.
+- Retries must be self-healing: derived user identities are unique per attempt,
+  so a retry of a permanently mutating case does not collide with its prior
+  attempt. Failed attempts leave residue, so assertions filter by the case's
+  own identifiers rather than exact counts on shared listings.
+- Prefer parallel-safe cases. A file is serial only when it mutates shared
+  per-project DB state or depends on prior cases; state the reason.
+
+### Serialization
+
+Use `test.describe.configure({ mode: 'serial' })` (never anonymous
+`test.describe.serial`). Suites that mutate shared per-project DB state are
+serial. Assertion-context containment is the default; serial is the exception.
+
+### Naming, IDs, and hygiene
+
+Apply uniformly to every E2E spec:
+
+- Every `test()` carries exactly one case ID and a third-person present
+  declarative title. Platform cases use the platform ID family; backend-specific
+  hermetic cases carry a backend qualifier. A title never references another
+  test's ID; `--grep` matches substrings, so a cross-reference would select the
+  wrong case.
+- IDs are contiguous per family (`001..N` with no undefined gaps). Every number
+  belongs to exactly one coverage-plan row — `covered`, `planned`, `deferred`,
+  `non-e2e`, or `retired`. Retired IDs are never reused. A one-time renumbering
+  records the old→new mapping in the coverage plan.
+- Sentence case; no imperative commands, priority prefixes, literal backticks,
+  emojis, or `snake_case` identifiers in titles.
+- Hermetic scenario labels stay as a parenthetical between ID and colon and are
+  normalized per suite.
+- Spec files are **flat**: do not wrap tests in `test.describe(...)`. Grouping
+  comes from the file name and the case ID. `test.describe.configure(...)` is
+  the only allowed `test.describe` call (serial/timeout scope); it creates no
+  tree node.
+- IDs are declared in numeric order within a file. When a serial suite's
+  execution order is load-bearing, assign IDs in execution order instead of
+  moving the tests.
+- `npm run check:e2e` enforces the flat tree, one title ID per test, ascending
+  family order within each file, and the contiguous coverage-plan registry.
+- Suite titles are lowercase sentence case. Platform-owned suites append a
+  platform suffix; hermetic families append their ID range.
+- Use platform/backend dot suffixes in spec file names and keep shared helpers
+  alongside the family. No hyphen-prefix platform files.
+- Every `test.skip`/`test.fixme` carries a reason string. Platform ownership
+  belongs in project assignment, not inline project skips.
+- For setup phases, create prerequisite folders/files through stable API
+  endpoints when those operations are not the behavior under test. Exercise the
+  UI flow when it is the behavior under test.
+- When using Playwright `APIRequestContext` for setup or cleanup, pass query
+  strings with `params`, not `query`, so contract-required parameters reach the
+  server.
+- Do not leave debug `console.log` output in specs. Do not reference retired or
+  deleted suite names/IDs; the coverage plan is the canonical map.
 
 ### Assertion-context containment
 
 - The admin home is the filesystem root, and the client renders at most 50 items per listing (infinite scroll). Visibility assertions against a shared listing couple a case to creation order and break once the listing exceeds the render window under parallel workers.
 - Create and assert items only inside a case-owned folder (named via `buildName`); never assert item visibility in the admin root or another shared listing.
-- Seed the owned base folder through the stable API (resolve-or-create) and navigate into it; exercise UI creation flows (FAB, upload) inside it.
+- Seed the owned base folder through the stable API (resolve-or-create) and navigate into it. Use UI creation flows (FAB, upload) when creation is the behavior under test; otherwise seed fixture items through the API and reserve UI actions for the behavior being tested.
 - A case may render-and-assert only in a listing bounded to its own data.
-- Each case deletes its owned base folder in `afterEach` (permanent delete via the admin maintenance route `DELETE /api/admin/maintenance/perm-delete`, tolerant of the folder having already been moved/renamed/deleted by the case), so the shared admin root never accumulates one folder per case across a run. The ordinary delete channel (`POST /api/files/batch-delete`) now TRASHES (DEF-16 P2) — cleanup must not rely on it, or trashed residue would accumulate invisibly at the root.
-- Prefer parallel-safe cases; a case/file must be serial only when it mutates shared users/settings or depends on prior cases (state the reason).
-- A standard user's own home is role-scoped (a top-level node named after the username), not the admin root. Home-root label assertions (the breadcrumb first chip and the folder-tree home row render "Home", never the acting username — `E2E-EXP-014`) run only against that user's own home folder, never a shared listing.
+- Each case deletes its owned base folder in `afterEach` via the admin permanent
+  delete route, tolerant of the folder having already been moved, renamed, or
+  deleted by the case, so the shared admin root never accumulates residue. The
+  ordinary delete channel trashes; cleanup must not rely on it.
+- A standard user's own home is role-scoped, not the admin root. Home-root label
+  assertions run only against that user's own home folder, never a shared
+  listing.
+- Prefer parallel-safe cases; a case/file is serial only when it mutates shared
+  users/settings or depends on prior cases, with the reason stated.
 
 ### Authenticated-session reuse (L1)
 
-- Default to an authenticated session for admin-actor cases via a per-file `storageState` (see `e2e/fixtures/authenticated.ts`); only auth-state cases start unauthenticated or perform a UI login. New cases must not repeat a UI login the seeded session already provides.
+- Default to an authenticated session for admin-actor cases via a per-file
+  `storageState`; only auth-state cases start unauthenticated or perform a UI
+  login. New cases must not repeat a UI login the seeded session already
+  provides.
 
 ### Minimum flow coverage
 
@@ -279,17 +577,17 @@ Apply uniformly to every spec in `e2e/`:
 - Mobile flow: the same CRUD happy paths.
 - Treat create/upload as shared FAB-driven outcomes when the user path matches across platforms, and split only the interaction helpers that genuinely differ, such as desktop item actions/context menu versus the mobile action sheet for rename/delete.
 
-Detailed browser-flow inventory, rollout order, and planned Playwright ownership are maintained in [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md). Keep this document focused on layer policy and E2E design rules rather than exhaustive scenario tracking.
+Detailed browser-flow inventory, future expansion plan, and planned Playwright ownership are maintained in [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md). Keep this document focused on layer policy and E2E design rules rather than exhaustive scenario tracking.
 
 ### Feature-doc responsibility for E2E guidance
 
 - Put exhaustive scenario inventory, priority, ownership, and status in [E2E_COVERAGE_PLAN.md](E2E_COVERAGE_PLAN.md).
 - Keep `docs/features/*.md` focused on product behavior and **feature-specific testing anchors** only.
 - Add E2E guidance to a feature doc only when that feature has rules that are easier to understand at the feature boundary than in the global plan, for example:
-  - selector rules unique to that feature
-  - platform-specific interaction ownership (desktop vs mobile)
-  - feature-only flow-structure constraints
-- Do not copy full scenario matrices, rollout order, or per-spec ownership into feature docs when the canonical E2E plan already tracks them.
+- selector rules unique to that feature
+- platform-specific interaction ownership (desktop vs mobile)
+- feature-only flow-structure constraints
+- Do not copy full scenario matrices, future expansion plan, or per-spec ownership into feature docs when the canonical E2E plan already tracks them.
 
 ---
 
@@ -334,7 +632,7 @@ Detailed browser-flow inventory, rollout order, and planned Playwright ownership
 ### New or modified E2E spec
 
 - Create/assert data only inside a case-owned folder; never assert visibility in a shared listing (assertion-context containment).
-- Do not repeat a UI login when a seeded per-file `storageState` session already provides it (see `e2e/fixtures/authenticated.ts`); only auth-state cases start unauthenticated or perform a UI login.
+- Do not repeat a UI login when a seeded per-file `storageState` session already provides it; only auth-state cases start unauthenticated or perform a UI login.
 - Verify order-independence before enabling parallel workers: run the affected project with `--workers=1` and `--workers=2` and confirm an identical passed/skipped set (repeat 3×).
 
 ---
@@ -362,7 +660,7 @@ Align with [TEST_GIT_GUIDE.md#coverage-goals](TEST_GIT_GUIDE.md#coverage-goals):
 - **Refactored code:** At least 90% coverage.
 - **Core business logic:** 95%+ coverage.
 
-Run from each directory: `cd client && npm run test:coverage` and `cd server && npm run test:coverage`. Don’t commit coverage artifacts; see TEST_GIT_GUIDE for what to commit and ignore.
+Run from each directory: `cd client && npm run test` and `cd server && npm run test`. Don’t commit coverage artifacts; see TEST_GIT_GUIDE for what to commit and ignore.
 
 **Mutation testing (Stryker):** Prefer improving Mutation Score over chasing coverage numbers. Coverage can miss weak tests; mutation testing measures whether tests actually detect code changes. Run `cd client && npm run test:mutation` and `cd server && npm run test:mutation`. Start with small modules (e.g. `server/utils/errorHandler.js`) and expand the mutate scope gradually. See `stryker.config.json` in each package.
 
@@ -371,7 +669,9 @@ Run from each directory: `cd client && npm run test:coverage` and `cd server && 
 ## Test Performance & Run Guidance
 
 - **Cold vs warm cache:** The first Jest run after a cache invalidation is substantially slower (a cold full client run can exceed 10 minutes). Base timing comparisons and timeout budgets on warm runs, not the first run.
-- **Avoid concurrent full-suite runs:** Running the full server and client suites simultaneously on a constrained machine causes resource contention — individual fast suites (e.g. `files.test.js`, ~2s standalone) can stall and time out. Run suites sequentially, or tune `--maxWorkers` when parallelizing.
+- **Avoid concurrent full-suite runs:** Running the full server and client suites simultaneously on a constrained machine causes resource contention — individual fast suites can stall and time out. Run suites sequentially, or tune `--maxWorkers` when parallelizing.
+- **Shared-host worker budget:** The client `test` script pins `--maxWorkers=2` (matching the server gate) so a 6-core host keeps headroom for the OS, editors, and sibling worktrees. Use `npm run gate` (or `scripts/gate.sh`) for the full client/server gate; it holds a cross-checkout lock and runs the suites sequentially. Do not run the full gate from multiple worktrees at once.
+- **Timeout safety net:** After the event/render cost is reduced, a per-suite `jest.setTimeout(10000)` is allowed for the Setup wizard integration suites (they cover boot/apply/restart flows). It is a safety net, not a substitute for fixing the cost; never raise the global timeout or add retries.
 - **Measure consistently:** When judging a performance regression, compare identical environment, worker count, and warm-cache state. Real-time retry backoff (see "Avoid real-time waits in tests") is the most common hidden cost in slow suites.
 - **Know the critical path:** In a parallelized suite, the wall-clock time is bounded by the slowest suite. Profile per-suite timing (Jest `--json` + duration aggregation) before optimizing; the slowest suite is usually a network/retry or heavy-rendering suite, not the largest one.
 
@@ -392,9 +692,11 @@ When a test fails (during development, CI, or when fixing regressions):
 
 1. **Diagnose:** Run the failing test, read the error message, and identify the root cause.
 2. **Classify:** Determine whether it is:
-   - **A** — Bug in production code
-   - **B** — Bug in the test itself
-   - **C** — Spec/contract mismatch
+
+- **A** — Bug in production code
+- **B** — Bug in the test itself
+- **C** — Spec/contract mismatch
+
 3. **Act:** Apply the fix (or update spec) according to the classification. Do not modify code before classifying.
 4. **Record:** Add an entry to [docs/RCA_LOG.md](RCA_LOG.md) with date, summary, classification, and action taken.
 

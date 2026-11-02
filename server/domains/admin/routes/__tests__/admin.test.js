@@ -114,6 +114,9 @@ describe('Route matrix: non-admin denied on every /api/admin/* route', () => {
     ['post', '/api/admin/cleanup/orphaned'],
     ['post', '/api/admin/maintenance/repair-sync'],
     ['delete', '/api/admin/maintenance/perm-delete'],
+    ['get', '/api/admin/reports'],
+    ['get', '/api/admin/reports/1'],
+    ['post', '/api/admin/reports/1/repair'],
   ];
 
   it('returns 403 for a non-admin on every admin route', async () => {

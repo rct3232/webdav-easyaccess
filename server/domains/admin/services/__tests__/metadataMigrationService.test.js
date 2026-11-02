@@ -11,7 +11,7 @@
  *  - sqliteToPostgresql: the source is a REAL sqlite file; the target is a
  *    fake pg.Client, so PG-specific serialization (JSON-string settings.value,
  *    real booleans, setval) is asserted on the captured call log.
- *  - A real sqlite -> PG roundtrip runs only under test:ci:pg (all four
+ *  - A real sqlite -> PG roundtrip runs only under test:pg (all four
  *    WEA_DB_* identity keys present in the environment), using a dedicated
  *    throwaway database.
  */
@@ -19,7 +19,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
+const { DatabaseSync } = require('node:sqlite');
 
 const { applyPendingMigrations } = require('../../../../infrastructure/schemaManager');
 const { createMetadataMigrationService } = require('../metadataMigrationService');
@@ -102,34 +102,32 @@ class FakePg {
 // ---------------------------------------------------------------------------
 
 function openDb(dbPath, mode) {
-  return new Promise((resolve, reject) => {
-    if (mode === 'readonly') {
-      const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) =>
-        err ? reject(err) : resolve(db)
-      );
-      return db;
-    }
-    const db = new sqlite3.Database(dbPath, (err) => (err ? reject(err) : resolve(db)));
-  });
+  if (mode === 'readonly') {
+    return new DatabaseSync(dbPath, { readOnly: true });
+  }
+  return new DatabaseSync(dbPath);
 }
 
 function run(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve({ changes: this.changes, lastID: this.lastID });
-    });
-  });
+  const info = db.prepare(sql).run(...params);
+  return Promise.resolve({ changes: info.changes, lastID: info.lastInsertRowid });
 }
 
 function all(db, sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
-  });
+  try {
+    return Promise.resolve(db.prepare(sql).all(...params) || []);
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 function closeDb(db) {
-  return new Promise((resolve, reject) => db.close((err) => (err ? reject(err) : resolve())));
+  try {
+    db.close();
+    return Promise.resolve();
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 async function createSchemaDb(dbPath) {
@@ -376,6 +374,104 @@ describe('scanTarget', () => {
     const service = createMetadataMigrationService();
     await expect(service.scanTarget({ backend: 'mysql' })).rejects.toThrow(/unsupported backend/);
   });
+});
+
+// ---------------------------------------------------------------------------
+// PostgreSQL connection timeout (WEA_DB_CONNECTION_TIMEOUT_MS)
+// ---------------------------------------------------------------------------
+
+describe('PostgreSQL connection timeout', () => {
+  const PG_ENV_KEYS = [
+    'WEA_DB_HOST',
+    'WEA_DB_PORT',
+    'WEA_DB_DATABASE',
+    'WEA_DB_USER',
+    'WEA_DB_PASSWORD',
+    'WEA_DB_CONNECTION_TIMEOUT_MS',
+  ];
+  const explicitTarget = {
+    backend: 'postgresql',
+    pg: { host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' },
+  };
+
+  let savedEnv;
+
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(PG_ENV_KEYS.map((key) => [key, process.env[key]]));
+    for (const key of PG_ENV_KEYS) delete process.env[key];
+  });
+
+  afterEach(() => {
+    for (const key of PG_ENV_KEYS) {
+      if (savedEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = savedEnv[key];
+    }
+  });
+
+  async function captureConfig(scanArgs) {
+    const fake = new FakePg({ schemaExists: true });
+    const configs = [];
+    const service = createMetadataMigrationService({
+      pgConnectionProvider: (config) => {
+        configs.push(config);
+        return fake;
+      },
+    });
+    await service.scanTarget(scanArgs);
+    return configs[0];
+  }
+
+  it('uses 30,000 ms for an explicit dialog target when the env is set', async () => {
+    process.env.WEA_DB_CONNECTION_TIMEOUT_MS = '30000';
+
+    const config = await captureConfig(explicitTarget);
+
+    expect(config.connectionTimeoutMillis).toBe(30000);
+  });
+
+  it('defaults an explicit dialog target to 10,000 ms when the env is unset', async () => {
+    const config = await captureConfig(explicitTarget);
+
+    expect(config.connectionTimeoutMillis).toBe(10000);
+  });
+
+  it.each(['0', '-5000'])(
+    'falls back to 10,000 ms for an explicit dialog target when the env is %s',
+    async (value) => {
+      process.env.WEA_DB_CONNECTION_TIMEOUT_MS = value;
+
+      const config = await captureConfig(explicitTarget);
+
+      expect(config.connectionTimeoutMillis).toBe(10000);
+    }
+  );
+
+  it('honors the env timeout for an env-selected target', async () => {
+    process.env.WEA_DB_HOST = 'env-host';
+    process.env.WEA_DB_DATABASE = 'env-db';
+    process.env.WEA_DB_USER = 'env-user';
+    process.env.WEA_DB_PASSWORD = 'env-pass';
+    process.env.WEA_DB_CONNECTION_TIMEOUT_MS = '30000';
+
+    const config = await captureConfig({ backend: 'postgresql' });
+
+    expect(config).toMatchObject({ host: 'env-host', connectionTimeoutMillis: 30000 });
+  });
+
+  it.each(['0', '-5000'])(
+    'falls back to 10,000 ms for an env-selected target when the env is %s',
+    async (value) => {
+      process.env.WEA_DB_HOST = 'env-host';
+      process.env.WEA_DB_DATABASE = 'env-db';
+      process.env.WEA_DB_USER = 'env-user';
+      process.env.WEA_DB_PASSWORD = 'env-pass';
+      process.env.WEA_DB_CONNECTION_TIMEOUT_MS = value;
+
+      const config = await captureConfig({ backend: 'postgresql' });
+
+      expect(config.connectionTimeoutMillis).toBe(10000);
+    }
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -726,7 +822,7 @@ describe('runMigration sqliteToPostgresql (real sqlite source -> fake PG target)
 });
 
 // ---------------------------------------------------------------------------
-// Real sqlite -> PG roundtrip (test:ci:pg only)
+// Real sqlite -> PG roundtrip (test:pg only)
 // ---------------------------------------------------------------------------
 
 const PG_BASE = {
@@ -736,8 +832,8 @@ const PG_BASE = {
   password: process.env.WEA_TEST_PG_PASSWORD || 'e2etest',
 };
 
-// The real PG roundtrip runs only under the WEA_TEST_PG_* jest leg (test:ci:pg);
-// under the default sqlite test:ci run the tests are skipped.
+// The real PG roundtrip runs only under the WEA_TEST_PG_* jest leg (test:pg);
+// under the default sqlite test run the tests are skipped.
 const ROUNDTRIP_PG_KEYS = [
   'WEA_TEST_PG_HOST',
   'WEA_TEST_PG_DATABASE',

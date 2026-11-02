@@ -159,4 +159,106 @@ describe('useMessage', () => {
     expect(result.current.message.type).toBe('error');
     expect(result.current.message.text).toBe('Translated error');
   });
+
+  // -- action-slot extension (useMessage.md §3 D2) ---------------------------
+
+  it('message state gains action/icon null defaults', () => {
+    const { result } = renderHook(() => useMessage());
+
+    expect(result.current.message.action).toBeNull();
+    expect(result.current.message.icon).toBeNull();
+  });
+
+  it('with an action, no auto-hide fires at the default duration (persists until replaced)', () => {
+    const { result } = renderHook(() => useMessage());
+
+    act(() => {
+      result.current.showMessage('Move completed (12 items)', 'success', null, {
+        labelKey: 'actions.undo',
+        onClick: jest.fn(),
+      });
+    });
+
+    expect(result.current.message.show).toBe(true);
+    expect(result.current.message.action).toMatchObject({ labelKey: 'actions.undo' });
+
+    act(() => {
+      jest.advanceTimersByTime(60000);
+    });
+    expect(result.current.message.show).toBe(true);
+  });
+
+  it('with an action, an explicit 8000 hides at 8 s', () => {
+    const { result } = renderHook(() => useMessage());
+
+    act(() => {
+      result.current.showMessage('Move completed', 'success', 8000, {
+        labelKey: 'actions.undo',
+        onClick: jest.fn(),
+      });
+    });
+    expect(result.current.message.show).toBe(true);
+    expect(result.current.message.action).toMatchObject({ labelKey: 'actions.undo' });
+
+    act(() => {
+      jest.advanceTimersByTime(7999);
+    });
+    expect(result.current.message.show).toBe(true);
+
+    act(() => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(result.current.message.show).toBe(false);
+  });
+
+  it('clearMessage dismisses an action toast immediately', () => {
+    const { result } = renderHook(() => useMessage());
+
+    act(() => {
+      result.current.showMessage('Move completed', 'success', null, {
+        labelKey: 'actions.undo',
+        onClick: jest.fn(),
+      });
+    });
+    expect(result.current.message.show).toBe(true);
+    expect(result.current.message.action?.labelKey).toBe('actions.undo');
+
+    act(() => {
+      result.current.clearMessage();
+    });
+    expect(result.current.message.show).toBe(false);
+  });
+
+  it('an icon may ride the message alongside the action', () => {
+    const { result } = renderHook(() => useMessage());
+
+    act(() => {
+      result.current.showMessage(
+        'Move completed',
+        'success',
+        null,
+        {
+          labelKey: 'actions.undo',
+          onClick: jest.fn(),
+        },
+        'move'
+      );
+    });
+
+    expect(result.current.message.icon).toBe('move');
+  });
+
+  it("without an action, showMessage keeps today's duration behavior", () => {
+    const { result } = renderHook(() => useMessage());
+
+    act(() => {
+      result.current.showMessage('Plain', 'success');
+    });
+    expect(result.current.message.action).toBeNull();
+
+    act(() => {
+      jest.advanceTimersByTime(3000);
+    });
+    expect(result.current.message.show).toBe(false);
+  });
 });

@@ -72,7 +72,7 @@ export const ensureHomeOwnerAdmin = async () => {
 
 export const testConfig = async (target, values) => {
   try {
-    const response = await post('/admin/config/test', { target, ...values });
+    const response = await post('/admin/config/test', { target, ...values }, { maxRetries: 0 });
     return response.data;
   } catch (err) {
     const data = err?.response?.data;
@@ -86,6 +86,50 @@ export const testConfig = async (target, values) => {
 
 export const getAdminHealth = async () => {
   const response = await get('/admin/health');
+  return response.data;
+};
+
+export const getAiAdminSummary = async () => {
+  const response = await get('/admin/ai/summary');
+  return response.data;
+};
+
+export const getAiReembedPreview = async () => {
+  const response = await get('/admin/ai/reembed/preview');
+  return response.data;
+};
+
+export const startAiReembed = async () => {
+  const response = await post('/admin/ai/reembed', {});
+  return response.data;
+};
+
+export const getSettingsJournal = async () => {
+  const response = await get('/actions', { params: { domain: 'settings' } });
+  return response.data;
+};
+
+export const undoSettingsAction = async (actionId) => {
+  const response = await post(`/actions/${actionId}/undo`, {});
+  return response.data;
+};
+
+export const probeLlmRole = async (role) => {
+  return testConfig('llm', { role });
+};
+
+export const getAdminReports = async () => {
+  const response = await get('/admin/reports');
+  return response.data;
+};
+
+export const getAdminReport = async (id) => {
+  const response = await get(`/admin/reports/${id}`);
+  return response.data;
+};
+
+export const repairAdminReport = async (id, { action, nodeId, repairAction } = {}) => {
+  const response = await post(`/admin/reports/${id}/repair`, { action, nodeId, repairAction });
   return response.data;
 };
 

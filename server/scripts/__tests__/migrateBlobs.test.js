@@ -1,7 +1,7 @@
 'use strict';
 
 // Backend selection is presence-based and normalized by the shared test-setup
-// (server/test-setup.js): sqlite by default, PostgreSQL under test:ci:pg when
+// (server/test-setup.js): sqlite by default, PostgreSQL under test:pg when
 // all four WEA_DB_* identity keys are present.
 
 const { buildDestBlobStore } = require('../../infrastructure/adapters/blobstore/config');

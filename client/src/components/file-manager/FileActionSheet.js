@@ -22,6 +22,9 @@ import {
   Info as InfoIcon,
   Restore as RestoreIcon,
   DeleteForever as DeleteForeverIcon,
+  PlaylistAdd as PlaylistAddIcon,
+  Favorite as LikedIcon,
+  FavoriteBorder as LikeIcon,
 } from '@mui/icons-material';
 import { getFileIcon } from '../../utils/fileIconUtils';
 
@@ -43,6 +46,8 @@ const FileActionSheet = ({
   onProperties,
   onRestore,
   onPurge,
+  onAddToCollection,
+  onToggleLike,
   hasWritePermission = true,
 }) => {
   const { t } = useTranslation();
@@ -242,25 +247,52 @@ const FileActionSheet = ({
             </ListItemButton>
           )}
 
+          {onAddToCollection && (
+            <ListItemButton
+              component="button"
+              data-testid="collection-add"
+              onClick={() => handleAction(() => onAddToCollection(file))}
+              sx={{ minHeight: 56, borderRadius: 1 }}
+            >
+              <ListItemIcon>
+                <PlaylistAddIcon />
+              </ListItemIcon>
+              <ListItemText primary={t('fileManager.addToCollection')} />
+            </ListItemButton>
+          )}
+
+          {(onToggleLike || (fileWritePermission && onDelete)) && <Divider sx={{ my: 1 }} />}
+
+          {onToggleLike && (
+            <ListItemButton
+              component="button"
+              data-testid="like-toggle"
+              onClick={() => handleAction(() => onToggleLike(file))}
+              sx={{ minHeight: 56, borderRadius: 1 }}
+            >
+              <ListItemIcon>{file.liked ? <LikedIcon color="like" /> : <LikeIcon />}</ListItemIcon>
+              <ListItemText
+                primary={t(file.liked ? 'fileManager.memberUnlike' : 'fileManager.memberLike')}
+              />
+            </ListItemButton>
+          )}
+
           {fileWritePermission && onDelete && (
-            <>
-              <Divider sx={{ my: 1 }} />
-              <ListItemButton
-                component="button"
-                data-testid="file-action-delete"
-                onClick={() => handleAction(onDelete)}
-                sx={{
-                  minHeight: 56,
-                  borderRadius: 1,
-                  color: 'error.main',
-                }}
-              >
-                <ListItemIcon sx={{ color: 'error.main' }}>
-                  <DeleteIcon />
-                </ListItemIcon>
-                <ListItemText primary={t('actions.delete')} />
-              </ListItemButton>
-            </>
+            <ListItemButton
+              component="button"
+              data-testid="file-action-delete"
+              onClick={() => handleAction(onDelete)}
+              sx={{
+                minHeight: 56,
+                borderRadius: 1,
+                color: 'error.main',
+              }}
+            >
+              <ListItemIcon sx={{ color: 'error.main' }}>
+                <DeleteIcon />
+              </ListItemIcon>
+              <ListItemText primary={t('actions.delete')} />
+            </ListItemButton>
           )}
         </List>
       </Box>

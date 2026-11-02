@@ -23,6 +23,15 @@ import {
   testConfig,
   getAdminHealth,
   getPublicHealth,
+  getAdminReports,
+  getAdminReport,
+  repairAdminReport,
+  getAiAdminSummary,
+  getAiReembedPreview,
+  startAiReembed,
+  getSettingsJournal,
+  undoSettingsAction,
+  probeLlmRole,
 } from '../adminService';
 
 jest.mock('../apiClient', () => ({
@@ -241,11 +250,15 @@ describe('adminService', () => {
         WEBDAV_USERNAME: 'user',
       });
 
-      expect(post).toHaveBeenCalledWith('/admin/config/test', {
-        target: 'webdav',
-        WEBDAV_URL: 'https://example.com/webdav',
-        WEBDAV_USERNAME: 'user',
-      });
+      expect(post).toHaveBeenCalledWith(
+        '/admin/config/test',
+        {
+          target: 'webdav',
+          WEBDAV_URL: 'https://example.com/webdav',
+          WEBDAV_USERNAME: 'user',
+        },
+        { maxRetries: 0 }
+      );
       expect(result).toEqual(resultData);
     });
 
@@ -311,6 +324,162 @@ describe('adminService', () => {
       expect(get).toHaveBeenCalledWith('/health');
       expect(result).toEqual(health);
       expect(result.backends).toEqual({ postgresql: 'ok', s3: 'unknown', webdav: 'ok' });
+    });
+  });
+
+  describe('getAdminReports', () => {
+    it('returns the response data from GET /admin/reports', async () => {
+      const payload = {
+        reports: [
+          { id: 2, kind: 'gc', status: 'ok', payload: { tier1: {} }, created_at: 'x' },
+          { id: 1, kind: 'failsafe', status: 'partial', payload: null, created_at: 'y' },
+        ],
+      };
+      get.mockResolvedValueOnce({ data: payload });
+
+      const result = await getAdminReports();
+
+      expect(get).toHaveBeenCalledWith('/admin/reports');
+      expect(result).toEqual(payload);
+      expect(Array.isArray(result.reports)).toBe(true);
+    });
+
+    it('rejects when request fails', async () => {
+      get.mockRejectedValueOnce(new Error('Request failed'));
+
+      await expect(getAdminReports()).rejects.toThrow();
+    });
+  });
+
+  describe('getAdminReport', () => {
+    it('returns the response data from GET /admin/reports/:id', async () => {
+      const payload = {
+        report: { id: 7, kind: 'cleanup', status: 'ok', payload: {}, created_at: 'z' },
+      };
+      get.mockResolvedValueOnce({ data: payload });
+
+      const result = await getAdminReport(7);
+
+      expect(get).toHaveBeenCalledWith('/admin/reports/7');
+      expect(result).toEqual(payload);
+      expect(result.report).toHaveProperty('id', 7);
+    });
+
+    it('propagates the 404 reportNotFound error like the siblings', async () => {
+      const err = new Error('Request failed');
+      err.response = {
+        status: 404,
+        data: {
+          errorCode: 'serverErrors.admin.reportNotFound',
+          params: { reportId: 99 },
+        },
+      };
+      get.mockRejectedValueOnce(err);
+
+      await expect(getAdminReport(99)).rejects.toBe(err);
+    });
+  });
+
+  describe('repairAdminReport', () => {
+    it('calls POST /admin/reports/:id/repair with { action } and returns the response data', async () => {
+      const resultData = {
+        messageCode: 'serverMessages.admin.reportRepaired',
+        report: { id: 1, kind: 'failsafe', status: 'ok', payload: {}, created_at: 'a' },
+        result: { backfilled: 3, nullCount: 0, errors: [] },
+      };
+      post.mockResolvedValueOnce({ data: resultData });
+
+      const result = await repairAdminReport(1, { action: 'content_hash' });
+
+      expect(post).toHaveBeenCalledWith('/admin/reports/1/repair', {
+        action: 'content_hash',
+        nodeId: undefined,
+        repairAction: undefined,
+      });
+      expect(result).toEqual(resultData);
+      expect(result).toHaveProperty('report');
+    });
+
+    it('sends nodeId and repairAction for the repair-sync delegation', async () => {
+      post.mockResolvedValueOnce({ data: {} });
+
+      await repairAdminReport(4, { action: 'repair-sync', nodeId: 12, repairAction: 'auto' });
+
+      expect(post).toHaveBeenCalledWith('/admin/reports/4/repair', {
+        action: 'repair-sync',
+        nodeId: 12,
+        repairAction: 'auto',
+      });
+    });
+
+    it('sends nodeId for the perm-delete delegation', async () => {
+      post.mockResolvedValueOnce({ data: {} });
+
+      await repairAdminReport(4, { action: 'perm-delete', nodeId: 9 });
+
+      expect(post).toHaveBeenCalledWith('/admin/reports/4/repair', {
+        action: 'perm-delete',
+        nodeId: 9,
+        repairAction: undefined,
+      });
+    });
+
+    it('propagates repair errors without normalization', async () => {
+      const err = new Error('Request failed');
+      err.response = {
+        status: 400,
+        data: { errorCode: 'serverErrors.admin.repairNotAvailable', params: {} },
+      };
+      post.mockRejectedValueOnce(err);
+
+      await expect(repairAdminReport(2, { action: 'content_hash' })).rejects.toBe(err);
+    });
+  });
+
+  describe('AI admin wrappers', () => {
+    it('GETs the polled summary and read-only preview', async () => {
+      get.mockResolvedValueOnce({ data: { pipeline: {} } });
+      await expect(getAiAdminSummary()).resolves.toEqual({ pipeline: {} });
+      expect(get).toHaveBeenCalledWith('/admin/ai/summary');
+
+      get.mockResolvedValueOnce({ data: { plan: { union_count: 2 } } });
+      await expect(getAiReembedPreview()).resolves.toEqual({ plan: { union_count: 2 } });
+      expect(get).toHaveBeenCalledWith('/admin/ai/reembed/preview');
+    });
+
+    it('POSTs the launcher and returns its job/undo envelope', async () => {
+      const payload = {
+        job_ids: [1],
+        enqueued: 1,
+        generation: 2,
+        undo: { action_id: 9 },
+        retry_after_seconds: 900,
+      };
+      post.mockResolvedValueOnce({ data: payload });
+
+      await expect(startAiReembed()).resolves.toEqual(payload);
+      expect(post).toHaveBeenCalledWith('/admin/ai/reembed', {});
+    });
+
+    it('reads and undoes settings-domain journal rows', async () => {
+      const feed = { actions: [{ action_id: 4, domain: 'settings' }] };
+      get.mockResolvedValueOnce({ data: feed });
+      await expect(getSettingsJournal()).resolves.toEqual(feed);
+      expect(get).toHaveBeenCalledWith('/actions', { params: { domain: 'settings' } });
+
+      post.mockResolvedValueOnce({ data: { status: 'undone' } });
+      await expect(undoSettingsAction(4)).resolves.toEqual({ status: 'undone' });
+      expect(post).toHaveBeenCalledWith('/actions/4/undo', {});
+    });
+
+    it('probes an LLM role through the config/test target', async () => {
+      post.mockResolvedValueOnce({ data: { ok: true, role: 'chat' } });
+      await expect(probeLlmRole('chat')).resolves.toEqual({ ok: true, role: 'chat' });
+      expect(post).toHaveBeenCalledWith(
+        '/admin/config/test',
+        { target: 'llm', role: 'chat' },
+        { maxRetries: 0 }
+      );
     });
   });
 });

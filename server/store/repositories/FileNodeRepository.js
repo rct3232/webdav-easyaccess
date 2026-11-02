@@ -22,7 +22,9 @@
  * @property {(olderThanDays?: number) => Promise<Array<Object>>} getTopmostTrashedNodes
  * @property {(nodeIds: number[]) => Promise<{ changes: number }>} markSubtreeDeleted
  * @property {(nodeIds: number[]) => Promise<{ changes: number }>} untrashSubtree
+ * @property {(tx: { run: Function }, nodeIds: number[]) => Promise<{ changes: number }>} untrashSubtreeTx
  * @property {(id, newName) => Promise<{ changes: number }>} renameNode
+ * @property {(tx: { run: Function }, id, newName) => Promise<{ changes: number }>} renameNodeTx
  * @property {(id, newParentId) => Promise<{ changes: number }>} moveNode
  * @property {(nodeIds: number[]) => Promise<{ changes: number }>} deleteNodeTree
  * @property {(id, status) => Promise<{ changes: number }>} updateSyncStatus
@@ -34,15 +36,26 @@
  * @property {(descendantId) => Promise<Array<{ ancestorId: number, depth: number }>>} getAncestorChain
  * @property {(ancestorId, descendantId) => Promise<boolean>} isAncestor
  * @property {(userId) => Promise<Object|null>} getUserRootNode
- * @property {(fileNodeId, s3Key, status) => Promise<{ changes: number }>} upsertObjectMap
- * @property {(fileNodeId, s3Key, status) => Promise<{ changes: number }>} insertObject
+ * @property {(fileNodeId, s3Key, status, size?: number|null) => Promise<{ changes: number }>} upsertObjectMap
+ * @property {(fileNodeId, s3Key, status, size?: number|null) => Promise<{ changes: number }>} insertObject
  * @property {(fileNodeId) => Promise<Object|null>} getActiveObject
  * @property {(fileNodeId) => Promise<Array<Object>>} getObjectMapByNode
  * @property {(ancestorId) => Promise<Array<Object>>} getObjectMapBySubtree
  * @property {(fileNodeId) => Promise<Array<Object>>} getVersionsByNode
  * @property {(fileNodeId, cap) => Promise<{ changes: number }>} evictVersionsBeyondCap
  * @property {(s3Key) => Promise<Object|null>} getObjectMapByS3Key
- * @property {(s3Key) => Promise<{ changes: number }>} activateObject
+ * @property {(s3Key, size?: number|null) => Promise<{ changes: number }>} activateObject
+ *   `size` is coalesced onto the row: omitting it keeps any already-known size.
+ * @property {(ancestorId: number, opts?: { includeVersions?: boolean }) => Promise<{ bytes: number, liveBytes: number, trashBytes: number, versionBytes: number, itemCount: number, trashItemCount: number, oldestTrashedAt: string|null, nullSizeCount: number }>} summarizeSubtreeStorageUsage
+ *   Logical-storage breakdown over the subtree (live + trash + versions; no
+ *   `deleted_at` filter). `includeVersions` (S3 mode) partitions active
+ *   `object_map.size` rows into live/trash bytes and sums history rows as
+ *   `versionBytes`; false (WebDAV mode) partitions `filecache.size` over file
+ *   rows and reports `versionBytes: 0`. `bytes` = live + trash + version.
+ *   `itemCount`/`trashItemCount` count the unit rows in the active backend
+ *   (object versions in S3, file rows in WebDAV); `oldestTrashedAt` is the
+ *   oldest trashed file timestamp. `nullSizeCount` reports counted rows
+ *   without a known size so callers can mark the aggregate incomplete.
  * @property {(s3Key) => Promise<{ changes: number }>} orphanObject
  * @property {(s3Key) => Promise<{ changes: number }>} demoteActiveToHistory
  * @property {(id) => Promise<{ changes: number }>} reactivateObjectMapRow
@@ -50,6 +63,35 @@
  * @property {(fileNodeId) => Promise<{ changes: number }>} setObjectMapBackendWebdav
  * @property {(fileNodeId, size, mimeType, contentHash) => Promise<{ changes: number }>} upsertCache
  * @property {(fileNodeId) => Promise<Object|null>} getCache
+ * @property {(ancestorId) => Promise<Array<{ nodeId: number, parentId: number|null, name: string, type: string, createdAt: string|null, size: number|null, mimeType: string|null, contentHash: string|null }>>} listSubtreeCacheRows
+ * @property {(ancestorId) => Promise<{ itemCount: number, totalBytes: number, oldestDeletedAt: string|null }>} summarizeTrashedSubtree
+ *   Storage trash-card aggregate (T0.10): trashed FILE rows of the subtree
+ *   (`deleted_at IS NOT NULL`, `type='file'`) with `filecache` size sum and the
+ *   oldest `deleted_at` (ISO) — the §4.16 retention-countdown read.
+ *   AI-hygiene subtree read (T0.9): live subtree nodes with filecache columns
+ *   (`node_ancestors` JOIN + LEFT JOIN `filecache`, `ORDER BY n.id`) for the
+ *   exact-dup finder and derived-tags backfill.
+ * @property {() => Promise<number>} countCacheRowsWithNullContentHash
+ * @property {({ limit?: number, afterId?: number }) => Promise<Array<{ nodeId: number, name: string, type: 'file', deletedAt: string|null }>>} listCacheRowsWithNullContentHash
+ *   Content-hash completeness surface (T0.1/T0.8): file rows with a NULL
+ *   `filecache.content_hash`, ascending by node id; keyset-paginated via
+ *   `afterId` (rows with nodeId > afterId) so the streaming backfill never
+ *   re-fetches rows it failed on.
+ * @property {(userId: number, query: string, opts?: { limit?: number }) => Promise<Array<{ id: number, name: string }>>} searchNodesByName
+ *   Name-section search surface (T0.11, searchService.md §2.5): live rows the
+ *   requester can read (own-root subtree ∪ path-granted subtrees ∪ point
+ *   grants), `lower(name) LIKE lower('%q%')` whole-string containment,
+ *   ordered `name` asc then `node_id` asc, capped by `opts.limit`.
+ * @property {(userId: number) => Promise<number[]>} listVisibleFileNodeIds
+ *   All live node ids visible to the requester (searchService §2.5a scorer
+ *   seam — the ACL anchoring set). Same visibility rule as
+ *   sampleVisibleNodeIds/searchNodesByName; no sampling, no limit.
+ * @property {(userId: number, n: number) => Promise<number[]>} sampleVisibleNodeIds
+ *   Random sample of at most n requester-visible live node ids (searchService
+ *   §2.5 — per-query dynamic-baseline corpus sample, P1).
+ * @property {(fileNodeId, contentHash) => Promise<{ changes: number }>} setCacheContentHash
+ *   Idempotent write — `WHERE content_hash IS NULL` only; `changes` reports
+ *   whether the row was touched.
  * @property {() => Promise<string[]>} getKeptObjectMapKeys
  * @property {() => Promise<Array<Object>>} getFileNodesPathRows
  * @property {(olderThanDays: number) => Promise<Array<Object>>} getOrphanedObjectsWithNodeState

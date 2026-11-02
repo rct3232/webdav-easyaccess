@@ -1,0 +1,534 @@
+# AI Collections Platform
+
+This document is the permanent product-level description of the AI-driven collections platform:
+what users and operators see, what the system promises, and which behaviors are settled.
+Data shapes, endpoints, and component contracts belong to the specs below, not to this one.
+
+Canonical contract sources: the route, store, service, and infrastructure specs under
+`docs/spec/server/**` and the client specs under `docs/spec/client/**` for the collections, search,
+actions, sharing, AI-job, embedding, tag, LLM-adapter, preset, and vector-store surfaces; plus
+`docs/shared-contracts.md`, `docs/api.md`, and `docs/features/storage-management.md` for the
+separate storage surface.
+
+---
+
+## 1. Purpose and framing
+
+The app evolves into an **AI-driven storage management application**; the differentiator is
+backend-agnosticism (WebDAV or S3, SQLite or PostgreSQL, any LLM provider including fully local
+ones). One positioning fact shapes everything: **the LLM is an enrichment dependency, never a
+render dependency.** The collections platform is complete and useful with zero LLM configured; AI's
+absence removes speed or convenience, never the product.
+
+## 2. Core invariants
+
+1. **View by collection, mutate by file.** Grants give list, preview, and download only; file
+   rename/move/delete never goes through a collection, and sharing never touches the file-ACL
+   system.
+2. **Exposure expansion is always explicit.** No automation ever shares anything — the only consent
+   prompt allowed inside the silent model.
+3. **Silent evolution's create/split/archive/purge are system-origin only.** Reconcile
+   materializes definition-driven membership for `system`/`seed`/`search`; every other origin gets
+   ordering gravity only.
+4. **The undo journal replaces proposal inboxes.** System acts silently with journaled inverses;
+   undo, not pre-approval, is the safety valve. Sole exception: merging is proposed in an
+   in-context card (§4.4), never a notifications center.
+5. **User-triggered destructive/change actions get one confirmation dialog; system actions none,
+   but are always journaled.** Collection removal is archive → delete, trash parity.
+6. **Membership is materialized, never computed on read.** Definition-driven members are written
+   to `collection_items` with `source`/`reason` at commit and reconcile boundaries; reads return
+   the stored set. Trash, purge, and permission changes propagate at render time.
+7. **Naming is template-first.** The template namer is default and final; the LLM namer names only
+   new creations once chat is configured, never renaming locked names.
+8. **No new in-memory cache state.** AI and collection state is database-backed by design,
+   CI-enforced.
+9. **Likes are per-file, viewer-scoped.** The heart shows the viewer's own like; other users' like
+   states, counts, and aggregates are never displayed.
+10. **Permanent delete-from-archive is unrecoverable** (trash parity); journal rows cascade-purge
+    except one system-origin tombstone blocking silent regeneration of the same definition for its
+    retention window.
+11. **No LLM call blocks a request** except user-initiated interactive roles (query-embedding, NL
+    parser, future Q&A), each with mandatory cache, kill switch, and no-LLM fallback (§4.22);
+    enrichment, adjudication, naming, and arbiters never do, and vision request-path calls are
+    banned.
+
+## 3. Domain model and lifecycles
+
+### 3.1 Collection
+
+Origins: **system** (silent generator, split child, tag-materialized), **user** (manual), **seed**
+("collect similar"), **search** (saved semantic query). Lifecycle: active → archived (auto by
+activity gates, or manual, one confirmation) → restore, or permanent delete (one confirmation,
+offered only on cards inside the archive); past retention, archived rows purge automatically —
+trash parity.
+
+The sidebar carries a `__collections__` virtual node one level deep (members are never tree-walked)
+and `__archive__`, a virtual child auto-containing archived collections; received collections join
+the same activity-sorted list with the plain Collections icon (the received distinction is the
+card corner badge). The publish mode — ask (default) / off / auto —
+governs only members entering a live-shared view (§4.7); enabling sharing itself is always the
+explicit act. Names are unique per owner among active collections.
+
+List cards are grid-parity tiles: a 2×2 preview of the four most-recently-added members
+occupies the file card's media area — file icon immediately, swapped to a thumbnail through the
+same batched thumbnail mechanism, no filename labels; revoked/shared-excluded members never
+surface (`preview_items` is built from the already-resolved member view, zero extra queries).
+The card footer shows the collection name ONLY — no member count and no `archived` status chip
+(archive membership is view-scoped); the media area carries top-left corner badges (translucent
+circular, 16px): received collections a `FolderShared` glyph (tree-parity icon; tooltip "shared
+with me"), and auto-pinned collections a `PushPin` BUTTON whose click unpins (keeps the gravity
+exemption — §4.9).
+Click semantics match files: single click enters selection (single-select), double click opens
+the collection; on mobile tap opens and long-press starts selection. The card menu is mutations
+only (no Open); the toolbar selection bar shows a fixed count-independent set by surface —
+active view: Pin · Unpin · Archive, archive view: Restore · Delete permanently — executed by
+looping the existing per-collection calls (per-item failures tolerated, journal/undo per
+collection, permanent delete keeps the batched 2-step confirm).
+The active view hosts two navigation pseudo-tiles — Likes FIRST
+(pink heart icon, opens the Likes surface) and Archive LAST (archive view) — never selectable,
+never menu-carrying, present even when the active section is empty; the archive view and the Likes
+surface render NO pseudo-tiles (both destinations are one click away in the sidebar). In the
+sidebar the Likes row sits at the TOP of the
+section body (archive stays the tail), and the breadcrumb names the trail: `Collections › <name>`
+(member) / `Collections › Liked` — the same labels as the tree. Members/liked rows sort
+client-side like files (Name/Date × asc/desc, persisted per surface `collectionMemberSortMode`,
+default newest-added first — date = membership-added stamp; revoked rows pin to the end).
+
+### 3.2 Members
+
+Membership is materialized; removing a member never trashes the file. Manual rows coexist with
+rule-managed rows (`source` = `system`/`seed`/`search`) in `collection_items`. Definition
+evaluation (path/tag/like/date/size predicates, optionally pooled seed or centroid similarity)
+runs only at write boundaries — the upload hook and reconcile passes — which add/remove rows with
+a captured `reason`. Enter above `theta_in`, leave below `theta_out`; a soft view-count boost
+moves ordering only. Reads never evaluate definitions, so the member set stays fixed between
+passes. Tag predicates match by folded string equality in every state (§4.18). Exclusions
+("Exclude") delete the row and block future rule adds; excluding is a touch, hence auto-pins
+(§4.9), and its rate is an admin quality metric, never an archive trigger.
+
+Member rows render per read with a live permission check: normal; revoked (gray placeholder, no
+name/thumbnail); trashed-by-owner (hidden); purged (gone).
+Foreign-owned files never render in live-shared views (cross-leak rule; `Not owner's file — not shared`
+chip in the owner's view), though adding them stays allowed — you may add what you can read. Operator
+rule: the ADMIN actor never participates in collections/likes/storage —
+these are personal-storage surfaces; every collection/file-likes endpoint is server-gated 403
+(`collections.forbidden`) and every storage endpoint uses `storage.forbidden`, so an admin-owned
+collection is unreachable by definition. The `permissionPolicy.js` convention (admin owns the whole tree) remains scoped to
+file-ACL surfaces.
+Member-row controls omit move/copy/rename/delete — a collection is a view, not a workspace —
+offering exclude, publish (owner/editor — own collections included), download (per file ACL), `Reveal original location`, read-only
+properties, and like; multi-select adds batch exclude/publish and add-to-another-collection, never
+batch delete. Card menus: user/system — rename (locks the name), pin, archive, share settings,
+delete (archived only); received — open and `Revoke permission` (a real self-grant
+revocation, instant).
+
+### 3.3 Like
+
+Per-file, per-user; context menu (list and member rows share one state) plus properties-header
+toggle; no inline hearts. Feeds the activity score, the split hot set, and a
+liked-cluster fast path. Operator rule: the ADMIN actor never likes — every like entry point rides
+`/api/file-likes`, which is server-gated 403 (`collections.forbidden`) for admin requesters (§3.2).
+
+The Likes view is a **static child row of the
+Collections sidebar section** (`/files/__collections__/liked`, the ArchiveNode precedent). Opening
+it lists the viewer's liked
+files through the SAME member-view machinery (shared `FileList`/`FileGrid`/`FileDetail` via the
+`toMemberRow` adapter, grid default under the per-surface `likedViewMode` key, no sort button,
+`MemberRowControls` menu without Exclude/publish — download/reveal/properties/unlike) backed by the
+new `GET /api/file-likes/items` endpoint (`routes/fileLikes.md` §2.4.2): `node_id` asc ordering
+(no liked-at stamp exists), unreadable likes render as `state:'revoked'` placeholders, trashed
+likes hidden, ONE full-fetch response (`cursor`/`limit` are ignored server-side, no paging keys;
+display slices 50+50 client-side via `useInfiniteScroll`). Likes survive trash and permission loss
+(store invariant) — the listing resolves current state per read, never the write-time state.
+
+### 3.4 Usage signals
+
+Recorded only for low-frequency actions (open, download, preview, search hit, like), never on
+listings; a nightly rollup feeds the activity score; raw events age out after 90 days. Usage
+recording is UNCHANGED for admins (download/preview/search-hit keep recording on file surfaces);
+only the `like` signal becomes unreachable for the admin actor — it rides the gated `/api/file-likes`
+surface (§3.2/§3.3), so admin `like` rows are never written.
+
+## 4. Behavior areas
+
+### 4.1 Upload to enrichment
+
+Uploads on either backend, copies, and restores schedule enrichment fire-and-forget after the
+commit, idempotently — retries of identical content never re-pay the cost. Enrichment re-reads from
+the storage layer, never an upload buffer, and new files get their content fingerprint recorded at
+the same point.
+
+### 4.2 LLM configuration behavior
+
+Chat, optional vision, and ASR clients are admin-configured and fully **hot**: changes apply
+without restart — unlike the boot-owned metadata and blob backends. The **embed role ships with
+a built-in provider by default** (in-process engine, pinned lockfile identity, weights
+provisioning per `llmPresets.md` §2.3 — no setup required, readiness shown as `preparing`);
+an external embed endpoint is an admin-only override, activation-gated by model conformance.
+No enable flag exists: role presence decides candidacy, probes decide truth (§4.23). On change, roles re-probe shortly (plus an admin test), health and public AI flags
+update live, workers adopt at the next job, query-embedding at the next request, and mid-switch
+failures degrade silently (§4.12), never as errors. Input limits come from the §4.3 chain, never
+probing calls; overlength degrades with a flag; daily caps pause a role, visible to admin. A model
+change triggers **no automatic backfill**: stored vectors keep serving, only new enrichment stops;
+re-embedding is an admin-launched, rate-limited job.
+
+### 4.3 Preprocessing and budget
+
+Text is extracted locally, free, before any LLM sees it. The chunk/token budget is a four-step
+chain, never probing calls: admin limit → endpoint-published metadata (free queries) → the preset's
+**release-measured default** → a passive, downward-only limiter (a length failure halves that
+budget; only a human raises it back). The overlength ladder: chunk (paragraph/heading split; each
+sampled chunk stored plus a mean-normalized pooled row) → truncate head → metadata-only (weak but
+searchable) → skip with a journal note. Chunking parameters are model identity — changing them
+means re-chunking, never mixed scoring — and retrieval scores the per-file maximum over chunk
+vectors (pooled-only scoring hides mid-document sections) while the pooled row stays canonical for
+centroid and naming math. Chat extraction never summarizes hierarchically, and the char-to-token
+factor is a release constant.
+
+### 4.4 Merge proposals (the only proposal UI)
+
+Detection runs nightly or on pair signals: centroid similarity as a prefilter, then the
+containment-safe set rule over materialized membership (LLM-free, same pipeline). Proposals live at the object, never in an inbox: one
+sticky card between the collections toolbar and the list, never stacked (zero pending = zero
+layout footprint). The card body is the top pair —
+`"Merge "A" into "B"? · N overlapping files · M after merge"`; a centered footer text expands
+the remaining pending pairs in an accordion. Desktop hover / mobile tap opens a non-modal detail
+panel (no backdrop): title, large sample tiles B(absorbed) → shared → A(survivor), and a bottom
+one-line reason — the arbiter's reason when present, otherwise a deterministic counts sentence.
+`Merge` executes immediately — **the card is the confirmation** — with an undo toast;
+`Keep separate` suppresses the pair permanently; `Later` re-raises once after two weeks, then
+sleeps 30 days; no sidebar/tree badges. The survivor keeps its chosen name unless locked; an
+arbiter reason may prefill the detail panel (§4.19), but the user decides.
+
+### 4.5 Seed collection
+
+`Make a collection like this file` opens a confirm dialog: seed preview, editable auto-name, and a sample
+grid with fade and `plus N more` counter — vector math only, no LLM cost. It creates a seed-origin
+collection: "similar to this file" with a threshold. The dialog must state that the **entire**
+initial set — preview plus unseen remainder — is publish-approved as a batch if the collection is
+ever shared. Admin exclusion: the dialog never renders for the ADMIN actor — seeding creates a
+collection, and collections are server-gated to non-admins (§3.2 operator rule).
+
+### 4.6 Search
+
+Typing keeps the inline client substring filter (no server call, no LLM). Submitting returns two
+ordered sections. **Name matches**: the inline filter's containment semantics across all
+user-visible files, case-insensitive, highlights computed client-side, shipping without any LLM.
+**Semantic** (de-duped against section 1): scored segment-AND — a few whitespace segments, each by
+best-chunk similarity, the document score the minimum across segments — and gated by a per-query
+dynamic baseline against a random corpus sample: unless the top hits clearly win, the section is
+honestly empty. No absolute stored floors exist anywhere.
+
+An empty semantic section hides `Save as collection` (saved collections are semantic content only;
+name matches never enter definitions); empty sections do not render. Results mode replaces the
+breadcrumb row with a query chip bar (committed chain terms, undo/exit reveal, `LibraryAdd`
+targets the full snapshot) and renders the results as accordion zones inside the explorer listing
+(contracts: `docs/spec/client/hooks/useSearchResults.md`, `docs/spec/client/components/file-manager/FileManagerView.md` §3,
+`docs/spec/client/components/file-manager/SearchQueryChipBar.md`): typing without submit promotes and
+highlights loaded rows live (never hides), another submit chains a refinement step. The
+`Save as collection` affordance renders on the results surface when the gate passes
+(the `semantic` key PRESENT AND a non-empty semantic section, non-admin actor); the click opens the
+host-owned confirm dialog (member preview + batch-publish copy) and confirming creates the
+search-origin collection from the flattened semantic snapshot — `{ name, semantic: { resultRef,
+predicates: [], nodeIds } }` through `POST /api/collections` (the initial set is created published —
+the dialog IS the batch approval). Admin exclusion: `Save as collection`
+is ABSENT for the ADMIN actor (search itself is unchanged for admins) — saving creates a collection
+and the collections surface is server-gated 403 for admin requesters (§3.2 operator rule).
+
+### 4.7 Collection sharing
+
+Viewer: list/preview/download, no rename/trash, excludes own adds only (unless owner); editor: ±
+membership. Shared views resolve **live**, with a publish gate: in ask/off collections,
+post-creation adds start unpublished and hidden, and the owner sees a `N awaiting publish` banner with
+batch or individual publish; auto publishes every add, explicitly chosen. The initial set
+of seed and saved-search collections is created **published** — the §4.5/§4.6 confirm dialog is
+that batch approval, unseen remainder included. Rule-managed members carry a normal `published`
+value on their materialized row; unpublishing never removes rows. The
+viewer-side `Revoke permission` card action is an actual self-grant revocation
+(`DELETE /:id/grants/me`, instant, no confirm — the owner may trivially re-grant); foreign-owned
+members never
+render in shared views; revocation is instant, though already-seen metadata cannot be re-taken.
+Admin-as-grantee is PROHIBITED at grant creation: `POST /:id/grants` with an admin grantee 403s
+(`collections.forbidden`, service-level ban) — collections never reference admins (§3.2 operator rule).
+Owner property edits (name, publish mode, pin, grants) are staged across the properties tabs and committed
+as one atomic `PUT /:id/properties` plan; closing a dirty dialog asks Save/Discard/Cancel, and no
+property or grant mutation fires before Save.
+
+### 4.8 Digest
+
+A top-of-list banner from a visit cursor — `+N / -M / 1 merge · expand` — expanding to per-entry
+reasons; the `why is this here` answer names the matched predicate, computed at query time, not from a
+history table.
+
+### 4.9 Silent evolution (system-origin only)
+
+Trigger: nightly, upload, or both (admin setting, default). "Upload" means **batch end, not per
+file**: a debounce re-arms on each commit and commits follow full receipt, so the quiet period
+after the last commit is the only crash-safe batch-end test; passes are idempotent re-scans. Upload
+mode runs the cheap passes; nightly
+runs everything (archive/purge are time-based — nightly is the backbone). Passes:
+
+1. **Create — multi-tier generation.** Narrow and broad groups are both real. Mutual-kNN seed
+   expansion with
+   tight/mid/loose edge thresholds (per-model release-measured profile values), after an
+   identical-content dedup pre-pass; parallel facet sources (path purity, tags, like density)
+   promote existing definitions instead of double-creating. Per-tier gates: minimum size, two-week
+   persistence (waived by like density), weekly rate, active-system cap, tier size caps; heavy
+   overlap with an existing or tombstoned definition yields a merge proposal instead. **No tier
+   gets a lifecycle exemption — uniform rules only.** System cluster definitions are
+   self-centroid (`centroid_ref: null`, resolved against the owning collection's model-keyed
+   centroid); a candidate overlapping an active collection at Jaccard ≥ 0.8 is counted as a
+   promotion and creates nothing, leaving the existing definition untouched.
+2. **Split**: a hot subset inside a system collection — materialized members whose
+   `node_activity` score is positive or that the owner likes — crossing the create gates
+   (min 8, tier caps, Jaccard overlap, rate, active limits) becomes a **sibling** system
+   collection with the parent's tier/event class, `split_of` provenance and its own
+   centroid; the parent's definition and membership stay unchanged. Never nested.
+3. **Archive**: activity under floor for N days, or ≈0 members — never for pinned collections; no
+   exclusion-rate archive trigger exists — the exclusion rate is an admin quality metric only.
+4. **Purge**: past retention → permanent, plus a tombstone (lifetime = retention) fingerprinted on
+   the **normalized definition**, not raw centroids, so drift cannot slip past.
+5. **Merge candidates** → §4.4 cards, the only proposal output.
+6. **Auto-pin**: any user touch (add/remove membership, publish, rename, pin, share change,
+   merge-survivor acceptance, restore) invisibly pins, with an unpin chip; reads/views/likes do not
+   count; pinned collections escape auto-archive/purge forever; other origins never auto-archive.
+
+Names via §4.10; acts journaled (§4.11); config-backed gates are hot admin settings with live
+impact previews (§4.15), while hardcoded product thresholds are release-time constants and are
+not exposed; pauses stop acts without destroying queued work. The **merge metric is
+containment-safe**: on bounded materialized sets, size ratio ≥ 0.7 **and** Jaccard ≥ 0.7, with
+centroid similarity prefiltering only; subset pairs (`Spain ⊂ Europe`) must not merge, near-equal
+pairs (`Europe`, `Europe trip`) must pass. Hierarchy proposals are out of scope.
+
+### 4.10 Naming templates
+
+Locale templates by creation type (ko/en): search → query verbatim; seed →
+`{seedFileName} and similar files`; system cluster → `{tag1} · {tag2} photos` (top-2 tags); split →
+`{parentName} · {diffTag}`; fallback `Auto collection N`. With chat configured, the LLM namer names new
+system creations instead (statistics only). Template output is final — no post-hoc rename jobs.
+
+### 4.11 Undo journal and toast UX
+
+The journal is common infrastructure, not AI-only: journaled mutations go through one commit path
+writing change, inverse, and row atomically under the platform lock. Tip-undo is free; non-tip undo
+confirms the cascade of later changes; payloads expire while rows persist for audit. Undo never
+restores spent LLM cost, already-received exposure, or file content (trash/versions own files).
+Writers: collections, the batch worker (item inverses, honoring cancellation), and admin settings.
+Permission writes are reserved: undoing a grant (exposure down) may be silent, undoing a revocation
+(exposure up) is explicit-only.
+
+**Toasts**: bottom, for user-triggered actions (app-bar keeps job progress), one per command —
+`[icon] Move completed (12 items) [Undo]`. Undo handles ride responses and batch jobs'
+terminal poll result; item inverses run fingerprint-guarded, mixed outcomes reported honestly
+(`11 undone, 1 skipped (state changed since)`). Surfaces: toast (≤ 24 h; rows live 30 days), digest undo
+links, the 30-day feed with cascade, the archive `restore` button, a sidebar `new` dot; silent system
+acts never toast.
+
+| Action                                                             | Toast   | Undo                       |
+| ------------------------------------------------------------------ | ------- | -------------------------- |
+| move/copy; rename; collection CRUD/publish; merge; accept; archive | yes     | journal                    |
+| share-link create/cancel; request approve/reject                   | yes     | undo = revoke              |
+| conflict-resolution overwrite                                      | yes     | version restore            |
+| file delete → trash                                                | yes     | trash restore, not journal |
+| permanent delete; empty trash; GC runs                             | report  | never (trash parity)       |
+| like/visit/sort; upload; job completion                            | no/info | none; trivial              |
+
+### 4.12 Feature-degradation matrix
+
+**No LLM**: manual and rule-predicate collections (cosine-free; string-equal tags), server-wide
+name search, activity gravity, archive lifecycle, digests, set-overlap merges, exact-duplicate
+finder (content fingerprint), rule suggestions, likes, sharing, journal — all present; semantic
+search, seed collections, vector merges, near-dup, NL parsing, tag normalization — **absent**.
+**Embedder**: adds those five, auto-create from clusters, and template naming. **Chat**: adds
+content features, NL parsing, and LLM naming.
+
+For regular users an unavailable feature is **absent, not disabled** — no grayed-out AI affordances
+exist. For admins it is **visible-disabled**: a nav item plus a per-role health card
+(`not_configured | preparing (phase, progress) | probe_failed (reason) | partial | ok`) with configuration and test entry points;
+unconfigured endpoints answer "not configured", never a misleading 404. Partial configuration shows
+no filler — template names read as ordinary names and missing fields stay absent — and
+insufficiency is admin-visible only. Disambiguation: the admin **visible-disabled** shape applies to
+AI-CONFIG surfaces only. The personal-storage surfaces — collections, likes, storage — are
+**ABSENT** for the admin actor (never grayed-out-but-clickable): server-gated 403 (§3.2 operator rule).
+
+### 4.13 Vector backend behavior
+
+Stored vectors are canonical; every index is an adapter-managed derived artifact, never tracked
+schema. Native paths: PostgreSQL + vector extension ≥ 0.7 (HNSW), or SQLite + its vector extension
+(exact); everything else runs the brute-force **JS fallback** (per-query, chunk-aware). **No AI
+feature is ever disabled for missing vector capability** — absence degrades speed only, boot
+proceeds, all features stay on, and admin sees `native | fallback_js (degraded)` with an install
+hint: a warning, not a gate. Accuracy: exact engines match the JS oracle; ANN engines must reach
+recall ≥ 0.99 at top-50 with the scan-exploration parameter **fixed at 400**,
+graded with held-out queries only. Cross-engine identity is not
+promised; the recall floor is. Model changes rebuild indexes only.
+
+### 4.14 Admin operations dashboard (non-AI first)
+
+Existing surfaces are extended, not replaced: GC results, migration history, and startup fail-safe
+orphan/pending scans become persisted reports with row-level repairs on existing endpoints. No
+ad-hoc metrics
+framework — logs are not a contract; locks and schema staleness get a read-only diagnostic card.
+Raw settings listings (plaintext secrets) never drive display — masked, purpose-built views only.
+
+### 4.15 Admin AI governance panel
+
+An admin tab: pipeline health (queue, failure/rate-limit rates, breakers, failed jobs
+display-only — no manual retry/abandon); cost ledger (per-role daily rollup, caps; per-user
+top-N is not instrumented in v1); evolution governance (hit rates, survival curves,
+merge-accept rate, config-backed gate parameters with live impact counts and journaled
+rollback, tombstone counters; missing series are labelled not instrumented); model registry
+(per-role model/dimension, current-vs-stale distribution, backfill launcher across the
+feature/caption/transcript lineages); per-role degraded counter; kill switches. The launcher
+covers text nodes plus the media coverage plan, is rate-limited, and supports cancelling
+pending jobs. Privacy: aggregates and identifiers only — never users' names, queries, or
+contents. **Constants provenance**: every numeric AI constant is a **release artifact measured
+by the project on its own reference set**, shipped per model profile and displayed with provenance
+— there is no runtime calibration and no dataset ships to end users. Hardcoded evolution
+product gates are not part of the panel surface.
+
+### 4.16 User dashboard `Storage`
+
+The Storage MyPage section is a separate personal-storage surface; its product contract lives in
+[storage-management.md](storage-management.md).
+
+### 4.17 Cleanup and duplicate suggestions
+
+The cleanup/duplicate suggestion lifecycle is a separate personal-storage surface; its product
+contract lives in [storage-management.md](storage-management.md).
+
+### 4.18 Tags: description only
+
+LLM tags are words that describe a file — display chips and naming/adjudication material.
+There is no vocabulary institution: no merge, no parent hints, no vector tag matching, no
+materialization of LLM tags. Read-time case/whitespace/Unicode folding is a pure function
+for counts/display; `ai_tag_raw` holds ONLY derived local facets (`mime:`/`ext:`/`month:`/
+`path:`), matched by folded string equality (§3.2). The semantic-expansion need lives in
+document/media-vector collections (§4.5/§4.6), never in tag fuzzy. (Measurements: PoC
+§6.5/§6.9.)
+
+### 4.19 Chat-model roles
+
+Embeddings and set math do the analysis; chat legitimately only translates between language and
+machines and arbitrates genuinely ambiguous decisions. No narrating roles exist (no digest
+sentences, why-together, reranking, taxonomy mining, or definition tuning). Roles:
+
+- **Feature extraction** — tags/summary/category per file, in the enrichment job, forced JSON out;
+  supplies the media embedding corpus and the adjudicators' material; empty without chat.
+- **NL parse** — sentence → shared predicate grammar; the only request-path chat role, one cached
+  call batched with query-embedding; it sees grammar and session state, never file data or ids, so
+  hallucinations match nothing; failure falls back silently to name+vector search.
+- **Name** — names new system creations when chat is on; statistics in, validated short phrase out;
+  failure falls back to the template (lossless swap).
+- **Keeper adjudicator** — nightly per bounded near-duplicate group, settles content-meaning ties
+  rules cannot rank; without chat, a heuristic keep; pre-fills §4.17 rows — accept stays
+  user-clicked.
+- **Merge arbiter** — the 0.55–0.7 review band of §4.9 only, recommending merge / keep-separate /
+  sibling as the prefilled reason in the §4.4 card's detail panel; **it advises, never acts**. Its
+  prompt must carry the **symmetric difference** (unique-member counts and per-side samples).
+
+All roles take aggregate inputs only, return schema-checked JSON committed by service code, journal
+their verdicts, and keep a rule fallback (guaranteeing the no-LLM column). **Reasoning defaults off
+for every chat role**; overrides are
+experimental only.
+
+### 4.20 Embedding-model roles
+
+The embed model answers "where", never "what" — all analytics are set math on its vectors. Two
+call sites today, only the first file-proportional: **file embedding** — fired fire-and-forget by
+the enrichment hook (`onNodeContentCommitted`) at the four content-commit seams (S3 upload,
+WebDAV upload, copy, version restore — §4.1; as-built in `server/domains/ai/nodeContentHook.js`),
+async and skipped on an identical content fingerprint within the same model version — and
+**query embedding** (the system's only request-path AI call). No tag-embedding call site exists
+(tag derivations run from stored features, no per-tag model calls). No image/frame embedding exists
+(§4.21); no calls at all for centroids or seeds — evolution math is call-free. The model
+is the space key: one active embedding model, cross-model comparison forbidden except across an
+admin-triggered migration; dimension fixed per model.
+
+### 4.21 Media pipeline (single text space)
+
+Decided: **every modality enters the same text embedding space** — no image-embedder geometry, no
+fan-out, no score mixing — purely capability-driven. **V0** (free, always): probe metadata +
+name/path/date → metadata-only embedding and probe record; works with zero LLM. **V2** (vision
+chat): ≤ 4 locally sampled frames → Korean VLM captions feeding stored features and the embedding;
+the default media path with vision configured. **V3 (ASR) is transcription only**: a conditional
+transcript with a mandatory escape prompt ("say none unless actually audible") + technical
+metadata; **no audio attributes ship** (no genre/mood/kind/description) — failure must stay
+conservative. Vocal music stores lyrics as
+transcript, excluded from content scoring by the music marker; frames and transient audio are never
+persisted. Image/video near-dup measures caption-space distance — weaker against re-encodes; model
+changes re-project via one backfill.
+
+### 4.22 Search layers and the conversational boundary
+
+The stack — file store → enrichment → features/embeddings/activity → search engine (name,
+predicates, vectors, live permission filtering, deterministic merge) → _[conversational layer —
+future]_ → user — consists only of features described elsewhere in this document; the
+conversational layer is a **reserved boundary, not scheduled work**. SearchSession is a concept
+with **zero storage today**: the first release ships only the §4.6 result-reference emission, and
+future extensions must open through those reserved fields alone, non-breakingly.
+
+A **result reference is a replay signature** over the normalized search, never an id list: a
+follow-up like `of those…` reruns it and intersects **under current permissions at execution time**.
+Inter-turn drift is accepted — live behavior is what a file system promises. **Always-replay; no
+TTL or caching variant exists.** The parser classifies utterances while deterministic code merges them —
+add/replace/multi-add per field, NOT-predicate or exclusion token, `exclude the similar ones` → exclude-similar
+over the rerun set, pronouns → latest reference, unresolvable → re-embedded text-plus-utterance
+vector fallback (structural failure ≠ search failure). Per the **symbol boundary** (§4.19), no
+result content or ids ever enter prompts — hallucination is "no match", never "wrong file". Saving
+accepts a reference as target; by the **flattening rule** definitions store the referenced
+execution's snapshot (centroid + predicates), never the replay chain, semantic-only, confirm dialog
+applying. **RAG is a different product feature:** content Q&A needs chunk-level embeddings,
+request-path generation, and citations — only schema versioning, the text-space discipline, and the
+extraction pipeline are reserved.
+
+### 4.23 Provider presets and capability completeness
+
+Distribution cannot know which models an endpoint runs, so **an offered option is a complete
+feature bundle or is not offered** — visible-but-half-working is a defect, not a degradation.
+
+### 4.23.1 Preset manifest
+
+A **preset manifest** declares per provider family (llama.cpp, Ollama, OpenAI-compatible,
+embedding-server class, …) _expected_ capabilities — text embedding, chat, vision chat, ASR
+(no image embedding — no consumer, §4.21) — plus budgets; providers are added as manifest
+rows, never code branches.
+
+### 4.23.2 The probe is final
+
+Live flags = probe-verified ∩ configured; declared-but-failing ⇒ off, with a
+declared-vs-probed admin card. **Probes use in-domain samples** (real speech, photos) —
+out-of-domain probes confuse false negatives with false claims.
+User-visible states are only ever complete-working or absent, never partial; unlike §4.13,
+a missing LLM capability removes features while a missing database capability only slows
+them.
+
+### 4.23.3 Capability map
+
+Gates UI: semantic search, seed collections, auto-create, near-dup, tag matching ← text
+embedding; content features, parsing, LLM naming ← chat; captions ← vision chat;
+transcription ← ASR. Absent capability ⇒ absent feature, never degraded.
+
+### 4.23.4 Chat without an embedder is a legal deployment
+
+The vector core behaves exactly as the no-LLM column; no half-AI state exists.
+
+### 4.23.5 Surfaces
+
+The setup wizard gains one **optional, skippable AI step** (preset → chat/vision/asr roles →
+endpoint/key/model → per-role test) storing ordinary database settings rows, never
+environment files — skipping costs nothing and configuration stays restart-free (§4.2);
+the embed role has NO wizard surface (the built-in engine needs no setup; the step shows its
+readiness card in the waiting state — zero bytes fetched during setup mode; provisioning runs
+on the first configured boot after the required restart, per `llmPresets.md` §2.3); admin keeps the full surface, the wizard being a shortcut to the same rows.
+
+---
+
+## Related documents
+
+- [ARCHITECTURE.md](../ARCHITECTURE.md) — layering and where each behavior is hosted
+- [api.md](../api.md) — endpoint surface for collections, search, and actions
+- [shared-contracts.md](../shared-contracts.md) — error codes and payload formats
+- [SETUP.md](../SETUP.md) — operator configuration and the provider preset table
+- [client-ui.md](client-ui.md) — virtual collections and explorer overlays
+- [config-source-resolution.md](config-source-resolution.md) — preset/wizard config surface

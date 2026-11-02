@@ -11,7 +11,12 @@ import { useFileOperations } from '../useFileOperations';
 import { showErrorFromError } from '../../../../utils/errorUtils';
 import { validateFileName } from '@webdav-easyaccess/shared/validation';
 import { getValidationMessage } from '../../../../utils/validationMessage';
+import { notifyTrashChanged } from '../../../../services/trashNotifier';
 import { useExplorerCommands } from '../useExplorerCommands';
+
+jest.mock('../../../../services/trashNotifier', () => ({
+  notifyTrashChanged: jest.fn(),
+}));
 
 jest.mock('../../../../services/explorerGateway', () => {
   const { createExplorerGatewayMock } = require('../../../../testing/mocks/serviceMocks');
@@ -74,6 +79,7 @@ function createFileOperationsState(overrides = {}) {
   return {
     handleFileDownload: jest.fn().mockResolvedValue(undefined),
     handleFileRename: jest.fn().mockResolvedValue(undefined),
+    notifyUploadQueueDrained: jest.fn(),
     ...overrides,
   };
 }
@@ -284,5 +290,172 @@ describe('useExplorerCommands', () => {
     });
 
     expect(props.refreshNow).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useExplorerCommands upload-queue-drain hint (useFileOperations.md §3)', () => {
+  const runBatch = async (files) => {
+    const props = createProps();
+    const { result } = renderHook(() => useExplorerCommands(props));
+    await act(async () => {
+      await result.current.handleUploadStart(files, 10);
+    });
+    return result;
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    useBulkOperations.mockImplementation(() => createBulkState());
+    useFileOperations.mockImplementation(() => createFileOperationsState());
+    explorerGateway.checkConflicts.mockResolvedValue([]);
+    explorerGateway.uploadToPath.mockResolvedValue({ errors: [] });
+    validateFileName.mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
+  it('emits exactly one hint when a fully successful batch drains', async () => {
+    const fileOperationsState = useFileOperations();
+    useFileOperations.mockImplementation(() => fileOperationsState);
+
+    const file = new File(['x'], 'ok.txt', { type: 'text/plain' });
+    await runBatch([{ file }]);
+
+    expect(fileOperationsState.notifyUploadQueueDrained).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits exactly one hint when every item of the batch fails', async () => {
+    const fileOperationsState = useFileOperations();
+    useFileOperations.mockImplementation(() => fileOperationsState);
+    explorerGateway.uploadToPath.mockImplementation(async ({ onProgress }) => {
+      onProgress({ currentFile: 'bad.txt', status: 'error', error: 'boom', total: 1, current: 1 });
+      return { errors: [{ relativePath: 'bad.txt', error: 'boom' }] };
+    });
+
+    const file = new File(['x'], 'bad.txt', { type: 'text/plain' });
+    await runBatch([{ file }]);
+
+    expect(fileOperationsState.notifyUploadQueueDrained).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits exactly one hint when the whole batch errors out', async () => {
+    const fileOperationsState = useFileOperations();
+    useFileOperations.mockImplementation(() => fileOperationsState);
+    explorerGateway.uploadToPath.mockRejectedValue(new Error('network down'));
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const file = new File(['x'], 'x.txt', { type: 'text/plain' });
+    await runBatch([{ file }]);
+
+    expect(fileOperationsState.notifyUploadQueueDrained).toHaveBeenCalledTimes(1);
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('emits exactly one hint when the batch is cancelled mid-flight', async () => {
+    const fileOperationsState = useFileOperations();
+    useFileOperations.mockImplementation(() => fileOperationsState);
+    const props = createProps();
+    const file = new File(['x'], 'c.txt', { type: 'text/plain' });
+    const { result } = renderHook(() => useExplorerCommands(props));
+    // The batch is marked cancelled while in flight — the abandon path still drains.
+    explorerGateway.uploadToPath.mockImplementation(async () => {
+      const [progressId] = [...result.current.explorerUploadFilesRef.current.keys()];
+      result.current.explorerUploadCancelAllRequestedRef.current.add(progressId);
+      return { errors: [] };
+    });
+
+    await act(async () => {
+      await result.current.handleUploadStart([{ file }], 10);
+    });
+
+    expect(fileOperationsState.notifyUploadQueueDrained).toHaveBeenCalledTimes(1);
+  });
+
+  it('never fires for an empty batch (empty mount)', async () => {
+    const fileOperationsState = useFileOperations();
+    useFileOperations.mockImplementation(() => fileOperationsState);
+
+    await runBatch([]);
+
+    expect(fileOperationsState.notifyUploadQueueDrained).not.toHaveBeenCalled();
+    expect(explorerGateway.uploadToPath).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Bulk undo seam wiring (FileManager.md §7 / useBulkOperations.md §2.6) ───
+
+describe('useExplorerCommands — bulk undo seam', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useBulkOperations.mockImplementation(() => createBulkState());
+    useFileOperations.mockImplementation(() => createFileOperationsState());
+  });
+
+  /** options argument the controller hands to useBulkOperations. */
+  function capturedBulkOptions(props) {
+    renderHook(() => useExplorerCommands(props));
+    const call = useBulkOperations.mock.calls[useBulkOperations.mock.calls.length - 1];
+    return call[8];
+  }
+
+  it('forwards a journaled batch result to the host with a file-surface refresh (move)', () => {
+    const props = createProps();
+    const onUndoable = jest.fn();
+    const options = capturedBulkOptions({ ...props, onUndoable });
+
+    expect(typeof options.onUndoable).toBe('function');
+
+    const job = { status: 'completed', undo: { action_id: 5 } };
+    options.onUndoable(job, 'fileManager.bulkMoveToast', { count: 2 }, { action: 'move' });
+
+    expect(onUndoable).toHaveBeenCalledTimes(1);
+    const [payload, labelKey, params, refresh] = onUndoable.mock.calls[0];
+    expect(payload).toBe(job);
+    expect(labelKey).toBe('fileManager.bulkMoveToast');
+    expect(params).toEqual({ count: 2 });
+    expect(typeof refresh).toBe('function');
+
+    refresh();
+    expect(props.refreshNow).toHaveBeenCalledTimes(1);
+    expect(props.setTreeUpdateTrigger).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'refresh' })
+    );
+    expect(notifyTrashChanged).not.toHaveBeenCalled();
+  });
+
+  it('copy-undo refresh additionally notifies the trash surface', () => {
+    const props = createProps();
+    const onUndoable = jest.fn();
+    const options = capturedBulkOptions({ ...props, onUndoable });
+
+    options.onUndoable(
+      { undo: { action_id: 6 } },
+      'fileManager.bulkCopyToast',
+      { count: 1 },
+      { action: 'copy' }
+    );
+
+    const refresh = onUndoable.mock.calls[0][3];
+    refresh();
+    expect(notifyTrashChanged).toHaveBeenCalledTimes(1);
+    expect(props.refreshNow).toHaveBeenCalledTimes(1);
+  });
+
+  it('is inert when the host passes no onUndoable (no throw)', () => {
+    const props = createProps();
+    const options = capturedBulkOptions(props);
+
+    expect(() =>
+      options.onUndoable(
+        { undo: { action_id: 5 } },
+        'fileManager.bulkMoveToast',
+        { count: 1 },
+        { action: 'move' }
+      )
+    ).not.toThrow();
   });
 });

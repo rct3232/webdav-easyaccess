@@ -37,11 +37,11 @@
 
 #### Re-exported functions (defined elsewhere, re-exported from webdav.js for backward compatibility)
 
-| Function       | Actual location                       | Description                                                                |
-| -------------- | ------------------------------------- | -------------------------------------------------------------------------- |
-| testConnection | `server/infrastructure/webdavTest.js` | Test WebDAV connectivity (creates ephemeral client, probes root directory) |
-| isImageFile    | `server/utils/fileTypes.js`           | Check if filename has an image extension via shared `getFileType()`        |
-| isVideoFile    | `server/utils/fileTypes.js`           | Check if filename has a video extension via shared `getFileType()`         |
+| Function       | Actual location                       | Description                                                                                                                                                                                     |
+| -------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| testConnection | `server/infrastructure/webdavTest.js` | Test WebDAV connectivity (creates ephemeral client, probes root directory; transient transport failures retry up to three attempts per candidate path, at most six attempts total — see §2.2.3) |
+| isImageFile    | `server/utils/fileTypes.js`           | Check if filename has an image extension via shared `getFileType()`                                                                                                                             |
+| isVideoFile    | `server/utils/fileTypes.js`           | Check if filename has a video extension via shared `getFileType()`                                                                                                                              |
 
 ### 2.2.1 FileStoreAdapter Abstraction Layer
 
@@ -66,10 +66,26 @@ segment from root to deepest, tolerating already-existing collections.
 - **Already-exists tolerance:** `405 Method Not Allowed`, `301/302/303` redirects, or error
   messages matching `already exists`/`method not allowed` are treated as success. A `409`
   is disambiguated with a `client.exists()` probe before being treated as a real failure.
+- **Transient transport retry:** a MKCOL whose transport fails with `socket hang up`, `ECONNRESET`, `ECONNREFUSED`, `EPIPE`, `ETIMEDOUT`, or a generic `network error` message is retried for up to three attempts total (two retries, 50 ms then 150 ms backoff) before `createDirFailed` is surfaced. HTTP status responses (405/409/etc.) are not retried.
 - **Callers:** `WebdavFileStoreAdapter.createDirectory` (and thus `WebdavBlobStore.createDirectory`,
   used by `blobStorageService.createDirectoryWebdav`), and the
   streamed move/copy fallbacks. The tolerance makes these callers' existing
   "already exists" error swallowing redundant but harmless.
+
+### 2.2.3 Health probe retry semantics (`testConnection`)
+
+- **Attempts:** each candidate path gets at most three attempts (two retries,
+  50 ms then 150 ms). The probe checks at most two path candidates, so one probe
+  attempts at most six times (2 × 3).
+- **Retryable conditions:** transient transport failures only — socket hang-up,
+  `ECONNRESET`, `ECONNREFUSED`, `EPIPE`, `ETIMEDOUT`, or a generic
+  `network error` message.
+- **Non-retryable conditions:** HTTP status responses are classified immediately;
+  they are not retried.
+- **Health contract effect:** only the final outcome is reported to the backend
+  health tracker. A successful path reports `ok`; an exhausted probe reports one
+  `fail` with the classified error code. Intermediate retry attempts do not
+  produce `fail` reports or health transition logs.
 
 ### 2.3 Input / Output
 

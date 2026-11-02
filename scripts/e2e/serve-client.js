@@ -20,7 +20,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 
-const { effectivePorts } = require('./lib/e2e-band.cjs');
+const { effectivePorts } = require('../lib/e2e-band.cjs');
 
 const rootDir = process.cwd();
 const buildDir = path.join(rootDir, 'client', 'build');
@@ -33,7 +33,7 @@ const apiTarget = `http://127.0.0.1:${Number(
 // Freshness-gated build with CRA's broken bundled eslint disabled — shared
 // module so the platform webServer and the hermetic suites never diverge
 // (see scripts/lib/ensureClientBuild.js header for the rationale).
-const { ensureClientBuild } = require('./lib/ensureClientBuild.js');
+const { ensureClientBuild } = require('../lib/ensureClientBuild.js');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',

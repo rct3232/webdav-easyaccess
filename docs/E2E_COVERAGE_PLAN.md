@@ -124,7 +124,7 @@ Planning note:
 - App origin is the local client used by the E2E environment.
 - The default and core groups run against S3 (MinIO) storage plus the metadata backend. The WebDAV group adds one shared bytemark instance; no other group starts a WebDAV container.
 - The baseline `.env.e2e` setup provides a deterministic admin password.
-- The E2E Docker stack is provisioned by the `e2e:server` webServer command before the app server boots: `scripts/e2e-wait-healthy.mjs` runs an idempotent `docker compose -f docker-compose.e2e.yml up -d` and waits for the group's required containers to be healthy. There is no manual `dev:webdav:start` prerequisite.
+- The E2E Docker stack is provisioned by the `dev:e2e:server` webServer command before the app server boots: `scripts/e2e/wait-healthy.mjs` runs an idempotent `docker compose -f docker-compose.e2e.yml up -d` and waits for the group's required containers to be healthy. There is no manual `dev:webdav:start` prerequisite.
 - **Port band:** the base host port set is client `3000`, API `5002`, MinIO `9010/9011`, PostgreSQL `5433`, and WebDAV `8090`; the scratch range is `5003..5023`. One band offset (step `40`) applies to the whole set; scratch slots listed below are offset-0 values and shift with the checkout.
 - **Bucket ownership:** scratch file buckets are project-scoped (`e2e-scratch-<project>`), and migration destination buckets are project-scoped (`e2e-migration-<project>`). No suite may fall back to a global migration bucket.
 - `e2e/global-setup.ts` never tears the stack down (that would wipe the Postgres volume out from under the running server). It resets the data state instead: TRUNCATE all app tables (preserving `_schema_migrations`) + re-seed admin and base users with home `file_nodes` roots. It ensures the MinIO platform bucket and empties it once for a deterministic baseline; the WebDAV job resets its one bytemark root. `e2e/global-teardown.ts` empties the bucket and stops the stack (`down -v`).
@@ -139,11 +139,11 @@ destination backend. An S3 destination may require a WebDAV source; a generic
 gate/role case may use S3 source -> WebDAV destination tarpit in the default
 group; real WebDAV source/destination behavior stays in the WebDAV job.
 
-| Group      | Command                   | Backend     | Persistent infrastructure                     | Case set and projects                                                                       | Release role                   |
-| ---------- | ------------------------- | ----------- | --------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------ |
-| Default S3 | `npm run test:e2e`        | S3 only     | PG + MinIO + shared API/client                | Full non-WebDAV matrix; includes the core subset. Platform projects plus all S3 scratch.    | Required generic gate          |
-| Core       | `npm run test:e2e:core`   | S3 only     | PG + MinIO + shared API/client                | Fast S3 subset: platform core plus registration-settings.                                   | Optional fast pre-merge subset |
-| WebDAV     | `npm run test:e2e:webdav` | WebDAV only | PG + MinIO + shared API/client + one bytemark | Platform smoke grep, WebDAV setup/migration/admin-config splits, and WebDAV reconciliation. | Required WebDAV-specific gate  |
+| Group      | Command              | Backend     | Persistent infrastructure                     | Case set and projects                                                                       | Release role                   |
+| ---------- | -------------------- | ----------- | --------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------ |
+| Default S3 | `npm run e2e`        | S3 only     | PG + MinIO + shared API/client                | Full non-WebDAV matrix; includes the core subset. Platform projects plus all S3 scratch.    | Required generic gate          |
+| Core       | `npm run e2e:core`   | S3 only     | PG + MinIO + shared API/client                | Fast S3 subset: platform core plus registration-settings.                                   | Optional fast pre-merge subset |
+| WebDAV     | `npm run e2e:webdav` | WebDAV only | PG + MinIO + shared API/client + one bytemark | Platform smoke grep, WebDAV setup/migration/admin-config splits, and WebDAV reconciliation. | Required WebDAV-specific gate  |
 
 Rules:
 
@@ -228,26 +228,28 @@ Notes:
 
 ### Release gate commands
 
-The release matrix has two model seams. `test:e2e:release` and
-`test:e2e:release:webdav` are the **model-free** gates: they export
+The release matrix has two model seams. `e2e:release:model-off` and
+`e2e:release:webdav` are the **model-free** gates: they export
 `WEA_SKIP_EMBED_MODEL=1`, so `E2E-S3-AI-001` skips intentionally and the
 skip-budget reporter adds that one skip on top of the static budget.
-`test:e2e:release:embed` is the **embedded-model** gate: it leaves
+`e2e:release:model-on` is the **embedded-model** gate: it leaves
 `WEA_SKIP_EMBED_MODEL` unset, so the AI case runs against the pre-seeded
 weights.
 
-| Group      | Release command                   | Model seam       | Retry policy                        | Expected skip       | Release ownership             |
-| ---------- | --------------------------------- | ---------------- | ----------------------------------- | ------------------- | ----------------------------- |
-| Default S3 | `npm run test:e2e:release`        | model-free (`1`) | `--retries=0 --fail-on-flaky-tests` | 6 static + 1 AI = 7 | Required model-free gate      |
-| Default S3 | `npm run test:e2e:release:embed`  | embedded (unset) | `--retries=0 --fail-on-flaky-tests` | 6                   | Required embedded-model gate  |
-| WebDAV     | `npm run test:e2e:release:webdav` | model-free (`1`) | `--retries=0 --fail-on-flaky-tests` | 0                   | Required WebDAV-specific gate |
+| Group      | Release command                 | Model seam       | Retry policy                         | Expected skip       | Release ownership             |
+| ---------- | ------------------------------- | ---------------- | ------------------------------------ | ------------------- | ----------------------------- |
+| Default S3 | `npm run e2e:release:model-off` | model-free (`1`) | `E2E_PROFILE=release`, `--retries=0` | 6 static + 1 AI = 7 | Required model-free gate      |
+| Default S3 | `npm run e2e:release:model-on`  | embedded (unset) | `E2E_PROFILE=release`, `--retries=0` | 6                   | Required embedded-model gate  |
+| WebDAV     | `npm run e2e:release:webdav`    | model-free (`1`) | `E2E_PROFILE=release`, `--retries=0` | 0                   | Required WebDAV-specific gate |
 
-A combined `npm run test:e2e:release:all` runs the embedded default gate
-(`release:embed`) followed by the WebDAV gate, sequentially; it does not replace
-separate failure attribution. The WebDAV group contains no embedding-dependent
-case, so its model-free flag does not change the case set. The skip-count
-reporter compares each run's actual skip count with the expected value above,
-and any unexpected skip fails the release gate.
+`npm run e2e:release` runs the model-off gate, the model-on gate, and the
+WebDAV gate sequentially; it does not replace separate failure attribution.
+`npm run gate:full` is the aggregate local gate: `npm run gate` (checks plus
+server/client Jest), then `npm run test:pg`, then `npm run e2e:release`. The
+WebDAV group contains no embedding-dependent case, so its model-free flag does
+not change the case set. The skip-count reporter compares each run's actual
+skip count with the expected value above, and any unexpected skip fails the
+release gate.
 
 ### Suite/project runtime matrix
 
@@ -303,11 +305,11 @@ The admin-AI projects add eight desktop cases (five model-backed, three states);
 
 ### Expected group counts
 
-| Group      | Command                   | Passed | Expected skip | Total | Release role                   |
-| ---------- | ------------------------- | ------ | ------------- | ----- | ------------------------------ |
-| Default S3 | `npm run test:e2e`        | 268    | 6             | 274   | Required generic gate          |
-| Core       | `npm run test:e2e:core`   | 144    | 3             | 147   | Optional fast pre-merge subset |
-| WebDAV     | `npm run test:e2e:webdav` | 41     | 0             | 41    | Required WebDAV-specific gate  |
+| Group      | Command              | Passed | Expected skip | Total | Release role                   |
+| ---------- | -------------------- | ------ | ------------- | ----- | ------------------------------ |
+| Default S3 | `npm run e2e`        | 268    | 6             | 274   | Required generic gate          |
+| Core       | `npm run e2e:core`   | 144    | 3             | 147   | Optional fast pre-merge subset |
+| WebDAV     | `npm run e2e:webdav` | 41     | 0             | 41    | Required WebDAV-specific gate  |
 
 Expected static skips:
 
@@ -327,7 +329,7 @@ to absorb a conditional or resource-driven skip.
 `E2E-S3-MIG-004` runs in both S3 migration platform projects, so it contributes
 2 cases to the default total.
 
-Current release evidence: default **240 passed / 6 skipped** at `dad55bcb` (2026-10-26); WebDAV 41 passed / 0 skipped. P3 adds ten cases + one static skip (`E2E-S3-COLLECTION-021..024`); the collections/retrieval/ai projects were re-greened individually at the P3 exit gate (2026-10-27, port band 40). The remediation adds `E2E-BULK-010` as two dual-platform cases (no static skip; targeted 2/2 green on s3-desktop + s3-mobile, 2026-10-28), so the inventory became 251 passed / 7 skipped / 258 total and Core 142 / 3 / 145; E2E-TRASH-012 adds the bulk-job stalled/expired path (+2 dual-platform cases, no skip; targeted 2/2 green on s3-desktop + s3-mobile, 2026-10-28), so the expected inventory is now 253 passed / 7 skipped / 260 total and Core is 144 / 3 / 147. The full default-gate re-pin was completed by the release soak below; the table above is the expected inventory, followed by its observed soak result. **Release soak (2026-10-28, `ai-feature` tip `00881ada`, `E2E_WORKERS=1`): default 253 passed / 7 skipped / 260, WebDAV 41/0 — rc=0 (that default leg is the current `release:embed` gate). Model-free seam (`WEA_SKIP_EMBED_MODEL=1`, tip `cb965996`): default 252/8/260 rc=0 — 13m40s at 1 worker, 8m18s at 2 workers (the extra skip is the intentional AI-001 skip and is the current `release` gate).** T4.3 Wave 1 added five always-running matrix cases (`E2E-S3-AI-003..007`, no skips and no real provider); Wave 2 adds the parser/delta case `E2E-S3-AI-002` in the same fake-LLM matrix (also no skip, no real provider). Wave 3 adds seven browser cases (`E2E-S3-AI-008..012` with AI-010/AI-012 split into positive and negative legs) plus the storage suite split (`E2E-S3-STORAGE-001..002`) into the dedicated `s3-storage-*` projects, so the expected default inventory is 277 passed / 6 skipped / 283 total (core 144 / 3 / 147, WebDAV 41 / 0 / 41); model-free is 276 / 7 / 283 because AI-001 skips. Targeted verification on 2026-10-30 (band 20): `s3-ai-matrix-ui-desktop` 7/7, `s3-ai-matrix-api` 6/6, `s3-ai-desktop` 1/1 (embedded weights), `s3-admin-ai-model-desktop` + `s3-admin-ai-states-desktop` 8/8, `s3-storage-desktop` + `s3-storage-mobile` STORAGE-001..002 2/2 each (dedicated slots), `s3-collections-desktop` + `s3-collections-mobile` COLLECTION-009 2/2. Both release legs include the matrix cases and the skip budget is 6 (model-free 7 with AI-001). Final post-hardening soak (2026-10-30, `ai-feature`): model-on default **277 passed / 6 skipped / 283**, model-free **276 / 7 / 283**, WebDAV **41 / 0 / 41** — all rc=0. The canonical 3-worker configuration is host-capacity-bound on the 6-core runner (`PLAN_EXECUTION.md` §31.8); `E2E_WORKERS` is the supported concurrency knob. **2026-10-31 demotions:** E2E-S3-AI-010..012 moved to `non-e2e` (server join/route + client integration), and the API matrix dropped AI-002/004/005/007 (parser/embed/V0/V2) to the same layers. `s3-ai-matrix-ui-desktop` and `s3-ai-matrix-api` are both 2/2; the current default inventory is 268 passed / 6 skipped / 274 (model-free 267/7/274).
+Current release evidence: default **240 passed / 6 skipped** at `dad55bcb` (2026-10-26); WebDAV 41 passed / 0 skipped. P3 adds ten cases + one static skip (`E2E-S3-COLLECTION-021..024`); the collections/retrieval/ai projects were re-greened individually at the P3 exit gate (2026-10-27, port band 40). The remediation adds `E2E-BULK-010` as two dual-platform cases (no static skip; targeted 2/2 green on s3-desktop + s3-mobile, 2026-10-28), so the inventory became 251 passed / 7 skipped / 258 total and Core 142 / 3 / 145; E2E-TRASH-012 adds the bulk-job stalled/expired path (+2 dual-platform cases, no skip; targeted 2/2 green on s3-desktop + s3-mobile, 2026-10-28), so the expected inventory is now 253 passed / 7 skipped / 260 total and Core is 144 / 3 / 147. The full default-gate re-pin was completed by the release soak below; the table above is the expected inventory, followed by its observed soak result. **Release soak (2026-10-28, `ai-feature` tip `00881ada`, `E2E_WORKERS=1`): default 253 passed / 7 skipped / 260, WebDAV 41/0 — rc=0 (that default leg is the current `e2e:release:model-on` gate). Model-free seam (`WEA_SKIP_EMBED_MODEL=1`, tip `cb965996`): default 252/8/260 rc=0 — 13m40s at 1 worker, 8m18s at 2 workers (the extra skip is the intentional AI-001 skip and is the current `e2e:release:model-off` gate).** T4.3 Wave 1 added five always-running matrix cases (`E2E-S3-AI-003..007`, no skips and no real provider); Wave 2 adds the parser/delta case `E2E-S3-AI-002` in the same fake-LLM matrix (also no skip, no real provider). Wave 3 adds seven browser cases (`E2E-S3-AI-008..012` with AI-010/AI-012 split into positive and negative legs) plus the storage suite split (`E2E-S3-STORAGE-001..002`) into the dedicated `s3-storage-*` projects, so the expected default inventory is 277 passed / 6 skipped / 283 total (core 144 / 3 / 147, WebDAV 41 / 0 / 41); model-free is 276 / 7 / 283 because AI-001 skips. Targeted verification on 2026-10-30 (band 20): `s3-ai-matrix-ui-desktop` 7/7, `s3-ai-matrix-api` 6/6, `s3-ai-desktop` 1/1 (embedded weights), `s3-admin-ai-model-desktop` + `s3-admin-ai-states-desktop` 8/8, `s3-storage-desktop` + `s3-storage-mobile` STORAGE-001..002 2/2 each (dedicated slots), `s3-collections-desktop` + `s3-collections-mobile` COLLECTION-009 2/2. Both release legs include the matrix cases and the skip budget is 6 (model-free 7 with AI-001). Final post-hardening soak (2026-10-30, `ai-feature`): model-on default **277 passed / 6 skipped / 283**, model-free **276 / 7 / 283**, WebDAV **41 / 0 / 41** — all rc=0. The canonical 3-worker configuration is host-capacity-bound on the 6-core runner (`PLAN_EXECUTION.md` §31.8); `E2E_WORKERS` is the supported concurrency knob. **2026-10-31 demotions:** E2E-S3-AI-010..012 moved to `non-e2e` (server join/route + client integration), and the API matrix dropped AI-002/004/005/007 (parser/embed/V0/V2) to the same layers. `s3-ai-matrix-ui-desktop` and `s3-ai-matrix-api` are both 2/2; the current default inventory is 268 passed / 6 skipped / 274 (model-free 267/7/274).
 
 ### WebDAV coverage trade-off
 
@@ -755,9 +757,9 @@ The inventory status column is authoritative for what remains. Use this priority
 
 Practical rule:
 
-- Core-file-feature change → `npm run test:e2e:core` + `npm run test:e2e:webdav`.
-- Admin/config/migration tooling or pre-merge → full `npm run test:e2e`.
-- Release evidence → `npm run test:e2e:release:embed` (embedded default) or `npm run test:e2e:release` (model-free default), plus `npm run test:e2e:release:webdav`; combined → `npm run test:e2e:release:all` (embedded default + WebDAV, sequentially).
+- Core-file-feature change → `npm run e2e:core` + `npm run e2e:webdav`.
+- Admin/config/migration tooling or pre-merge → full `npm run e2e`.
+- Release evidence → `npm run e2e:release:model-on` (embedded default) or `npm run e2e:release:model-off` (model-free default), plus `npm run e2e:release:webdav`; combined → `npm run e2e:release` (model-off + model-on + WebDAV, sequentially).
 - CI supplies the worker count; there is no fixed worker cap or slot pool.
 
 ## Out of Scope for Playwright-First Coverage

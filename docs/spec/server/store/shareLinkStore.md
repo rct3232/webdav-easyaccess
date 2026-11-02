@@ -14,7 +14,7 @@
 
 - **Source:** `server/store/shareLinkStore.js`
 - **Test file:** `server/domains/sharing/__tests__/shareLinkStore.test.js`
-- **L2 conformance:** `server/store/repositories/__tests__/ShareLinkRepository.conformance.test.js` (sqlite default leg; real PostgreSQL under the `test:ci:pg:adapters` leg)
+- **L2 conformance:** `server/store/repositories/__tests__/ShareLinkRepository.conformance.test.js` (sqlite default leg; real PostgreSQL under the `test:pg:adapters` leg)
 
 ### 2.2 Main Methods
 

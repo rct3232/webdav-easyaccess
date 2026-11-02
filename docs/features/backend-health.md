@@ -119,4 +119,4 @@ to the stored value. Non-connection keys save without a test.
   `WEA_DB_USER`/`WEA_DB_PASSWORD`) → clear terminal error + `exit(1)`.
 - Editing a connection key cannot Save until a pending-values test passes; non-connection keys
   save without a test.
-- No schema change; server + client `test:ci` and the E2E suites stay green.
+- No schema change; server + client `test` and the E2E suites stay green.

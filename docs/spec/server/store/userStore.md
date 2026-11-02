@@ -14,7 +14,7 @@
 
 - **Source:** `server/store/userStore.js`
 - **Test file:** `server/store/__tests__/userStore.test.js`
-- **L2 conformance:** `server/store/repositories/__tests__/UserRepository.conformance.test.js` (sqlite default leg; real PostgreSQL under the `test:ci:pg:adapters` leg)
+- **L2 conformance:** `server/store/repositories/__tests__/UserRepository.conformance.test.js` (sqlite default leg; real PostgreSQL under the `test:pg:adapters` leg)
 
 ### 2.2 Main Methods
 

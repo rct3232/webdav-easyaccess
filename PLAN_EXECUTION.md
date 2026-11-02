@@ -28,8 +28,8 @@
   FileNodeRepository conformance dual-describe, locales key unions, gateway/mocks seam
   unions); orchestrator mounts `/api/search` + `/api/file-likes`; integration branch
   `feature/wave2-client-wiring` closed the three deferred host seams (provenance below).
-  Full gates: server `test:ci` 126 suites / 2341 tests; client `test:ci` 172 suites /
-  1667 tests; `test:ci:pg:adapters` 23 suites / 341 tests — all green (two single
+  Full gates: server `test` 126 suites / 2341 tests; client `test` 172 suites /
+  1667 tests; `test:pg:adapters` 23 suites / 341 tests — all green (two single
   non-reproducible first-run flakes re-ran clean, RCA-logged).
 
 - **Wave-3 provenance (2026-09-23)**: branch `feature/t10-storage-dashboard` (worktree wt-t10) — T0.10
@@ -43,7 +43,7 @@
     repository/gateway/mocks seams + `useUndoToast.undoNow` + en/ko mirrors.
     **Orchestrator integration (index.js not edited by task branches):** after line 182 add
     `app.use('/api/dashboard', setupModeGuardInstance, require('./domains/dashboard/routes'));`.
-    PG leg REQUIRED for the new repository surface (conformance block shipped; `test:ci:pg:adapters`
+    PG leg REQUIRED for the new repository surface (conformance block shipped; `test:pg:adapters`
     not run here — no e2e container in the task env). Deferred by spec: `dismissFileSuggestion` +
     persisted suggestion ids (T3.3), storage-usage series seam (later task — block omitted), dup-finder
     dedicated-view deep link (the card scrolls to the suggestions block in P0).
@@ -69,8 +69,8 @@
   the run surfaced 5 Case-A defects — nested item-inverse undo no-op, `listForUser` status
   default leak, `include=archived` semantics, tied-timestamp list order (`id DESC` tie-break),
   unreachable file-side Add-to-collection host entry — all fixed + RCA-logged (2026-09-23).
-  Final gates: server `test:ci` 129 suites / 2370 tests; client `test:ci` 174 / 1700;
-  `test:ci:pg:adapters` 23 / 344 — all green. **Degradation matrix** is structurally P1+
+  Final gates: server `test` 129 suites / 2370 tests; client `test` 174 / 1700;
+  `test:pg:adapters` 23 / 344 — all green. **Degradation matrix** is structurally P1+
   (no AI surfaces exist in P0); its suite lands with T4.3 — **owner-confirmed ruling
   (2026-10-02, P0 closeout)**: the matrix stays with T4.3 (P1+), and the P0 lifecycle suite is
   COMPLETE — desktop `E2E-COLLECTION-001..014` plus the mobile leg `015..017`
@@ -125,8 +125,8 @@
   (6 commits), `feature/t06-usage-activity-rollup` (3), `feature/t07-actions-feed-undo` (5),
   `feature/t08-admin-reports-repair` (3). Orchestrator integration: the `/api/actions` mount
   and the `startUsageRollupScheduler` boot wiring in `server/index.js`; `USAGE_ACTION` enum
-  added to `shared/constants.js` (consumed by `usageService`). Gates: server `test:ci`
-  117 suites / 2229 tests, client `test:ci` 164 suites / 1494 tests, `test:ci:pg:adapters`
+  added to `shared/constants.js` (consumed by `usageService`). Gates: server `test`
+  117 suites / 2229 tests, client `test` 164 suites / 1494 tests, `test:pg:adapters`
   22 suites / 314 tests — all green. Deferred follow-ups recorded in the register below.
 - **Deferred follow-ups register (wave-1 deferrals, 2026-09-22)** — sub-work recorded here,
   not in `docs/IMPROVEMENT_PLAN.md`: (a) usage-event recording wiring DONE 2026-09-22 (wave 2) —
@@ -151,8 +151,8 @@
 - **Wave-0 provenance (2026-09-22)**: branches `feature/t02-full-schema-ddl` (4 commits),
   `refactor/t012-node-sqlite-driver` (3), `chore/t07b-tier-a-plumbing` (3) merged into
   `ai-feature`; two integration defects surfaced by the full gate were fixed and RCA-logged
-  (see `docs/RCA_LOG.md` 2026-09-22 entries). Gates: server `test:ci` 108 suites / 2057 tests,
-  client `test:ci` 159 suites / 1438 tests, `test:ci:pg:adapters` 20 suites / 291 tests — all green.
+  (see `docs/RCA_LOG.md` 2026-09-22 entries). Gates: server `test` 108 suites / 2057 tests,
+  client `test` 159 suites / 1438 tests, `test:pg:adapters` 20 suites / 291 tests — all green.
   Known-open: one non-reproducible gcService test flake under parallel CI load (RCA-logged).
 - **Wave-2 client-wiring provenance (2026-09-23)**: branch `feature/wave2-client-wiring`
   (worktree wt-wire) closed the three orchestrator-deferred host seams: T0.11 results shell
@@ -220,7 +220,7 @@
 Order: P-1 ∥ P-2 → P-3 → P-4 → P-5 (P-5 server part may join P-4).
 
 - **§10 closure (2026-09-29)**: all five merged into `ai-feature`. Final orchestrator gates:
-  server `test:ci` 130 suites / 2407 tests, client `test:ci` 175 / 1818, PG conformance
+  server `test` 130 suites / 2407 tests, client `test` 175 / 1818, PG conformance
   (fileLikes+collections scoped) 36, `collections-desktop` E2E **13/13** (ids 001–013).
   Discussion outcomes: (1) the members-cursor page-boundary gap was resolved by owner
   decision B (fetch-all + client slice — mechanism deleted, see the B decision record);
@@ -358,7 +358,7 @@ FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existin
     schema touched → PG conformance leg N/A.
 
 - **§11 closure (2026-10-01)**: merged `feature/polish-11-micro` (batches A/B/C). Final
-  orchestrator gates: server `test:ci` 130 suites / 2407, client 176 / 1856,
+  orchestrator gates: server `test` 130 suites / 2407, client 176 / 1856,
   `collections-desktop` E2E 14/14 (001–014) — all green. One follow-up test fix landed
   alongside (derivedTags month expectation → production-derived, TZ-safe; RCA 2026-10-01).
 - **§11 follow-up 2 (2026-10-01, owner ruling):** ArchiveNode count badge removed (M-1
@@ -410,8 +410,8 @@ FileActionSheet|FilePropertiesDialog` 140/140. M-5 clarification: no pre-existin
   both revoke paths now DELETE the grantee's cursor row inside the journaled revoke TX —
   re-grant after revoke RE-DOTS; `undoAction` of a revoke restores the grant but NOT the
   cursor (undo-revoke re-dots — accepted boundary). Spec: collectionsService.md §2.8. Branch `feature/per-collection-new-dot` (worktree wt-dot off
-  `ai-feature` @ 4e303b9); docs-first → RED → GREEN. `[done]` — gates: server `test:ci`
-  **130 suites / 2447 pass (5 skipped)**; PG leg `test:ci:pg:adapters` **23 suites /
+  `ai-feature` @ 4e303b9); docs-first → RED → GREEN. `[done]` — gates: server `test`
+  **130 suites / 2447 pass (5 skipped)**; PG leg `test:pg:adapters` **23 suites /
   346 pass (1 skipped)** incl. the new cursor conformance; client **178 suites / 1919
   pass**; `E2E_BACKEND_MODE=s3 collections-desktop` **14/14 green** (002 carries the
   no-dot-on-self-create pin + `last_visited_at` truthy on the creator row). Commits:
@@ -513,15 +513,15 @@ exists behind the gates. Error contract: reuse `serverErrors.collections.forbidd
 no new i18n codes; grantee=admin banned at grant creation; usage recording and the journal are
 unchanged (gates make admin rows unreachable). RCA: 2026-10-01 pivot adjudication entry.
 
-| Task             | Objective                                                                                                                                                          | Deps | Verification                                                                                        | Status                      |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | --------------------------------------------------------------------------------------------------- | --------------------------- |
-| U1 server gates  | `requireNonAdmin` on ALL collections/file-likes/dashboard routes + grantee-admin service ban (+ docs-first flips)                                                  | none | RED→GREEN; server `test:ci` + `test:ci:pg:adapters`; ownerNodeResolver admin tests UNMODIFIED-green | `[done]`                    |
-| U2 client gating | collections/likes/dashboard surfaces ABSENT for admin actors (sibling agent, `wt-pivot-cli`)                                                                       | U1   | client suite + eslint/prettier; server 403 already enforces regardless                              | `[done]` (merged `5ac5246`) |
-| U3 e2e migration | collections E2E migrated to a regular-user actor (scratch user provisioning, home-based workspaces, dual-token cleanup); admin-403 coverage owned by U1 unit gates | U1   | `collections-desktop` 14/14 twice consecutive                                                       | `[done]`                    |
+| Task             | Objective                                                                                                                                                          | Deps | Verification                                                                                  | Status                      |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | --------------------------------------------------------------------------------------------- | --------------------------- |
+| U1 server gates  | `requireNonAdmin` on ALL collections/file-likes/dashboard routes + grantee-admin service ban (+ docs-first flips)                                                  | none | RED→GREEN; server `test` + `test:pg:adapters`; ownerNodeResolver admin tests UNMODIFIED-green | `[done]`                    |
+| U2 client gating | collections/likes/dashboard surfaces ABSENT for admin actors (sibling agent, `wt-pivot-cli`)                                                                       | U1   | client suite + eslint/prettier; server 403 already enforces regardless                        | `[done]` (merged `5ac5246`) |
+| U3 e2e migration | collections E2E migrated to a regular-user actor (scratch user provisioning, home-based workspaces, dual-token cleanup); admin-403 coverage owned by U1 unit gates | U1   | `collections-desktop` 14/14 twice consecutive                                                 | `[done]`                    |
 
 - **§14 execution log (branch `feature/admin-operator-server`, base `822df02`):** U1 commits:
   docs `d22e617` → RED `df8f654` → gates `5f5a00a` → ledger (this commit). RED observed: 30 new
-  gate tests failed, 107 pre-existing green. GREEN gates: server `test:ci` **130 suites / 2441 pass
+  gate tests failed, 107 pre-existing green. GREEN gates: server `test` **130 suites / 2441 pass
   (5 skip)**; PG adapters leg **23 suites / 344 pass (1 skip)**; affected groups
   (collections+dashboard+policy) 174/174. eslint/prettier clean.
 - **§14 U3 execution log (branch `test/e2e-admin-operator-migration`, base = ai-feature incl.
@@ -577,8 +577,8 @@ unchanged (gates make admin rows unreachable). RCA: 2026-10-01 pivot adjudicatio
   the retired top-right `-6/-6` ring-offset geometry while committed `CardTile.md`/code say
   top-left 8px — the owner's MAIN-checkout working tree carries an in-flight edit of that doc;
   left untouched to avoid clobbering it.
-- Closeout gates (all on this branch): server `test:ci` **130 suites / 2455 pass (5 skip)**;
-  PG leg `test:ci:pg:adapters` **23 / 347 (1 skip)**; client **178 / 1919**;
+- Closeout gates (all on this branch): server `test` **130 suites / 2455 pass (5 skip)**;
+  PG leg `test:pg:adapters` **23 / 347 (1 skip)**; client **178 / 1919**;
   e2e collections s3 **17/17** ×3; webdav **17/17** ×3; eslint `--max-warnings 0` +
   prettier clean on every touched source file.
 
@@ -1003,8 +1003,8 @@ keeps its own worktree branch (`wt-*` idiom) and targeted-gate evidence in the l
 | C    | C1 (T1.5a) query-embed + `query_parses` cache + response shape + honest degrade → C2 (T1.5b) scorer (segment-AND min, max-over-chunks, dynamic baseline gate) → C3 (T1.5c) client zone C activation ∥ C4 (T1.7) vector near-dup + dashboard feed                                                                                                                                                                                                                                                           | B                                  | `sr1.` result_ref signature; absent vs honestly-empty distinction; per-query dynamic baseline gate; dedup vs name section; cap 50                                                                                                                                                                                                                          |
 | D    | D1 (T1.6) seed collections (preview+confirm+`llmNamer` swap) ∥ D2 (T1.9a) media capability probes+positive controls → D3 (T1.9b) media embed pipelines (audio `min(ub/25 s,327s)` windows / 1 fps frame sampling / image single / `media_direct`) → D4 (T1.9c) V2 caption fallback + backfill scope                                                                                                                                                                                                        | B (+C4 corpus)                     | formulas cited, never a literal "19 s"; D2: content-wrapper shape / re-encode band / base64-as-text diverges / pooling match                                                                                                                                                                                                                               |
 
-Exit gate: orchestrator `server/index.js` integration + full server/client `test:ci` +
-`test:ci:pg:adapters` + CI grep-gates (zero `CacheAdapter|operationProgress` in
+Exit gate: orchestrator `server/index.js` integration + full server/client `test` +
+`test:pg:adapters` + CI grep-gates (zero `CacheAdapter|operationProgress` in
 `domains/(collections|ai)/**` + tag-purge absence) + docsStatePurity; the
 `ai-feature`→`dev` merge stays a single event after ALL §7 phases.
 
@@ -1048,7 +1048,7 @@ decision record merged after the ledger was written); all Wave A branches cut fr
 `aafabd2`. Worktrees `wt-a1..wt-a5` (port-band / container discipline per §10 closure idiom).
 
 - **A4 (T1.0b) `[done]` — merged into `ai-feature` (orchestrator gate: full server
-  `test:ci` green before merge).** Branch `feature/p1-a4-tag-purge`, base `aafabd2`.
+  `test` green before merge).** Branch `feature/p1-a4-tag-purge`, base `aafabd2`.
   Commits: docs `0c29f1e` (aiTagStore.md §2.1 purge-state note — DDL DROPs belong to the
   big-bang script; §2.6 grep scoped to runtime code with the 001 + DDL-parity exception;
   maintenanceScheduler.md §3.3 dissolved nightly tag pass removed, §3.4→§3.3 renumber) →
@@ -1058,7 +1058,7 @@ decision record merged after the ledger was written); all Wave A branches cut fr
   docs `d996df6` (tagVocabulary.js stale header line ONLY — `foldTag`/exports untouched
   per §27 ruling) → test `7a85167` (conformance purged to the `ai_tag_raw` leg; no-
   normalization pin re-homed onto `replaceRawTags`). Gates: targeted 8 suites / 147 pass;
-  `domains/{collections,ai}` 10/202; full server `test:ci` 131 suites / 2464 pass (5 skip);
+  `domains/{collections,ai}` 10/202; full server `test` 131 suites / 2464 pass (5 skip);
   PG adapters leg 23 / 335 (reused the wt-pivot-srv e2e PG on :5433 — orchestrator aware).
   Post-purge grep: `tag_embeddings|tag_parents|getTagVectors|upsertAutoParent` hits only in
   the three DDL-parity enumeration tests + the test's own assertion file — zero runtime
@@ -1108,7 +1108,7 @@ clients/embedded-onnx.js}` + backendHealth `preparing/phase/progress`
   across 12 held-out queries, `toBe` not tolerance) + `vectorMath.md` spec +
   `--experimental-vm-modules` jest flag + `pdfjs-dist` server dep +
   TEST_GIT_GUIDE §4 note. Gates: conformance 13/13 bit parity; local union
-  5/54; full server test:ci 135 suites / 2531 pass (baseline 131 + exactly
+  5/54; full server test 135 suites / 2531 pass (baseline 131 + exactly
   the 4 new suites / 46 tests — vm-modules flag safe repo-wide); PG leg N/A
   (no repository/SQL/executor touched). vectorMath public surface for
   A6/A7: `serializeVector`/`parseVector`/`dotProduct`/`l2Norm`/
@@ -1132,7 +1132,7 @@ clients/embedded-onnx.js}` + backendHealth `preparing/phase/progress`
   §2.8; (3) `deleteByModel` in `EmbeddingsChunkRepository` collided with the
   purge-gate's forbidden dead-method list — renamed to `deleteSpace` across
   interface/twins/conformance/spec (§2.3/§2.4 reworded). Gates after fixes:
-  full server test:ci 146 suites / 2621 pass (5 skip) green; PG adapter leg
+  full server test 146 suites / 2621 pass (5 skip) green; PG adapter leg
   N/A for the fixes (comment/doc-only); A2's PG twins ride the orchestrator
   pg:adapters run at the wave gate.
 - **Wave A remaining**: A6 (T1.4b-pg pgvector adapter) + A7 (T1.4b-vec0 vec0
@@ -1145,14 +1145,14 @@ clients/embedded-onnx.js}` + backendHealth `preparing/phase/progress`
   Scope: `server/domains/ai/vectorStore/PgVector.js` (canonical TEXT-row
   truth + adapter-managed `pg_vector_shadow` sync, KNN re-ranking via `<=>`
   with `SET LOCAL hnsw.ef_search = 400` fixed, `rebuildShadow` stale-dim
-  drop-rebuild) + docs-first vectorStore.md refinement + `test:ci:pg:vector`
+  drop-rebuild) + docs-first vectorStore.md refinement + `test:pg:vector`
   script on its own :5434 port + E2E PG image swapped to
   `pgvector/pgvector:pg16` + 22-test ANN-leg suite. RED: module-absent →
   GREEN: 22/22 against a real pgvector/pg16 container (recall@50 = 1.0000
   @ ef400 held-out; ef-contrast 0.4140 proves the SET LOCAL knob bites).
   Shadow-table DDL owned by the adapter per §6 — never in the tracked chain.
   Orchestrator gate re-run on the main checkout: 22/22 green; full server
-  test:ci 147 suites / 2621 pass (pgvector suite CI-skipped by design,
+  test 147 suites / 2621 pass (pgvector suite CI-skipped by design,
   exercised via its dedicated script).
 - **A7 (T1.4b-vec0) `[done]` — merged into `ai-feature` (orchestrator merge
   `dd17927`).** Branch `feature/p1-a7-vec0-adapter`, rebased onto
@@ -1170,7 +1170,7 @@ clients/embedded-onnx.js}` + backendHealth `preparing/phase/progress`
   join-KNN — A6's pg path may consume it unchanged); sqlite-vec dep;
   vectorStore.md §2.4a/§2.5/§2.6/§5 vec0-scoped amendments. Gates: seam
   suites 75 tests green (recall@50 = 1.0000 over 40 held-out queries);
-  full server test:ci 148 / 2666 on the branch. RCA: pdfjs-dist/@napi-rs
+  full server test 148 / 2666 on the branch. RCA: pdfjs-dist/@napi-rs
   native-lib corruption in the worktree was environmental (orchestrator
   verified md5 divergence on `skia.linux-x64-gnu.node`; fixed via npm ci —
   no test altered).
@@ -1193,9 +1193,9 @@ clients/embedded-onnx.js}` + backendHealth `preparing/phase/progress`
      catch columns missing on a table created by an even older DDL
      generation). Resolved by dropping the schema and letting the leg
      re-apply 001; columns verified present. No code change.
-     Final gates: server `test:ci` 148 suites / 2647 pass (27 skip) green;
-     client `test:ci` 180 suites / 2064 pass green; `test:ci:pg:adapters`
-     29 suites / 415 pass (1 skip) green; `test:ci:pg:vector` 22/22 green;
+     Final gates: server `test` 148 suites / 2647 pass (27 skip) green;
+     client `test` 180 suites / 2064 pass green; `test:pg:adapters`
+     29 suites / 415 pass (1 skip) green; `test:pg:vector` 22/22 green;
      grep-gates clean (zero `CacheAdapter|operationProgress` in runtime code —
      the one service.js hit is a documentary comment stating the invariant;
      zero `tag_embeddings|tag_parents|getTagVectors|upsertAutoParent` outside
@@ -1236,7 +1236,7 @@ profile + per-row persistence on `embeddings.dim`/`embeddings_chunk.dim`).
   `min(30s·2ⁿ, 30min)` verified (BASE 30_000 / MAX 1_800_000) +
   aiJobsStore.md §2.3/§2.4 contract text. RED absent-support → GREEN
   conformance 21/21 (sqlite leg), facade 3/3, docsStatePurity 3/3.
-  **Orchestrator PG leg verified**: `test:ci:pg:adapters` 29 suites /
+  **Orchestrator PG leg verified**: `test:pg:adapters` 29 suites /
   418 pass — the PG twin mirrors the sqlite predicate exactly.
 - **Wave B remaining**: B3 (T1.1c wizard AI step ← B1+B2 satisfied),
   B5 (T1.3b embed pipeline ← B4+A2+A5 satisfied), B6 (T1.3c hooks×4 +
@@ -1281,7 +1281,7 @@ profile + per-row persistence on `embeddings.dim`/`embeddings_chunk.dim`).
   restore with re-read `sha256Buffer` fresh hash); hash write-side at every
   seam. RED 11+ behavior failures observed → hook suite 39/39 GREEN;
   2 pre-existing tests updated to the spec'd contract (Case B, RCA log);
-  full server `test:ci` 2741 pass / 27 skip / 0 fail. Docs reconciled
+  full server `test` 2741 pass / 27 skip / 0 fail. Docs reconciled
   (§4.20 tag-embedding call site, §2.2 anchors, RCA_LOG). Awaiting merge
   orchestration (NOT merged to dev from the remediation session).
 - **B3/B5/B6 closure + Wave A/B similar-issue audit (2026-10-21 — orchestrator)**:
@@ -1319,9 +1319,9 @@ profile + per-row persistence on `embeddings.dim`/`embeddings_chunk.dim`).
 - **Wave B exit gate — PASSED (2026-10-21, orchestrator)**: after merging B5
   `0dc702c` → B6 `2283755` → B3 `6d62075` into `ai-feature` (PLAN.md row conflict
   resolved append-only) and recording the audit ledger, the full orchestrator
-  gates ran on the merged tip (`f243b0e`): server `test:ci` **154 suites /
-  2755 pass (27 skip)** green; client `test:ci` **182 suites / 2079 pass** green
-  (2 net-new suites from B3's aiRoleState + SetupAiStep); `test:ci:pg:adapters`
+  gates ran on the merged tip (`f243b0e`): server `test` **154 suites /
+  2755 pass (27 skip)** green; client `test` **182 suites / 2079 pass** green
+  (2 net-new suites from B3's aiRoleState + SetupAiStep); `test:pg:adapters`
   **29 suites / 418 pass (1 skip)** green — covers the merged A2 twins, B4's
   AiJobs predicate twins, and the embed-pipeline store fountains; CI grep-gates
   clean (the one `CacheAdapter|operationProgress` hit is the documentary
@@ -1335,7 +1335,7 @@ profile + per-row persistence on `embeddings.dim`/`embeddings_chunk.dim`).
 
 ### Wave C execution log (2026-10-22 — orchestrator)
 
-Pre-wave orchestrator integration (base commit `9ae8189`, full server test:ci
+Pre-wave orchestrator integration (base commit `9ae8189`, full server test
 155 suites / 2766 pass green before dispatch): Wave B left three specced boot
 call sites unwired — (a) bootSequence §2 step 8b provisioning in
 `server/index.js` (setup-mode zero-egress / remote-override defer / built-in
@@ -1377,7 +1377,7 @@ worktrees/branches removed; E2E-AI-001 pre-seed located at
   semantic returned nodes, registry keys SEARCH_SEMANTIC_LIMIT/
   BASELINE_SAMPLE_DOCS. E2E-AI-001 (`e2e/ai.spec.ts`, `ai` project on :5016,
   WEA_MODEL_DIR pre-seed): green ×2 consecutively (first search 5.0 s real
-  EG2 embeds, replay 0.8 s cache hits). Gates: server test:ci 156 suites /
+  EG2 embeds, replay 0.8 s cache hits). Gates: server test 156 suites /
   2792 pass; eslint/prettier clean; docsStatePurity 3/3. C1 fixes landed
   en-route (B-owner review welcome): provisioner flat-tree vs nested-tree
   mismatch; worker never claimed (activeModelId missing); readNodeText store
@@ -1393,16 +1393,16 @@ worktrees/branches removed; E2E-AI-001 pre-seed located at
   content_hash dups never surface; union-find components; keep rule = smallest
   node id; ACL-scoped; honest degrade with no embeddings) + dashboard feed
   (GET /api/dashboard near-dup block + CollectionDashboard render). Gates:
-  server test:ci 156 suites / 2804 pass; client 182 suites / 2080 pass;
+  server test 156 suites / 2804 pass; client 182 suites / 2080 pass;
   eslint/prettier clean; docsStatePurity 3/3.
 - **Orchestrator merge-gate fixes**: `33ed33c` provisioner default HF fetcher
   (boot/in-place triggers without a fetcher could never complete the download
   — posture 6 test added, 8/8); `985b476`+`2bc31e1` query_parses boundary
   timestamp normalization (pg Date → ISO string in both twins) + conformance
   instant-compare (Case B; RCA-logged 2026-10-22). **Merge gates (tip
-  `2bc31e1`)**: server test:ci **157 suites / 2812 pass**; client test:ci
-  **182 suites / 2080 pass**; `test:ci:pg:adapters` **30 suites / 426 pass**;
-  `test:ci:pg:vector` **22/22** — all green. C1/C4 worktrees + branches
+  `2bc31e1`)**: server test **157 suites / 2812 pass**; client test
+  **182 suites / 2080 pass**; `test:pg:adapters` **30 suites / 426 pass**;
+  `test:pg:vector` **22/22** — all green. C1/C4 worktrees + branches
   removed. **Remaining**: C2 (scorer, in flight), C3 (client zone C), Wave C
   exit gate (E2E re-run on the merged tip + grep-gates + ledger).
 - **C2 (T1.5b) `[done]` — merged (`57c0dee`).** Branch
@@ -1421,10 +1421,10 @@ worktrees/branches removed; E2E-AI-001 pre-seed located at
   `FileNodeRepository.listVisibleFileNodeIds(userId)` twins (+conformance +
   facade) as the ACL-anchored candidate seam; `SCORING_LANDED` flipped in
   `e2e/ai.spec.ts` — owner-ruling assertion active. Gates: targeted
-  scorer+search+FileNode conformance 107/5 green; full server test:ci
+  scorer+search+FileNode conformance 107/5 green; full server test
   **158 suites / 2821 pass**; docsStatePurity 3/3; eslint/prettier clean;
   E2E AI case ×2 consecutive green (34.2 s / 33.9 s). **Merge gates (tip
-  `57c0dee`)**: `test:ci:pg:adapters` **30 suites / 426 pass** incl. the new
+  `57c0dee`)**: `test:pg:adapters` **30 suites / 426 pass** incl. the new
   twins. A stale main-checkout draft of the C2 docs/presets edits (first
   session residue, superseded wording) was discarded before the merge — the
   committed branch version is authoritative. **Remaining**: C3 (client zone C,
@@ -1482,9 +1482,9 @@ worktrees/branches removed; E2E-AI-001 pre-seed located at
   member published:true → card opens with the member row); retrieval dual
   22/22.
 - **Wave C exit gate — PASSED (2026-10-22, orchestrator; tip `ad047b3`)**:
-  server `test:ci` **158 suites / 2832 pass (27 skip)**; client `test:ci`
-  **183 suites / 2098 pass**; `test:ci:pg:adapters` **30 suites / 426 pass
-  (1 skip)**; `test:ci:pg:vector` **22/22**; E2E `ai-desktop` ×2 consecutive
+  server `test` **158 suites / 2832 pass (27 skip)**; client `test`
+  **183 suites / 2098 pass**; `test:pg:adapters` **30 suites / 426 pass
+  (1 skip)**; `test:pg:vector` **22/22**; E2E `ai-desktop` ×2 consecutive
   green (58.2 s / 37.5 s incl. the save leg) + `retrieval` dual **22/22**
   (3.2 m); grep-gates clean (the one `CacheAdapter|operationProgress` hit is
   the documentary invariant comment in `collections/service.js:11` — Wave A
@@ -1502,8 +1502,8 @@ worktrees/branches removed; E2E-AI-001 pre-seed located at
 ## 28. Wave C audit remediation (2026-10-22) — gap ledger (orchestrator)
 
 > Audit base: `ai-feature` @ `d7d3b01` (Wave C exit tip). Gates re-run on the main
-> checkout: server `test:ci` 158 suites / 2832 pass (27 skip); client `test:ci`
-> 183 / 2098; `test:ci:pg:adapters` 30 / 426 (1 skip); `test:ci:pg:vector` 22/22;
+> checkout: server `test` 158 suites / 2832 pass (27 skip); client `test`
+> 183 / 2098; `test:pg:adapters` 30 / 426 (1 skip); `test:pg:vector` 22/22;
 > docsStatePurity 3/3. **Verdict:** Wave C is merged and gate-green, but P1 is NOT
 > complete. The audit found **three P0 integration defects** (native vector seam
 > unwired, remote-embed conformance gate unenforced, Zone C excluded from
@@ -1524,7 +1524,7 @@ worktrees/branches removed; E2E-AI-001 pre-seed located at
 | A-1 | P0  | Native vector engines unreachable in production; read AND write paths bypass the `vectorStore` seam; `vectorOps` health row absent. Canonical TEXT writes stay bit-equivalent — the bypassed artifacts are the adapter-managed shadow index and the §2.2 one-TX contract (performance + contract defect, not a current result error) | `vectorStore/index.js` missing (`vectorStore.md:20` names it); `semanticScorer.js:85-86` + `nearDupFinderService.js:123-124` default to `TextVectorJs`; `pipelines/embed.js:81` falls back to direct hooks; no `vectorOps` in code | C6: factory + runtime singleton + reader/writer wiring + health row (28.2.1)                     | C6 / M    |
 | A-2 | P3  | `aiTagShared.js` still exists although the Wave A log says "purged"                                                                                                                                                                                                                                                                  | 667 B file required by `sqlite/AiTagRepository.sqlite.js:4` and `postgres/AiTagRepository.postgres.js:4`                                                                                                                           | Keep the helper, correct the Wave A wording + `aiTagStore.md §2.1` File Paths (28.4)             | C9 / S    |
 | A-3 | P2  | `aiEnrichmentsStore.md §2.1` promises a facade + test file that do not exist                                                                                                                                                                                                                                                         | `server/store/aiEnrichmentsStore.js` and `__tests__/aiEnrichmentsStore.test.js` absent                                                                                                                                             | T4.1 docs step: add the facade (T4.1 coverage filters need it) or strike the claim (28.4)        | T4.1 / S  |
-| A-4 | P1  | `test:ci:pg:vector` hardcodes :5434 while compose exposes :5433; no CI/runbook entry                                                                                                                                                                                                                                                 | `server/package.json:14`; `docker-compose.e2e.yml:40`; no CI config in repo                                                                                                                                                        | C9: reuse the 5433 server with a separate `webdav_vector_test` DB + TEST_GIT_GUIDE line (28.3.1) | C9 / S    |
+| A-4 | P1  | `test:pg:vector` hardcodes :5434 while compose exposes :5433; no CI/runbook entry                                                                                                                                                                                                                                                    | `server/package.json:14`; `docker-compose.e2e.yml:40`; no CI config in repo                                                                                                                                                        | C9: reuse the 5433 server with a separate `webdav_vector_test` DB + TEST_GIT_GUIDE line (28.3.1) | C9 / S    |
 | A-5 | P1  | `provision.js` ships Portuguese error strings, CLI logs and comments                                                                                                                                                                                                                                                                 | `provision.js:43,139,140,168,172,212,221`; `clients/embedded-onnx.js` comments                                                                                                                                                     | C9: translate to English (AGENTS language rule) (28.3.2)                                         | C9 / S    |
 | A-6 | P2  | Spec/code drift around the vector seam and conformance harness                                                                                                                                                                                                                                                                       | `vectorMath.md §5` signature; `vectorStore.md §2.5` interim note; `PgVector` inline ACL duplicate                                                                                                                                  | C6 docs step + T2.2 docs step (28.4)                                                             | C6 / S–M  |
 
@@ -1625,7 +1625,7 @@ worktrees/branches removed; E2E-AI-001 pre-seed located at
 
 Reuse the existing pgvector container on `:5433` with a separate database
 (`webdav_vector_test`) instead of a second container/port. Parameterize
-`test:ci:pg:vector` (`WEA_TEST_PG_PORT=${WEA_TEST_PG_PORT:-5433}`,
+`test:pg:vector` (`WEA_TEST_PG_PORT=${WEA_TEST_PG_PORT:-5433}`,
 `WEA_TEST_PG_DATABASE=webdav_vector_test`), document the one-line command in
 `docs/TEST_GIT_GUIDE.md`, and add a preflight that fails with the compose instruction when
 the port is closed. Add the stage to the operator pipeline (Jenkins) at the next runbook
@@ -1661,7 +1661,7 @@ a grep for the Portuguese tokens (0 hits) plus the provision suites.
 
 Add a conformance block to `FileNodeRepository.conformance.test.js`: own-root node, path
 grant, point grant, foreign/denied node, trashed node; assert exact set equality. Add the
-method to `searchService.md §2.5`. Run `test:ci:pg:adapters` for the PG twin.
+method to `searchService.md §2.5`. Run `test:pg:adapters` for the PG twin.
 
 #### 28.3.6 C-3 — `BASELINE_SAMPLE_DOCS` consumption
 
@@ -1709,7 +1709,7 @@ C8 and C9 may merge any time. Wave D D1 is independent of C6/C7.
 Wave C's suite counts stand, but P1 closes only when ALL of the following are observed on
 the merged tip:
 
-1. `npm run test:ci` (server + client), `test:ci:pg:adapters`, `test:ci:pg:vector` green.
+1. `npm run test` (server + client), `test:pg:adapters`, `test:pg:vector` green.
 2. pgvector environment reports `vectorOps='native'` and semantic/near-dup go through the
    native engine; extension-absent environment reports `fallback_js` with a hint and no
    feature gate.
@@ -1741,7 +1741,7 @@ D2 `665832d`, D3 `5cf5adc`, D4 `3ea16c7`, style sweep `6343c6e`.
 | C6   | `[done]` | vectorStore factory + runtime singleton; search/near-dup reader wiring; embed-pipeline writer hooks (canonical + PgVector shadow in ONE TX); `vector`/`vectorOps` health; model-OR-dim backfill driver condition |
 | C7   | `[done]` | EG2 conformance gate at remote-embed activation (signature-cached); `probeState` effective capabilities; `AI_JOB_KIND`; normalized `excludeKinds` binding; timeout-race test                                     |
 | C8   | `[done]` | Zone C in selection/select-all/bulk read-only gating; `listVisibleFileNodeIds` conformance (sqlite + PG); hot `BASELINE_SAMPLE_DOCS`; client/search docs reconciled                                              |
-| C9   | `[done]` | English provisioning surface; `test:ci:pg:vector` on the compose PG with its own database; tag-helper docs; embed/chat-only health wording                                                                       |
+| C9   | `[done]` | English provisioning surface; `test:pg:vector` on the compose PG with its own database; tag-helper docs; embed/chat-only health wording                                                                          |
 | D1   | `[done]` | live seed preview via `vectorStore.neighbors` (ACL-scoped, degraded missing-embedding path); `createSeedCollection` with `seed_vector` definition + `published:true` batch; `templateNamer`/`llmNamer`           |
 | D2   | `[done]` | OpenAI-compatible remote client (embed/chat/vision/asr/media); embedded processor media path; positive-control media probes (photo/re-encode/base64-text/audio/video); vision/asr real fixtures                  |
 | D3   | `[done]` | caption + asr pipelines; `media_direct` ladder, V2 caption/transcript fallback, V0 `metadata_only`; `aiEnrichmentsStore`; drain of embed/caption/asr                                                             |
@@ -1749,8 +1749,8 @@ D2 `665832d`, D3 `5cf5adc`, D4 `3ea16c7`, style sweep `6343c6e`.
 
 **Gates (merged tip):** server `jest --ci` **169 suites / 2956 tests pass (28 skipped), 1
 pre-existing failure** (`domains/admin/routes/__tests__/reports.test.js` cleanup-row parity
-— reproduced unchanged on base `39e6cfc`); client **183 / 2102 pass**; `test:ci:pg:adapters`
-**30 / 432 pass (1 skip)**; `test:ci:pg:vector` **22 / 22** (compose pgvector); embedded
+— reproduced unchanged on base `39e6cfc`); client **183 / 2102 pass**; `test:pg:adapters`
+**30 / 432 pass (1 skip)**; `test:pg:vector` **22 / 22** (compose pgvector); embedded
 multimodal smoke **1 / 1** (image near-dup 0.9506, audio 0.7393, video 0.8447); E2E
 `ai-desktop` **1 / 1 pass** (1.8 m); docsStatePurity green in-suite; eslint clean;
 prettier clean. `retrieval-desktop` E2E did not reach the app assertions: the scratch stack
@@ -1786,7 +1786,7 @@ The P2/P3 audit items still assigned to later units were pulled forward and clos
 
 **Final gates (tip `edc3ac8`):** server `jest --ci` **171 suites / 2974 pass (28 skipped),
 1 pre-existing failure** (`reports.test.js` cleanup-row parity, reproduced on base);
-client **183 / 2102**; `test:ci:pg:adapters` **30 / 432 (1 skip)**; `test:ci:pg:vector`
+client **183 / 2102**; `test:pg:adapters` **30 / 432 (1 skip)**; `test:pg:vector`
 **22 / 22**; E2E `ai-desktop` **1 / 1** (1.8 m, rerun after C10); docsStatePurity green;
 eslint/prettier clean on the changed surface.
 
@@ -1875,10 +1875,10 @@ UI to leave “Testing...”.
 
 ### 28.13 E2E-ADMINCFG-006 connection-probe retry diagnosis
 
-| Task   | Objective                                                     | Inputs                                             | Expected outputs                                                      | Verification                                         | Dependencies |
-| ------ | ------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------- | ------------ |
-| 28.13a | Stop retrying an intentional failed admin connection probe    | config probe contract + shared HTTP retry behavior | `testConfig` sends one request; normal retry policy remains unchanged | adminService/httpClient unit tests + ADMINCFG-006    | none         |
-| 28.13b | Validate the repaired surface and repository regression gates | 28.13a implementation                              | All affected admin E2E, client/server CI, related trash E2E green     | serial E2E runs + `npm run test:ci` in client/server | 28.13a       |
+| Task   | Objective                                                     | Inputs                                             | Expected outputs                                                      | Verification                                      | Dependencies |
+| ------ | ------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------- | ------------ |
+| 28.13a | Stop retrying an intentional failed admin connection probe    | config probe contract + shared HTTP retry behavior | `testConfig` sends one request; normal retry policy remains unchanged | adminService/httpClient unit tests + ADMINCFG-006 | none         |
+| 28.13b | Validate the repaired surface and repository regression gates | 28.13a implementation                              | All affected admin E2E, client/server CI, related trash E2E green     | serial E2E runs + `npm run test` in client/server | 28.13a       |
 
 Verified hypothesis: `/api/admin/config/test` reports an unreachable WebDAV probe as HTTP 500;
 the generic transport retries all 5xx, so the UI remains in `testing` while repeat probes run.
@@ -1939,11 +1939,11 @@ failure remained reproducible. `git diff --check` was clean; changes remain unco
 
 ### 29.3 P2 verification gates
 
-- Per wave: RED-first suites; full `cd server && npm run test:ci`; client `test:ci` only when the
+- Per wave: RED-first suites; full `cd server && npm run test`; client `test` only when the
   hint/UI seam changes.
-- Repository/schema touched ⇒ `test:ci:pg:adapters` with new conformance cases (item `source`/
+- Repository/schema touched ⇒ `test:pg:adapters` with new conformance cases (item `source`/
   `reason` round-trip, dismiss counter, member-activity read).
-- Vector native path touched ⇒ `test:ci:pg:vector`.
+- Vector native path touched ⇒ `test:pg:vector`.
 - Membership stability: two reads between passes return the same set; `GET /`,
   `GET /:id/items` and `for-nodes` perform zero definition evaluation.
 - Hysteresis: `theta_out ≤ score < theta_in` keeps a member and rejects a non-member; automatic
@@ -1955,8 +1955,8 @@ failure remained reproducible. `git diff --check` was clean; changes remain unco
 - CI grep gates unchanged (`CacheAdapter|operationProgress`, tag-purge absence);
   `docsStatePurity` green; prettier/eslint clean.
 
-**P2 exit gate PASSED (2026-10-26, Wave 4):** tip `a4a83b83`. Gates — server `test:ci`
-**179 suites / 3,093 tests pass (28 skipped)**; client `test:ci` **183 / 2,110**; PG adapters
+**P2 exit gate PASSED (2026-10-26, Wave 4):** tip `a4a83b83`. Gates — server `test`
+**179 suites / 3,093 tests pass (28 skipped)**; client `test` **183 / 2,110**; PG adapters
 **30 suites / 444 pass (1 skip)** on an isolated band; PG vector **22/22** (recall 1.0 @ ef400);
 server/client lint + `docsStatePurity` green (one pre-existing test-file `no-unused-vars`
 cluster fixed in `a4a83b83`). E2E (band 20, S3): `s3-collections-desktop` **17 pass / 3
@@ -1978,7 +1978,7 @@ failures at the first full gate); fixed to the default binding with full absorpt
 `cosine × (1 + α·log10(1 + views))` re-ranks the SEED-PREVIEW sample over the top-K set;
 `ids`/`count`/batch stay raw (admission un-boosted); the definition-preview arm keeps its
 node_id asc sample (no cosine ordering exists there).
-Gates: server `test:ci` **179 suites / 3,096 tests (28 skipped)**, client `test:ci`
+Gates: server `test` **179 suites / 3,096 tests (28 skipped)**, client `test`
 **183 suites / 2,120 tests**, eslint/prettier clean; no repository/SQL change ⇒ PG leg N/A.
 
 **T2.1–T2.5 closed (2026-10-26):** every §7 P2 task is implemented and merged — definition
@@ -2051,9 +2051,9 @@ T3.2b → T3.6 → T3.4 (T3.2b/T3.6 both touch `FileManager.js` — stated order
 
 ### 30.4 Verification gates (§29.3 discipline carried forward)
 
-- Per wave: RED-first suites; full `cd server && npm run test:ci`; client `test:ci` when client
-  seams change; `test:ci:pg:adapters` whenever repositories/schema are touched (T3.3 twins
-  REQUIRED; T3.2a if grant surfaces change); `test:ci:pg:vector` only if a vector path changes.
+- Per wave: RED-first suites; full `cd server && npm run test`; client `test` when client
+  seams change; `test:pg:adapters` whenever repositories/schema are touched (T3.3 twins
+  REQUIRED; T3.2a if grant surfaces change); `test:pg:vector` only if a vector path changes.
 - **No DDL change is expected in P3** — `file_suggestions`, `collection_merge_suggestions`
   (incl. arbiter columns), grants, `publish_mode` all shipped in 001. Any discovered gap is a
   big-bang-script decision (§17-3), never an ALTER chain.
@@ -2068,8 +2068,8 @@ T3.2b → T3.6 → T3.4 (T3.2b/T3.6 both touch `FileManager.js` — stated order
 
 ### 30.5 P3 exit gate
 
-All §7 P3 rows closed (T3.1 includes the T3.1b/1c legs), full server/client `test:ci` +
-`test:ci:pg:adapters` green on the merged tip, extended E2E suites green, grep-gates +
+All §7 P3 rows closed (T3.1 includes the T3.1b/1c legs), full server/client `test` +
+`test:pg:adapters` green on the merged tip, extended E2E suites green, grep-gates +
 docsStatePurity clean, this ledger updated. The single `ai-feature`→`dev` merge remains a later
 event after ALL §7 phases (P4 still open).
 
@@ -2110,8 +2110,8 @@ bands 40/60/80/100. Merged in §30.3 order T3.5 → T3.3 → T3.2a → T3.1.
   `FileManager.md` undo-toast/merge-slot bullets unioned; RCA_LOG append-only ×2;
   **E2E-ID collision**: T3.1's merge-card keeps `E2E-S3-COLLECTION-021/022` (spec code shipped
   under those ids), T3.3's planned suggestion case renumbered to **023**.
-- **Wave-1 exit gates (merged tip)**: server `test:ci` **184 suites / 3209 pass (28 skip)**;
-  client `test:ci` **185 / 2158**; `test:ci:pg:adapters` **31 / 456 (1 skip)** on the shared
+- **Wave-1 exit gates (merged tip)**: server `test` **184 suites / 3209 pass (28 skip)**;
+  client `test` **185 / 2158**; `test:pg:adapters` **31 / 456 (1 skip)** on the shared
   :5433 (its `webdav_test` DB was stale-schema — dropped and recreated fresh from current 001
   by T3.1, drift source eliminated); grep-gates + docsStatePurity green (in-suite). PG vector
   leg N/A (no vectorStore engine path changed). Carried to exit gate: E2E runs (021/022
@@ -2163,8 +2163,8 @@ All three units launched in parallel on base `17068cd7` (wt-t32b/wt-t36/wt-t34, 
   alongside T3.2b's); `E2E_COVERAGE_PLAN.md` collections table union (HEAD 001–024 + theirs 025) + deferral bullets (bulk-toolbar-add removed — now 025; sharing rides 024);
   `FileManager.md` host bullets union (properties-host + membership-chip host + bulk-add all
   kept). `FileManager.js` auto-merged across the three units — verified by the full gates.
-- **Wave-2 exit gates (merged tip `211758c4`)**: server `test:ci` **185 suites / 3252 pass
-  (28 skip)**; client `test:ci` **188 / 2235**; `test:ci:pg:adapters` **31 / 460 (1 skip)** —
+- **Wave-2 exit gates (merged tip `211758c4`)**: server `test` **185 suites / 3252 pass
+  (28 skip)**; client `test` **188 / 2235**; `test:pg:adapters` **31 / 460 (1 skip)** —
   all rc=0. Wave-2 worktrees/branches removed.
 
 **Wave 3 (T3.1c merge arbiter) launched from tip `211758c4` (wt-t31c, band 120).** P3 exit
@@ -2212,9 +2212,9 @@ desktop` 22 pass/3 static skip, `s3-collections-mobile` 24 pass/1 static skip,
 source: all §7 P3 rows closed — T3.1 (+T3.1b = the set-Jaccard candidate variant already
 shipped as the P2 Pass-5 emission, now with the card UI + arbiter promotion leg + real compare
 overlay per R2; +T3.1c arbiter above), T3.2 (a+b), T3.3, T3.4, T3.5, T3.6. Gates on the
-merged tip (server `test:ci` re-run POST-e2e-merge: **187 suites passed + 2 skipped /
+merged tip (server `test` re-run POST-e2e-merge: **187 suites passed + 2 skipped /
 3,277 pass + 28 skip, rc=0**; client **188/2235** — client/src untouched by the post-gate
-merges; `test:ci:pg:adapters` **31/461+1 skip** — no repository/SQL file touched by the
+merges; `test:pg:adapters` **31/461+1 skip** — no repository/SQL file touched by the
 post-gate merges; grep-gates clean (`CacheAdapter|operationProgress` — only the documentary
 invariant comment in `collections/service.js:11`, Wave-A precedent; tag-purge 0);
 docsStatePurity green (in-suite); eslint/prettier clean). Membership-stability pins green
@@ -2266,7 +2266,7 @@ disabled`) sourced from the new `llmAdapter.getRoleReadiness('embed')`; it is no
   `Array.isArray(response.semantic)`; the save gate stays "section present AND non-empty".
 - **Docs:** routes/search, searchService, client hook/service/chip specs, `api.md`,
   `shared-contracts.md`, and E2E coverage updated in the same change.
-- **Gates:** server `test:ci` 189 suites / 3309 tests (28 skip); client 188 / 2235;
+- **Gates:** server `test` 189 suites / 3309 tests (28 skip); client 188 / 2235;
   `docsStatePurity` 3/3; `playwright test --list` 256 tests. No repository/SQL change ⇒ PG
   leg N/A.
 
@@ -2337,7 +2337,7 @@ not a queue of remaining work:
 
 `wt-colls`/`wt-hyst`/`wt-tagddl`/`wt-docs`/`wt-bulk`/`wt-memberof` may merge independently;
 `wt-undo` before `wt-b`; `wt-llm`/`wt-hooks` before the final full gate; `wt-enums` Phase 1
-after the code units (Phase 2 follows). Final gate: server/client `test:ci`, PG adapters for
+after the code units (Phase 2 follows). Final gate: server/client `test`, PG adapters for
 repository/DDL/undo units, dual E2E (collections/retrieval/ai + core-flow), docsStatePurity,
 prettier/eslint, release matrix before the single `ai-feature`→`dev` merge.
 
@@ -2390,9 +2390,9 @@ statement are historical; the later release evidence and T4.5–T4.13 results ar
 
 - **Merged tip:** `309eb579` (`ai-feature`). All eleven remediation units plus enums Phase 2
   are merged; task worktrees are removed.
-- **Jest:** server `test:ci` **192 passed + 2 skipped suites (194 total) / 3353 passed + 28
-  skipped (3381 total)**, rc=0; client `test:ci` **188 / 2245**, rc=0.
-- **PostgreSQL:** `test:ci:pg:adapters` **31 suites / 471 passed + 1 skipped (472)**, rc=0,
+- **Jest:** server `test` **192 passed + 2 skipped suites (194 total) / 3353 passed + 28
+  skipped (3381 total)**, rc=0; client `test` **188 / 2245**, rc=0.
+- **PostgreSQL:** `test:pg:adapters` **31 suites / 471 passed + 1 skipped (472)**, rc=0,
   on a freshly recreated `webdav_test` DB (plain PG :5433) so the 001 checksum is current.
 - **Targeted:** shared-enum Phase 2 24 suites / 531; B server 115 + client 30; collections/
   conformance/presets 390; undo/dashboard/fileNodes 89; Member of client 177; LLM 136;
@@ -2412,7 +2412,7 @@ Four full release-matrix attempts on the merged remediation tip. Runs A–C are 
 host-capacity/transport reasons (not reproducible product regressions — targeted reruns below);
 **Run D with `E2E_WORKERS=1` is GREEN and is the release evidence.**
 
-| Run              | Config                         | S3 (command used at run time)                      | WebDAV (`test:e2e:release:webdav`)      |
+| Run              | Config                         | S3 (command used at run time)                      | WebDAV (`e2e:release:webdav`)           |
 | ---------------- | ------------------------------ | -------------------------------------------------- | --------------------------------------- |
 | A `19c1b880`     | 3 workers                      | 238 passed / 3 failed / 7 skipped / 10 did not run | 39 passed / 1 failed / 1 did not run    |
 | B `7593e6fc`     | 3 workers                      | 250 passed / 1 failed / 7 skipped                  | 40 passed / 1 failed                    |
@@ -2420,8 +2420,8 @@ host-capacity/transport reasons (not reproducible product regressions — target
 | **D `00881ada`** | **1 worker (`E2E_WORKERS=1`)** | **253 passed / 7 skipped / 260, rc=0 (26.8m)**     | **41 passed / 0 skipped, rc=0 (12.2m)** |
 
 > Gate-name note (2026-10-28 split): the embedded default command used for the D row is now
-> `test:e2e:release:embed`. `test:e2e:release` exports `WEA_SKIP_EMBED_MODEL=1` and intentionally
-> skips `E2E-S3-AI-001` (252/8/260); `test:e2e:release:all` keeps the embedded default leg.
+> `e2e:release:model-on`. `e2e:release:model-off` exports `WEA_SKIP_EMBED_MODEL=1` and intentionally
+> skips `E2E-S3-AI-001` (252/8/260); `e2e:release` runs all three legs (model-off, model-on, webdav).
 
 - **Run A product regression (fixed):** `E2E-WEBDAV-ADMINCFG-004` — the admin warning card
   rendered healthy/not-configured `ai.*` tracker rows (C4-A added a healthy `ai.embed` row).
@@ -2536,7 +2536,7 @@ snackbar and now has an explicit cancel surface (`§31.9`), so no search-side wo
   the stalled message until `확인`. Search gets NO new case (row dropped).
   Inventory moves 258 → 260; re-pin `E2E_COVERAGE_PLAN.md` + `TEST_SUMMARY` after the first real
   run (`E2E_EXPECTED_SKIPS` stays 7). Deps: T4.8–T4.10.
-- **T4.13 — Gates.** Client `test:ci`, server `test:ci` (no server change expected unless T4.6b
+- **T4.13 — Gates.** Client `test`, server `test` (no server change expected unless T4.6b
   lands), `docsStatePurity`, prettier/eslint, targeted E2E (new cases + retrieval/trash/BULK-010),
   then the release matrix on a host with CPU headroom (§31.8). Deps: all.
 - **T4.6b (optional hardening) — `Cache-Control: no-store`** on `GET /api/files/bulk-operation/:jobId`
@@ -2709,8 +2709,8 @@ closed.
   `object_map.size` population on new writes (the production migration owns existing-row
   backfill); gateway `loadStorageUsageSeries()` (swallow failures → `null`); sparkline
   wire-through + seam-present client test cases. Policy: UTC `YYYY-MM-DD`, 30-day
-  retention, 2-point minimum, null size ⇒ skip + warning. Verify: server+client `test:ci`,
-  `test:ci:pg:adapters` (new repository), conformance suite, scheduler test,
+  retention, 2-point minimum, null size ⇒ skip + warning. Verify: server+client `test`,
+  `test:pg:adapters` (new repository), conformance suite, scheduler test,
   `docsStatePurity`, DDL exact-list tests. Docs-first: create
   `docs/spec/server/store/storageUsageSnapshotsStore.md`; update
   `docs/spec/server/routes/dashboard.md`,
@@ -2781,14 +2781,15 @@ closed.
 - **D2 execution — TAGS removal.** Objective: the dead enum value gone. Outputs:
   `shared/constants.js` (`TAGS` out of the enum + `ALL`), the `001` DDL CHECK, the
   `docs/shared-contracts.md` enum list, and the `sharedPlatformEnums.test.js` parity
-  assertions, edited together. Verify: server `test:ci` incl. the parity suite. RED-first:
+  assertions, edited together. Verify: server `test` incl. the parity suite. RED-first:
   flip the parity test to expect absence, then remove. Deps: none.
 
 ### 33.4 Verification gates
 
-- `npm run test:ci` (server + client) on every unit; `test:ci:pg:adapters` for the T4.4
-  repository twins; `docsStatePurity` (runs inside server CI); CI grep-gates for
-  `domains/(collections|ai)/**` and new stores (zero `CacheAdapter|operationProgress`).
+- `npm run test` (server + client) on every unit; `npm run test:pg:adapters` for the
+  T4.4 repository twins; `docsStatePurity` (runs inside the server test run); CI
+  grep-gates for `domains/(collections|ai)/**` and new stores (zero
+  `CacheAdapter|operationProgress`).
 - Preceding DDL: `001` is edited directly; development DBs are ephemeral. The production
   migration (existing-table CHECK/column changes + `object_map` size backfill) is a
   deployment-owned script, not a feature-branch deliverable.
@@ -2869,9 +2870,9 @@ refined by U4 below.
   Rides the L2 branch.
 - **Verification** — targeted `queryParsesShared` + `QueryParsesRepository` suites:
   19/19 passed; `docsStatePurity`, eslint, and Prettier (source/spec files) passed. Full
-  local `test:ci`: server 194 passed + 1 skipped suite, 3365 passed + 28 skipped tests
+  local `test`: server 194 passed + 1 skipped suite, 3365 passed + 28 skipped tests
   (3393 total); client 189 suites / 2279 tests passed; the PostgreSQL adapter leg
-  (`test:ci:pg:adapters`) passed 31 suites / 472 tests (1 skipped). The server total is
+  (`test:pg:adapters`) passed 31 suites / 472 tests (1 skipped). The server total is
   recorded as run evidence for the exit-gate reconciliation (D4), not as a new summary
   pin.
 
@@ -2940,8 +2941,8 @@ refined by U4 below.
   ephemeral. The production migration (existing-table CHECK/column changes + `object_map`
   size backfill) remains deployment-owned.
 - **Verification** — targeted conformance 30/30; PG adapter leg 473 passed / 1 skipped;
-  full server `test:ci` 194 passed + 1 skipped suite, 3366 passed + 28 skipped; client
-  `test:ci` 189 suites / 2279 tests passed; `docsStatePurity`, eslint, and Prettier clean.
+  full server `test` 194 passed + 1 skipped suite, 3366 passed + 28 skipped; client
+  `test` 189 suites / 2279 tests passed; `docsStatePurity`, eslint, and Prettier clean.
 
 ### 33.10 P4 closure — unit merges and exit-gate evidence (2026-10-29)
 
@@ -2970,8 +2971,8 @@ refined by U4 below.
     parser/cache/kill-switch/invalid-output/delta replay over the fake harness; inventory
     re-pinned to 266 default / 147 core / 41 WebDAV.
 - **Exit-gate verification (integrated tip):**
-  - Server `npm run test:ci`: **202 passed + 1 skipped suites (203)**; **3465 passed + 28
-    skipped tests (3493)**. Client `npm run test:ci`: **191 suites / 2304 tests passed**.
+  - Server `npm run test`: **202 passed + 1 skipped suites (203)**; **3465 passed + 28
+    skipped tests (3493)**. Client `npm run test`: **191 suites / 2304 tests passed**.
   - Real-PostgreSQL adapter leg on a freshly recreated `webdav_test`:
     **32 suites / 492 passed + 1 skipped (493)**.
   - `docsStatePurity` 3/3; Prettier/ESLint clean on changed files; CI grep-gate shows no
@@ -3082,8 +3083,8 @@ refined by U4 below.
 
 **Verification (2026-10-30)**
 
-- Server `test:ci`: 205 passed + 1 skipped suites; 3496 passed + 28 skipped tests.
-- Client `test:ci`: 198 suites / 2398 tests passed (2026-10-31 test hardening; three
+- Server `test`: 205 passed + 1 skipped suites; 3496 passed + 28 skipped tests.
+- Client `test`: 198 suites / 2398 tests passed (2026-10-31 test hardening; three
   consecutive green runs at 90.7 s / 88.4 s / 90.3 s with `--maxWorkers=2`).
 - PostgreSQL adapter leg on a freshly recreated `webdav_test`: 32 suites / 492 passed +
   1 skipped.
@@ -3133,9 +3134,9 @@ honest empty state. The API-only matrix (`E2E-S3-AI-002..007`) continues to own 
 
 - `s3-ai-matrix-ui-desktop`: **2/2 passed** (39.4 s, port band 80; E2E-S3-AI-008 5.0 s,
   E2E-S3-AI-009 3.7 s).
-- Server `test:ci`: **206 passed + 1 skipped suites; 3499 passed + 28 skipped tests**
+- Server `test`: **206 passed + 1 skipped suites; 3499 passed + 28 skipped tests**
   (207 suites / 3527 total).
-- Client `test:ci`: **198 suites / 2401 tests passed** (89.0 s).
+- Client `test`: **198 suites / 2401 tests passed** (89.0 s).
 - `docsStatePurity` 3/3; Prettier/ESLint clean on changed files.
 - Inventory pinned at default **278** (model-on 272/6, model-free 271/7), WebDAV 41/0.
 
@@ -3161,9 +3162,9 @@ caption search hit, absorbing the former text-embed search leg.
 **Verification (2026-10-31)**
 
 - `s3-ai-matrix-api`: **2/2 passed** (32.0 s; AI-003 1.6 s, AI-006 0.7 s).
-- Server `test:ci`: **206 passed + 1 skipped suites; 3500 passed + 28 skipped tests**
+- Server `test`: **206 passed + 1 skipped suites; 3500 passed + 28 skipped tests**
   (207 suites / 3528 total).
-- Client `test:ci`: **198 suites / 2401 tests passed** (89.3 s).
+- Client `test`: **198 suites / 2401 tests passed** (89.3 s).
 - `docsStatePurity` 3/3; Prettier/ESLint clean on changed files.
 - Inventory pinned at default **274** (model-on 268/6, model-free 267/7), WebDAV 41/0.
 
@@ -3185,14 +3186,71 @@ chain. The old->new mapping and the pre-2026-11-01 log caveat live in
 Also in this unit: `s3-ai-matrix-desktop` -> `s3-ai-matrix-api`; `webdav-reconcile`
 labelled browser-backed; `queryScratchSqlite` opens read-only; suite-level timeouts for
 admin-config/registration/trash-admin; standard headers on the previously headerless
-specs; `scripts/e2e-lint.cjs` + `npm run lint:e2e` wired into `scripts/test-gate.sh`.
+specs; `scripts/check/e2e-structure.cjs` + `npm run check:e2e` wired into `scripts/gate.sh`.
 
 **Verification (2026-11-01, port band 120)**
 
-- `npm run lint:e2e`: **26 files / 163 tests / 25 families, 0 violations**.
+- `npm run check:e2e`: **26 files / 163 tests / 25 families, 0 violations**.
 - `--list`: default **274** (22 files), core **147** (10), WebDAV **41** (8); the JSON
   tree reports **0 describe nodes** in both groups.
 - Default full run: **268 passed / 6 skipped / 274**.
 - WebDAV full run: **41 passed / 0 skipped**.
 - `docsStatePurity` **3/3**; Prettier clean; `git diff --check` clean.
 - Counts are unchanged from the 2026-10-31 pin; only the tree shape and ID labels moved.
+
+### 34.4 Test command surface consolidation (2026-11-02)
+
+The test entry points now carry one meaning each:
+
+- **Layer:** `check` (ESLint + flat-tree/ID guardrail + Prettier), `test` (server
+  and client Jest), `e2e` (Playwright).
+- **Scope:** `:core`, `:webdav`, `:unit`, `:integration`, `:pg`.
+- **Profile:** `E2E_PROFILE=release` — retries 0, strict skip budget. `e2e` is
+  the layer; `e2e:release:*` is the strict profile of the same suite.
+- **Environment:** `CI` is the strictness floor only (`forbidOnly`, no server
+  reuse, `skipWhenUnavailable()` throws, non-release CI retries 2). `CI=0` and
+  `CI=false` are not CI; local means unset.
+- **Aggregate:** `gate` = `check` + `test`; `gate:full` = `gate` +
+  `test:pg` + `e2e:release`.
+
+Hard-cut mapping:
+
+| Old                                            | New                     |
+| ---------------------------------------------- | ----------------------- |
+| `test:ci`                                      | `test`                  |
+| `test:gate`                                    | `gate`                  |
+| `test:e2e`                                     | `e2e`                   |
+| `test:e2e:release`                             | `e2e:release:model-off` |
+| `test:e2e:release:embed`                       | `e2e:release:model-on`  |
+| `test:e2e:release:all`                         | `e2e:release`           |
+| `lint:ci` / `lint:e2e`                         | `check` / `check:e2e`   |
+| `format:check`                                 | `check:format`          |
+| `e2e:server*` / `e2e:client` / `e2e:provision` | `dev:e2e:*`             |
+
+`scripts/test-gate.sh` -> `scripts/gate.sh`; `scripts/e2e-lint.cjs` ->
+`scripts/check/e2e-structure.cjs`; the three E2E servers moved under
+`scripts/e2e/`. Release scripts no longer set `CI=1`; `E2E_PROFILE=release`
+drives release strictness, and `--fail-on-flaky-tests` was dropped because it
+is inert with zero retries. The E2E model default now resolves to the
+provisioner path `data/modelos` instead of the ephemeral
+`/tmp/opencode/delta-base/models`.
+
+**Verification (2026-11-02, port band 120)**
+
+- `npm run gate`: check clean; server **207 suites / 3528 tests** (28 skipped);
+  client **198 suites / 2401 tests**.
+- `npm run e2e` (local AI matrix): **4/4 passed**.
+- `npm run e2e:release:model-off`: **267 passed / 7 skipped** (the first run hit
+  one transient `ECONNRESET` in `share-internal`; the isolated case and the full
+  rerun were green).
+- `npm run e2e:release:model-on`: **268 passed / 6 skipped**.
+- `npm run e2e:release:webdav`: **41 passed / 0 skipped**.
+- `npm run test:pg`: adapters **32 suites / 492 passed + 1 skipped**; vector
+  **1 suite / 22 passed**.
+- `npm run check:e2e`: **26 files / 163 tests / 25 families, 0 violations**;
+  `check:format` clean.
+- Inventory unchanged: default **274**, core **147**, WebDAV **41**.
+
+The hard cut changes external callers: Jenkins jobs outside this repo must use
+`gate`, `test`, and `e2e:release:*`. Historical logs before 2026-11-02 may show
+the old names.

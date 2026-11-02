@@ -170,7 +170,7 @@ Tests that exercise full user flows (pages) with React Testing Library. API is m
 
 ### Key Modules & Overall Project Coverage
 
-The per-module and overall coverage percentages previously published in this file were captured from pre-reorganization runs and reference modules that no longer exist (e.g. `folderUtils.js`) or paths that have since moved. They are intentionally not reproduced here. Measure the current layout with `cd client && npm run test:coverage`; core business logic (utils, hooks) historically maintains the highest coverage.
+The per-module and overall coverage percentages previously published in this file were captured from pre-reorganization runs and reference modules that no longer exist (e.g. `folderUtils.js`) or paths that have since moved. They are intentionally not reproduced here. Measure the current layout with `cd client && npm run test`; core business logic (utils, hooks) historically maintains the highest coverage.
 
 ## E2E (Playwright) — cross-reference
 

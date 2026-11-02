@@ -17,7 +17,7 @@
 > `server/store/repositories/postgres/FileNodeRepository.postgres.js`); the SQL patterns listed
 > throughout this spec are the ones those implementations execute. Conformance:
 > `server/store/repositories/__tests__/FileNodeRepository.conformance.test.js` (real sqlite in
-> `test:ci`, real PostgreSQL on the `test:ci:pg:adapters` leg).
+> `test`, real PostgreSQL on the `test:pg:adapters` leg).
 
 ### 2.1 Tables
 

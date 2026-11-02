@@ -24,7 +24,8 @@
 | Pre-merge carry-forward | `[deferred]`   | Hysteresis calibration moved to post-release calibration by owner ruling 2026-10-30 ([`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §33.11): the provisional `{ inDelta: 0.02, outDelta: -0.02 }` ships as the first release artifact and is re-measured after the platform has run evolution/reconcile on operational data. The §4.22 SQL leg (D3), `JOURNAL_DOMAIN.TAGS` removal (D2), Wave 0 items, and the E2E release matrix are closed (§33.7, §33.10). |
 | Post-P4 UI/UX hardening | `[done]`       | Storage domain split + usage feature, file-list badge removal, merge recommendation redesign, collection properties draft/atomic save, FileProperties AI tab, admin AI parity, and AI/storage UI E2E are merged; see [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §34.                                                                                                                                                                                      |
 | Test-count pin          | `[done]`       | Current run: server **206 suites passed / 3500 tests passed** (+28 skipped; 207 suites / 3528 total), client **198 suites / 2401 tests passed**; real-PostgreSQL adapter leg **32 suites / 492 passed + 1 skipped**; E2E default **274 total** (model-on 268/6, model-free 267/7), WebDAV 41/0. Pins recorded in `server/TEST_SUMMARY.md`, `client/TEST_SUMMARY.md`, and [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §34.                                  |
-| E2E structure           | `[done]`       | Flat tree + sequential IDs (2026-11-01): 15 describe nodes removed across 12 specs (64 cases), every family renumbered to `001..N`, `s3-ai-matrix-desktop` → `s3-ai-matrix-api`, and `npm run lint:e2e` wired into `test:gate`; default **274** / core **147** / WebDAV **41** unchanged. See [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §34.3.                                                                                                           |
+| E2E structure           | `[done]`       | Flat tree + sequential IDs (2026-11-01): 15 describe nodes removed across 12 specs (64 cases), every family renumbered to `001..N`, `s3-ai-matrix-desktop` → `s3-ai-matrix-api`, and `npm run check:e2e` wired into `gate`; default **274** / core **147** / WebDAV **41** unchanged. See [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §34.3.                                                                                                               |
+| Test command surface    | `[done]`       | Hard-cut naming (2026-11-02): `test` / `e2e` / `e2e:release:*` / `gate` / `gate:full`, with `E2E_PROFILE=release` and `CI` as the environment floor; old `test:ci`/`test:gate`/`test:e2e*`/`lint:*` names removed. See [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §34.4.                                                                                                                                                                                  |
 | P4 exit gate            | `[wip]`        | Code units, repository/client suites, and all release-matrix legs are green; the pre-closure record is [`PLAN_EXECUTION.md`](PLAN_EXECUTION.md) §33.11 and the hardening closure is §34. Final status flips and the single `ai-feature` → `dev` merge are intentionally not performed pending owner go-ahead.                                                                                                                                           |
 | `ai-feature` → `dev`    | `[not merged]` | Pre-closure only. All code units and gates are green; the release merge awaits the owner's exit-gate go-ahead.                                                                                                                                                                                                                                                                                                                                          |
 
@@ -119,10 +120,11 @@ test.js`; store facade `server/store/<plural>Store.js` thin dialect dispatch on
   constants (§3.4: score weights, H=30d, archive min-age 14d) follow the same discipline
   but are product T2-hot constants (dbOnly, defaults shipped, admin-displayed) — not
   AI-profile numbers.
-- **Verification gates**: `npm run test:ci` (+ `test:ci:pg:adapters` for repository twins);
-  CI grep-gate: `domains/(collections|ai)/**` and new stores contain zero
-  `CacheAdapter|operationProgress` imports; conformance suite per new repository; E2E for
-  lifecycle (create→digest→archive→undo→restore→purge) and degradation matrix.
+- **Verification gates**: `npm run test` (+ `npm run test:pg:adapters` for repository
+  twins); CI grep-gate: `domains/(collections|ai)/**` and new stores contain zero
+  `CacheAdapter|operationProgress` imports; conformance suite per new repository; E2E
+  `e2e` (local) / `e2e:release` (release matrix) for lifecycle
+  (create→digest→archive→undo→restore→purge) and degradation matrix.
 
 ## 7. Task graph (phases; deps in parentheses)
 
@@ -344,7 +346,7 @@ infrastructure specs live under `docs/spec/server/`.
 retracted proposals, and "why we changed" narratives live ONLY in AI_FEATURE_PLAN (design
 authority) and this ledger / PoC addenda (AGENTS §2.1.5, AI_FEATURE_PLAN §12 preamble).
 Mechanical sweep — **codified** since 2026-10-15 as `server/__tests__/docsStatePurity.test.js`
-(runs inside `cd server && npm run test:ci`): rejects `2026-1[01]-dd`, `dissolv`, `retir`,
+(runs inside `cd server && npm run test`): rejects `2026-1[01]-dd`, `dissolv`, `retir`,
 `withdraw`, `supersed`, `initially proposed`, `purge state`, `pending T[0-9]`, task provenance
 (`T0.N`-style), `AI_FEATURE_PLAN`/`PLAN.md` pointers, `ruling`, rationale clauses,
 `owner`-attributions in prose, plus a §-citation resolver (qualified pointers must match a

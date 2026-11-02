@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * E2E client dev-server wrapper (`npm run e2e:client`): resolves this
+ * E2E client dev-server wrapper (`npm run dev:e2e:client`): resolves this
  * checkout's E2E port band (scripts/lib/e2e-band.cjs) and starts the CRA dev
  * server with PORT=<band client> and REACT_APP_API_PORT=<band api>, so the
  * dev iteration path matches the band that `e2e-wait-healthy` /
@@ -11,7 +11,7 @@
  */
 
 const { spawnSync } = require('node:child_process');
-const { effectivePorts } = require('./lib/e2e-band.cjs');
+const { effectivePorts } = require('../lib/e2e-band.cjs');
 
 const ports = effectivePorts(process.cwd());
 const env = {

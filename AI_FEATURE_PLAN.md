@@ -1728,7 +1728,7 @@ from the FileGrid\* JSX bodies with the original suites kept UNCHANGED as regres
 ### 12.12 Spec state-purity gate & lifted narration (2026-10-15)
 
 - The PLAN §8 mechanical sweep is now CODIFIED: `server/__tests__/docsStatePurity.test.js`
-  (runs in `npm run test:ci`) — forbidden-pattern net over `docs/spec/**` + `docs/features/**`
+  (runs in `npm run test`) — forbidden-pattern net over `docs/spec/**` + `docs/features/**`
   plus a §-pointer resolver (qualified pointers must exist as numbered headings in the named
   file; bare pointers must resolve somewhere); `(target)`/deferral/deliberate markers are
   WARN-tier report-only (target-contract notation, not narration).

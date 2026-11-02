@@ -46,7 +46,7 @@ const VALID_PAYLOAD = {
 };
 
 // Backend-agnostic metadata target: the active backend depends on the jest leg
-// (sqlite under test:ci, postgresql under the real-PG test:ci:pg leg signalled
+// (sqlite under test, postgresql under the real-PG test:pg leg signalled
 // by the dedicated WEA_TEST_PG_* namespace), so the target is the OTHER backend.
 const TEST_PG_KEYS = [
   'WEA_TEST_PG_HOST',

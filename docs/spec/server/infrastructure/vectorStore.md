@@ -187,7 +187,7 @@ WHERE embedding MATCH ? AND k = ?` (query vector JSON-stringified). Returned ids
 - PG test leg: the recall leg needs a pgvector-enabled server
   (`pgvector/pgvector:pg16`); against a plain `postgres:16` the real-PG describes SKIP
   (extension probe fails ⇒ `describe.skip` with the reason). Run via
-  `npm run test:ci:pg:vector` (server/package.json) targeting the `WEA_TEST_PG_*`
+  `npm run test:pg:vector` (server/package.json) targeting the `WEA_TEST_PG_*`
   namespace.
 - Reference corpus + query set are the dev-owned release artifact (shipped as
   profile values, `calibrated:false` provenance in admin; NOT shipped
@@ -238,4 +238,4 @@ model-profile constants, owned by the callers — never by this seam.
       cross-model_id candidate never returned (space key discipline)
 - [ ] `allVectors` leaves no resident state between calls (heap probe / re-query loads
       again) — no-cache-state gate grep + behavior
-- [ ] L2 conformance on real sqlite (test:ci) AND real PostgreSQL (test:ci:pg:adapters)
+- [ ] L2 conformance on real sqlite (test) AND real PostgreSQL (test:pg:adapters)

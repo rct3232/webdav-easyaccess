@@ -20,10 +20,10 @@
  * Docker ports are exported to the compose spawn (`E2E_WEBDAV_PORT` etc.
  * interpolate `docker-compose.e2e.yml`) and the server dotenv file
  * `data/e2e-runtime.env` (base `.env.e2e[.webdav]` + band ports) is
- * regenerated for the `e2e:server*` chain's DOTENV_CONFIG_PATH.
+ * regenerated for the `dev:e2e:server*` chain's DOTENV_CONFIG_PATH.
  *
  * The Playwright `webServer` command for the API server chains this script
- * BEFORE starting the app (`npm run e2e:server:s3` / `e2e:server:webdav`), so
+ * BEFORE starting the app (`dev:e2e:server:s3` / `dev:e2e:server:webdav`), so
  * PostgreSQL/MinIO/WebDAV are reachable by the time the server boots. Because
  * this step runs in the foreground, the webServer command stays long-running
  * (the actual `npm run dev --workspace server` is the last step) and Playwright
@@ -44,11 +44,11 @@ const {
   effectivePorts,
   writeRuntimeEnv,
   composeProjectName,
-} = require('./lib/e2e-band.cjs');
+} = require('../lib/e2e-band.cjs');
 
 const ROOT_DIR = process.cwd();
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const COMPOSE_FILE = path.join(scriptDir, '..', 'docker-compose.e2e.yml');
+const COMPOSE_FILE = path.join(scriptDir, '..', '..', 'docker-compose.e2e.yml');
 const TIMEOUT_MS = 90_000;
 const POLL_INTERVAL_MS = 2_000;
 
@@ -84,7 +84,7 @@ const compose = resolveComposeCommand();
 
 // Per-checkout port band: reuse/claim the persisted band, then export the
 // Docker-facing ports to compose and regenerate the server dotenv file so
-// `e2e:server*` (DOTENV_CONFIG_PATH) boots the app on this checkout's band.
+// `dev:e2e:server*` (DOTENV_CONFIG_PATH) boots the app on this checkout's band.
 const bandOffset = ensureBand(ROOT_DIR);
 const bandPorts = effectivePorts(ROOT_DIR);
 const composeProject = composeProjectName(bandOffset);

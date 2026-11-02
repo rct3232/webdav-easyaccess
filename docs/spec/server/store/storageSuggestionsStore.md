@@ -125,6 +125,6 @@ Domain row (repository boundary; SQL snake_case → camel — `repository-contra
       `limit`, returns ids; second run is a no-op (idempotent)
 - [ ] FK enforcement: unknown `node_id`/`user_id` rejects through `mapDatabaseError`
 - [ ] hard node delete cascades the rows away; trashing does NOT (soft delete)
-- [ ] L2 conformance on sqlite AND real PostgreSQL (`test:ci:pg:adapters`): JSONB-vs-TEXT
+- [ ] L2 conformance on sqlite AND real PostgreSQL (`test:pg:adapters`): JSONB-vs-TEXT
       payload parity, ISO timestamp parity, `changes` counts, TX-bound flip visibility
 - [ ] Grep: no SQL outside the twins; facade has no `getBackend()` branch

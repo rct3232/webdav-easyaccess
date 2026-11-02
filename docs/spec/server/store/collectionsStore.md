@@ -232,7 +232,7 @@ COALESCE(last_member_change_at, created_at) DESC, created_at DESC, id DESC`.
       (conformance twin on sqlite + PG)
 - [ ] `upsertMergeSuggestion(2,1)` and `upsertMergeSuggestion(1,2)` yield ONE row (pair normalization)
 - [ ] `setSuggestionState` rejects `merged → pending` (`changes: 0`)
-- [ ] L2 conformance (`CollectionsRepository.conformance.test.js`) on real sqlite (`test:ci`) AND real PostgreSQL (`test:ci:pg:adapters`): PK/CASCADE semantics, partial-unique `(owner_id,name)` active-scoping, `activity`-sort (`activity_score` desc +
+- [ ] L2 conformance (`CollectionsRepository.conformance.test.js`) on real sqlite (`test`) AND real PostgreSQL (`test:pg:adapters`): PK/CASCADE semantics, partial-unique `(owner_id,name)` active-scoping, `activity`-sort (`activity_score` desc +
       `COALESCE(last_member_change_at, created_at)` tie-breaker chain — mixed NULL/non-NULL stamps order identically on both dialects) ordering parity, JSONB (PG) vs TEXT (sqlite) `definition` round-trip, ON CONFLICT idempotency parity
 - [ ] `listForNodes`: the owner receives its unpublished rows; a grantee receives only
       `published=true` rows of the granted collection (unpublished never leaks)

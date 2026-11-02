@@ -3,7 +3,7 @@
 /**
  * Single source of truth for the E2E `client/build` bootstrap, shared by
  * `e2e/helpers/setupScratch.ts` (hermetic suites) and
- * `scripts/e2e-serve-client.js` (platform webServer).
+ * `scripts/e2e/serve-client.js` (platform webServer).
  *
  * - Freshness, not existence: a stale pre-feature build silently serves the
  *   old UI (wave-2 lesson — collections selectors missing while the build

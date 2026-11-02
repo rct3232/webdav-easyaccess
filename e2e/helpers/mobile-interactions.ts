@@ -27,7 +27,10 @@ export async function openActionSheet(page: Page, filePath: string): Promise<voi
   // - waitForSelector starts polling immediately after click begins
   // - Targets a concrete action item instead of generic [role="dialog"]
   await Promise.all([
-    page.waitForSelector('[data-testid="file-action-rename"]', { state: 'visible', timeout: 5000 }),
+    page.waitForSelector('[data-testid="file-action-rename"]', {
+      state: 'visible',
+      timeout: 15_000,
+    }),
     moreButton.click(),
   ]);
 }

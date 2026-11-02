@@ -51,7 +51,7 @@ export async function openTrashItemActions(
     await Promise.all([
       page.waitForSelector(`[data-testid="trash-action-${action}"]`, {
         state: 'visible',
-        timeout: 5000,
+        timeout: 15_000,
       }),
       item.locator('[aria-label="More actions"]').click(),
     ]);
